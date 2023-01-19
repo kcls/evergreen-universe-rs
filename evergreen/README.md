@@ -1,2 +1,1 @@
-# evergreen-rs
-Evergreen Rust Bindings
+# Evergreen Rust Bindings

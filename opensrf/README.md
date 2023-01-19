@@ -1,5 +1,4 @@
-# opensrf-rs
-OpenSRF Rust Bindings
+# OpenSRF Rust Bindings
 
 ## Synopsis
 
