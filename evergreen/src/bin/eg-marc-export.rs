@@ -1,6 +1,6 @@
 use evergreen::db::DatabaseConnection;
 use getopts;
-use marcutil::Record;
+use marc::Record;
 use std::io::prelude::*;
 use std::{env, fs, io};
 

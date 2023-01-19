@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 opensrf = { path = "../opensrf" }
-marcutil = { path = "../marcutil" }
+marc = { path = "../marc" }
 roxmltree = "0.14.1"
 chrono = "0.4.19"
 yaml-rust = "0.4.5"

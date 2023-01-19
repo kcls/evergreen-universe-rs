@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "opensrf",
-  "marcutil",
+  "marc",
   "evergreen",
   "sip2",
   "sip2-server",

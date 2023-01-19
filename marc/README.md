@@ -3,7 +3,7 @@
 ## Synopsis
 
 ```rs
-use marcutil::Record;
+use marc::Record;
 
 // Read a MARC binary file
 for rec in Record::from_binary_file("/path/to/records.mrc").unwrap() {

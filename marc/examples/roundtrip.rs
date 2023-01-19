@@ -1,5 +1,5 @@
 use getopts;
-use marcutil::Record;
+use marc::Record;
 use std::env;
 
 fn main() {

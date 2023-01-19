@@ -263,7 +263,7 @@ impl BibLinker {
     // matches the thesaurus spec of the bib record.
     fn find_matching_auth_for_thesaurus(
         &self,
-        bib_field: &marcutil::Field,
+        bib_field: &marc::Field,
         auth_leaders: &Vec<AuthLeader>,
     ) -> Result<Option<i64>, String> {
         let mut bib_ind2 = bib_field.ind2;
@@ -339,7 +339,7 @@ impl BibLinker {
     }
 
     // Returns true if the thesaurus controlling the bib field is "fast".
-    fn is_fast_heading(&self, bib_field: &marcutil::Field) -> bool {
+    fn is_fast_heading(&self, bib_field: &marc::Field) -> bool {
         let tag = &bib_field.tag;
 
         // Looking specifically for bib tags matching 65[015]
@@ -365,7 +365,7 @@ impl BibLinker {
     fn update_bib_record(
         &mut self,
         bre: &mut json::JsonValue,
-        record: &marcutil::Record,
+        record: &marc::Record,
     ) -> Result<(), String> {
         let xml = record.to_xml()?;
         let bre_id = bre["id"].as_i64().unwrap();
@@ -391,7 +391,7 @@ impl BibLinker {
     fn find_potential_auth_matches(
         &mut self,
         controlled_fields: &Vec<ControlledField>,
-        bib_field: &marcutil::Field,
+        bib_field: &marc::Field,
     ) -> Result<Vec<i64>, String> {
         let bib_tag = &bib_field.tag;
         let auth_ids: Vec<i64> = Vec::new();
@@ -516,7 +516,7 @@ impl BibLinker {
 
             let xml = bre["marc"].as_str().unwrap();
 
-            let mut record = match marcutil::Record::from_xml(xml).next() {
+            let mut record = match marc::Record::from_xml(xml).next() {
                 Some(r) => r,
                 None => {
                     log::error!("MARC parsing returned no usable record for {rec_id}");
@@ -539,7 +539,7 @@ impl BibLinker {
         rec_id: i64,
         bre: &mut json::JsonValue,
         control_fields: &Vec<ControlledField>,
-        record: &mut marcutil::Record,
+        record: &mut marc::Record,
     ) -> Result<(), String> {
         log::info!("Processing record {rec_id}");
 
