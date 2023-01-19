@@ -157,7 +157,7 @@ impl Editor {
         self.requestor.as_ref()
     }
 
-    pub fn set_requestor(&mut self, r: &json::JsonValue)  {
+    pub fn set_requestor(&mut self, r: &json::JsonValue) {
         self.requestor = Some(r.clone())
     }
 
@@ -210,7 +210,6 @@ impl Editor {
     }
 
     pub fn xact_commit(&mut self) -> Result<(), String> {
-
         if self.has_session() && self.has_xact_id() {
             let xact_id = self.xact_id.as_ref().unwrap().to_string();
             let method = self.app_method("transaction.commit");
@@ -246,14 +245,17 @@ impl Editor {
     }
 
     fn logtag(&self) -> String {
-
         let requestor = match self.requestor() {
             Some(req) => format!("{}", req),
             None => "0".to_string(),
         };
 
-        format!("editor[{}|{}]",
-            match self.has_xact_id() { true => "1", _ => "0" },
+        format!(
+            "editor[{}|{}]",
+            match self.has_xact_id() {
+                true => "1",
+                _ => "0",
+            },
             requestor
         )
     }
@@ -261,9 +263,7 @@ impl Editor {
     fn args_to_string(&self, params: &ApiParams) -> Result<String, String> {
         let mut buf = String::new();
         for p in params.params().iter() {
-
             if self.idl.is_idl_object(p) {
-
                 if let Some(pkv) = self.idl.get_pkey_value(p) {
                     buf.push_str(&pkv);
                 } else {
@@ -286,7 +286,12 @@ impl Editor {
     {
         let params: ApiParams = params.into();
 
-        log::info!("{} request {} {}", self.logtag(), method, self.args_to_string(&params)?);
+        log::info!(
+            "{} request {} {}",
+            self.logtag(),
+            method,
+            self.args_to_string(&params)?
+        );
 
         let mut req = match self.session().request(method, params) {
             Ok(r) => r,
@@ -366,11 +371,7 @@ impl Editor {
         Err(format!("Unexpected response to method {method}"))
     }
 
-    pub fn update(
-        &mut self,
-        object: &json::JsonValue,
-    ) -> Result<(), String> {
-
+    pub fn update(&mut self, object: &json::JsonValue) -> Result<(), String> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for UPDATE"))?;
         }

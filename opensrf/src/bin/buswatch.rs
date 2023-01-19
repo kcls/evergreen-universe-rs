@@ -172,7 +172,9 @@ fn main() {
 
         threads.push(thread::spawn(move || loop {
             let mut watcher = BusWatch::new(conf.clone(), &domain);
-            if let Some(t) = ttl { watcher.ttl = t; }
+            if let Some(t) = ttl {
+                watcher.ttl = t;
+            }
             if watcher.watch() {
                 log::error!("Restarting watcher after exit-on-error");
             } else {

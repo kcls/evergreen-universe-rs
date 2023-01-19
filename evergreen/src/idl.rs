@@ -556,7 +556,6 @@ impl Parser {
     }
 
     pub fn get_pkey_value(&self, obj: &json::JsonValue) -> Option<String> {
-
         if !self.is_idl_object(obj) {
             return None;
         }

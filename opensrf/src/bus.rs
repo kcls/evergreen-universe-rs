@@ -306,9 +306,7 @@ impl Bus {
         Ok(res.unwrap())
     }
 
-    pub fn lrange(&mut self, key: &str,
-        start: isize, stop: isize) -> Result<Vec<String>, String> {
-
+    pub fn lrange(&mut self, key: &str, start: isize, stop: isize) -> Result<Vec<String>, String> {
         let res: Result<Vec<String>, _> = self.connection().lrange(key, start, stop);
 
         if let Err(e) = res {
@@ -317,7 +315,6 @@ impl Bus {
 
         Ok(res.unwrap())
     }
-
 
     /// Set the expire time on the specified key to 'timeout' seconds from now.
     pub fn set_key_timeout(&mut self, key: &str, timeout: u64) -> Result<i32, String> {

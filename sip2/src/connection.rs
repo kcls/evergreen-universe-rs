@@ -1,11 +1,11 @@
-use std::time::Duration;
 use super::error::Error;
 use super::spec;
 use super::Message;
+use deunicode::deunicode;
 use std::io::prelude::*;
 use std::net::{Shutdown, TcpStream};
 use std::str;
-use deunicode::deunicode;
+use std::time::Duration;
 
 // Read data from the socket in chunks this size.
 const READ_BUFSIZE: usize = 256;
@@ -97,7 +97,7 @@ impl Connection {
             Ok(op) => match op {
                 Some(m) => Ok(m),
                 None => Err(Error::NetworkError),
-            }
+            },
             Err(e) => Err(e),
         }
     }
@@ -107,7 +107,6 @@ impl Connection {
     }
 
     fn recv_internal(&mut self, timeout: Option<Duration>) -> Result<Option<Message>, Error> {
-
         log::trace!("recv_internal() with timeout {:?}", timeout);
 
         if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
@@ -122,18 +121,16 @@ impl Connection {
 
             let num_bytes = match self.tcp_stream.read(&mut buf) {
                 Ok(num) => num,
-                Err(e) => {
-                    match e.kind() {
-                        std::io::ErrorKind::WouldBlock => {
-                            log::trace!("SIP tcp read timed out.  trying again");
-                            continue;
-                        },
-                        _ => {
-                            log::error!("recv() failed: {e}");
-                            return Err(Error::NetworkError);
-                        }
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock => {
+                        log::trace!("SIP tcp read timed out.  trying again");
+                        continue;
                     }
-                }
+                    _ => {
+                        log::error!("recv() failed: {e}");
+                        return Err(Error::NetworkError);
+                    }
+                },
             };
 
             if num_bytes == 0 {

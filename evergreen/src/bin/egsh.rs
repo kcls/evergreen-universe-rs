@@ -8,10 +8,10 @@ use rustyline;
 
 use eg::auth::AuthSession;
 use eg::db::DatabaseConnection;
+use eg::event;
 use eg::idl;
 use eg::idldb;
 use eg::init;
-use eg::event;
 use evergreen as eg;
 
 //const PROMPT: &str = "egsh# ";
@@ -172,7 +172,9 @@ impl Shell {
     }
 
     fn db_translator_mut(&mut self) -> Result<&mut idldb::Translator, String> {
-        self.db_translator.as_mut().ok_or(format!("DB connection required"))
+        self.db_translator
+            .as_mut()
+            .ok_or(format!("DB connection required"))
     }
 
     /// Main entry point.
@@ -288,7 +290,7 @@ impl Shell {
         let full_args: Vec<&str> = line.split(" ").collect();
 
         if full_args.len() == 0 {
-            return Ok(())
+            return Ok(());
         }
 
         self.command = full_args[0].to_lowercase();
@@ -341,7 +343,6 @@ impl Shell {
     }
 
     fn get_setting(&mut self, args: &[&str]) -> Result<(), String> {
-
         let authtoken = match &self.auth_session {
             Some(s) => json::from(s.token()),
             None => json::JsonValue::Null,
@@ -352,8 +353,8 @@ impl Shell {
 
         let org_id = if args.len() > 2 {
             let org_str = args[2];
-            json::parse(org_str).or_else(|e|
-                Err(format!("Cannot parse parameter: {org_str} {e}")))?
+            json::parse(org_str)
+                .or_else(|e| Err(format!("Cannot parse parameter: {org_str} {e}")))?
         } else {
             json::JsonValue::Null
         };
@@ -373,7 +374,7 @@ impl Shell {
         Ok(())
     }
 
-    fn handle_prefs(&mut self,  args: &[&str]) -> Result<(), String> {
+    fn handle_prefs(&mut self, args: &[&str]) -> Result<(), String> {
         self.args_min_length(args, 1)?;
         let subcom = args[0];
 
@@ -595,7 +596,11 @@ impl Shell {
         let operand = args[3];
         let value = args[4];
 
-        let idl_class = self.ctx().idl().classes().get(classname)
+        let idl_class = self
+            .ctx()
+            .idl()
+            .classes()
+            .get(classname)
             .ok_or(format!("No such IDL class: {classname}"))?;
 
         if idl_class.fields().get(fieldname).is_none() {
@@ -651,10 +656,15 @@ impl Shell {
     fn print_idl_object(&mut self, obj: &json::JsonValue) -> Result<(), String> {
         self.result_count += 1;
 
-        let classname = obj[idl::CLASSNAME_KEY].as_str()
+        let classname = obj[idl::CLASSNAME_KEY]
+            .as_str()
             .ok_or(format!("Not a valid IDL object value: {}", obj.dump()))?;
 
-        let idl_class = self.ctx().idl().classes().get(classname)
+        let idl_class = self
+            .ctx()
+            .idl()
+            .classes()
+            .get(classname)
             .ok_or(format!("Object has an invalid class name {classname}"))?;
 
         // Get the max field name length for improved formatting.
@@ -663,7 +673,9 @@ impl Shell {
         for field in idl_class.real_fields_sorted() {
             let fname = field.name();
 
-            if obj[fname].is_null() { continue; }
+            if obj[fname].is_null() {
+                continue;
+            }
 
             fields.push(fname);
 
@@ -682,7 +694,6 @@ impl Shell {
                 println!("{name:.<width$} {value}", width = maxlen);
             }
         }
-
 
         Ok(())
     }

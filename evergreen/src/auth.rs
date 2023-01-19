@@ -94,7 +94,6 @@ impl AuthLoginArgs {
     }
 }
 
-
 #[derive(Debug)]
 pub struct AuthInternalLoginArgs {
     pub user_id: i64,
@@ -104,7 +103,6 @@ pub struct AuthInternalLoginArgs {
 }
 
 impl AuthInternalLoginArgs {
-
     pub fn new<T>(user_id: i64, login_type: T) -> Self
     where
         T: Into<AuthLoginType>,
@@ -144,7 +142,6 @@ pub struct AuthSession {
 }
 
 impl AuthSession {
-
     /// Login and acquire an authtoken.
     ///
     /// Returns None on login failure, Err on error.
@@ -166,9 +163,10 @@ impl AuthSession {
     /// Login and acquire an authtoken.
     ///
     /// Returns None on login failure, Err on error.
-    pub fn create_internal_session(client: &Client,
-        args: &AuthInternalLoginArgs) -> Result<Option<AuthSession>, String> {
-
+    pub fn create_internal_session(
+        client: &Client,
+        args: &AuthInternalLoginArgs,
+    ) -> Result<Option<AuthSession>, String> {
         let params = vec![args.to_json_value()];
         let mut ses = client.session("open-ils.auth_internal");
         let mut req = ses.request("open-ils.auth_internal.session.create", params)?;
@@ -183,9 +181,10 @@ impl AuthSession {
         AuthSession::handle_auth_response(&args.workstation, &json_val)
     }
 
-    fn handle_auth_response(workstation: &Option<String>,
-        response: &json::JsonValue) -> Result<Option<AuthSession>, String> {
-
+    fn handle_auth_response(
+        workstation: &Option<String>,
+        response: &json::JsonValue,
+    ) -> Result<Option<AuthSession>, String> {
         let evt = match event::EgEvent::parse(&response) {
             Some(e) => e,
             None => {
@@ -229,7 +228,6 @@ impl AuthSession {
         Ok(Some(auth_ses))
     }
 
-
     pub fn token(&self) -> &str {
         &self.token
     }
@@ -242,4 +240,3 @@ impl AuthSession {
         self.workstation.as_deref()
     }
 }
-

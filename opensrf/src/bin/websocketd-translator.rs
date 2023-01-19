@@ -1,19 +1,19 @@
-use std::io;
-use std::io::Write;
-use std::thread;
-use std::time::Duration;
-use std::sync::Arc;
-use std::sync::mpsc;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use getopts;
-use signal_hook;
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::init;
 use opensrf::logging::Logger;
 use opensrf::message;
+use signal_hook;
+use std::collections::HashMap;
+use std::io;
+use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 const MAX_ACTIVE_SESSIONS: usize = 1024;
 const MAX_MESSAGE_SIZE: usize = 10485760; // ~10M
@@ -23,7 +23,6 @@ const MAX_GRACEFUL_SHUTDOWN_INTERVAL: usize = 120;
 const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
 
 struct Translator {
-
     // True if a shutdown signal was received.
     stopping: Arc<AtomicBool>,
 
@@ -37,7 +36,6 @@ struct Translator {
 }
 
 impl Translator {
-
     fn new(config: &conf::BusClient) -> Translator {
         let address = ClientAddress::new(config.domain().name());
 
@@ -47,7 +45,6 @@ impl Translator {
             stopping: Arc::new(AtomicBool::new(false)),
         }
     }
-
 
     /*
     fn setup_signal_handlers(&self) -> Result<(), String> {
@@ -76,7 +73,6 @@ struct SessionEvent {
     add: bool,
 }
 
-
 /// Relay messages from STDIN (websocketd) to OpenSRF.
 struct InboundThread {
     config: Arc<conf::Config>,
@@ -99,8 +95,8 @@ impl InboundThread {
     fn new(
         config: Arc<conf::Config>,
         address: ClientAddress,
-        to_inbound_rx: mpsc::Receiver<SessionEvent>) -> Self {
-
+        to_inbound_rx: mpsc::Receiver<SessionEvent>,
+    ) -> Self {
         InboundThread {
             address,
             config,
@@ -114,7 +110,6 @@ impl InboundThread {
         let mut bus = Bus::new(&conf)?;
 
         loop {
-
             log::debug!("InboundThread awaiting STDIN data");
 
             let mut buffer = String::new();
@@ -123,7 +118,10 @@ impl InboundThread {
             }
 
             if buffer.len() > MAX_MESSAGE_SIZE {
-                log::warn!("WS message is too large at {} chars. dropping", buffer.len());
+                log::warn!(
+                    "WS message is too large at {} chars. dropping",
+                    buffer.len()
+                );
                 continue;
             }
 
@@ -135,15 +133,16 @@ impl InboundThread {
     }
 
     fn relay_stdin_to_osrf(&mut self, bus: &mut Bus, msg: &str) -> Result<(), String> {
+        let wrapper = json::parse(msg)
+            .or_else(|e| Err(format!("Cannot parse websocket message: {e} {msg}")))?;
 
-        let wrapper = json::parse(msg).or_else(|e|
-            Err(format!("Cannot parse websocket message: {e} {msg}")))?;
+        let osrf_msg = wrapper["osrf_msg"]
+            .as_str()
+            .ok_or(format!("WS message has no 'osrf_msg' key"))?;
 
-        let osrf_msg = wrapper["osrf_msg"].as_str().ok_or(
-            format!("WS message has no 'osrf_msg' key"))?;
-
-        let thread = wrapper["thread"].as_str().ok_or(
-            format!("WS message has no 'thread' key"))?;
+        let thread = wrapper["thread"]
+            .as_str()
+            .ok_or(format!("WS message has no 'thread' key"))?;
 
         if thread.len() > MAX_THREAD_SIZE {
             Err(format!("Thread exceeds max thread size; dropping"))?;
@@ -165,7 +164,7 @@ impl InboundThread {
             Some(r) => {
                 log::debug!("Found cached recipient for thread {thread} {r}");
                 r.full().to_string()
-            },
+            }
             None => {
                 if service.eq("_") {
                     Err(format!("WS unable to determine recipient"))?
@@ -196,7 +195,6 @@ impl InboundThread {
         let mut body_vec: Vec<message::Message> = Vec::new();
 
         for msg_json in message_list.members() {
-
             let mut msg = match message::Message::from_json_value(msg_json) {
                 Some(m) => m,
                 None => Err(format!("Error creating message from {msg_json}"))?,
@@ -210,20 +208,26 @@ impl InboundThread {
                 }
                 message::MessageType::Request => {
                     self.log_request(service, &msg)?;
-
                 }
                 message::MessageType::Disconnect => {
                     log::debug!("WS removing session on DISCONNECT: {thread}");
                     self.sessions.remove(thread);
                 }
-                _ => Err(format!("WS received unexpected message type: {}", msg.mtype()))?,
+                _ => Err(format!(
+                    "WS received unexpected message type: {}",
+                    msg.mtype()
+                ))?,
             }
 
             body_vec.push(msg);
         }
 
         let mut tm = message::TransportMessage::with_body_vec(
-            &recipient, bus.address().full(), thread, body_vec);
+            &recipient,
+            bus.address().full(),
+            thread,
+            body_vec,
+        );
 
         if let Some(xid) = log_xid_op {
             tm.set_osrf_xid(xid);
@@ -241,7 +245,6 @@ impl InboundThread {
     }
 
     fn log_request(&self, service: &str, msg: &message::Message) -> Result<(), String> {
-
         let request = match msg.payload() {
             message::Payload::Method(m) => m,
             _ => Err(format!("WS received Request with no payload"))?,
@@ -265,7 +268,6 @@ impl InboundThread {
     }
 }
 
-
 /// Relay messages from OpenSRF to STDOUT (websocketd).
 struct OutboundThread {
     config: Arc<conf::Config>,
@@ -277,19 +279,17 @@ struct OutboundThread {
 }
 
 impl OutboundThread {
-
     fn new(
         config: Arc<conf::Config>,
         address: ClientAddress,
-        to_inbound_tx: mpsc::Sender<SessionEvent>) -> Self {
-
+        to_inbound_tx: mpsc::Sender<SessionEvent>,
+    ) -> Self {
         OutboundThread {
             config,
             address,
             to_inbound_tx,
         }
     }
-
 
     fn run(&mut self) -> Result<(), String> {
         let conf = self.config.gateway().unwrap(); // known good
@@ -306,8 +306,10 @@ impl OutboundThread {
             match bus.recv(-1, Some(sent_to)) {
                 Ok(msg_op) => match msg_op {
                     Some(tm) => self.relay_osrf_to_stdout(&mut bus, &tm)?,
-                    None => { continue; }
-                }
+                    None => {
+                        continue;
+                    }
+                },
                 Err(e) => {
                     // transport_error -- can we get the thread? TODO
                     self.write_stdout("", json::JsonValue::new_array(), true)?;
@@ -316,9 +318,11 @@ impl OutboundThread {
         }
     }
 
-    fn relay_osrf_to_stdout(&self,
-        bus: &mut Bus, tm: &message::TransportMessage) -> Result<(), String> {
-
+    fn relay_osrf_to_stdout(
+        &self,
+        bus: &mut Bus,
+        tm: &message::TransportMessage,
+    ) -> Result<(), String> {
         let msg_list = tm.body();
         let sender = tm.from();
 
@@ -326,9 +330,7 @@ impl OutboundThread {
         let mut transport_error = false;
 
         for msg in msg_list.iter() {
-
             if let message::Payload::Status(s) = msg.payload() {
-
                 if s.status() == &message::MessageStatus::Ok {
                     // TODO
                     // Tell Inbound to add this thread/recipient to session cache
@@ -345,9 +347,12 @@ impl OutboundThread {
         self.write_stdout(tm.thread(), body, false)
     }
 
-    fn write_stdout(&self, thread: &str,
-        body: json::JsonValue, transport_error: bool) -> Result<(), String> {
-
+    fn write_stdout(
+        &self,
+        thread: &str,
+        body: json::JsonValue,
+        transport_error: bool,
+    ) -> Result<(), String> {
         let mut obj = json::object! {
             // oxrf_xid: TODO
             thread: thread,
@@ -373,8 +378,7 @@ fn main() {
 
     let initops = init::InitOptions { skip_logging: true };
 
-    let (config, params) =
-        init::init_with_more_options(&mut ops, &initops).unwrap();
+    let (config, params) = init::init_with_more_options(&mut ops, &initops).unwrap();
 
     let config = config.into_shared();
 
@@ -389,4 +393,3 @@ fn main() {
 
     Translator::new(&gateway).run();
 }
-

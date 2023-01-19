@@ -126,7 +126,7 @@ impl Field {
     /// Remove the first subfield with the specified code.
     pub fn remove_first_subfield(&mut self, code: &str) -> Option<Subfield> {
         if let Some(index) = self.subfields.iter().position(|s| s.code.eq(code)) {
-            return Some(self.subfields.remove(index))
+            return Some(self.subfields.remove(index));
         }
 
         None
