@@ -1,0 +1,8 @@
+[workspace]
+members = [
+  "opensrf",
+  "marcutil",
+  "evergreen",
+  "sip2",
+  "sip2-server",
+]

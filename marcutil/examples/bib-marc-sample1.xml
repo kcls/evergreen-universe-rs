@@ -1,0 +1,442 @@
+<?xml version="1.0"?>
+<record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd">
+  <leader>07649cim a2200913 i 4500</leader>
+  <controlfield tag="001">233</controlfield>
+  <controlfield tag="003">CONS</controlfield>
+  <controlfield tag="005">20140128084328.0</controlfield>
+  <controlfield tag="008">140128s2013    nyuopk|zqdefhi n  | ita d</controlfield>
+  <datafield tag="010" ind1=" " ind2=" ">
+    <subfield code="a">  2013565186</subfield>
+  </datafield>
+  <datafield tag="020" ind1=" " ind2=" ">
+    <subfield code="a">9781480328532</subfield>
+  </datafield>
+  <datafield tag="020" ind1=" " ind2=" ">
+    <subfield code="a">1480328537</subfield>
+  </datafield>
+  <datafield tag="024" ind1="1" ind2=" ">
+    <subfield code="a">884088883249</subfield>
+  </datafield>
+  <datafield tag="028" ind1="3" ind2="2">
+    <subfield code="a">HL50498721</subfield>
+    <subfield code="b">Hal Leonard</subfield>
+    <subfield code="q">(bk.)</subfield>
+  </datafield>
+  <datafield tag="028" ind1="0" ind2="2">
+    <subfield code="a">HL50490487</subfield>
+    <subfield code="b">Hal Leonard</subfield>
+    <subfield code="q">(cd.) $</subfield>
+  </datafield>
+  <datafield tag="028" ind1="0" ind2="2">
+    <subfield code="a">HL50486260</subfield>
+    <subfield code="b">Hal Leonard</subfield>
+    <subfield code="q">(cd.)</subfield>
+  </datafield>
+  <datafield tag="028" ind1="0" ind2="2">
+    <subfield code="a">63011108</subfield>
+    <subfield code="b">Hal Leonard</subfield>
+    <subfield code="q">(diction coach 1)</subfield>
+  </datafield>
+  <datafield tag="028" ind1="0" ind2="2">
+    <subfield code="a">63011109</subfield>
+    <subfield code="b">Hal Leonard</subfield>
+    <subfield code="q">(diction coach 2)</subfield>
+  </datafield>
+  <datafield tag="028" ind1="0" ind2="2">
+    <subfield code="a">63014792</subfield>
+    <subfield code="b">Hal Leonard</subfield>
+    <subfield code="q">(CD 1)</subfield>
+  </datafield>
+  <datafield tag="028" ind1="0" ind2="2">
+    <subfield code="a">63014793</subfield>
+    <subfield code="b">Hal Leonard</subfield>
+    <subfield code="q">(CD 2)</subfield>
+  </datafield>
+  <datafield tag="035" ind1=" " ind2=" ">
+    <subfield code="a">(OCoLC)ocn826076986</subfield>
+  </datafield>
+  <datafield tag="035" ind1=" " ind2=" ">
+    <subfield code="a">(OCoLC)826076986</subfield>
+  </datafield>
+  <datafield tag="040" ind1=" " ind2=" ">
+    <subfield code="a">YDXCP</subfield>
+    <subfield code="b">eng</subfield>
+    <subfield code="e">rda</subfield>
+    <subfield code="c">YDXCP</subfield>
+    <subfield code="d">CLE</subfield>
+    <subfield code="d">NUI</subfield>
+    <subfield code="d">MYG</subfield>
+    <subfield code="d">DLC</subfield>
+  </datafield>
+  <datafield tag="041" ind1="0" ind2=" ">
+    <subfield code="a">ita</subfield>
+    <subfield code="a">ger</subfield>
+    <subfield code="a">fre</subfield>
+    <subfield code="a">eng</subfield>
+    <subfield code="e">ita</subfield>
+    <subfield code="e">ger</subfield>
+    <subfield code="e">fre</subfield>
+    <subfield code="e">eng</subfield>
+    <subfield code="g">eng</subfield>
+  </datafield>
+  <datafield tag="042" ind1=" " ind2=" ">
+    <subfield code="a">lccopycat</subfield>
+  </datafield>
+  <datafield tag="048" ind1=" " ind2=" ">
+    <subfield code="b">vf01</subfield>
+    <subfield code="a">ka01</subfield>
+  </datafield>
+  <datafield tag="050" ind1="0" ind2="0">
+    <subfield code="a">M1507.A+</subfield>
+  </datafield>
+  <datafield tag="100" ind1="0" ind2="0">
+    <subfield code="a">Pickins, Slim</subfield>
+    <subfield code="b">More Stuff</subfield>
+  </datafield>
+  <datafield tag="245" ind1="0" ind2="4">
+    <subfield code="a">The Arias for bass :</subfield>
+    <subfield code="b">complete package : with diction coach and accompaniment CDs /</subfield>
+    <subfield code="c">compiled and edited by Robert L. Larsen.</subfield>
+  </datafield>
+  <datafield tag="264" ind1=" " ind2="1">
+    <subfield code="a">New York, NY :</subfield>
+    <subfield code="b">G. Schirmer, Inc.,</subfield>
+    <subfield code="c">2013.</subfield>
+  </datafield>
+  <datafield tag="264" ind1=" " ind2="2">
+    <subfield code="a">Milwaukee, WI :</subfield>
+    <subfield code="b">Distributed by Hal Leonard Corporation</subfield>
+  </datafield>
+  <datafield tag="300" ind1=" " ind2=" ">
+    <subfield code="a">1 score (263 pages) ;</subfield>
+    <subfield code="c">31 cm +</subfield>
+    <subfield code="e">4 sound discs (digital ; 4 3/4 in.)</subfield>
+  </datafield>
+  <datafield tag="336" ind1=" " ind2=" ">
+    <subfield code="a">notated music</subfield>
+    <subfield code="b">ntm</subfield>
+    <subfield code="2">rdacontent</subfield>
+  </datafield>
+  <datafield tag="336" ind1=" " ind2=" ">
+    <subfield code="a">performed music</subfield>
+    <subfield code="b">prm</subfield>
+    <subfield code="2">rdacontent</subfield>
+  </datafield>
+  <datafield tag="337" ind1=" " ind2=" ">
+    <subfield code="a">unmediated</subfield>
+    <subfield code="b">n</subfield>
+    <subfield code="2">rdamedia</subfield>
+  </datafield>
+  <datafield tag="337" ind1=" " ind2=" ">
+    <subfield code="a">audio</subfield>
+    <subfield code="b">s</subfield>
+    <subfield code="2">rdamedia</subfield>
+  </datafield>
+  <datafield tag="338" ind1=" " ind2=" ">
+    <subfield code="a">volume</subfield>
+    <subfield code="b">nc</subfield>
+    <subfield code="2">rdacarrier</subfield>
+  </datafield>
+  <datafield tag="338" ind1=" " ind2=" ">
+    <subfield code="a">audio disc</subfield>
+    <subfield code="b">sd</subfield>
+    <subfield code="2">rdacarrier</subfield>
+  </datafield>
+  <datafield tag="490" ind1="1" ind2=" ">
+    <subfield code="a">G. Schirmer opera anthology</subfield>
+  </datafield>
+  <datafield tag="546" ind1=" " ind2=" ">
+    <subfield code="b">staff notation</subfield>
+  </datafield>
+  <datafield tag="546" ind1=" " ind2=" ">
+    <subfield code="a">Italian, French, German, and English words; non-English texts also printed with English translations.</subfield>
+  </datafield>
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">Opera arias; acc. arr. for piano.</subfield>
+  </datafield>
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">William Billingham, pianist on CDs.</subfield>
+  </datafield>
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">disc 1-2 diction coach -- disc 3-4 accompaniment CDs.</subfield>
+  </datafield>
+  <datafield tag="505" ind1="0" ind2=" ">
+    <subfield code="a">Il barbiere di Siviglia. La calunnia / Gioachino Rossini -- La Boh&#xE8;&#x300;me. Vecchia zimarra, senti / Giacomo Puccini -- La Cenerentola. Miei rampolli femminini / Gioachino Rossini -- Don Giovanni. Madamina! Il catalogo &#xE8; questo / Wolfgang Amadeus Mozart -- Don Pasquale. Ah! Un foco insolito / Gaetano Donizetti -- Die Entf&#xFC;hrung aus dem Serail. O, wie will ich triumphiren / Wolfgang Amadeus Mozart  -- Ernani. Infelice! E tuo credevi / Giuseppe Verdi -- Eugene Onegin. Gremin's aria / Pyotr Il'yich Tchaikovsky -- Faust. Le veau d'or ; Vous qui faites l'endormie / Charles Gounod -- Der Freisch&#xFC;tz. Schweig'! Schweig'! Damit dich niemand warnt / Carl Maria von Weber -- Les huguenots. Pour le couvents c'est fini (Piff, paff) / Giacomo Meyerbeer -- La jolie fille de Perth. Quand la flamme de l'amour / Georges Bizet -- Lucia di Lammermoor. Dalle stanze ove Lucia / Gaetano Donizetti -- Die lustigen Weiber von Windsor. Als B&#xFC;blein klein / Otto Nicolai -- Macbeth. Come dal ciel precipita / Giuseppe Verdi -- Manon. &#xC9;pouse quelque brave fille / Jules Massenet -- The mother of us all. What what is it / Virgil Thomson -- Le nozze di Figaro. La vendetta ; Se vuol ballare ; Non pi&#xF9; andrai ; Aprite un po' quegl'occhi / Wolfgang Amadeus Mozart -- Simon Boccanegra. Il lacerato spirito / Giuseppe Verdi -- La sonnambula. Vi ravviso / Vincenzo Bellini -- Street scene. Let things be like they always was / Kurt Weill -- I vespri siciliani. O tu, Palermo / Giuseppe Verdi -- Die Zauberfl&#xF6;te. O Isis und Osiris ; In diesen heil'gen Hallen / Wolfgang Amadeus Mozart.</subfield>
+  </datafield>
+  <datafield tag="650" ind1=" " ind2="0">
+    <subfield code="a">Operas</subfield>
+    <subfield code="v">Excerpts</subfield>
+    <subfield code="v">Vocal scores with piano.</subfield>
+  </datafield>
+  <datafield tag="650" ind1=" " ind2="0">
+    <subfield code="a">Recorded accompaniments (Low voice)</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2=" ">
+    <subfield code="a">Larsen, Robert L.,</subfield>
+    <subfield code="d">1934-</subfield>
+    <subfield code="e">editor,</subfield>
+    <subfield code="e">compiler.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2=" ">
+    <subfield code="a">Billingham, William,</subfield>
+    <subfield code="e">performer.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Rossini, Gioacchino,</subfield>
+    <subfield code="d">1792-1868.</subfield>
+    <subfield code="t">Barbiere di Siviglia.</subfield>
+    <subfield code="p">Calunnia &#xE8; un venticello.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Puccini, Giacomo,</subfield>
+    <subfield code="d">1858-1924.</subfield>
+    <subfield code="t">Boh&#xE8;me.</subfield>
+    <subfield code="p">Vecchia zimarra.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Rossini, Gioacchino,</subfield>
+    <subfield code="d">1792-1868.</subfield>
+    <subfield code="t">Cenerentola.</subfield>
+    <subfield code="p">Miei rampolli femminini.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Don Giovanni.</subfield>
+    <subfield code="p">Madamina, il catalogo &#xE8; questo.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Donizetti, Gaetano,</subfield>
+    <subfield code="d">1797-1848.</subfield>
+    <subfield code="t">Don Pasquale.</subfield>
+    <subfield code="p">Foco insolito.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Entf&#xFC;hrung aus dem Serail.</subfield>
+    <subfield code="p">Ha! wie will ich triumphieren.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Verdi, Giuseppe,</subfield>
+    <subfield code="d">1813-1901.</subfield>
+    <subfield code="t">Ernani.</subfield>
+    <subfield code="p">Infelice! e tu credevi.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Tchaikovsky, Peter Ilich,</subfield>
+    <subfield code="d">1840-1893.</subfield>
+    <subfield code="t">Evgeni&#x12D; Onegin.</subfield>
+    <subfield code="p">Arii&#xFE20;a&#xFE21; kni&#xFE20;a&#xFE21;zi&#xFE20;a&#xFE21;.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Gounod, Charles,</subfield>
+    <subfield code="d">1818-1893.</subfield>
+    <subfield code="t">Faust.</subfield>
+    <subfield code="p">Veau d'or est toujours debout.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Gounod, Charles,</subfield>
+    <subfield code="d">1818-1893.</subfield>
+    <subfield code="t">Faust.</subfield>
+    <subfield code="p">Vous qui faites l'endormie.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Weber, Carl Maria von,</subfield>
+    <subfield code="d">1786-1826.</subfield>
+    <subfield code="t">Freisch&#xFC;tz.</subfield>
+    <subfield code="p">Schweig', schweig'! damit dich niemand warnt.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Meyerbeer, Giacomo,</subfield>
+    <subfield code="d">1791-1864.</subfield>
+    <subfield code="t">Huguenots.</subfield>
+    <subfield code="p">Piff, paff.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Bizet, Georges,</subfield>
+    <subfield code="d">1838-1875.</subfield>
+    <subfield code="t">Jolie fille de Perth.</subfield>
+    <subfield code="p">Quand la flamme de l'amour.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Donizetti, Gaetano,</subfield>
+    <subfield code="d">1797-1848.</subfield>
+    <subfield code="t">Lucia di Lammermoor.</subfield>
+    <subfield code="p">Dalle stanze ove Lucia.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Nicolai, Otto,</subfield>
+    <subfield code="d">1810-1849.</subfield>
+    <subfield code="t">Lustigen Weiber von Windsor.</subfield>
+    <subfield code="p">Als B&#xFC;blein klein.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Verdi, Giuseppe,</subfield>
+    <subfield code="d">1813-1901.</subfield>
+    <subfield code="t">Macbeth.</subfield>
+    <subfield code="p">Come dal ciel precipita.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Massenet, Jules,</subfield>
+    <subfield code="d">1842-1912.</subfield>
+    <subfield code="t">Manon.</subfield>
+    <subfield code="p">&#xC9;pouse quelque brave fille.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Thomson, Virgil,</subfield>
+    <subfield code="d">1896-1989.</subfield>
+    <subfield code="t">Mother of us all.</subfield>
+    <subfield code="p">What what is it.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Nozze di Figaro.</subfield>
+    <subfield code="p">Vendetta.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Nozze di Figaro.</subfield>
+    <subfield code="p">Se vuol ballare, signor contino.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Nozze di Figaro.</subfield>
+    <subfield code="p">Non pi&#xF9; andrai farfallone.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Nozze di Figaro.</subfield>
+    <subfield code="p">Aprite un po' quegl' occhi.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Verdi, Giuseppe,</subfield>
+    <subfield code="d">1813-1901.</subfield>
+    <subfield code="t">Simon Boccanegra.</subfield>
+    <subfield code="p">Lacerato spirito.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Bellini, Vincenzo,</subfield>
+    <subfield code="d">1801-1835.</subfield>
+    <subfield code="t">Sonnambula.</subfield>
+    <subfield code="p">Vi ravviso, o luoghi ameni.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Weill, Kurt,</subfield>
+    <subfield code="d">1900-1950.</subfield>
+    <subfield code="t">Street scene.</subfield>
+    <subfield code="p">Let things be like they always was.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Verdi, Giuseppe,</subfield>
+    <subfield code="d">1813-1901.</subfield>
+    <subfield code="t">V&#xEA;pres siciliennes.</subfield>
+    <subfield code="p">Et toi Palerme.</subfield>
+    <subfield code="l">Italian.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Zauberfl&#xF6;te.</subfield>
+    <subfield code="p">O Isis und Osiris (Aria and chorus)</subfield>
+    <subfield code="p">O Isis und Osiris.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="700" ind1="1" ind2="2">
+    <subfield code="i">Contains (expression):</subfield>
+    <subfield code="a">Mozart, Wolfgang Amadeus,</subfield>
+    <subfield code="d">1756-1791.</subfield>
+    <subfield code="t">Zauberfl&#xF6;te.</subfield>
+    <subfield code="p">In diesen heil'gen Hallen.</subfield>
+    <subfield code="s">Vocal score.</subfield>
+  </datafield>
+  <datafield tag="830" ind1=" " ind2="0">
+    <subfield code="a">G. Schirmer opera anthology.</subfield>
+  </datafield>
+  <datafield tag="906" ind1=" " ind2=" ">
+    <subfield code="a">0</subfield>
+    <subfield code="b">par</subfield>
+    <subfield code="c">copycat</subfield>
+    <subfield code="d">2</subfield>
+    <subfield code="e">ncip</subfield>
+    <subfield code="f">20</subfield>
+    <subfield code="g">y-genmusic</subfield>
+  </datafield>
+  <datafield tag="925" ind1="0" ind2=" ">
+    <subfield code="a">acquire</subfield>
+    <subfield code="b">2 shelf copies</subfield>
+    <subfield code="x">policy default</subfield>
+  </datafield>
+  <datafield tag="955" ind1=" " ind2=" ">
+    <subfield code="a">vl34 2014-01-28 z-client</subfield>
+    <subfield code="i">vl34 2014-01-28</subfield>
+    <subfield code="e">vl34 2014-01-28 4 sound disc to MBRS for shelf label</subfield>
+    <subfield code="t">vl34 2014-01-28 copy 2, 4 sound disc to MBRS for shelf label</subfield>
+  </datafield>
+  <datafield tag="901" ind1=" " ind2=" ">
+    <subfield code="a">233</subfield>
+    <subfield code="b">AUTOGEN</subfield>
+    <subfield code="c">233</subfield>
+    <subfield code="t">biblio</subfield>
+  </datafield>
+  <datafield tag="998" ind1=" " ind2=" ">
+    <subfield code="d">v</subfield>
+  </datafield>
+</record>

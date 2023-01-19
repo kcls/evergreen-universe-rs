@@ -1,0 +1,39 @@
+[package]
+name = "opensrf"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+rand = "0.8.5"
+chrono = "0.4.22"
+thread-id = "4.0.0"
+log = "0.4.17"
+syslog = "6.0.1"
+json = "0.12.4"
+roxmltree = "0.14.1"
+redis = "0.22.1"
+gethostname = "0.2.3"
+threadpool = "1.8.1"
+signal-hook = "0.3.14"
+getopts = "0.2.21"
+
+[[bin]]
+name = "osrf-router"
+path = "src/bin/router.rs"
+
+[[bin]]
+name = "osrf-websocketd-translator"
+path = "src/bin/websocketd-translator.rs"
+
+[[bin]]
+name = "osrf-buswatch"
+path = "src/bin/buswatch.rs"
+
+[[example]]
+name = "osrf-client"
+path = "examples/client.rs"
+
+[[example]]
+name = "osrf-client-demo"
+path = "examples/client-demo.rs"
+

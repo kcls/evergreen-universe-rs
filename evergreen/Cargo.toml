@@ -1,0 +1,48 @@
+[package]
+name = "evergreen"
+version = "0.1.0"
+authors = ["Bill Erickson <berickxx@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+opensrf = { path = "../opensrf" }
+marcutil = { path = "../marcutil" }
+roxmltree = "0.14.1"
+chrono = "0.4.19"
+yaml-rust = "0.4.5"
+log = "0.4.14"
+json = "0.12.4"
+postgres = { version = "^0.19.4", features = ["with-chrono-0_4"] }
+regex = "1.7.0"                                                                
+
+getopts = "0.2.21"
+
+# Used by (at least) the parallel export script
+threadpool = "1.8.1"
+
+# Needed for DB / JSON data translations
+pg_interval = "0.4.2"
+rust_decimal = { version = "1.26.1", features = ["db-postgres"] }
+
+# for egsh
+# could be make optional
+# Issues with deriving Default for enums in v10.1.0
+rustyline = "=10.0.0"
+atty = "0.2.14"
+
+[[bin]]
+name = "egsh"
+
+[[bin]]
+name = "eg-parallel-ingest"
+
+[[bin]]
+name = "eg-bib-to-auth-linker"
+
+[[bin]]
+name = "eg-marc-export"
+
+[[example]]
+name = "basic-requests"

@@ -1,0 +1,20 @@
+[package]
+name = "sip2"
+version = "0.2.2"
+authors = ["Bill Erickson <berickxx@gmail.com>"]
+edition = "2018"
+license-file = "LICENSE"
+description = "SIP2 Library"
+readme = "README.md"
+keywords = ["sip", "sip2", "library"]
+categories = ["development-tools", "network-programming", "parser-implementations", "value-formatting"]
+
+[dependencies]
+chrono = "0.4.19"
+log = "0.4.17"
+getopts = "0.2.21"
+deunicode = "1.3.2"
+json = { version = "0.12.4", optional = true }
+
+[[example]]
+name = "sip2-client"

@@ -1,0 +1,34 @@
+# SIP2 Mediator Configuration File
+#
+# This configuration file is not required to run sip2-mediator.  All values 
+# below have matching command line variants.  Command line parameters 
+# override configuration file paramaters.
+
+# sip2-meditor listens for SIP clients on this address and port.
+sip-address: 127.0.0.1
+sip-port: 6001
+
+# Maximum number of allowed SIP client connections.  Once reached,
+# new connection attempts are rejected.
+max-clients: 128
+
+# If true, remove non-ASCII characters from SIP response messages, 
+# i.e. those delivered back to a SIP client in response to a request.
+ascii: true
+
+# Allow message 99 even if the SIP client has not yet logged in.
+# This must be global since we may not have login info yet.
+sc-status-before-login: false
+
+currency: USD
+
+settings-group:
+  - name: "default"
+    institution: "default"
+    due-date-use-sip-date-format: true
+
+accounts:
+  - sip-username: "sip-user"
+    sip-password: "sip-pass"
+    ils-username: "admin"
+    settings: "default"
