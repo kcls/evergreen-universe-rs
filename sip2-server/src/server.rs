@@ -24,9 +24,9 @@ impl Server {
     pub fn serve(&mut self) {
         log::info!("SIP2Meditor server staring up");
 
-        let pool = ThreadPool::new(self.config.max_clients);
+        let pool = ThreadPool::new(self.config.max_clients());
 
-        let bind = format!("{}:{}", self.config.sip_address, self.config.sip_port);
+        let bind = format!("{}:{}", self.config.sip_address(), self.config.sip_port());
 
         let listener = TcpListener::bind(bind).expect("Error starting SIP server");
 
@@ -57,12 +57,10 @@ impl Server {
         );
 
         let threads = pool.active_count() + pool.queued_count();
+        let maxcon = self.config.max_clients();
 
-        if threads >= self.config.max_clients {
-            log::warn!(
-                "Max clients={} reached.  Rejecting new connections",
-                self.config.max_clients
-            );
+        if threads >= maxcon {
+            log::warn!("Max clients={maxcon} reached.  Rejecting new connections");
 
             if let Err(e) = stream.shutdown(net::Shutdown::Both) {
                 log::error!("Error shutting down SIP TCP connection: {}", e);
@@ -73,8 +71,8 @@ impl Server {
 
         // Hand the stream off for processing.
         let conf = self.config.clone();
-        let osrf_config = self.ctx.config().clone();
         let idl = self.ctx.idl().clone();
+        let osrf_config = self.ctx.config().clone();
 
         pool.execute(move || Session::run(conf, osrf_config, idl, stream, sesid));
     }

@@ -22,7 +22,7 @@ sc-status-before-login: false
 
 currency: USD
 
-settings-group:
+setting-groups:
   - name: "default"
     institution: "default"
     due-date-use-sip-date-format: true

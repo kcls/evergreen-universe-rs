@@ -54,14 +54,15 @@ impl SipAccount {
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub sip_address: String,
-    pub sip_port: u16,
-    pub max_clients: usize,
-    pub ascii: bool,
-    pub setting_groups: HashMap<String, SipSettings>,
-    pub accounts: HashMap<String, SipAccount>,
-    pub sc_status_before_login: bool,
+    sip_address: String,
+    sip_port: u16,
+    max_clients: usize,
+    ascii: bool,
+    setting_groups: HashMap<String, SipSettings>,
+    accounts: HashMap<String, SipAccount>,
+    sc_status_before_login: bool,
     currency: String,
+    source: Option<yaml_rust::Yaml>,
 }
 
 impl Config {
@@ -75,6 +76,7 @@ impl Config {
             accounts: HashMap::new(),
             currency: "USD".to_string(),
             sc_status_before_login: false,
+            source: None,
         }
     }
 
@@ -110,26 +112,63 @@ impl Config {
             self.sc_status_before_login = v;
         }
 
-        // TODO parse setting groups and accounts
+        self.add_setting_groups(root);
+        self.add_accounts(root);
 
-        let grp = SipSettings {
-            name: String::from("default"),
-            institution: String::from("default"),
-            due_date_use_sip_date_format: true,
+        self.source = Some(root.to_owned());
+    }
+
+    fn add_setting_groups(&mut self, root: &yaml_rust::Yaml) {
+
+        if root["setting-groups"].is_array() {
+            for group in root["setting-groups"].as_vec().unwrap() {
+
+                let name = group["name"].as_str().unwrap();
+                let mut grp = SipSettings {
+                    name: name.to_string(),
+                    institution: group["institution"].as_str().unwrap().to_string(),
+                    due_date_use_sip_date_format: true
+                };
+
+                if let Some(b) = group["due-date-use-sip-date-format"].as_bool() {
+                    grp.due_date_use_sip_date_format = b;
+                }
+
+                log::debug!("Adding setting group '{name}'");
+                self.setting_groups.insert(name.to_string(), grp);
+            }
+        }
+    }
+
+    fn add_accounts(&mut self, root: &yaml_rust::Yaml) {
+
+        if root["accounts"].is_array() {
+            for account in root["accounts"].as_vec().unwrap() {
+
+                let group_name = account["settings"].as_str().unwrap();
+                let sgroup = match self.setting_groups.get(group_name) {
+                    Some(s) => s,
+                    None => panic!("No such settings group: '{}'", group_name),
+                };
+
+                let username = account["sip-username"].as_str().unwrap();
+
+                let mut acct = SipAccount {
+                    settings: sgroup.clone(),
+                    sip_username: username.to_string(),
+                    sip_password: account["sip-password"].as_str().unwrap().to_string(),
+                    ils_username: account["ils-username"].as_str().unwrap().to_string(),
+                    ils_user_id: None,
+                    workstation: None,
+                };
+
+                if let Some(ws) = account["workstation"].as_str() {
+                    acct.workstation = Some(ws.to_string());
+                }
+
+                self.accounts.insert(username.to_string(), acct);
+            }
         };
-
-        // TODO verify settings matches a configured group.
-        let acct = SipAccount {
-            settings: grp.clone(),
-            sip_username: String::from("sip-user"),
-            sip_password: String::from("sip-pass"),
-            ils_username: String::from("admin"),
-            ils_user_id: None,
-            workstation: None,
-        };
-
-        self.setting_groups.insert(grp.name.to_string(), grp);
-        self.accounts.insert(acct.sip_username.to_string(), acct);
     }
 
     pub fn setting_group(&self, name: &str) -> Option<&SipSettings> {

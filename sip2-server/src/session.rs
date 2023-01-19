@@ -61,7 +61,7 @@ impl Session {
         }
 
         let mut con = sip2::Connection::new_from_stream(stream);
-        con.set_ascii(sip_config.ascii);
+        con.set_ascii(sip_config.ascii());
 
         let osrf_client = match osrf::Client::connect(osrf_config.clone()) {
             Ok(c) => c,
@@ -242,7 +242,7 @@ impl Session {
     }
 
     fn handle_sc_status(&mut self, _msg: &sip2::Message) -> Result<sip2::Message, String> {
-        if self.account.is_none() && !self.sip_config().sc_status_before_login {
+        if self.account.is_none() && !self.sip_config().sc_status_before_login() {
             Err(format!("SC Status before login disabled"))?;
         }
 
