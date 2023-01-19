@@ -19,6 +19,7 @@ fn main() {
     let mut opts = getopts::Options::new();
 
     opts.optopt("", "config-file", "", "");
+    opts.optflag("h", "help", "");
 
     let ctx = eg::init::init_with_options(&mut opts).expect("Evergreen Init");
     let options = ctx.params();
@@ -32,7 +33,7 @@ fn main() {
 
     let config_file = match options.opt_str("config-file") {
         Some(f) => f,
-        None => "conf/sip2-server.yml".to_string(),
+        None => "sip2-server/conf/sip2-server.yml".to_string(),
     };
 
     sip_conf.read_yaml(&config_file);
