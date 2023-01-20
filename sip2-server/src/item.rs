@@ -1,15 +1,28 @@
 use super::session::Session;
 
-impl Session {
-    pub fn handle_item_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
-        let barcode = msg
-            .get_field_value("AB")
-            .ok_or(format!("handle_item_info() missing item barcode"))?;
+pub struct Item {
+    pub barcode: String,
+    pub due_date: Option<String>,
+    pub circ_status: String,
+    pub fee_type: String,
+    pub title: String,
+    pub current_loc: String,
+    pub permanent_loc: String,
+    pub destination_loc: String,
+    pub owning_loc: String,
+    pub deposit_amount: f64,
+    pub hold_queue_length: usize,
+    pub media_type: String,
+    pub hold_pickup_date: Option<String>,
+    pub hold_patron_barcode: Option<String>,
+}
 
-        log::info!("Item Information {barcode}");
+impl Session {
+
+    pub fn get_item_details(&mut self, barcode: &str) -> Result<Option<Item>, String> {
 
         let search = json::object! {
-            barcode: barcode.to_string(),
+            barcode: barcode,
             deleted: "f",
         };
 
@@ -28,7 +41,7 @@ impl Session {
 
         // Will be zero or one.
         if copies.len() == 0 {
-            return Ok(self.return_not_found(&barcode));
+            return Ok(None);
         }
 
         let copy = &copies[0]; // should only be one
@@ -67,9 +80,10 @@ impl Session {
 
         let mut hold_pickup_date_op: Option<String> = None;
         let mut hold_patron_barcode_op: Option<String> = None;
-        let mut hold_queue_len = 0;
+        let mut hold_queue_length = 0;
+
         if let Some(hold) = self.get_copy_hold(copy, &transit_op)? {
-            hold_queue_len = 1; // copying SIPServer
+            hold_queue_length = 1; // copying SIPServer
 
             dest_location = hold["pickup_lib"]["shortname"]
                 .as_str()
@@ -113,38 +127,68 @@ impl Session {
 
         let circ_status = self.circ_status(copy);
 
-        let mut resp = sip2::Message::new(
-            &sip2::spec::M_ITEM_INFO_RESP,
-            vec![
-                sip2::FixedField::new(&sip2::spec::FF_CIRCULATION_STATUS, circ_status).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_SECURITY_MARKER, "02").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_FEE_TYPE, fee_type).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
-            ],
-            Vec::new(),
-        );
-
         let media_type = match copy["circ_modifier"]["sip2_media_type"].as_str() {
             Some(t) => t,
             None => "001",
         };
 
-        resp.add_field("AB", &barcode);
-        resp.add_field("AJ", self.get_title(copy));
-        resp.add_field("AP", circ_lib); // current location
-        resp.add_field("AQ", circ_lib); // permanent location
-        resp.add_field("BG", owning_lib); // owning location
-        resp.add_field("BH", self.sip_config().currency());
-        resp.add_field("BV", &format!("{deposit_amount}"));
-        resp.add_field("CF", &format!("{hold_queue_len}"));
-        resp.add_field("CK", media_type);
-        resp.add_field("CT", &dest_location);
-        resp.maybe_add_field("CM", hold_pickup_date_op.as_deref());
-        resp.maybe_add_field("CY", hold_patron_barcode_op.as_deref());
+        Ok(Some(Item {
+            barcode: barcode.to_string(),
+            due_date,
+            deposit_amount,
+            hold_queue_length,
+            fee_type: fee_type.to_string(),
+            circ_status: circ_status.to_string(),
+            title: self.get_title(copy).to_string(),
+            current_loc: circ_lib.to_string(),
+            permanent_loc: circ_lib.to_string(),
+            destination_loc: dest_location.to_string(),
+            owning_loc: owning_lib.to_string(),
+            media_type: media_type.to_string(),
+            hold_pickup_date:  hold_pickup_date_op,
+            hold_patron_barcode: hold_patron_barcode_op,
+        }))
+    }
 
-        if let Some(ref d) = due_date {
-            resp.add_field("AH", d);
-        }
+    pub fn handle_item_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+        let barcode = msg
+            .get_field_value("AB")
+            .ok_or(format!("handle_item_info() missing item barcode"))?;
+
+        log::info!("Item Information {barcode}");
+
+        let item = match self.get_item_details(&barcode)? {
+            Some(c) => c,
+            None => {
+                return Ok(self.return_not_found(&barcode));
+            },
+        };
+
+        let mut resp = sip2::Message::new(
+            &sip2::spec::M_ITEM_INFO_RESP,
+            vec![
+                sip2::FixedField::new(&sip2::spec::FF_CIRCULATION_STATUS, &item.circ_status).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_SECURITY_MARKER, "02").unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_FEE_TYPE, &item.fee_type).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
+            ],
+            Vec::new(),
+        );
+
+        resp.add_field("AB", &item.barcode);
+        resp.add_field("AJ", &item.title);
+        resp.add_field("AP", &item.current_loc);
+        resp.add_field("AQ", &item.permanent_loc);
+        resp.add_field("BG", &item.owning_loc);
+        resp.add_field("CT", &item.destination_loc);
+        resp.add_field("BH", self.sip_config().currency());
+        resp.add_field("BV", &format!("{}", item.deposit_amount));
+        resp.add_field("CF", &format!("{}", item.hold_queue_length));
+        resp.add_field("CK", &item.media_type);
+
+        resp.maybe_add_field("CM", item.hold_pickup_date.as_deref());
+        resp.maybe_add_field("CY", item.hold_patron_barcode.as_deref());
+        resp.maybe_add_field("AH", item.due_date.as_deref());
 
         Ok(resp)
     }
