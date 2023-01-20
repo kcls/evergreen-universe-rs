@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::fs;
+use std::collections::HashMap;
 use yaml_rust::YamlLoader;
 
 #[derive(Debug, Clone)]

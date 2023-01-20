@@ -160,10 +160,10 @@ impl AuthSession {
         AuthSession::handle_auth_response(&args.workstation, &json_val)
     }
 
-    /// Login and acquire an authtoken.
+    /// Create an authtoken for an internal auth session.
     ///
     /// Returns None on login failure, Err on error.
-    pub fn create_internal_session(
+    pub fn internal_session(
         client: &Client,
         args: &AuthInternalLoginArgs,
     ) -> Result<Option<AuthSession>, String> {

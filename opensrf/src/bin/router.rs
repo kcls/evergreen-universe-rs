@@ -546,8 +546,8 @@ impl Router {
                 msg.thread_trace(),
                 Payload::Result(message::Result::new(
                     MessageStatus::Ok,
-                    "osrfResponse",
                     "OK",
+                    "osrfResult",
                     value,
                 )),
             );

@@ -123,16 +123,30 @@ impl Session {
     }
 
     fn login(&mut self) -> Result<(), String> {
-        // TODO lookup user id by username if id is not yet set
-        //
-        let mut args = auth::AuthInternalLoginArgs::new(1, "staff");
-        if let Some(ref acct) = self.account {
+        let ils_username = self.account().unwrap().ils_username().to_string();
+
+        let search = json::object! {
+            usrname: ils_username.as_str(),
+            deleted: "f",
+        };
+
+        let users = self.editor_mut().search("au", search)?;
+
+        let user_id = match users.len() > 0 {
+            true => self.parse_id(&users[0]["id"])?,
+            false => Err(format!("No such user: {ils_username}"))?,
+        };
+
+        let mut args = auth::AuthInternalLoginArgs::new(user_id, "staff");
+
+        if let Some(acct) = self.account() {
             if let Some(w) = acct.workstation() {
                 args.workstation = Some(w.to_string());
             }
         }
 
-        let auth_ses = match auth::AuthSession::create_internal_session(&self.osrf_client, &args)? {
+        let auth_ses = match
+            auth::AuthSession::internal_session(&self.osrf_client, &args)? {
             Some(s) => s,
             None => panic!("Internal Login failed"),
         };
@@ -270,6 +284,20 @@ impl Session {
         }
 
         Ok(resp)
+    }
+
+    /// Translate a number or numeric-string into a number.
+    ///
+    /// Values returned from the database vary in stringy-ness.
+    pub fn parse_id(&self, value: &json::JsonValue) -> Result<i64, String> {
+        if let Some(n) = value.as_i64() {
+            return Ok(n);
+        } else if let Some(s) = value.as_str() {
+            if let Ok(n) = s.parse::<i64>() {
+                return Ok(n);
+            }
+        }
+        Err(format!("Invalid numeric value: {}", value))
     }
 }
 
