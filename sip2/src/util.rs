@@ -44,3 +44,12 @@ pub fn sip_date(iso_date: &str) -> Result<String, error::Error> {
         }
     }
 }
+
+/// Returns "Y" on true, " " on false.
+pub fn space_bool(value: bool) -> &'static str {
+    match value { true => "Y", false => " " }
+}
+
+pub fn sip_bool(value: bool) -> &'static str {
+    match value { true => "Y", false => "N" }
+}

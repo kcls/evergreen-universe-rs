@@ -5,8 +5,10 @@ use json::JsonValue;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
+#[derive(Debug)]
 pub struct Patron {
     pub id: i64,
+    pub barcode: String,
     pub charge_denied: bool,
     pub renew_denied: bool,
     pub recall_denied: bool,
@@ -37,9 +39,10 @@ pub struct Patron {
 }
 
 impl Patron {
-    pub fn new() -> Patron {
+    pub fn new(barcode: &str) -> Patron {
         Patron {
             id: 0,
+            barcode: barcode.to_string(),
             charge_denied: false,
             renew_denied: false,
             recall_denied: false,
@@ -72,19 +75,25 @@ impl Patron {
 }
 
 impl Session {
+
     pub fn get_patron_details(
         &mut self,
         barcode: &str,
         password_op: Option<&str>,
     ) -> Result<Option<Patron>, String> {
+
+        // Make sure we have an authtoken here so we don't have to
+        // keep checking for expired sessions during our data collection.
+        self.authtoken(true)?;
+
         let user = match self.get_user(barcode)? {
             Some(u) => u,
             None => return Ok(None),
         };
 
-        let username = user["username"].as_str().unwrap(); // required
+        let username = user["usrname"].as_str().unwrap(); // required
 
-        let mut patron = Patron::new();
+        let mut patron = Patron::new(barcode);
 
         patron.id = self.parse_id(&user["id"])?;
         patron.password_verified = self.check_password(&username, password_op)?;
@@ -94,6 +103,11 @@ impl Session {
         }
 
         self.set_patron_privileges(&user, &mut patron)?;
+        self.set_patron_summary_items(&user, &mut patron)?;
+
+        // TODO
+        // self.set_patron_summary_list_items(&user, &mut patron)?;
+        // self.log_activity
 
         Ok(Some(patron))
     }
@@ -203,7 +217,11 @@ impl Session {
         patron: &mut Patron,
     ) -> Result<(), String> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
-        let expire_date = DateTime::parse_from_rfc3339(&expire_date_str)
+
+        // chrono has a parse_from_rfc3339() function, but it does
+        // not precisely match the format returned by PG, which uses
+        // timezone without colons.
+        let expire_date = DateTime::parse_from_str(&expire_date_str, "%Y-%m-%dT%H:%M:%S%z")
             .or_else(|e| Err(format!("Invalid expire date: {e} {expire_date_str}")))?;
 
         if expire_date < Local::now() {
@@ -280,7 +298,14 @@ impl Session {
     }
 
     fn get_patron_penalties(&mut self, user_id: i64) -> Result<Vec<JsonValue>, String> {
-        let ws_org = self.parse_id(&self.editor().requestor().unwrap()["ws_ou"])?;
+
+        let requestor = self.editor().requestor().unwrap();
+
+        let mut field = &requestor["ws_ou"];
+        if field.is_null() {
+            field = &requestor["home_ou"];
+        };
+        let ws_org = self.parse_id(field)?;
 
         let search = json::object! {
             select: {csp: ["id", "block_list"]},
@@ -361,11 +386,7 @@ impl Session {
         )?;
 
         if let Some(resp) = req.recv(60)? {
-            if let Some(evt) = self.unpack_response_event(&resp)? {
-                Err(format!("Unexpected response in password check: {evt}"))
-            } else {
-                Ok(self.parse_bool(&resp))
-            }
+            Ok(self.parse_bool(&resp))
         } else {
             Err(format!("API call timed out"))
         }
@@ -378,11 +399,69 @@ impl Session {
 
         let password_op = msg.get_field_value("AD"); // optional
 
-        let patron = match self.get_patron_details(&barcode, password_op.as_deref())? {
-            Some(p) => p,
-            None => Err(format!("No such patron: {barcode}"))?,
-        };
+        let patron_op = self.get_patron_details(&barcode, password_op.as_deref())?;
+        self.patron_response_common("24", &barcode, patron_op.as_ref())
+    }
 
-        Err(format!("TODO"))
+    fn patron_response_common(&self, msg_code: &str,
+        barcode: &str, patron_op: Option<&Patron>) -> Result<sip2::Message, String> {
+
+        let msg_spec = sip2::spec::Message::from_code(msg_code)
+            .ok_or(format!("Invalid SIP message code: {msg_code}"))?;
+
+        if patron_op.is_none() {
+
+            let status = format!("{}{}{}{}          ",
+                sip2::util::space_bool(false),
+                sip2::util::space_bool(false),
+                sip2::util::space_bool(false),
+                sip2::util::space_bool(false));
+
+            let mut resp = sip2::Message::new(
+                msg_spec,
+                vec![
+                    sip2::FixedField::new(&sip2::spec::FF_PATRON_STATUS, &status).unwrap(),
+                    sip2::FixedField::new(&sip2::spec::FF_LANGUAGE, "000").unwrap(),
+                    sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
+                ],
+                Vec::new(),
+            );
+
+            resp.add_field("AO", self.account().unwrap().settings().institution());
+            resp.add_field("AA", barcode);
+            resp.add_field("BL", sip2::util::sip_bool(false)); // valid patron
+            resp.add_field("CQ", sip2::util::sip_bool(false)); // valid patron password
+
+            return Ok(resp)
+        }
+
+        let patron = patron_op.unwrap();
+
+        log::debug!("PATRON: {patron:?}");
+
+        let status = format!("{}{}{}{}          ",
+            sip2::util::space_bool(patron.charge_denied),
+            sip2::util::space_bool(patron.renew_denied),
+            sip2::util::space_bool(patron.recall_denied),
+            sip2::util::space_bool(patron.holds_denied));
+
+        let mut resp = sip2::Message::new(
+            msg_spec,
+            vec![
+                sip2::FixedField::new(&sip2::spec::FF_PATRON_STATUS, &status).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_LANGUAGE, "000").unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
+            ],
+            Vec::new(),
+        );
+
+        resp.add_field("AO", self.account().unwrap().settings().institution());
+        resp.add_field("AA", barcode);
+        resp.add_field("BL", sip2::util::sip_bool(true)); // valid patron
+        resp.add_field("CQ", sip2::util::sip_bool(patron.password_verified));
+
+        // TODO more stuff
+
+        Ok(resp)
     }
 }
