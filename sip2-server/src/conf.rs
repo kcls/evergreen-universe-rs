@@ -8,9 +8,23 @@ pub struct SipSettings {
     institution: String,
     due_date_use_sip_date_format: bool,
     patron_status_permit_all: bool,
+    patron_status_permit_loans: bool,
+    msg64_hold_items_available: bool,
 }
 
 impl SipSettings {
+
+    pub fn new(name: &str, institution: &str) -> Self {
+        SipSettings {
+            name: name.to_string(),
+            institution: institution.to_string(),
+            due_date_use_sip_date_format: true,
+            patron_status_permit_all: false,
+            patron_status_permit_loans: false,
+            msg64_hold_items_available: false,
+        }
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -25,6 +39,13 @@ impl SipSettings {
     /// is expired.  Fines, overdues, etc. are ignored.
     pub fn patron_status_permit_all(&self) -> bool {
         self.patron_status_permit_all
+    }
+    /// Like patron_status_permit_all, but only relates to checkouts/renewals.
+    pub fn patron_status_permit_loans(&self) -> bool {
+        self.patron_status_permit_loans
+    }
+    pub fn msg64_hold_items_available(&self) -> bool {
+        self.msg64_hold_items_available
     }
 }
 
@@ -128,13 +149,13 @@ impl Config {
     fn add_setting_groups(&mut self, root: &yaml_rust::Yaml) {
         if root["setting-groups"].is_array() {
             for group in root["setting-groups"].as_vec().unwrap() {
-                let name = group["name"].as_str().unwrap();
-                let mut grp = SipSettings {
-                    name: name.to_string(),
-                    institution: group["institution"].as_str().unwrap().to_string(),
-                    due_date_use_sip_date_format: true,
-                    patron_status_permit_all: false,
-                };
+
+                let name = group["name"].as_str().expect("Setting group name required");
+
+                let inst = group["institution"]
+                    .as_str().expect("Setting group institution required");
+
+                let mut grp = SipSettings::new(name, inst);
 
                 if let Some(b) = group["due-date-use-sip-date-format"].as_bool() {
                     grp.due_date_use_sip_date_format = b;
@@ -142,6 +163,12 @@ impl Config {
 
                 if let Some(b) = group["patron-status-permit-all"].as_bool() {
                     grp.patron_status_permit_all = b;
+                }
+                if let Some(b) = group["patron-status-permit-loans"].as_bool() {
+                    grp.patron_status_permit_loans = b;
+                }
+                if let Some(b) = group["msg64-hold-items-available"].as_bool() {
+                    grp.msg64_hold_items_available = b;
                 }
 
                 log::debug!("Adding setting group '{name}'");

@@ -325,6 +325,21 @@ impl Session {
         Err(format!("Invalid numeric value: {}", value))
     }
 
+    /// Translate a number or numeric-string into a number.
+    ///
+    /// Values returned from the database vary in stringy-ness.
+    pub fn parse_float(&self, value: &json::JsonValue) -> Result<f64, String> {
+        if let Some(n) = value.as_f64() {
+            return Ok(n);
+        } else if let Some(s) = value.as_str() {
+            if let Ok(n) = s.parse::<f64>() {
+                return Ok(n);
+            }
+        }
+        Err(format!("Invalid float value: {}", value))
+    }
+
+
     // The server returns a variety of true-ish values.
     pub fn parse_bool(&self, value: &json::JsonValue) -> bool {
         if let Some(n) = value.as_i64() {
