@@ -12,6 +12,7 @@ yaml-rust = "0.4"
 getopts = "0.2"
 threadpool = "1.8"
 json = "0.12"                                                                
+chrono = "0.4"
 
 [[bin]]
 name = "eg-sip2-server"

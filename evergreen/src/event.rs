@@ -1,6 +1,7 @@
 use json;
 use std::fmt;
 
+#[derive(Debug, Clone)]
 pub struct EgEvent {
     code: isize,
     textcode: String,

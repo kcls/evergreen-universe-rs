@@ -62,6 +62,16 @@ pub struct Editor {
     last_event: Option<EgEvent>,
 }
 
+impl Clone for Editor {
+    fn clone(&self) -> Editor {
+        let mut e = Editor::new(&self.client, &self.idl);
+        e.personality = self.personality().clone();
+        e.authtoken = self.authtoken().map(str::to_string);
+        e.requestor = self.requestor().map(|r| r.clone());
+        e
+    }
+}
+
 impl Editor {
     pub fn new(client: &osrf::Client, idl: &Arc<idl::Parser>) -> Self {
         Editor {
@@ -332,6 +342,28 @@ impl Editor {
             None => Err(format!("IDL class has no fieldmapper value: {idlclass}")),
         }
     }
+
+    pub fn json_query(&mut self, query: json::JsonValue) -> Result<Vec<json::JsonValue>, String> {
+        self.json_query_with_ops(query, json::JsonValue::Null)
+    }
+
+    pub fn json_query_with_ops(
+        &mut self,
+        query: json::JsonValue,
+        ops: json::JsonValue
+    ) -> Result<Vec<json::JsonValue>, String> {
+
+        let method = self.app_method(&format!("json_query.atomic"));
+
+        if let Some(jvec) = self.request(&method, vec![query, ops])? {
+            if let json::JsonValue::Array(vec) = jvec {
+                return Ok(vec);
+            }
+        }
+
+        Err(format!("Unexpected response to method {method}"))
+    }
+
 
     pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> Result<Option<json::JsonValue>, String>
     where

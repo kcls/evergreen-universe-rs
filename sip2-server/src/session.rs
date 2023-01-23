@@ -106,6 +106,10 @@ impl Session {
         &mut self.editor
     }
 
+    pub fn editor(&self) -> &eg::editor::Editor {
+        &self.editor
+    }
+
     /// Return the authtoken wrapped as a JSON string for easier use in API calls.
     ///
     /// Returns Err if we fail to verify the token or login as needed.
