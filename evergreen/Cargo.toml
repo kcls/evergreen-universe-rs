@@ -9,28 +9,28 @@ edition = "2018"
 [dependencies]
 opensrf = { path = "../opensrf" }
 marc = { path = "../marc" }
-roxmltree = "0.14.1"
-chrono = "0.4.19"
-yaml-rust = "0.4.5"
-log = "0.4.14"
-json = "0.12.4"
-postgres = { version = "^0.19.4", features = ["with-chrono-0_4"] }
-regex = "1.7.0"                                                                
+roxmltree = "0.14"
+chrono = "0.4"
+yaml-rust = "0.4"
+log = "0.4"
+json = "0.12"
+postgres = { version = "0.19", features = ["with-chrono-0_4"] }
+regex = "1.7"                                                                
 
-getopts = "0.2.21"
+getopts = "0.2"
 
 # Used by (at least) the parallel export script
-threadpool = "1.8.1"
+threadpool = "1.8"
 
 # Needed for DB / JSON data translations
-pg_interval = "0.4.2"
-rust_decimal = { version = "1.26.1", features = ["db-postgres"] }
+pg_interval = "0.4"
+rust_decimal = { version = "1.26", features = ["db-postgres"] }
 
 # for egsh
 # could be make optional
 # Issues with deriving Default for enums in v10.1.0
 rustyline = "=10.0.0"
-atty = "0.2.14"
+atty = "0.2"
 
 [[bin]]
 name = "egsh"
