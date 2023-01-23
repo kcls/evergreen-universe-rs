@@ -106,20 +106,40 @@ impl Session {
         &mut self.editor
     }
 
-    pub fn authtoken(&mut self, verify: bool) -> Result<&str, String> {
+    /// Return the authtoken wrapped as a JSON string for easier use in API calls.
+    ///
+    /// Returns Err if we fail to verify the token or login as needed.
+    pub fn authtoken(&mut self, verify: bool) -> Result<json::JsonValue, String> {
         if self.editor.authtoken().is_some() {
             if verify {
                 if self.editor.checkauth()? {
-                    return Ok(self.editor.authtoken().unwrap());
+                    return Ok(json::from(self.editor.authtoken().unwrap()));
                 }
             } else {
-                return Ok(self.editor.authtoken().unwrap());
+                return Ok(json::from(self.editor.authtoken().unwrap()));
             }
         }
 
         self.login()?;
 
-        Ok(self.editor.authtoken().unwrap())
+        Ok(json::from(self.editor.authtoken().unwrap()))
+    }
+
+    /// Attempts to relogin if a NO_SESSION event is returned and optionally
+    /// returns any other event that is unpacked.
+    /// Returns None of the response it not an event.
+    pub fn unpack_response_event(&mut self,
+        response: &json::JsonValue) -> Result<Option<eg::event::EgEvent>, String> {
+        if let Some(evt) = eg::event::EgEvent::parse(response) {
+            if evt.textcode().eq("NO_SESSION") {
+                self.login()?;
+                Ok(None)
+            } else {
+                Ok(Some(evt))
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     fn login(&mut self) -> Result<(), String> {
@@ -298,6 +318,20 @@ impl Session {
             }
         }
         Err(format!("Invalid numeric value: {}", value))
+    }
+
+    // The server returns a variety of true-ish values.
+    pub fn parse_bool(&self, value: &json::JsonValue) -> bool {
+        if let Some(n) = value.as_i64() {
+            n != 0
+        } else if let Some(s) = value.as_str() {
+            s.len() > 0 && (s[..1].eq("t") || s[..1].eq("T"))
+        } else if let Some(b) = value.as_bool() {
+            b
+        } else {
+            log::warn!("Unexpected boolean value: {value}");
+            false
+        }
     }
 }
 

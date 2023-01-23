@@ -7,6 +7,7 @@ pub struct SipSettings {
     name: String,
     institution: String,
     due_date_use_sip_date_format: bool,
+    patron_status_permit_all: bool,
 }
 
 impl SipSettings {
@@ -16,8 +17,14 @@ impl SipSettings {
     pub fn institution(&self) -> &str {
         &self.institution
     }
+    /// Use SIP date format instead of ISO8601 format
     pub fn due_date_use_sip_date_format(&self) -> bool {
         self.due_date_use_sip_date_format
+    }
+    /// If true patrons are only reported as blocked if the account
+    /// is expired.  Fines, overdues, etc. are ignored.
+    pub fn patron_status_permit_all(&self) -> bool {
+        self.patron_status_permit_all
     }
 }
 
@@ -127,11 +134,16 @@ impl Config {
                 let mut grp = SipSettings {
                     name: name.to_string(),
                     institution: group["institution"].as_str().unwrap().to_string(),
-                    due_date_use_sip_date_format: true
+                    due_date_use_sip_date_format: true,
+                    patron_status_permit_all: false,
                 };
 
                 if let Some(b) = group["due-date-use-sip-date-format"].as_bool() {
                     grp.due_date_use_sip_date_format = b;
+                }
+
+                if let Some(b) = group["patron-status-permit-all"].as_bool() {
+                    grp.patron_status_permit_all = b;
                 }
 
                 log::debug!("Adding setting group '{name}'");

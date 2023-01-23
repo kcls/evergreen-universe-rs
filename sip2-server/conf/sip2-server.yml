@@ -26,6 +26,7 @@ setting-groups:
   - name: "default"
     institution: "default"
     due-date-use-sip-date-format: true
+    patron-status-permit-all: false
 
 accounts:
   - sip-username: "sip-user"
