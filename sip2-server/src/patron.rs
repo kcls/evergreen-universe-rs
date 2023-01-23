@@ -29,8 +29,11 @@ pub struct Patron {
     pub unavail_hold_ids: Vec<i64>,
     pub holds_count: usize,
     pub unavail_holds_count: usize,
-    pub overdue_count: usize,
-    pub out_count: usize,
+    pub items_overdue_count: usize,
+    pub items_out_count: usize,
+    pub items_overdue_ids: Vec<i64>,
+    pub items_out_ids: Vec<i64>,
+    pub fine_count: usize,
 }
 
 impl Patron {
@@ -57,10 +60,13 @@ impl Patron {
             recall_count: 0,
             holds_count: 0,
             unavail_holds_count: 0,
-            overdue_count: 0,
-            out_count: 0,
+            items_overdue_count: 0,
+            items_out_count: 0,
             hold_ids: Vec::new(),
             unavail_hold_ids: Vec::new(),
+            items_overdue_ids: Vec::new(),
+            items_out_ids: Vec::new(),
+            fine_count: 0,
         }
     }
 }
@@ -103,13 +109,37 @@ impl Session {
 
         if let Some(summary) = self.editor_mut().retrieve("ocirclist", patron.id)? {
 
-            let overdues: Vec<&str> = summary["overdue"]
+            // overdue and out are packaged as comma-separated ID values.
+            let overdue: Vec<i64> = summary["overdue"]
                 .as_str()
                 .unwrap()
                 .split(",")
-                .filter(|id| id.len() > 0 && id.ne(&"0"))
+                .map(|id| id.parse::<i64>().unwrap())
+                .filter(|id| id > &0)
                 .collect();
+
+            let outs: Vec<i64> = summary["out"]
+                .as_str()
+                .unwrap()
+                .split(",")
+                .map(|id| id.parse::<i64>().unwrap())
+                .filter(|id| id > &0)
+                .collect();
+
+            patron.items_overdue_count = overdue.len();
+            patron.items_out_count = outs.len();
+            patron.items_overdue_ids = overdue;
+            patron.items_out_ids = outs;
         }
+
+        let search = json::object! {
+            usr: patron.id,
+            balance_owed: {"<>": 0},
+            total_owed: {">": 0},
+        };
+
+        let summaries = self.editor_mut().search("mbts", search)?;
+        patron.fine_count = summaries.len();
 
         Ok(())
     }
