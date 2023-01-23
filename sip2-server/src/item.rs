@@ -18,9 +18,7 @@ pub struct Item {
 }
 
 impl Session {
-
     pub fn get_item_details(&mut self, barcode: &str) -> Result<Option<Item>, String> {
-
         let search = json::object! {
             barcode: barcode,
             deleted: "f",
@@ -145,7 +143,7 @@ impl Session {
             destination_loc: dest_location.to_string(),
             owning_loc: owning_lib.to_string(),
             media_type: media_type.to_string(),
-            hold_pickup_date:  hold_pickup_date_op,
+            hold_pickup_date: hold_pickup_date_op,
             hold_patron_barcode: hold_patron_barcode_op,
         }))
     }
@@ -161,13 +159,14 @@ impl Session {
             Some(c) => c,
             None => {
                 return Ok(self.return_not_found(&barcode));
-            },
+            }
         };
 
         let mut resp = sip2::Message::new(
             &sip2::spec::M_ITEM_INFO_RESP,
             vec![
-                sip2::FixedField::new(&sip2::spec::FF_CIRCULATION_STATUS, &item.circ_status).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_CIRCULATION_STATUS, &item.circ_status)
+                    .unwrap(),
                 sip2::FixedField::new(&sip2::spec::FF_SECURITY_MARKER, "02").unwrap(),
                 sip2::FixedField::new(&sip2::spec::FF_FEE_TYPE, &item.fee_type).unwrap(),
                 sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),

@@ -132,8 +132,10 @@ impl Session {
     /// Attempts to relogin if a NO_SESSION event is returned and optionally
     /// returns any other event that is unpacked.
     /// Returns None of the response it not an event.
-    pub fn unpack_response_event(&mut self,
-        response: &json::JsonValue) -> Result<Option<eg::event::EgEvent>, String> {
+    pub fn unpack_response_event(
+        &mut self,
+        response: &json::JsonValue,
+    ) -> Result<Option<eg::event::EgEvent>, String> {
         if let Some(evt) = eg::event::EgEvent::parse(response) {
             if evt.textcode().eq("NO_SESSION") {
                 self.login()?;
@@ -169,8 +171,7 @@ impl Session {
             }
         }
 
-        let auth_ses = match
-            auth::AuthSession::internal_session(&self.osrf_client, &args)? {
+        let auth_ses = match auth::AuthSession::internal_session(&self.osrf_client, &args)? {
             Some(s) => s,
             None => panic!("Internal Login failed"),
         };

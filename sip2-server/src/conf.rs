@@ -1,5 +1,5 @@
-use std::fs;
 use std::collections::HashMap;
+use std::fs;
 use yaml_rust::YamlLoader;
 
 #[derive(Debug, Clone)]
@@ -126,10 +126,8 @@ impl Config {
     }
 
     fn add_setting_groups(&mut self, root: &yaml_rust::Yaml) {
-
         if root["setting-groups"].is_array() {
             for group in root["setting-groups"].as_vec().unwrap() {
-
                 let name = group["name"].as_str().unwrap();
                 let mut grp = SipSettings {
                     name: name.to_string(),
@@ -153,10 +151,8 @@ impl Config {
     }
 
     fn add_accounts(&mut self, root: &yaml_rust::Yaml) {
-
         if root["accounts"].is_array() {
             for account in root["accounts"].as_vec().unwrap() {
-
                 let group_name = account["settings"].as_str().unwrap();
                 let sgroup = match self.setting_groups.get(group_name) {
                     Some(s) => s,

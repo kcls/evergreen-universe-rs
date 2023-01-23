@@ -47,10 +47,11 @@ impl Patron {
 }
 
 impl Session {
-
-    pub fn get_patron_details(&mut self,
-        barcode: &str, password_op: Option<&str>) -> Result<Option<Patron>, String> {
-
+    pub fn get_patron_details(
+        &mut self,
+        barcode: &str,
+        password_op: Option<&str>,
+    ) -> Result<Option<Patron>, String> {
         let user = match self.get_user(barcode)? {
             Some(u) => u,
             None => return Ok(None),
@@ -66,9 +67,11 @@ impl Session {
         Ok(Some(patron))
     }
 
-    fn set_patron_privileges(&mut self,
-        user: &json::JsonValue, patron: &mut Patron) -> Result<(), String> {
-
+    fn set_patron_privileges(
+        &mut self,
+        user: &json::JsonValue,
+        patron: &mut Patron,
+    ) -> Result<(), String> {
         let user_id = self.parse_id(&user["id"])?;
 
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
@@ -86,7 +89,12 @@ impl Session {
             return Ok(());
         }
 
-        if self.account().unwrap().settings().patron_status_permit_all() {
+        if self
+            .account()
+            .unwrap()
+            .settings()
+            .patron_status_permit_all()
+        {
             // This setting group allows all patron actions regardless
             // of penalties, fines, etc.
             return Ok(());
@@ -136,9 +144,9 @@ impl Session {
         let flesh = json::object! {
             flesh: 3,
             flesh_fields: {
-				ac: ["usr"],
-				au: ["billing_address", "mailing_address", "profile", "stat_cat_entries"],
-				actscecm: ["stat_cat"]
+                ac: ["usr"],
+                au: ["billing_address", "mailing_address", "profile", "stat_cat_entries"],
+                actscecm: ["stat_cat"]
             }
         };
 
@@ -154,9 +162,11 @@ impl Session {
         Ok(Some(user))
     }
 
-    fn check_password(&mut self,
-        username: &str, password_op: Option<&str>) -> Result<bool, String> {
-
+    fn check_password(
+        &mut self,
+        username: &str,
+        password_op: Option<&str>,
+    ) -> Result<bool, String> {
         let password = match password_op {
             Some(p) => p,
             None => return Ok(false),
@@ -173,7 +183,7 @@ impl Session {
                 json::from(username),
                 json::JsonValue::Null,
                 json::from(password),
-            ]
+            ],
         )?;
 
         if let Some(resp) = req.recv(60)? {
@@ -188,7 +198,6 @@ impl Session {
     }
 
     pub fn handle_patron_status(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
-
         let barcode = msg
             .get_field_value("AA")
             .ok_or(format!("handle_patron_status() missing patron barcode"))?;
@@ -202,6 +211,4 @@ impl Session {
 
         Err(format!("TODO"))
     }
-
 }
-

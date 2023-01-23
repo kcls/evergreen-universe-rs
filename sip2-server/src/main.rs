@@ -2,10 +2,10 @@ use evergreen as eg;
 use getopts;
 
 mod conf;
-mod server;
-mod session;
 mod item;
 mod patron;
+mod server;
+mod session;
 
 const HELP_TEXT: &str = r#"
 

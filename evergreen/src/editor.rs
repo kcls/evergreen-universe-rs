@@ -350,9 +350,8 @@ impl Editor {
     pub fn json_query_with_ops(
         &mut self,
         query: json::JsonValue,
-        ops: json::JsonValue
+        ops: json::JsonValue,
     ) -> Result<Vec<json::JsonValue>, String> {
-
         let method = self.app_method(&format!("json_query.atomic"));
 
         if let Some(jvec) = self.request(&method, vec![query, ops])? {
@@ -363,7 +362,6 @@ impl Editor {
 
         Err(format!("Unexpected response to method {method}"))
     }
-
 
     pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> Result<Option<json::JsonValue>, String>
     where
