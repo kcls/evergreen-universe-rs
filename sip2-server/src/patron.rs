@@ -188,35 +188,64 @@ impl Session {
     fn add_fine_items(&mut self,
         patron: &mut Patron, summary_ops: &SummaryListOptions) -> Result<(), String> {
 
-        let format = self.account().unwrap().settings().av_format();
+        let xacts = self.get_patron_xacts(&patron)?; // TODO trim
+
         let mut fines: Vec<String> = Vec::new();
-        let xacts = self.get_patron_xacts(&patron)?;
 
         for xact in &xacts {
-
-            let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
-
-            let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
-            let fee_type = if last_btype.eq("Lost Materials") { // TODO ugh
-                "LOST"
-            } else if last_btype.starts_with("Overdue") {
-                "FINE"
-            } else {
-                "FEE"
-            };
-
-            let mut title: Option<String> = None;
-            let mut author: Option<String> = None;
-
-            if is_circ {
-                (title, author) = self.get_circ_title_author(self.parse_id(&xact["id"])?)?;
-            }
+            fines.push(self.add_fine_item(xact)?);
         }
 
-        todo!()
+        patron.fine_items = Some(fines);
+
+        Ok(())
     }
 
-    fn get_circ_title_author(&mut self, id: i64) -> Result<(Option<String>, Option<String>), String> {
+    fn add_fine_item(&mut self, xact: &JsonValue) -> Result<String, String> {
+        let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
+
+        let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
+        let fee_type = if last_btype.eq("Lost Materials") { // TODO ugh
+            "LOST"
+        } else if last_btype.starts_with("Overdue") {
+            "FINE"
+        } else {
+            "FEE"
+        };
+
+        let mut title: Option<String> = None;
+        let mut author: Option<String> = None;
+
+        if is_circ {
+            (title, author) =
+                self.get_circ_title_author(self.parse_id(&xact["id"])?)?;
+        }
+
+        let format = self.account().unwrap().settings().av_format();
+        let mut line: String;
+
+        match format {
+            conf::AvFormat::Legacy => {
+                line = format!("{:.2} {}",
+                    self.parse_float(&xact["balance_owed"])?,
+                    last_btype
+                );
+
+                if is_circ {
+                    line += &format!(" {} / {}",
+                        match title.as_deref() { Some(t) => t, None => ""},
+                        match author.as_deref() { Some(t) => t, None => ""},
+                    );
+                }
+            }
+            _ => todo!()
+        }
+
+        Ok(line)
+    }
+
+    fn get_circ_title_author(&mut self,
+        id: i64) -> Result<(Option<String>, Option<String>), String> {
 
         let flesh = json::object! {
             flesh: 4,
@@ -522,7 +551,11 @@ impl Session {
             total_owed: {">": 0},
         };
 
-        self.editor_mut().search("mbts", search)
+        let ops = json::object! {
+            order_by: {mbts: "xact_start"}
+        };
+
+        self.editor_mut().search_with_ops("mbts", search, ops)
     }
 
     fn set_patron_hold_ids(
