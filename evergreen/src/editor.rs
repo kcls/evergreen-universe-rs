@@ -367,11 +367,26 @@ impl Editor {
     where
         T: Into<ApiParams>,
     {
+        self.retrieve_with_ops(idlclass, id, json::JsonValue::Null)
+    }
+
+    pub fn retrieve_with_ops<T>(
+        &mut self,
+        idlclass: &str,
+        id: T,
+        ops: json::JsonValue, // flesh, etc.
+    ) -> Result<Option<json::JsonValue>, String>
+    where
+        T: Into<ApiParams>,
+    {
         let fmapper = self.get_fieldmapper(idlclass)?;
 
         let method = self.app_method(&format!("direct.{fmapper}.retrieve"));
 
-        self.request(&method, id)
+        let mut params: ApiParams = id.into();
+        params.add(ops);
+
+        self.request(&method, params)
     }
 
     pub fn search(

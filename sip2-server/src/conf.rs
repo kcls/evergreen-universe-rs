@@ -8,6 +8,12 @@ pub enum Msg64HoldDatatype {
     Title
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Msg64SummaryDatatype {
+    Barcode,
+    Title
+}
+
 #[derive(Debug, Clone)]
 pub struct SipSettings {
     name: String,
@@ -17,6 +23,7 @@ pub struct SipSettings {
     patron_status_permit_loans: bool,
     msg64_hold_items_available: bool,
     msg64_hold_datatype: Msg64HoldDatatype,
+    msg64_summary_datatype: Msg64SummaryDatatype,
 }
 
 impl SipSettings {
@@ -30,12 +37,10 @@ impl SipSettings {
             patron_status_permit_loans: false,
             msg64_hold_items_available: false,
             msg64_hold_datatype: Msg64HoldDatatype::Barcode,
+            msg64_summary_datatype: Msg64SummaryDatatype::Barcode,
         }
     }
 
-    pub fn msg64_hold_datatype(&self) -> &Msg64HoldDatatype {
-        &self.msg64_hold_datatype
-    }
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -57,6 +62,12 @@ impl SipSettings {
     }
     pub fn msg64_hold_items_available(&self) -> bool {
         self.msg64_hold_items_available
+    }
+    pub fn msg64_summary_datatype(&self) -> &Msg64SummaryDatatype {
+        &self.msg64_summary_datatype
+    }
+    pub fn msg64_hold_datatype(&self) -> &Msg64HoldDatatype {
+        &self.msg64_hold_datatype
     }
 }
 
@@ -184,6 +195,11 @@ impl Config {
                 if let Some(s) = group["msg64-hold-datatype"].as_str() {
                     if s.to_lowercase().starts_with("t") {
                         grp.msg64_hold_datatype = Msg64HoldDatatype::Title;
+                    }
+                }
+                if let Some(s) = group["msg64-summary-datatype"].as_str() {
+                    if s.to_lowercase().starts_with("t") {
+                        grp.msg64_summary_datatype = Msg64SummaryDatatype::Title;
                     }
                 }
 

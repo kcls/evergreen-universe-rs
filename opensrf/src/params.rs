@@ -33,6 +33,11 @@ impl ApiParams {
     pub fn params(&self) -> &Vec<JsonValue> {
         &self.params
     }
+
+    /// Add a json value to the list of params
+    pub fn add(&mut self, v: json::JsonValue) {
+        self.params.push(v)
+    }
 }
 
 impl From<&Vec<JsonValue>> for ApiParams {

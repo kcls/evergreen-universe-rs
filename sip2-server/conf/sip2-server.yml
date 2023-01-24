@@ -30,6 +30,7 @@ setting-groups:
     patron-status-permit-loans: false
     msg64-hold-items-available: false
     msg64-hold-datatype: "barcode"
+    msg64-summary-datatype: "barcode"
 
 accounts:
   - sip-username: "sip-user"

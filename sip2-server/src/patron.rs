@@ -62,16 +62,23 @@ pub struct Patron {
     pub balance_owed: f64,
     pub password_verified: bool,
     pub recall_count: i64,
-    pub hold_ids: Vec<i64>,
-    pub unavail_hold_ids: Vec<i64>,
+
     pub holds_count: usize,
-    pub unavail_holds_count: usize,
-    pub items_overdue_count: usize,
-    pub items_out_count: usize,
-    pub items_overdue_ids: Vec<i64>,
-    pub items_out_ids: Vec<i64>,
-    pub fine_count: usize,
+    pub hold_ids: Vec<i64>,
     pub hold_items: Vec<String>,
+    pub unavail_hold_ids: Vec<i64>,
+    pub unavail_holds_count: usize,
+
+    pub items_overdue_count: usize,
+    pub items_overdue_ids: Vec<i64>,
+
+    pub fine_count: usize,
+    pub fine_items: Vec<String>,
+
+    pub items_out_count: usize,
+    pub items_out_ids: Vec<i64>,
+    pub items_out: Vec<String>,
+
 }
 
 impl Patron {
@@ -97,12 +104,14 @@ impl Patron {
             unavail_holds_count: 0,
             items_overdue_count: 0,
             items_out_count: 0,
+            fine_count: 0,
             hold_ids: Vec::new(),
             unavail_hold_ids: Vec::new(),
             items_overdue_ids: Vec::new(),
             items_out_ids: Vec::new(),
             hold_items: Vec::new(),
-            fine_count: 0,
+            items_out: Vec::new(),
+            fine_items: Vec::new(),
         }
     }
 }
@@ -159,15 +168,54 @@ impl Session {
         summary_ops: &SummaryListOptions
     ) -> Result<(), String> {
 
-
         match summary_ops.list_type() {
             SummaryListType::HoldItems => self.add_hold_items(patron, summary_ops, false)?,
             SummaryListType::UnavailHoldItems => self.add_hold_items(patron, summary_ops, true)?,
-            SummaryListType::ChargedItems => {}
+            SummaryListType::ChargedItems => self.add_items_out(patron, summary_ops)?,
             SummaryListType::FineItems => {}
         }
 
         Ok(())
+    }
+
+    fn add_items_out(&mut self,
+        patron: &mut Patron, summary_ops: &SummaryListOptions) -> Result<(), String> {
+
+        let all_circ_ids: Vec<&i64> = [
+            patron.items_out_ids.iter(),
+            patron.items_overdue_ids.iter()
+        ].into_iter().flatten().collect();
+
+        let offset = summary_ops.offset();
+        let limit = summary_ops.limit();
+        for idx in offset..(offset + limit) {
+            if let Some(id) = all_circ_ids.get(idx) {
+                patron.items_out.push(self.circ_id_to_value(**id)?);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn circ_id_to_value(&mut self, id: i64) -> Result<String, String> {
+        let format = self.account().unwrap().settings().msg64_summary_datatype().clone();
+
+        if format == conf::Msg64SummaryDatatype::Barcode {
+            let flesh = json::object! {
+                flesh: 1,
+                flesh_fields: {circ: ["target_copy"]},
+            };
+
+            // If we have a circ ID, we have to have a circ.
+            let circ = self.editor_mut().retrieve_with_ops("circ", id, flesh)?.unwrap();
+
+            // If we have a circ, we have to have copy barcode.
+            let bc = circ["target_copy"]["barcode"].as_str().unwrap();
+
+            return Ok(bc.to_string())
+        }
+
+        todo!()
     }
 
     fn get_data_range(&self,
