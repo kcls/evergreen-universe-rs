@@ -14,6 +14,26 @@ pub enum Msg64SummaryDatatype {
     Title
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum AvFormat {
+    Legacy,
+    SwyerA,
+    SwyerB,
+    ThreeM,
+}
+
+impl From<&str> for AvFormat {
+    fn from(s: &str) -> AvFormat {
+        match s.to_lowercase().as_str() {
+            "eg_legacy" => Self::Legacy,
+            "swyer_a" => Self::SwyerA,
+            "swyer_b" => Self::SwyerB,
+            "3m" => Self::ThreeM,
+            _ => panic!("Invalid AV Format: {}", s),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SipSettings {
     name: String,
@@ -24,6 +44,7 @@ pub struct SipSettings {
     msg64_hold_items_available: bool,
     msg64_hold_datatype: Msg64HoldDatatype,
     msg64_summary_datatype: Msg64SummaryDatatype,
+    av_format: AvFormat,
 }
 
 impl SipSettings {
@@ -38,6 +59,7 @@ impl SipSettings {
             msg64_hold_items_available: false,
             msg64_hold_datatype: Msg64HoldDatatype::Barcode,
             msg64_summary_datatype: Msg64SummaryDatatype::Barcode,
+            av_format: AvFormat::ThreeM,
         }
     }
 
@@ -68,6 +90,9 @@ impl SipSettings {
     }
     pub fn msg64_hold_datatype(&self) -> &Msg64HoldDatatype {
         &self.msg64_hold_datatype
+    }
+    pub fn av_format(&self) -> &AvFormat {
+        &self.av_format
     }
 }
 
@@ -201,6 +226,9 @@ impl Config {
                     if s.to_lowercase().starts_with("t") {
                         grp.msg64_summary_datatype = Msg64SummaryDatatype::Title;
                     }
+                }
+                if let Some(s) = group["av-format"].as_str() {
+                    grp.av_format = s.into();
                 }
 
                 log::debug!("Adding setting group '{name}'");

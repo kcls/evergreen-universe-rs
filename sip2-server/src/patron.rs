@@ -11,6 +11,7 @@ pub enum SummaryListType {
     HoldItems,
     UnavailHoldItems,
     ChargedItems,
+    OverdueItems,
     FineItems,
 }
 
@@ -65,19 +66,23 @@ pub struct Patron {
 
     pub holds_count: usize,
     pub hold_ids: Vec<i64>,
-    pub hold_items: Vec<String>,
+
+    /// May contain holds with different availability dispositions
+    pub hold_items: Option<Vec<String>>,
+
     pub unavail_hold_ids: Vec<i64>,
     pub unavail_holds_count: usize,
 
     pub items_overdue_count: usize,
     pub items_overdue_ids: Vec<i64>,
+    pub items_overdue: Option<Vec<String>>,
 
     pub fine_count: usize,
-    pub fine_items: Vec<String>,
+    pub fine_items: Option<Vec<String>>,
 
     pub items_out_count: usize,
     pub items_out_ids: Vec<i64>,
-    pub items_out: Vec<String>,
+    pub items_out: Option<Vec<String>>,
 
 }
 
@@ -109,9 +114,10 @@ impl Patron {
             unavail_hold_ids: Vec::new(),
             items_overdue_ids: Vec::new(),
             items_out_ids: Vec::new(),
-            hold_items: Vec::new(),
-            items_out: Vec::new(),
-            fine_items: Vec::new(),
+            hold_items: None,
+            items_out: None,
+            items_overdue: None,
+            fine_items: None,
         }
     }
 }
@@ -172,10 +178,81 @@ impl Session {
             SummaryListType::HoldItems => self.add_hold_items(patron, summary_ops, false)?,
             SummaryListType::UnavailHoldItems => self.add_hold_items(patron, summary_ops, true)?,
             SummaryListType::ChargedItems => self.add_items_out(patron, summary_ops)?,
-            SummaryListType::FineItems => {}
+            SummaryListType::OverdueItems => self.add_overdue_items(patron, summary_ops)?,
+            SummaryListType::FineItems => self.add_fine_items(patron, summary_ops)?,
         }
 
         Ok(())
+    }
+
+    fn add_fine_items(&mut self,
+        patron: &mut Patron, summary_ops: &SummaryListOptions) -> Result<(), String> {
+
+        let format = self.account().unwrap().settings().av_format();
+        let mut fines: Vec<String> = Vec::new();
+        let xacts = self.get_patron_xacts(&patron)?;
+
+        for xact in &xacts {
+
+            let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
+
+            let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
+            let fee_type = if last_btype.eq("Lost Materials") { // TODO ugh
+                "LOST"
+            } else if last_btype.starts_with("Overdue") {
+                "FINE"
+            } else {
+                "FEE"
+            };
+
+            let mut title: Option<String> = None;
+            let mut author: Option<String> = None;
+
+            if is_circ {
+                (title, author) = self.get_circ_title_author(self.parse_id(&xact["id"])?)?;
+            }
+        }
+
+        todo!()
+    }
+
+    fn get_circ_title_author(&mut self, id: i64) -> Result<(Option<String>, Option<String>), String> {
+
+        let flesh = json::object! {
+            flesh: 4,
+            flesh_fields: {
+                circ: ["target_copy"],
+                acp: ["call_number"],
+                acn: ["record"],
+                bre: ["simple_record"]
+            }
+        };
+
+        let circ = self.editor_mut().retrieve_with_ops("circ", id, flesh)?.unwrap();
+
+        let mut resp = (None, None);
+
+        if self.parse_id(&circ["target_copy"]["id"])? == -1 {
+            if let Some(title) = circ["target_copy"]["dummy_title"].as_str() {
+                resp.0 = Some(title.to_string());
+            }
+            if let Some(author) = circ["target_copy"]["dummy_author"].as_str() {
+                resp.1 = Some(author.to_string());
+            }
+
+            return Ok(resp)
+        }
+
+        let simple_rec = &circ["target_copy"]["call_number"]["record"]["simple_record"];
+
+        if let Some(title) = simple_rec["title"].as_str() {
+            resp.0 = Some(title.to_string());
+        }
+        if let Some(author) = simple_rec["author"].as_str() {
+            resp.1 = Some(author.to_string());
+        }
+
+        Ok(resp)
     }
 
     fn add_items_out(&mut self,
@@ -188,14 +265,39 @@ impl Session {
 
         let offset = summary_ops.offset();
         let limit = summary_ops.limit();
+
+        let mut circs: Vec<String> = Vec::new();
+
         for idx in offset..(offset + limit) {
             if let Some(id) = all_circ_ids.get(idx) {
-                patron.items_out.push(self.circ_id_to_value(**id)?);
+                circs.push(self.circ_id_to_value(**id)?);
             }
         }
 
+        patron.items_out = Some(circs);
+
         Ok(())
     }
+
+    fn add_overdue_items(&mut self,
+        patron: &mut Patron, summary_ops: &SummaryListOptions) -> Result<(), String> {
+
+        let offset = summary_ops.offset();
+        let limit = summary_ops.limit();
+
+        let mut circs: Vec<String> = Vec::new();
+
+        for idx in offset..(offset + limit) {
+            if let Some(id) = patron.items_overdue_ids.get(idx) {
+                circs.push(self.circ_id_to_value(*id)?);
+            }
+        }
+
+        patron.items_overdue = Some(circs);
+
+        Ok(())
+    }
+
 
     fn circ_id_to_value(&mut self, id: i64) -> Result<String, String> {
         let format = self.account().unwrap().settings().msg64_summary_datatype().clone();
@@ -215,7 +317,14 @@ impl Session {
             return Ok(bc.to_string())
         }
 
-        todo!()
+
+        let (title, _) = self.get_circ_title_author(id)?;
+
+        if let Some(t) = title {
+            Ok(t)
+        } else {
+            Ok(String::new()) // unlikely, but not impossible
+        }
     }
 
     fn get_data_range(&self,
@@ -266,7 +375,7 @@ impl Session {
             }
         }
 
-        patron.hold_items = self.get_data_range(summary_ops, &hold_items);
+        patron.hold_items = Some(self.get_data_range(summary_ops, &hold_items));
 
         Ok(())
     }
@@ -365,7 +474,6 @@ impl Session {
         }
     }
 
-
     fn set_patron_summary_items(
         &mut self,
         user: &JsonValue,
@@ -400,16 +508,21 @@ impl Session {
             patron.items_out_ids = outs;
         }
 
+        let summaries = self.get_patron_xacts(&patron)?;
+        patron.fine_count = summaries.len();
+
+        Ok(())
+    }
+
+    fn get_patron_xacts(&mut self, patron: &Patron) -> Result<Vec<JsonValue>, String> {
+
         let search = json::object! {
             usr: patron.id,
             balance_owed: {"<>": 0},
             total_owed: {">": 0},
         };
 
-        let summaries = self.editor_mut().search("mbts", search)?;
-        patron.fine_count = summaries.len();
-
-        Ok(())
+        self.editor_mut().search("mbts", search)
     }
 
     fn set_patron_hold_ids(

@@ -31,6 +31,7 @@ setting-groups:
     msg64-hold-items-available: false
     msg64-hold-datatype: "barcode"
     msg64-summary-datatype: "barcode"
+    av-format: "3m"
 
 accounts:
   - sip-username: "sip-user"
