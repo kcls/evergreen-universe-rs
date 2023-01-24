@@ -159,12 +159,10 @@ impl Session {
         summary_ops: &SummaryListOptions
     ) -> Result<(), String> {
 
-        let limit = summary_ops.limit();
-        let offset = summary_ops.offset();
 
         match summary_ops.list_type() {
-            SummaryListType::HoldItems => self.add_hold_items(patron, limit, offset, false)?,
-            SummaryListType::UnavailHoldItems => {}
+            SummaryListType::HoldItems => self.add_hold_items(patron, summary_ops, false)?,
+            SummaryListType::UnavailHoldItems => self.add_hold_items(patron, summary_ops, true)?,
             SummaryListType::ChargedItems => {}
             SummaryListType::FineItems => {}
         }
@@ -172,11 +170,28 @@ impl Session {
         Ok(())
     }
 
+    fn get_data_range(&self,
+        summary_ops: &SummaryListOptions, values: &Vec<String>) -> Vec<String> {
+
+        let limit = summary_ops.limit();
+        let offset = summary_ops.offset();
+
+        let mut new_values: Vec<String> = Vec::new();
+
+        for idx in offset..(offset + limit) {
+            if let Some(v) = values.get(idx) {
+                new_values.push(v.to_string());
+            }
+        }
+
+        new_values
+    }
+
+    /// Collect details on holds.
     fn add_hold_items(
         &mut self,
         patron: &mut Patron,
-        limit: usize,
-        offset: usize,
+        summary_ops: &SummaryListOptions,
         unavail: bool
     ) -> Result<(), String> {
 
@@ -203,12 +218,7 @@ impl Session {
             }
         }
 
-        // Trim the list down to match the requested limit / offset.
-        for idx in (offset..(offset + limit)) {
-            if let Some(v) = hold_items.get(idx) {
-                patron.hold_items.push(v.to_string());
-            }
-        }
+        patron.hold_items = self.get_data_range(summary_ops, &hold_items);
 
         Ok(())
     }
