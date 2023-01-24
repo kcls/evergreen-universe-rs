@@ -5,13 +5,13 @@ use yaml_rust::YamlLoader;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Msg64HoldDatatype {
     Barcode,
-    Title
+    Title,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Msg64SummaryDatatype {
     Barcode,
-    Title
+    Title,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,7 +48,6 @@ pub struct SipSettings {
 }
 
 impl SipSettings {
-
     pub fn new(name: &str, institution: &str) -> Self {
         SipSettings {
             name: name.to_string(),
@@ -196,11 +195,11 @@ impl Config {
     fn add_setting_groups(&mut self, root: &yaml_rust::Yaml) {
         if root["setting-groups"].is_array() {
             for group in root["setting-groups"].as_vec().unwrap() {
-
                 let name = group["name"].as_str().expect("Setting group name required");
 
                 let inst = group["institution"]
-                    .as_str().expect("Setting group institution required");
+                    .as_str()
+                    .expect("Setting group institution required");
 
                 let mut grp = SipSettings::new(name, inst);
 

@@ -116,7 +116,7 @@ impl Session {
     pub fn set_authtoken(&mut self) -> Result<(), String> {
         if self.editor.authtoken().is_some() {
             if self.editor.checkauth()? {
-                return Ok(())
+                return Ok(());
             }
         }
 
@@ -341,7 +341,6 @@ impl Session {
         }
         Err(format!("Invalid float value: {}", value))
     }
-
 
     // The server returns a variety of true-ish values.
     pub fn parse_bool(&self, value: &json::JsonValue) -> bool {
