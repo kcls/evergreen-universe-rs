@@ -2,6 +2,12 @@ use std::collections::HashMap;
 use std::fs;
 use yaml_rust::YamlLoader;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Msg64HoldDatatype {
+    Barcode,
+    Title
+}
+
 #[derive(Debug, Clone)]
 pub struct SipSettings {
     name: String,
@@ -10,6 +16,7 @@ pub struct SipSettings {
     patron_status_permit_all: bool,
     patron_status_permit_loans: bool,
     msg64_hold_items_available: bool,
+    msg64_hold_datatype: Msg64HoldDatatype,
 }
 
 impl SipSettings {
@@ -22,9 +29,13 @@ impl SipSettings {
             patron_status_permit_all: false,
             patron_status_permit_loans: false,
             msg64_hold_items_available: false,
+            msg64_hold_datatype: Msg64HoldDatatype::Barcode,
         }
     }
 
+    pub fn msg64_hold_datatype(&self) -> &Msg64HoldDatatype {
+        &self.msg64_hold_datatype
+    }
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -169,6 +180,11 @@ impl Config {
                 }
                 if let Some(b) = group["msg64-hold-items-available"].as_bool() {
                     grp.msg64_hold_items_available = b;
+                }
+                if let Some(s) = group["msg64-hold-datatype"].as_str() {
+                    if s.to_lowercase().starts_with("t") {
+                        grp.msg64_hold_datatype = Msg64HoldDatatype::Title;
+                    }
                 }
 
                 log::debug!("Adding setting group '{name}'");

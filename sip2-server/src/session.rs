@@ -113,20 +113,21 @@ impl Session {
     /// Return the authtoken wrapped as a JSON string for easier use in API calls.
     ///
     /// Returns Err if we fail to verify the token or login as needed.
-    pub fn authtoken(&mut self, verify: bool) -> Result<json::JsonValue, String> {
+    pub fn set_authtoken(&mut self) -> Result<(), String> {
         if self.editor.authtoken().is_some() {
-            if verify {
-                if self.editor.checkauth()? {
-                    return Ok(json::from(self.editor.authtoken().unwrap()));
-                }
-            } else {
-                return Ok(json::from(self.editor.authtoken().unwrap()));
+            if self.editor.checkauth()? {
+                return Ok(())
             }
         }
 
-        self.login()?;
+        self.login()
+    }
 
-        Ok(json::from(self.editor.authtoken().unwrap()))
+    pub fn authtoken(&self) -> Result<&str, String> {
+        match self.editor().authtoken() {
+            Some(a) => Ok(a),
+            None => Err(format!("Authtoken is unset")),
+        }
     }
 
     /// Attempts to relogin if a NO_SESSION event is returned and optionally

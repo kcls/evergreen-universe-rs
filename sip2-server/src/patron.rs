@@ -2,8 +2,47 @@ use super::session::Session;
 use chrono::prelude::*;
 use chrono::DateTime;
 use json::JsonValue;
+use super::conf;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
+const DEFAULT_LIST_ITEM_SIZE: usize = 10;
+
+pub enum SummaryListType {
+    HoldItems,
+    UnavailHoldItems,
+    ChargedItems,
+    FineItems,
+}
+
+pub struct SummaryListOptions {
+    list_type: SummaryListType,
+    start_item: Option<usize>,
+    end_item: Option<usize>,
+}
+
+impl SummaryListOptions {
+    pub fn list_type(&self) -> &SummaryListType {
+        &self.list_type
+    }
+
+    /// Returns zero-based offset from 1-based SIP "start item" value.
+    pub fn offset(&self) -> usize {
+        if let Some(s) = self.start_item {
+            if s > 0 { s - 1 } else { 0 }
+        } else {
+            0
+        }
+    }
+
+    /// Returns zero-based limit from 1-based SIP "end item" value.
+    pub fn limit(&self) -> usize {
+        if let Some(e) = self.end_item {
+            if e > 0 { e - 1 } else { DEFAULT_LIST_ITEM_SIZE }
+        } else {
+            DEFAULT_LIST_ITEM_SIZE
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Patron {
@@ -14,16 +53,12 @@ pub struct Patron {
     pub recall_denied: bool,
     pub holds_denied: bool,
     pub card_lost: bool,
-    pub max_charged: bool,
     pub max_overdue: bool,
-    pub max_renewals: bool,
-    pub max_claims_returned: bool,
-    pub max_lost: bool,
     pub max_fines: bool,
-    pub max_fees: bool,
     pub recall_overdue: bool,
     pub max_bills: bool,
     pub valid: bool,
+    pub card_active: bool,
     pub balance_owed: f64,
     pub password_verified: bool,
     pub recall_count: i64,
@@ -36,6 +71,7 @@ pub struct Patron {
     pub items_overdue_ids: Vec<i64>,
     pub items_out_ids: Vec<i64>,
     pub fine_count: usize,
+    pub hold_items: Vec<String>,
 }
 
 impl Patron {
@@ -48,16 +84,12 @@ impl Patron {
             recall_denied: false,
             holds_denied: false,
             card_lost: false,
-            max_charged: false,
             max_overdue: false,
-            max_renewals: false,
-            max_claims_returned: false,
-            max_lost: false,
             max_fines: false,
-            max_fees: false,
             recall_overdue: false,
             max_bills: false,
             valid: false,
+            card_active: false,
             balance_owed: 0.0,
             password_verified: false,
             recall_count: 0,
@@ -69,6 +101,7 @@ impl Patron {
             unavail_hold_ids: Vec::new(),
             items_overdue_ids: Vec::new(),
             items_out_ids: Vec::new(),
+            hold_items: Vec::new(),
             fine_count: 0,
         }
     }
@@ -80,11 +113,12 @@ impl Session {
         &mut self,
         barcode: &str,
         password_op: Option<&str>,
+        summary_list_options: Option<&SummaryListOptions>,
     ) -> Result<Option<Patron>, String> {
 
         // Make sure we have an authtoken here so we don't have to
         // keep checking for expired sessions during our data collection.
-        self.authtoken(true)?;
+        self.set_authtoken()?;
 
         let user = match self.get_user(barcode)? {
             Some(u) => u,
@@ -105,12 +139,174 @@ impl Session {
         self.set_patron_privileges(&user, &mut patron)?;
         self.set_patron_summary_items(&user, &mut patron)?;
 
+        if let Some(ops) = summary_list_options {
+            self.set_patron_summary_list_items(&user, &mut patron, ops)?;
+        }
+
+        //
         // TODO
-        // self.set_patron_summary_list_items(&user, &mut patron)?;
         // self.log_activity
 
         Ok(Some(patron))
     }
+
+    /// Caller wants to see specific values of a given type, e.g. list
+    /// of holds for a patron.
+    fn set_patron_summary_list_items(
+        &mut self,
+        user: &JsonValue,
+        patron: &mut Patron,
+        summary_ops: &SummaryListOptions
+    ) -> Result<(), String> {
+
+        let limit = summary_ops.limit();
+        let offset = summary_ops.offset();
+
+        match summary_ops.list_type() {
+            SummaryListType::HoldItems => self.add_hold_items(patron, limit, offset, false)?,
+            SummaryListType::UnavailHoldItems => {}
+            SummaryListType::ChargedItems => {}
+            SummaryListType::FineItems => {}
+        }
+
+        Ok(())
+    }
+
+    fn add_hold_items(
+        &mut self,
+        patron: &mut Patron,
+        limit: usize,
+        offset: usize,
+        unavail: bool
+    ) -> Result<(), String> {
+
+        let format = self.account().unwrap().settings().msg64_hold_datatype().clone();
+
+        let hold_ids = match unavail {
+            true => &patron.unavail_hold_ids,
+            false => &patron.hold_ids,
+        };
+
+        let mut hold_items: Vec<String> = Vec::new();
+
+        for hold_id in hold_ids {
+            if let Some(hold) = self.editor_mut().retrieve("ahr", *hold_id)? {
+                if format == conf::Msg64HoldDatatype::Barcode {
+                    if let Some(copy) = self.find_copy_for_hold(&hold)? {
+                        hold_items.push(copy["barcode"].as_str().unwrap().to_string());
+                    }
+                } else {
+                    if let Some(title) = self.find_title_for_hold(&hold)? {
+                        hold_items.push(title);
+                    }
+                }
+            }
+        }
+
+        // Trim the list down to match the requested limit / offset.
+        for idx in (offset..(offset + limit)) {
+            if let Some(v) = hold_items.get(idx) {
+                patron.hold_items.push(v.to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    fn find_title_for_hold(&mut self, hold: &JsonValue) -> Result<Option<String>, String> {
+
+        let hold_id = self.parse_id(&hold["id"])?;
+        let bib_link = match self.editor_mut().retrieve("rhrr", hold_id)? {
+            Some(l) => l,
+            None => return Ok(None), // shouldn't be happen-able
+        };
+
+        let bib_id = self.parse_id(&bib_link["bib_record"])?;
+        let search = json::object! {
+            source: bib_id,
+            name: "title",
+        };
+
+        let title_fields = self.editor_mut().search("mfde", search)?;
+
+        if let Some(tf) = title_fields.get(0) {
+            if let Some(v) = tf["value"].as_str() {
+                return Ok(Some(v.to_string()))
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn find_copy_for_hold(&mut self, hold: &JsonValue) -> Result<Option<JsonValue>, String> {
+
+        if !hold["current_copy"].is_null() {
+            // We have a captured copy.  Use it.
+            let copy_id = self.parse_id(&hold["current_copy"])?;
+            return self.editor_mut().retrieve("acp", copy_id);
+        }
+
+        let hold_type = hold["hold_type"].as_str().unwrap(); // required
+        let hold_target = self.parse_id(&hold["target"])?;
+
+        if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
+            // These are all copy-level hold types
+            return self.editor_mut().retrieve("acp", hold_target);
+        }
+
+        if hold_type.eq("V") {
+            // For call number holds, any copy will do.
+            return self.get_copy_for_vol(hold_target);
+        }
+
+        let mut bre_ids: Vec<i64> = Vec::new();
+
+        if hold_type.eq("M") {
+            let search = json::object! { metarecord: hold_target };
+            let maps = self.editor_mut().search("mmrsm", search)?;
+            for map in maps {
+                bre_ids.push(self.parse_id(&map["record"])?);
+            }
+        } else {
+            bre_ids.push(hold_target);
+        }
+
+        let query = json::object! {
+            select: {acp: ["id"]},
+            from: {acp: "acn"},
+            where: {
+                "+acp": {deleted: "f"},
+                "+acn": {record: bre_ids, deleted: "f"}
+            },
+            limit: 1
+        };
+
+        let copy_id_hashes = self.editor_mut().json_query(query)?;
+        if copy_id_hashes.len() > 0 {
+            let copy_id = self.parse_id(&copy_id_hashes[0]["id"])?;
+            return self.editor_mut().retrieve("acp", copy_id);
+        }
+
+        Ok(None)
+    }
+
+    fn get_copy_for_vol(&mut self, vol_id: i64) -> Result<Option<JsonValue>, String> {
+        let search = json::object! {
+            call_number: vol_id,
+            deleted: "f",
+        };
+
+        let ops = json::object! { limit: 1usize };
+
+        let copies = self.editor_mut().search_with_ops("acp", search, ops)?;
+
+        if copies.len() == 1 {
+            return Ok(Some(copies[0].to_owned()));
+        } else {
+            return Ok(None)
+        }
+    }
+
 
     fn set_patron_summary_items(
         &mut self,
@@ -250,11 +446,12 @@ impl Session {
 
         patron.max_fines = self.penalties_contain(1, &penalties)?; // PATRON_EXCEEDS_FINES
         patron.max_overdue = self.penalties_contain(2, &penalties)?; // PATRON_EXCEEDS_OVERDUE_COUNT
+        patron.card_active = self.parse_bool(&user["card"]["active"]);
 
         let blocked =
              self.parse_bool(&user["barred"]) ||
             !self.parse_bool(&user["active"]) ||
-            !self.parse_bool(&user["card"]["active"]);
+            !patron.card_active;
 
         let mut block_tags = String::new();
         for pen in penalties.iter() {
@@ -289,7 +486,7 @@ impl Session {
 
     fn penalties_contain(&self, penalty_id: i64, penalties: &Vec<JsonValue>) -> Result<bool, String> {
         for pen in penalties.iter() {
-            let pen_id = self.parse_id(pen)?;
+            let pen_id = self.parse_id(&pen["id"])?;
             if pen_id == penalty_id {
                 return Ok(true);
             }
@@ -371,13 +568,12 @@ impl Session {
             None => return Ok(false),
         };
 
-        let authtoken = self.authtoken(false)?;
         let mut ses = self.osrf_client_mut().session("open-ils.actor");
 
         let mut req = ses.request(
             "open-ils.actor.verify_user_password",
             vec![
-                authtoken,
+                json::from(self.authtoken()?),
                 JSON_NULL,
                 json::from(username),
                 JSON_NULL,
@@ -399,7 +595,7 @@ impl Session {
 
         let password_op = msg.get_field_value("AD"); // optional
 
-        let patron_op = self.get_patron_details(&barcode, password_op.as_deref())?;
+        let patron_op = self.get_patron_details(&barcode, password_op.as_deref(), None)?;
         self.patron_response_common("24", &barcode, patron_op.as_ref())
     }
 
@@ -439,11 +635,21 @@ impl Session {
 
         log::debug!("PATRON: {patron:?}");
 
-        let status = format!("{}{}{}{}          ",
+        let status = format!("{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
             sip2::util::space_bool(patron.charge_denied),
             sip2::util::space_bool(patron.renew_denied),
             sip2::util::space_bool(patron.recall_denied),
-            sip2::util::space_bool(patron.holds_denied));
+            sip2::util::space_bool(patron.holds_denied),
+            sip2::util::space_bool(patron.card_active),
+            sip2::util::space_bool(false), // max charged
+            sip2::util::space_bool(patron.max_overdue),
+            sip2::util::space_bool(false), // max renewals
+            sip2::util::space_bool(false), // max claims returned
+            sip2::util::space_bool(false), // max lost
+            sip2::util::space_bool(patron.max_fines),
+            sip2::util::space_bool(patron.max_fines),
+            sip2::util::space_bool(false), // recall overdue
+            sip2::util::space_bool(patron.max_fines));
 
         let mut resp = sip2::Message::new(
             msg_spec,
@@ -455,12 +661,12 @@ impl Session {
             Vec::new(),
         );
 
-        resp.add_field("AO", self.account().unwrap().settings().institution());
         resp.add_field("AA", barcode);
+        resp.add_field("AO", self.account().unwrap().settings().institution());
+        resp.add_field("BH", self.sip_config().currency());
         resp.add_field("BL", sip2::util::sip_bool(true)); // valid patron
+        resp.add_field("BV", &format!("{:.2}", patron.balance_owed));
         resp.add_field("CQ", sip2::util::sip_bool(patron.password_verified));
-
-        // TODO more stuff
 
         Ok(resp)
     }
