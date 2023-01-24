@@ -7,14 +7,17 @@ use super::conf;
 const JSON_NULL: JsonValue = JsonValue::Null;
 const DEFAULT_LIST_ITEM_SIZE: usize = 10;
 
+#[derive(Debug, Clone)]
 pub enum SummaryListType {
     HoldItems,
     UnavailHoldItems,
     ChargedItems,
     OverdueItems,
     FineItems,
+    Unsupported,
 }
 
+#[derive(Debug, Clone)]
 pub struct SummaryListOptions {
     list_type: SummaryListType,
     start_item: Option<usize>,
@@ -67,23 +70,20 @@ pub struct Patron {
     pub holds_count: usize,
     pub hold_ids: Vec<i64>,
 
-    /// May contain holds with different availability dispositions
-    pub hold_items: Option<Vec<String>>,
-
     pub unavail_hold_ids: Vec<i64>,
     pub unavail_holds_count: usize,
 
     pub items_overdue_count: usize,
     pub items_overdue_ids: Vec<i64>,
-    pub items_overdue: Option<Vec<String>>,
 
     pub fine_count: usize,
-    pub fine_items: Option<Vec<String>>,
 
     pub items_out_count: usize,
     pub items_out_ids: Vec<i64>,
-    pub items_out: Option<Vec<String>>,
 
+    /// May contain holds, checkouts, overdues, or fines depending
+    /// on the patron info summary string.
+    pub detail_items: Option<Vec<String>>,
 }
 
 impl Patron {
@@ -114,10 +114,7 @@ impl Patron {
             unavail_hold_ids: Vec::new(),
             items_overdue_ids: Vec::new(),
             items_out_ids: Vec::new(),
-            hold_items: None,
-            items_out: None,
-            items_overdue: None,
-            fine_items: None,
+            detail_items: None,
         }
     }
 }
@@ -180,6 +177,7 @@ impl Session {
             SummaryListType::ChargedItems => self.add_items_out(patron, summary_ops)?,
             SummaryListType::OverdueItems => self.add_overdue_items(patron, summary_ops)?,
             SummaryListType::FineItems => self.add_fine_items(patron, summary_ops)?,
+            SummaryListType::Unsupported => {}, // NO-OP not necessarily an error.
         }
 
         Ok(())
@@ -188,7 +186,7 @@ impl Session {
     fn add_fine_items(&mut self,
         patron: &mut Patron, summary_ops: &SummaryListOptions) -> Result<(), String> {
 
-        let xacts = self.get_patron_xacts(&patron)?; // TODO trim
+        let xacts = self.get_patron_xacts(&patron, Some(summary_ops))?;
 
         let mut fines: Vec<String> = Vec::new();
 
@@ -196,16 +194,23 @@ impl Session {
             fines.push(self.add_fine_item(xact)?);
         }
 
-        patron.fine_items = Some(fines);
+        patron.detail_items = Some(fines);
 
         Ok(())
     }
 
     fn add_fine_item(&mut self, xact: &JsonValue) -> Result<String, String> {
-        let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
 
+        let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
         let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
-        let fee_type = if last_btype.eq("Lost Materials") { // TODO ugh
+
+        let xact_id = self.parse_id(&xact["id"])?;
+        let balance_owed = self.parse_float(&xact["balance_owed"])?;
+
+        let mut title: Option<String> = None;
+        let mut author: Option<String> = None;
+
+        let fee_type = if last_btype.eq("Lost Materials") { // XXX ugh
             "LOST"
         } else if last_btype.starts_with("Overdue") {
             "FINE"
@@ -213,32 +218,45 @@ impl Session {
             "FEE"
         };
 
-        let mut title: Option<String> = None;
-        let mut author: Option<String> = None;
-
         if is_circ {
-            (title, author) =
-                self.get_circ_title_author(self.parse_id(&xact["id"])?)?;
+            (title, author) = self.get_circ_title_author(xact_id)?;
         }
 
-        let format = self.account().unwrap().settings().av_format();
         let mut line: String;
+        let title_str = match title.as_deref() { Some(t) => t, None => ""};
+        let author_str = match author.as_deref() { Some(t) => t, None => ""};
 
-        match format {
+        match self.account().unwrap().settings().av_format() {
+
             conf::AvFormat::Legacy => {
-                line = format!("{:.2} {}",
-                    self.parse_float(&xact["balance_owed"])?,
-                    last_btype
+                line = format!("{:.2} {}", balance_owed, last_btype);
+                if is_circ {
+                    line += &format!(" {} / {}", title_str, author_str);
+                }
+            }
+
+            conf::AvFormat::ThreeM | conf::AvFormat::SwyerA => {
+                line = format!("{} ${} \"{}\" ", xact_id, balance_owed, fee_type);
+
+                if is_circ {
+                    line += title_str;
+                } else {
+                    line += last_btype;
+                }
+            }
+
+            conf::AvFormat::SwyerB => {
+                line = format!(
+                    "Charge-Number: {}, Amount-Due: {:.2}, Fine-Type: {}",
+                    xact_id, balance_owed, fee_type
                 );
 
                 if is_circ {
-                    line += &format!(" {} / {}",
-                        match title.as_deref() { Some(t) => t, None => ""},
-                        match author.as_deref() { Some(t) => t, None => ""},
-                    );
+                    line += &format!(", Title: {}", title_str);
+                } else {
+                    line += &format!(", Title: {}", last_btype);
                 }
             }
-            _ => todo!()
         }
 
         Ok(line)
@@ -288,8 +306,8 @@ impl Session {
         patron: &mut Patron, summary_ops: &SummaryListOptions) -> Result<(), String> {
 
         let all_circ_ids: Vec<&i64> = [
-            patron.items_out_ids.iter(),
-            patron.items_overdue_ids.iter()
+            patron.items_overdue_ids.iter(),
+            patron.items_out_ids.iter()
         ].into_iter().flatten().collect();
 
         let offset = summary_ops.offset();
@@ -303,7 +321,7 @@ impl Session {
             }
         }
 
-        patron.items_out = Some(circs);
+        patron.detail_items = Some(circs);
 
         Ok(())
     }
@@ -322,7 +340,7 @@ impl Session {
             }
         }
 
-        patron.items_overdue = Some(circs);
+        patron.detail_items = Some(circs);
 
         Ok(())
     }
@@ -404,7 +422,7 @@ impl Session {
             }
         }
 
-        patron.hold_items = Some(self.get_data_range(summary_ops, &hold_items));
+        patron.detail_items = Some(self.get_data_range(summary_ops, &hold_items));
 
         Ok(())
     }
@@ -537,13 +555,17 @@ impl Session {
             patron.items_out_ids = outs;
         }
 
-        let summaries = self.get_patron_xacts(&patron)?;
+        let summaries = self.get_patron_xacts(&patron, None)?;
         patron.fine_count = summaries.len();
 
         Ok(())
     }
 
-    fn get_patron_xacts(&mut self, patron: &Patron) -> Result<Vec<JsonValue>, String> {
+    fn get_patron_xacts(
+        &mut self,
+        patron: &Patron,
+        summary_ops: Option<&SummaryListOptions>
+    ) -> Result<Vec<JsonValue>, String> {
 
         let search = json::object! {
             usr: patron.id,
@@ -551,9 +573,14 @@ impl Session {
             total_owed: {">": 0},
         };
 
-        let ops = json::object! {
+        let mut ops = json::object! {
             order_by: {mbts: "xact_start"}
         };
+
+        if let Some(sum_ops) = summary_ops {
+            ops["limit"] = json::from(sum_ops.limit());
+            ops["offset"] = json::from(sum_ops.offset());
+        }
 
         self.editor_mut().search_with_ops("mbts", search, ops)
     }
@@ -801,6 +828,77 @@ impl Session {
 
         let patron_op = self.get_patron_details(&barcode, password_op.as_deref(), None)?;
         self.patron_response_common("24", &barcode, patron_op.as_ref())
+    }
+
+    pub fn handle_patron_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+        let barcode = msg
+            .get_field_value("AA")
+            .ok_or(format!("handle_patron_status() missing patron barcode"))?;
+
+        let password_op = msg.get_field_value("AD"); // optional
+
+        let mut start_item = None;
+        let mut end_item = None;
+
+        if let Some(s) = msg.get_field_value("BP") {
+            if let Ok(v) = s.parse::<usize>() {
+                start_item = Some(v);
+            }
+        }
+
+        if let Some(s) = msg.get_field_value("BQ") {
+            if let Ok(v) = s.parse::<usize>() {
+                end_item = Some(v);
+            }
+        }
+
+        // fixed fields are required for correctly formatted messages.
+        let summary_ff = &msg.fixed_fields()[2];
+
+        let list_type = match summary_ff.value().find("Y") {
+            Some(idx) => match idx {
+                0 => SummaryListType::HoldItems,
+                1 => SummaryListType::OverdueItems,
+                2 => SummaryListType::ChargedItems,
+                3 => SummaryListType::FineItems,
+                5 => SummaryListType::UnavailHoldItems,
+                _ => SummaryListType::Unsupported,
+            }
+            None => SummaryListType::Unsupported
+        };
+
+        let list_ops = SummaryListOptions {
+            list_type: list_type.clone(),
+            start_item,
+            end_item,
+        };
+
+        let patron_op =
+            self.get_patron_details(&barcode, password_op.as_deref(), Some(&list_ops))?;
+
+        let mut resp = self.patron_response_common("64", &barcode, patron_op.as_ref())?;
+
+        let patron = match patron_op {
+            Some(p) => p,
+            None => return Ok(resp),
+        };
+
+        if let Some(detail_items) = patron.detail_items {
+            let code = match list_type {
+                SummaryListType::HoldItems => "AS",
+                SummaryListType::OverdueItems => "AT",
+                SummaryListType::ChargedItems => "AU",
+                SummaryListType::FineItems => "AV",
+                SummaryListType::UnavailHoldItems => "CD",
+                _ => ""
+            };
+
+            detail_items.iter().for_each(|i| resp.add_field(code, i));
+        };
+
+        // TODO
+
+        Ok(resp)
     }
 
     fn patron_response_common(&self, msg_code: &str,

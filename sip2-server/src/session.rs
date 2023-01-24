@@ -248,6 +248,7 @@ impl Session {
         match code {
             "17" => self.handle_item_info(msg),
             "23" => self.handle_patron_status(msg),
+            "63" => self.handle_patron_info(msg),
             _ => Err(format!("Unsupported SIP message code={}", msg.spec().code)),
         }
     }
