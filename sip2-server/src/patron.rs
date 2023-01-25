@@ -155,10 +155,10 @@ impl Session {
         }
 
         self.set_patron_privileges(&user, &mut patron)?;
-        self.set_patron_summary_items(&user, &mut patron)?;
+        self.set_patron_summary_items(&mut patron)?;
 
         if let Some(ops) = summary_list_options {
-            self.set_patron_summary_list_items(&user, &mut patron, ops)?;
+            self.set_patron_summary_list_items(&mut patron, ops)?;
         }
 
         //
@@ -172,7 +172,6 @@ impl Session {
     /// of holds for a patron.
     fn set_patron_summary_list_items(
         &mut self,
-        user: &JsonValue,
         patron: &mut Patron,
         summary_ops: &SummaryListOptions,
     ) -> Result<(), String> {
@@ -293,29 +292,7 @@ impl Session {
             .retrieve_with_ops("circ", id, flesh)?
             .unwrap();
 
-        let mut resp = (None, None);
-
-        if self.parse_id(&circ["target_copy"]["id"])? == -1 {
-            if let Some(title) = circ["target_copy"]["dummy_title"].as_str() {
-                resp.0 = Some(title.to_string());
-            }
-            if let Some(author) = circ["target_copy"]["dummy_author"].as_str() {
-                resp.1 = Some(author.to_string());
-            }
-
-            return Ok(resp);
-        }
-
-        let simple_rec = &circ["target_copy"]["call_number"]["record"]["simple_record"];
-
-        if let Some(title) = simple_rec["title"].as_str() {
-            resp.0 = Some(title.to_string());
-        }
-        if let Some(author) = simple_rec["author"].as_str() {
-            resp.1 = Some(author.to_string());
-        }
-
-        Ok(resp)
+        self.get_copy_title_author(&circ["target_copy"])
     }
 
     fn add_items_out(
@@ -552,11 +529,7 @@ impl Session {
         }
     }
 
-    fn set_patron_summary_items(
-        &mut self,
-        user: &JsonValue,
-        patron: &mut Patron,
-    ) -> Result<(), String> {
+    fn set_patron_summary_items(&mut self, patron: &mut Patron) -> Result<(), String> {
         self.set_patron_hold_ids(patron, false, None, None)?;
         self.set_patron_hold_ids(patron, true, None, None)?;
 

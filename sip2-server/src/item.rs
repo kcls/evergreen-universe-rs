@@ -18,6 +18,7 @@ pub struct Item {
 }
 
 impl Session {
+    /// Collect a pile of data for a copy by barcode
     pub fn get_item_details(&mut self, barcode: &str) -> Result<Option<Item>, String> {
         let search = json::object! {
             barcode: barcode,
@@ -30,7 +31,7 @@ impl Session {
                 acp: ["circ_lib", "call_number",
                     "status", "stat_cat_entry_copy_maps", "circ_modifier"],
                 acn: ["owning_lib", "record"],
-                bre: ["flat_display_entries"],
+                bre: ["simple_record"],
                 ascecm: ["stat_cat", "stat_cat_entry"],
             }
         };
@@ -46,7 +47,7 @@ impl Session {
 
         let mut due_date: Option<String> = None;
 
-        if let Ok(Some(circ)) = self.get_copy_circ(copy["id"].as_i64().unwrap()) {
+        if let Ok(Some(circ)) = self.get_copy_circ(self.parse_id(&copy["id"])?) {
             if let Some(iso_date) = circ["due_date"].as_str() {
                 if self
                     .account()
@@ -130,14 +131,20 @@ impl Session {
             None => "001",
         };
 
+        let (title, _) = self.get_copy_title_author(&copy)?;
+        let title = match title {
+            Some(t) => t,
+            _ => String::new(),
+        };
+
         Ok(Some(Item {
             barcode: barcode.to_string(),
             due_date,
+            title,
             deposit_amount,
             hold_queue_length,
             fee_type: fee_type.to_string(),
             circ_status: circ_status.to_string(),
-            title: self.get_title(copy).to_string(),
             current_loc: circ_lib.to_string(),
             permanent_loc: circ_lib.to_string(),
             destination_loc: dest_location.to_string(),
@@ -192,27 +199,29 @@ impl Session {
         Ok(resp)
     }
 
+    /// Find an active hold linked to the copy.  The copy must be on
+    /// the holds shelf or in transit to the holds shelf.
     fn get_copy_hold(
         &mut self,
         copy: &json::JsonValue,
         transit: &Option<json::JsonValue>,
     ) -> Result<Option<json::JsonValue>, String> {
-        let copy_status = copy["status"]["id"].as_i64().unwrap();
+        let copy_status = self.parse_id(&copy["status"]["id"])?;
 
         if copy_status != 8 {
             // On Holds Shelf
             if let Some(t) = transit {
-                if t["copy_status"].as_i64().unwrap() != 8 {
+                if self.parse_id(&t["copy_status"])? != 8 {
                     // Copy in transit for non-hold reasons
                     return Ok(None);
                 }
             } else {
-                // Copy not currently captured / transiting for a hold.
+                // Copy not currently on shelf or transiting for a hold.
                 return Ok(None);
             }
         }
 
-        let copy_id = copy["id"].as_i64().unwrap();
+        let copy_id = self.parse_id(&copy["id"])?;
 
         let search = json::object! {
             current_copy: copy_id,
@@ -236,17 +245,18 @@ impl Session {
         }
     }
 
+    /// Find the active transit for a copy if one exists.
     fn get_copy_transit(
         &mut self,
         copy: &json::JsonValue,
     ) -> Result<Option<json::JsonValue>, String> {
-        let copy_status = copy["status"]["id"].as_i64().unwrap();
+        let copy_status = self.parse_id(&copy["status"]["id"])?;
 
         if copy_status != 6 {
             return Ok(None);
         }
 
-        let copy_id = copy["id"].as_i64().unwrap();
+        let copy_id = self.parse_id(&copy["id"])?;
 
         let search = json::object! {
             target_copy: copy_id,
@@ -268,19 +278,9 @@ impl Session {
         }
     }
 
-    fn get_title<'a>(&'a self, copy: &'a json::JsonValue) -> &str {
-        for entry in copy["call_number"]["record"]["flat_display_entries"].members() {
-            if entry["name"].as_str().unwrap().eq("title") {
-                return entry["value"].as_str().unwrap();
-            }
-        }
-
-        ""
-    }
-
     fn circ_status(&self, copy: &json::JsonValue) -> &str {
-        // status if fleshed.  status and its id are required.
-        let copy_status = copy["status"]["id"].as_i64().unwrap();
+        // copy.status is fleshed
+        let copy_status = self.parse_id(&copy["status"]["id"]).unwrap();
 
         match copy_status {
             9 => "02",      // on order
@@ -319,6 +319,7 @@ impl Session {
         resp
     }
 
+    /// Find an open circulation linked to the copy.
     fn get_copy_circ(&mut self, copy_id: i64) -> Result<Option<json::JsonValue>, String> {
         let search = json::object! {
             target_copy: copy_id,

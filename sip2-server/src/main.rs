@@ -6,6 +6,7 @@ mod item;
 mod patron;
 mod server;
 mod session;
+mod util;
 
 const HELP_TEXT: &str = r#"
 

@@ -94,6 +94,10 @@ impl Session {
         self.account.as_ref()
     }
 
+    pub fn account_mut(&mut self) -> Option<&mut conf::SipAccount> {
+        self.account.as_mut()
+    }
+
     pub fn sip_config(&self) -> &conf::Config {
         &self.sip_config
     }
@@ -130,26 +134,12 @@ impl Session {
         }
     }
 
-    /// Attempts to relogin if a NO_SESSION event is returned and optionally
-    /// returns any other event that is unpacked.
-    /// Returns None of the response it not an event.
-    pub fn unpack_response_event(
-        &mut self,
-        response: &json::JsonValue,
-    ) -> Result<Option<eg::event::EgEvent>, String> {
-        if let Some(evt) = eg::event::EgEvent::parse(response) {
-            if evt.textcode().eq("NO_SESSION") {
-                self.login()?;
-                Ok(None)
-            } else {
-                Ok(Some(evt))
-            }
-        } else {
-            Ok(None)
+    /// Cache the user id after the first lookup
+    fn get_ils_user_id(&mut self) -> Result<i64, String> {
+        if let Some(id) = self.account().unwrap().ils_user_id() {
+            return Ok(id);
         }
-    }
 
-    fn login(&mut self) -> Result<(), String> {
         let ils_username = self.account().unwrap().ils_username().to_string();
 
         let search = json::object! {
@@ -164,7 +154,14 @@ impl Session {
             false => Err(format!("No such user: {ils_username}"))?,
         };
 
-        let mut args = auth::AuthInternalLoginArgs::new(user_id, "staff");
+        self.account_mut().unwrap().set_ils_user_id(user_id);
+
+        Ok(user_id)
+    }
+
+    fn login(&mut self) -> Result<(), String> {
+        let ils_user_id = self.get_ils_user_id()?;
+        let mut args = auth::AuthInternalLoginArgs::new(ils_user_id, "staff");
 
         if let Some(acct) = self.account() {
             if let Some(w) = acct.workstation() {
@@ -312,48 +309,6 @@ impl Session {
         }
 
         Ok(resp)
-    }
-
-    /// Translate a number or numeric-string into a number.
-    ///
-    /// Values returned from the database vary in stringy-ness.
-    pub fn parse_id(&self, value: &json::JsonValue) -> Result<i64, String> {
-        if let Some(n) = value.as_i64() {
-            return Ok(n);
-        } else if let Some(s) = value.as_str() {
-            if let Ok(n) = s.parse::<i64>() {
-                return Ok(n);
-            }
-        }
-        Err(format!("Invalid numeric value: {}", value))
-    }
-
-    /// Translate a number or numeric-string into a number.
-    ///
-    /// Values returned from the database vary in stringy-ness.
-    pub fn parse_float(&self, value: &json::JsonValue) -> Result<f64, String> {
-        if let Some(n) = value.as_f64() {
-            return Ok(n);
-        } else if let Some(s) = value.as_str() {
-            if let Ok(n) = s.parse::<f64>() {
-                return Ok(n);
-            }
-        }
-        Err(format!("Invalid float value: {}", value))
-    }
-
-    // The server returns a variety of true-ish values.
-    pub fn parse_bool(&self, value: &json::JsonValue) -> bool {
-        if let Some(n) = value.as_i64() {
-            n != 0
-        } else if let Some(s) = value.as_str() {
-            s.len() > 0 && (s[..1].eq("t") || s[..1].eq("T"))
-        } else if let Some(b) = value.as_bool() {
-            b
-        } else {
-            log::warn!("Unexpected boolean value: {value}");
-            false
-        }
     }
 }
 

@@ -1,11 +1,7 @@
 # SIP2 Mediator Configuration File
-#
-# This configuration file is not required to run sip2-mediator.  All values 
-# below have matching command line variants.  Command line parameters 
-# override configuration file paramaters.
 
-# sip2-meditor listens for SIP clients on this address and port.
-sip-address: 127.0.0.1
+# Server listens for SIP clients on this address and port.
+sip-address: "127.0.0.1"
 sip-port: 6001
 
 # Maximum number of allowed SIP client connections.  Once reached,
@@ -20,11 +16,12 @@ ascii: true
 # This must be global since we may not have login info yet.
 sc-status-before-login: false
 
-currency: USD
+# SIP Currency Type value
+currency: "USD"
 
 setting-groups:
-  - name: "default"
-    institution: "default"
+  - name: "default"                     # required
+    institution: "default"              # required
     due-date-use-sip-date-format: true
     patron-status-permit-all: false
     patron-status-permit-loans: false
@@ -34,7 +31,8 @@ setting-groups:
     av-format: "3m"                     # 3m | eg_legacy | swyer_a | swyer_b
 
 accounts:
-  - sip-username: "sip-user"
-    sip-password: "sip-pass"
-    ils-username: "admin"
-    settings: "default"
+  - sip-username: "sip-user"  # SIP CN value
+    sip-password: "sip-pass"  # SIP CO value
+    ils-username: "admin"     # ILS user with SIP-related permissions
+    #workstation: "BR1-PC123"  # Optional.
+    settings: "default"       # Refers to a 'setting-groups' name.

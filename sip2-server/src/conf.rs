@@ -36,7 +36,6 @@ impl From<&str> for AvFormat {
 
 #[derive(Debug, Clone)]
 pub struct SipSettings {
-    name: String,
     institution: String,
     due_date_use_sip_date_format: bool,
     patron_status_permit_all: bool,
@@ -48,9 +47,8 @@ pub struct SipSettings {
 }
 
 impl SipSettings {
-    pub fn new(name: &str, institution: &str) -> Self {
+    pub fn new(institution: &str) -> Self {
         SipSettings {
-            name: name.to_string(),
             institution: institution.to_string(),
             due_date_use_sip_date_format: true,
             patron_status_permit_all: false,
@@ -60,10 +58,6 @@ impl SipSettings {
             msg64_summary_datatype: Msg64SummaryDatatype::Barcode,
             av_format: AvFormat::ThreeM,
         }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
     }
     pub fn institution(&self) -> &str {
         &self.institution
@@ -81,15 +75,19 @@ impl SipSettings {
     pub fn patron_status_permit_loans(&self) -> bool {
         self.patron_status_permit_loans
     }
+    /// Limit holds list to available holds
     pub fn msg64_hold_items_available(&self) -> bool {
         self.msg64_hold_items_available
     }
+    /// Format items as barcodes or titles
     pub fn msg64_summary_datatype(&self) -> &Msg64SummaryDatatype {
         &self.msg64_summary_datatype
     }
+    /// Format holds as item barcodes or titles
     pub fn msg64_hold_datatype(&self) -> &Msg64HoldDatatype {
         &self.msg64_hold_datatype
     }
+    /// Format for fine items
     pub fn av_format(&self) -> &AvFormat {
         &self.av_format
     }
@@ -97,8 +95,8 @@ impl SipSettings {
 
 #[derive(Debug, Clone)]
 pub struct SipAccount {
+    // username is tracked in the config accounts hash.
     settings: SipSettings,
-    sip_username: String,
     sip_password: String,
     ils_username: String,
     ils_user_id: Option<i64>,
@@ -109,9 +107,6 @@ impl SipAccount {
     pub fn settings(&self) -> &SipSettings {
         &self.settings
     }
-    pub fn sip_username(&self) -> &str {
-        &self.sip_username
-    }
     pub fn sip_password(&self) -> &str {
         &self.sip_password
     }
@@ -120,6 +115,9 @@ impl SipAccount {
     }
     pub fn ils_user_id(&self) -> Option<i64> {
         self.ils_user_id
+    }
+    pub fn set_ils_user_id(&mut self, id: i64) {
+        self.ils_user_id = Some(id)
     }
     pub fn workstation(&self) -> Option<&str> {
         self.workstation.as_deref()
@@ -201,7 +199,7 @@ impl Config {
                     .as_str()
                     .expect("Setting group institution required");
 
-                let mut grp = SipSettings::new(name, inst);
+                let mut grp = SipSettings::new(inst);
 
                 if let Some(b) = group["due-date-use-sip-date-format"].as_bool() {
                     grp.due_date_use_sip_date_format = b;
@@ -249,7 +247,6 @@ impl Config {
 
                 let mut acct = SipAccount {
                     settings: sgroup.clone(),
-                    sip_username: username.to_string(),
                     sip_password: account["sip-password"].as_str().unwrap().to_string(),
                     ils_username: account["ils-username"].as_str().unwrap().to_string(),
                     ils_user_id: None,
@@ -265,9 +262,6 @@ impl Config {
         };
     }
 
-    pub fn setting_group(&self, name: &str) -> Option<&SipSettings> {
-        self.setting_groups.get(name)
-    }
     pub fn get_account(&self, username: &str) -> Option<&SipAccount> {
         self.accounts.get(username)
     }
@@ -285,12 +279,6 @@ impl Config {
     }
     pub fn ascii(&self) -> bool {
         self.ascii
-    }
-    pub fn setting_groups(&self) -> &HashMap<String, SipSettings> {
-        &self.setting_groups
-    }
-    pub fn accounts(&self) -> &HashMap<String, SipAccount> {
-        &self.accounts
     }
     pub fn sc_status_before_login(&self) -> bool {
         self.sc_status_before_login
