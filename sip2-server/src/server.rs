@@ -8,15 +8,15 @@ use threadpool::ThreadPool;
 
 pub struct Server {
     ctx: eg::init::Context,
-    config: Config,
+    sip_config: Config,
     sesid: usize,
 }
 
 impl Server {
-    pub fn new(config: Config, ctx: eg::init::Context) -> Server {
+    pub fn new(sip_config: Config, ctx: eg::init::Context) -> Server {
         Server {
             ctx,
-            config,
+            sip_config,
             sesid: 0,
         }
     }
@@ -24,9 +24,9 @@ impl Server {
     pub fn serve(&mut self) {
         log::info!("SIP2Meditor server staring up");
 
-        let pool = ThreadPool::new(self.config.max_clients());
+        let pool = ThreadPool::new(self.sip_config.max_clients());
 
-        let bind = format!("{}:{}", self.config.sip_address(), self.config.sip_port());
+        let bind = format!("{}:{}", self.sip_config.sip_address(), self.sip_config.sip_port());
 
         let listener = TcpListener::bind(bind).expect("Error starting SIP server");
 
@@ -50,14 +50,16 @@ impl Server {
 
     /// Pass the new SIP TCP stream off to a thread for processing.
     fn dispatch(&self, pool: &ThreadPool, stream: TcpStream, sesid: usize) {
-        log::debug!(
+        log::info!(
             "Accepting new SIP connection; active={} pending={}",
             pool.active_count(),
             pool.queued_count()
         );
 
         let threads = pool.active_count() + pool.queued_count();
-        let maxcon = self.config.max_clients();
+        let maxcon = self.sip_config.max_clients();
+
+        log::debug!("Working thread count = {threads}");
 
         if threads >= maxcon {
             log::warn!("Max clients={maxcon} reached.  Rejecting new connections");
@@ -70,7 +72,7 @@ impl Server {
         }
 
         // Hand the stream off for processing.
-        let conf = self.config.clone();
+        let conf = self.sip_config.clone();
         let idl = self.ctx.idl().clone();
         let osrf_config = self.ctx.config().clone();
 

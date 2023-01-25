@@ -7,6 +7,8 @@ use json::JsonValue;
 const JSON_NULL: JsonValue = JsonValue::Null;
 const DEFAULT_LIST_ITEM_SIZE: usize = 10;
 
+/// SIP clients can request detail info for specific types of data.
+/// These are the options.
 #[derive(Debug, Clone)]
 pub enum SummaryListType {
     HoldItems,

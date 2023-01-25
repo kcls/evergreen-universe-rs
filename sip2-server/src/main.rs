@@ -1,6 +1,7 @@
 use evergreen as eg;
 use getopts;
 
+mod checkin;
 mod conf;
 mod item;
 mod patron;

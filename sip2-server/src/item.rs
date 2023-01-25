@@ -165,7 +165,7 @@ impl Session {
         let item = match self.get_item_details(&barcode)? {
             Some(c) => c,
             None => {
-                return Ok(self.return_not_found(&barcode));
+                return Ok(self.return_item_not_found(&barcode));
             }
         };
 
@@ -298,7 +298,7 @@ impl Session {
 
     /// Returns a basic response with an empty title, which indicates
     /// (to some SIP clients, at least) that the item was not found.
-    fn return_not_found(&self, barcode: &str) -> sip2::Message {
+    fn return_item_not_found(&self, barcode: &str) -> sip2::Message {
         log::debug!("No copy found with barcode: {barcode}");
 
         let mut resp = sip2::Message::new(
