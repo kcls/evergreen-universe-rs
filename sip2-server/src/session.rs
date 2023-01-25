@@ -6,6 +6,7 @@ use sip2;
 use std::fmt;
 use std::net;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 // Block this many seconds before waking to see if we need
 // to perform any maintenance / shutdown.
@@ -41,6 +42,8 @@ pub struct Session {
 
     // We won't have some values until the SIP client logs in.
     account: Option<conf::SipAccount>,
+
+    org_sn_cache: HashMap<String, i64>,
 }
 
 impl Session {
@@ -83,11 +86,20 @@ impl Session {
             account: None,
             shutdown: false,
             sip_connection: con,
+            org_sn_cache: HashMap::new(),
         };
 
         if let Err(e) = ses.start() {
             log::error!("{ses} exited on error: {e}");
         }
+    }
+
+    pub fn org_sn_cache(&self) -> &HashMap<String, i64> {
+        &self.org_sn_cache
+    }
+
+    pub fn org_sn_cache_mut(&mut self) -> &mut HashMap<String, i64> {
+        &mut self.org_sn_cache
     }
 
     pub fn account(&self) -> Option<&conf::SipAccount> {

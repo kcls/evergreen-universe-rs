@@ -744,13 +744,7 @@ impl Session {
     }
 
     fn get_patron_penalties(&mut self, user_id: i64) -> Result<Vec<JsonValue>, String> {
-        let requestor = self.editor().requestor().unwrap();
-
-        let mut field = &requestor["ws_ou"];
-        if field.is_null() {
-            field = &requestor["home_ou"];
-        };
-        let ws_org = self.parse_id(field)?;
+        let ws_org = self.get_ws_org_id()?;
 
         let search = json::object! {
             select: {csp: ["id", "block_list"]},

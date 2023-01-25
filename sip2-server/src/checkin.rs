@@ -1,8 +1,46 @@
 use super::session::Session;
+use super::item;
+use chrono::prelude::*;
+use chrono::DateTime;
+
+pub enum AlertType {
+    Unknown,
+    LocalHold,
+    RemoteHold,
+    Ill,
+    Transit,
+    Other,
+}
+
+impl From<&str> for AlertType {
+    fn from(v: &str) -> AlertType {
+        match v {
+            "01" => Self::LocalHold,
+            "02" => Self::RemoteHold,
+            "03" => Self::Ill,
+            "04" => Self::Transit,
+            "99" => Self::Other,
+            _ => Self::Unknown
+        }
+    }
+}
+
+pub struct CheckinResult {
+    ok: bool,
+    alert: bool,
+    current_loc: String,
+    permanent_loc: String,
+    destination_loc: String,
+    patron_barcode: Option<String>,
+    alert_type: Option<AlertType>,
+    hold_patron_name: Option<String>,
+    hold_patron_barcode: Option<String>,
+}
 
 impl Session {
 
     pub fn handle_checkin(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+        self.set_authtoken()?;
 
         let barcode = msg
             .get_field_value("AB")
@@ -11,8 +49,8 @@ impl Session {
         let current_loc_op = msg.get_field_value("AP");
         let return_date = &msg.fixed_fields()[2];
 
-        // cancel == un-fulfill hold this copy currently fulfills
         // KCLS only
+        // cancel == un-fulfill hold this copy currently fulfills
         let cancel_op = msg.get_field_value("BI");
 
         log::info!("Checking in item {barcode}");
@@ -23,6 +61,14 @@ impl Session {
                 return Ok(self.return_checkin_item_not_found(&barcode));
             }
         };
+
+        let result = self.checkin(
+            &item,
+            &current_loc_op,
+            return_date.value(),
+            cancel_op.is_some(),
+            false
+        )?;
 
         todo!()
     }
@@ -46,6 +92,51 @@ impl Session {
         resp.add_field("CV", "00"); // unkown alert type
 
         resp
+    }
+
+    fn checkin(
+        &mut self,
+        item: &item::Item,
+        current_loc_op: &Option<String>,
+        return_date: &str,
+        cancel: bool,
+        ovride: bool
+    ) -> Result<CheckinResult, String> {
+
+        let mut params = json::object! {
+            copy_barcode: item.barcode.as_str(),
+            hold_as_transit: self.account().unwrap().settings().checkin_holds_as_transits(),
+        };
+
+        if cancel {
+            params["revert_hold_fulfillment"] = json::from(cancel);
+        }
+
+        if return_date.trim().len() > 0 {
+            // SIP return date is YYYYMMDD
+
+            if let Some(sip_date) = DateTime::parse_from_str(return_date, "%Y%m%d").ok() {
+                let iso_date = sip_date.format("%Y-%m-%d").to_string();
+                log::info!("Checking in with backdate: {iso_date}");
+
+                params["backdate"] = json::from(iso_date);
+
+            } else {
+                log::warn!("Invalid checkin return date: {return_date}");
+            }
+        }
+
+        if let Some(sn) = current_loc_op {
+            if let Some(org_id) = self.get_org_id_from_sn(sn)? {
+                params["circ_lib"] = json::from(org_id);
+            }
+        }
+
+        if !params.has_key("circ_lib") {
+            params["circ_lib"] = json::from(self.get_ws_org_id()?);
+        }
+
+        todo!()
     }
 }
 

@@ -76,4 +76,35 @@ impl Session {
 
         Ok(resp)
     }
+
+    pub fn get_org_id_from_sn(&mut self, sn: &str) -> Result<Option<i64>, String> {
+        if let Some(id) = self.org_sn_cache().get(sn) {
+            return Ok(Some(*id));
+        }
+
+        let orgs = self.editor_mut().search("aou", json::object! {shortname: sn})?;
+
+        if orgs.len() > 0 {
+            let org = &orgs[0];
+            let id = self.parse_id(&org["id"])?;
+            self.org_sn_cache_mut().insert(sn.to_string(), id);
+            return Ok(Some(id));
+        }
+
+        return Ok(None)
+    }
+
+    /// Panics if this session is not authenticated.
+    pub fn get_ws_org_id(&self) -> Result<i64, String> {
+
+        let requestor = self.editor().requestor()
+            .ok_or(format!("Editor requestor is unset"))?;
+
+        let mut field = &requestor["ws_ou"];
+        if field.is_null() {
+            field = &requestor["home_ou"];
+        };
+
+        self.parse_id(field)
+    }
 }

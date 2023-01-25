@@ -41,6 +41,7 @@ pub struct SipSettings {
     patron_status_permit_all: bool,
     patron_status_permit_loans: bool,
     msg64_hold_items_available: bool,
+    checkin_holds_as_transits: bool,
     msg64_hold_datatype: Msg64HoldDatatype,
     msg64_summary_datatype: Msg64SummaryDatatype,
     av_format: AvFormat,
@@ -54,6 +55,7 @@ impl SipSettings {
             patron_status_permit_all: false,
             patron_status_permit_loans: false,
             msg64_hold_items_available: false,
+            checkin_holds_as_transits: false,
             msg64_hold_datatype: Msg64HoldDatatype::Barcode,
             msg64_summary_datatype: Msg64SummaryDatatype::Barcode,
             av_format: AvFormat::ThreeM,
@@ -90,6 +92,9 @@ impl SipSettings {
     /// Format for fine items
     pub fn av_format(&self) -> &AvFormat {
         &self.av_format
+    }
+    pub fn checkin_holds_as_transits(&self) -> bool {
+        self.checkin_holds_as_transits
     }
 }
 
@@ -204,7 +209,6 @@ impl Config {
                 if let Some(b) = group["due-date-use-sip-date-format"].as_bool() {
                     grp.due_date_use_sip_date_format = b;
                 }
-
                 if let Some(b) = group["patron-status-permit-all"].as_bool() {
                     grp.patron_status_permit_all = b;
                 }
@@ -213,6 +217,9 @@ impl Config {
                 }
                 if let Some(b) = group["msg64-hold-items-available"].as_bool() {
                     grp.msg64_hold_items_available = b;
+                }
+                if let Some(b) = group["checkin-holds-as-transits"].as_bool() {
+                    grp.checkin_holds_as_transits = b;
                 }
                 if let Some(s) = group["msg64-hold-datatype"].as_str() {
                     if s.to_lowercase().starts_with("t") {
