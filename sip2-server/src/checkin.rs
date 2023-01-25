@@ -2,6 +2,7 @@ use super::session::Session;
 use super::item;
 use chrono::prelude::*;
 use chrono::DateTime;
+use evergreen as eg;
 
 pub enum AlertType {
     Unknown,
@@ -103,13 +104,13 @@ impl Session {
         ovride: bool
     ) -> Result<CheckinResult, String> {
 
-        let mut params = json::object! {
+        let mut args = json::object! {
             copy_barcode: item.barcode.as_str(),
             hold_as_transit: self.account().unwrap().settings().checkin_holds_as_transits(),
         };
 
         if cancel {
-            params["revert_hold_fulfillment"] = json::from(cancel);
+            args["revert_hold_fulfillment"] = json::from(cancel);
         }
 
         if return_date.trim().len() > 0 {
@@ -119,7 +120,7 @@ impl Session {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("Checking in with backdate: {iso_date}");
 
-                params["backdate"] = json::from(iso_date);
+                args["backdate"] = json::from(iso_date);
 
             } else {
                 log::warn!("Invalid checkin return date: {return_date}");
@@ -128,13 +129,37 @@ impl Session {
 
         if let Some(sn) = current_loc_op {
             if let Some(org_id) = self.get_org_id_from_sn(sn)? {
-                params["circ_lib"] = json::from(org_id);
+                args["circ_lib"] = json::from(org_id);
             }
         }
 
-        if !params.has_key("circ_lib") {
-            params["circ_lib"] = json::from(self.get_ws_org_id()?);
+        if !args.has_key("circ_lib") {
+            args["circ_lib"] = json::from(self.get_ws_org_id()?);
         }
+
+        let method = match ovride {
+            true => "open-ils.circ.checkin.override",
+            false => "open-ils.circ.checkin",
+        };
+
+        let params = vec![
+            json::from(self.authtoken()?),
+            args
+        ];
+
+        let resp = match
+            self.osrf_client_mut().sendrecvone("open-ils.circ", method, params)? {
+            Some(r) => r,
+            None => Err(format!("API call {method} failed to return a response"))?,
+        };
+
+        let evt_json = match resp {
+            json::JsonValue::Array(list) => list[0].to_owned(),
+            _ => resp
+        };
+
+        let evt = eg::event::EgEvent::parse(&evt_json)
+            .ok_or(format!("API call {method} failed to return an event"))?;
 
         todo!()
     }

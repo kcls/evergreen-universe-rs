@@ -5,6 +5,7 @@ use super::message;
 use super::params::ApiParams;
 use super::session::ResponseIterator;
 use super::session::SessionHandle;
+use super::session::DEFAULT_REQUEST_TIMEOUT;
 use super::util;
 use json::JsonValue;
 use log::{info, trace};
@@ -317,5 +318,21 @@ impl Client {
 
     pub fn config(&self) -> Arc<conf::Config> {
         self.singleton().borrow().config.clone()
+    }
+
+    pub fn sendrecvone<T>(
+        &self,
+        service: &str,
+        method: &str,
+        params: T,
+    ) -> Result<Option<JsonValue>, String>
+    where
+        T: Into<ApiParams>,
+    {
+        let mut ses = self.session(service);
+        let mut req = ses.request(method, params)?;
+
+        // Recieve at most one response then exit.
+        req.recv(DEFAULT_REQUEST_TIMEOUT)
     }
 }

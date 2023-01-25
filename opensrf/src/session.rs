@@ -18,7 +18,7 @@ use std::fmt;
 use std::rc::Rc;
 
 const CONNECT_TIMEOUT: i32 = 10;
-const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
+pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 
 /// Response data propagated from a session to the calling Request.
 struct Response {
