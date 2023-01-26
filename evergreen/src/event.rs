@@ -13,6 +13,7 @@ pub struct EgEvent {
     ilsperm: Option<String>,
     ilspermloc: isize,
     success: bool,
+    org: Option<i64>,
 }
 
 impl fmt::Display for EgEvent {
@@ -44,6 +45,7 @@ impl EgEvent {
             desc: None,
             debug: None,
             note: None,
+            org: None,
             servertime: None,
             ilsperm: None,
             ilspermloc: 0,
@@ -89,6 +91,10 @@ impl EgEvent {
 
     pub fn success(&self) -> bool {
         self.success
+    }
+
+    pub fn org(&self) -> &Option<i64> {
+        &self.org
     }
 
     /// Parses a JsonValue and optionally returns an EgEvent.
@@ -139,6 +145,7 @@ impl EgEvent {
             desc: None,
             debug: None,
             note: None,
+            org: None,
             servertime: None,
             ilsperm: None,
             ilspermloc: -1,
@@ -151,6 +158,10 @@ impl EgEvent {
 
         if let Some(permloc) = jv["ilspermloc"].as_isize() {
             evt.ilspermloc = permloc;
+        }
+
+        if let Some(org) = jv["org"].as_i64() {
+            evt.org = Some(org);
         }
 
         for field in vec!["desc", "debug", "note", "servertime", "ilsperm"] {

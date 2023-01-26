@@ -102,12 +102,18 @@ impl Session {
         &mut self.org_sn_cache
     }
 
-    pub fn account(&self) -> Option<&conf::SipAccount> {
-        self.account.as_ref()
+    pub fn has_account(&self) -> bool {
+        self.account.is_some()
     }
 
-    pub fn account_mut(&mut self) -> Option<&mut conf::SipAccount> {
-        self.account.as_mut()
+    /// Panics if no account has been set
+    pub fn account(&self) -> &conf::SipAccount {
+        self.account.as_ref().expect("No account set")
+    }
+
+    /// Panics if no account has been set
+    pub fn account_mut(&mut self) -> &mut conf::SipAccount {
+        self.account.as_mut().expect("No account set")
     }
 
     pub fn sip_config(&self) -> &conf::Config {
@@ -148,11 +154,11 @@ impl Session {
 
     /// Cache the user id after the first lookup
     fn get_ils_user_id(&mut self) -> Result<i64, String> {
-        if let Some(id) = self.account().unwrap().ils_user_id() {
+        if let Some(id) = self.account().ils_user_id() {
             return Ok(id);
         }
 
-        let ils_username = self.account().unwrap().ils_username().to_string();
+        let ils_username = self.account().ils_username().to_string();
 
         let search = json::object! {
             usrname: ils_username.as_str(),
@@ -166,7 +172,7 @@ impl Session {
             false => Err(format!("No such user: {ils_username}"))?,
         };
 
-        self.account_mut().unwrap().set_ils_user_id(user_id);
+        self.account_mut().set_ils_user_id(user_id);
 
         Ok(user_id)
     }
@@ -175,8 +181,8 @@ impl Session {
         let ils_user_id = self.get_ils_user_id()?;
         let mut args = auth::AuthInternalLoginArgs::new(ils_user_id, "staff");
 
-        if let Some(acct) = self.account() {
-            if let Some(w) = acct.workstation() {
+        if self.has_account() {
+            if let Some(w) = self.account().workstation() {
                 args.workstation = Some(w.to_string());
             }
         }

@@ -31,7 +31,7 @@ pub struct CheckinResult {
     alert: bool,
     current_loc: String,
     permanent_loc: String,
-    destination_loc: String,
+    destination_loc: Option<String>,
     patron_barcode: Option<String>,
     alert_type: Option<AlertType>,
     hold_patron_name: Option<String>,
@@ -68,7 +68,7 @@ impl Session {
             &current_loc_op,
             return_date.value(),
             cancel_op.is_some(),
-            false
+            self.account().settings().checkin_override_all(),
         )?;
 
         todo!()
@@ -89,7 +89,7 @@ impl Session {
         );
 
         resp.add_field("AB", &barcode);
-        resp.add_field("AO", self.account().unwrap().settings().institution());
+        resp.add_field("AO", self.account().settings().institution());
         resp.add_field("CV", "00"); // unkown alert type
 
         resp
@@ -106,7 +106,7 @@ impl Session {
 
         let mut args = json::object! {
             copy_barcode: item.barcode.as_str(),
-            hold_as_transit: self.account().unwrap().settings().checkin_holds_as_transits(),
+            hold_as_transit: self.account().settings().checkin_holds_as_transits(),
         };
 
         if cancel {
@@ -128,7 +128,7 @@ impl Session {
         }
 
         if let Some(sn) = current_loc_op {
-            if let Some(org_id) = self.get_org_id_from_sn(sn)? {
+            if let Some(org_id) = self.org_id_from_sn(sn)? {
                 args["circ_lib"] = json::from(org_id);
             }
         }
@@ -142,10 +142,7 @@ impl Session {
             false => "open-ils.circ.checkin",
         };
 
-        let params = vec![
-            json::from(self.authtoken()?),
-            args
-        ];
+        let params = vec![json::from(self.authtoken()?), args];
 
         let resp = match
             self.osrf_client_mut().sendrecvone("open-ils.circ", method, params)? {
@@ -161,7 +158,80 @@ impl Session {
         let evt = eg::event::EgEvent::parse(&evt_json)
             .ok_or(format!("API call {method} failed to return an event"))?;
 
+        if !ovride &&
+            self.account().settings().checkin_override().contains(&evt.textcode().to_string()) {
+            return self.checkin(item, current_loc_op, return_date, cancel, true);
+        }
+
+        let mut current_loc = item.current_loc.to_string();     // item.circ_lib
+        let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
+        let mut destination_loc = None;
+        if let Some(org_id) = evt.org() {
+            destination_loc = self.org_sn_from_id(*org_id)?;
+        }
+
+        let copy = &evt.payload()["copy"];
+        if copy.is_object() {
+            // If the API returned a copy, collect data about the copy
+            // for our response.  It could mean the copy's circ lib
+            // changed because it floats.
+
+            if let Ok(circ_lib) = self.parse_id(&copy["circ_lib"]) {
+                if circ_lib != item.circ_lib {
+                    if let Some(loc) = self.org_sn_from_id(circ_lib)? {
+                        current_loc = loc.to_string();
+                        permanent_loc = loc.to_string();
+                    }
+                }
+            }
+        }
+
+        let mut result = CheckinResult {
+            ok: false,
+            alert: false,
+            current_loc,
+            permanent_loc,
+            destination_loc,
+            patron_barcode: None,
+            alert_type: None,
+            hold_patron_name: None,
+            hold_patron_barcode: None,
+        };
+
+        let circ = &evt.payload()["circ"];
+        if circ.is_object() {
+            // If we checked in a circ, collect some data about it.
+
+            let ops = json::object! {
+                flesh: 1,
+                flesh_fields: {au: ["card"]}
+            };
+
+            let user_id = self.parse_id(&circ["usr"])?;
+            let user = self.editor_mut().retrieve_with_ops("au", user_id, ops)?
+                .expect("Circ user should be defined");
+
+            // Technically possible for barcode value to be null.
+            if let Some(bc) = user["card"]["barcode"].as_str() {
+                result.patron_barcode = Some(bc.to_string());
+            }
+        }
+
+        self.handle_hold(&evt, &mut result)?;
+
+        // MORE TODO HERE
+
+        Ok(result)
+    }
+
+    fn handle_hold(
+        &mut self,
+        evt: &eg::event::EgEvent,
+        result: &mut CheckinResult
+    ) -> Result<(), String> {
+
         todo!()
+
     }
 }
 

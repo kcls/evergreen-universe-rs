@@ -45,6 +45,10 @@ pub struct SipSettings {
     msg64_hold_datatype: Msg64HoldDatatype,
     msg64_summary_datatype: Msg64SummaryDatatype,
     av_format: AvFormat,
+    checkout_override_all: bool,
+    checkin_override_all: bool,
+    checkout_override: Vec<String>,
+    checkin_override: Vec<String>,
 }
 
 impl SipSettings {
@@ -59,6 +63,10 @@ impl SipSettings {
             msg64_hold_datatype: Msg64HoldDatatype::Barcode,
             msg64_summary_datatype: Msg64SummaryDatatype::Barcode,
             av_format: AvFormat::ThreeM,
+            checkout_override_all: false,
+            checkin_override_all: false,
+            checkout_override: Vec::new(),
+            checkin_override: Vec::new(),
         }
     }
     pub fn institution(&self) -> &str {
@@ -95,6 +103,18 @@ impl SipSettings {
     }
     pub fn checkin_holds_as_transits(&self) -> bool {
         self.checkin_holds_as_transits
+    }
+    pub fn checkout_override_all(&self) -> bool {
+        self.checkout_override_all
+    }
+    pub fn checkin_override_all(&self) -> bool {
+        self.checkin_override_all
+    }
+    pub fn checkout_override(&self) -> &Vec<String> {
+        &self.checkout_override
+    }
+    pub fn checkin_override(&self) -> &Vec<String> {
+        &self.checkin_override
     }
 }
 
@@ -221,6 +241,13 @@ impl Config {
                 if let Some(b) = group["checkin-holds-as-transits"].as_bool() {
                     grp.checkin_holds_as_transits = b;
                 }
+                if let Some(b) = group["checkout-override-all"].as_bool() {
+                    grp.checkout_override_all = b;
+                }
+                if let Some(b) = group["checkin-override-all"].as_bool() {
+                    grp.checkin_override_all = b;
+                }
+
                 if let Some(s) = group["msg64-hold-datatype"].as_str() {
                     if s.to_lowercase().starts_with("t") {
                         grp.msg64_hold_datatype = Msg64HoldDatatype::Title;
@@ -233,6 +260,22 @@ impl Config {
                 }
                 if let Some(s) = group["av-format"].as_str() {
                     grp.av_format = s.into();
+                }
+
+                if group["checkin-override"].is_array() {
+                    for ovride in group["checkin-override"].as_vec().unwrap() {
+                        if let Some(code) = ovride.as_str() {
+                            grp.checkin_override.push(code.to_string());
+                        }
+                    }
+                }
+
+                if group["checkout-override"].is_array() {
+                    for ovride in group["checkout-override"].as_vec().unwrap() {
+                        if let Some(code) = ovride.as_str() {
+                            grp.checkout_override.push(code.to_string());
+                        }
+                    }
                 }
 
                 log::debug!("Adding setting group '{name}'");

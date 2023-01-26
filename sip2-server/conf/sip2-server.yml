@@ -20,8 +20,13 @@ sc-status-before-login: false
 currency: "USD"
 
 setting-groups:
-  - name: "default"                     # required
-    institution: "default"              # required
+
+    # Free-form name for this collection of settings.
+  - name: "default"
+
+    # SIP institution value
+    institution: "default"
+
     due-date-use-sip-date-format: true
     patron-status-permit-all: false
     patron-status-permit-loans: false
@@ -29,11 +34,35 @@ setting-groups:
     checkin-holds-as-transits: false
     msg64-hold-datatype: "barcode"      # barcode | title
     msg64-summary-datatype: "barcode"   # barcode | title
-    av-format: "3m"                     # 3m | eg_legacy | swyer_a | swyer_b
+    
+    # Format of patron fines.
+    # Options: 3m | eg_legacy | swyer_a | swyer_b
+    av-format: "3m"         
+
+    # If true, all checkin calls are made with the global override flag
+    checkin-override-all: false
+     
+    # If true, all checkout calls are mde with the global override flag
+    checkout-override-all: false
+
+    # List of checkin event text codes to automatically override
+    checkin-override:
+      - "COPY_ALERT_MESSAGE"
+      - "COPY_BAD_STATUS"
+      - "COPY_STATUS_MISSING"
+      - "COPY_STATUS_LOST"
+
+    # List of checkout event codes to automatically override.
+    checkout-override:
+      - "COPY_ALERT_MESSAGE"
+      - "COPY_NOT_AVAILABLE"
+      - "COPY_IN_TRANSIT"
+      - "PATRON_EXCEEDS_FINES"
 
 accounts:
   - sip-username: "sip-user"  # SIP CN value
     sip-password: "sip-pass"  # SIP CO value
     ils-username: "admin"     # ILS user with SIP-related permissions
-    #workstation: "BR1-PC123"  # Optional.
+    #workstation: "BR1-PC123" # Optional.
     settings: "default"       # Refers to a 'setting-groups' name.
+

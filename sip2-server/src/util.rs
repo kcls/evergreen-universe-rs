@@ -77,7 +77,7 @@ impl Session {
         Ok(resp)
     }
 
-    pub fn get_org_id_from_sn(&mut self, sn: &str) -> Result<Option<i64>, String> {
+    pub fn org_id_from_sn(&mut self, sn: &str) -> Result<Option<i64>, String> {
         if let Some(id) = self.org_sn_cache().get(sn) {
             return Ok(Some(*id));
         }
@@ -92,6 +92,24 @@ impl Session {
         }
 
         return Ok(None)
+    }
+
+    pub fn org_sn_from_id(&mut self, org_id: i64) -> Result<Option<String>, String> {
+        for (sn, id) in self.org_sn_cache() {
+            if id == &org_id {
+                return Ok(Some(sn.to_string()));
+            }
+        }
+
+        let org = match self.editor_mut().retrieve("aou", org_id)? {
+            Some(o) => o,
+            None => return Ok(None)
+        };
+
+        let sn = org["shortname"].as_str().unwrap();
+        self.org_sn_cache_mut().insert(sn.to_string(), org_id);
+
+        Ok(Some(sn.to_string()))
     }
 
     /// Panics if this session is not authenticated.

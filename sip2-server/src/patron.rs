@@ -240,7 +240,7 @@ impl Session {
             None => "",
         };
 
-        match self.account().unwrap().settings().av_format() {
+        match self.account().settings().av_format() {
             conf::AvFormat::Legacy => {
                 line = format!("{:.2} {}", balance_owed, last_btype);
                 if is_circ {
@@ -346,14 +346,9 @@ impl Session {
     }
 
     fn circ_id_to_value(&mut self, id: i64) -> Result<String, String> {
-        let format = self
-            .account()
-            .unwrap()
-            .settings()
-            .msg64_summary_datatype()
-            .clone();
+        let format = self.account().settings().msg64_summary_datatype();
 
-        if format == conf::Msg64SummaryDatatype::Barcode {
+        if format == &conf::Msg64SummaryDatatype::Barcode {
             let flesh = json::object! {
                 flesh: 1,
                 flesh_fields: {circ: ["target_copy"]},
@@ -406,12 +401,7 @@ impl Session {
         summary_ops: &SummaryListOptions,
         unavail: bool,
     ) -> Result<(), String> {
-        let format = self
-            .account()
-            .unwrap()
-            .settings()
-            .msg64_hold_datatype()
-            .clone();
+        let format = self.account().settings().msg64_hold_datatype().clone();
 
         let hold_ids = match unavail {
             true => &patron.unavail_hold_ids,
@@ -606,12 +596,7 @@ impl Session {
               {current_shelf_lib: JSON_NULL},
               {current_shelf_lib: {"!=": {"+ahr": "pickup_lib"}}}
             ];
-        } else if self
-            .account()
-            .unwrap()
-            .settings()
-            .msg64_hold_items_available()
-        {
+        } else if self.account().settings().msg64_hold_items_available() {
             search["current_shelf_lib"] = json::object! {"=": {"+ahr": "pickup_lib"}};
         }
 
@@ -672,12 +657,7 @@ impl Session {
             return Ok(());
         }
 
-        if self
-            .account()
-            .unwrap()
-            .settings()
-            .patron_status_permit_all()
-        {
+        if self.account().settings().patron_status_permit_all() {
             // This setting group allows all patron actions regardless
             // of penalties, fines, etc.
             return Ok(());
@@ -707,12 +687,7 @@ impl Session {
 
         patron.holds_denied = blocked || block_tags.contains("HOLDS");
 
-        if self
-            .account()
-            .unwrap()
-            .settings()
-            .patron_status_permit_loans()
-        {
+        if self.account().settings().patron_status_permit_loans() {
             // We're going to ignore checkout, renewals blocks for now.
             return Ok(());
         }
@@ -941,7 +916,7 @@ impl Session {
                 Vec::new(),
             );
 
-            resp.add_field("AO", self.account().unwrap().settings().institution());
+            resp.add_field("AO", self.account().settings().institution());
             resp.add_field("AA", barcode);
             resp.add_field("BL", sip2::util::sip_bool(false)); // valid patron
             resp.add_field("CQ", sip2::util::sip_bool(false)); // valid patron password
@@ -982,7 +957,7 @@ impl Session {
         );
 
         resp.add_field("AA", barcode);
-        resp.add_field("AO", self.account().unwrap().settings().institution());
+        resp.add_field("AO", self.account().settings().institution());
         resp.add_field("BH", self.sip_config().currency());
         resp.add_field("BL", sip2::util::sip_bool(true)); // valid patron
         resp.add_field("BV", &format!("{:.2}", patron.balance_owed));

@@ -2,6 +2,7 @@ use super::session::Session;
 
 pub struct Item {
     pub barcode: String,
+    pub circ_lib: i64,
     pub due_date: Option<String>,
     pub circ_status: String,
     pub fee_type: String,
@@ -51,7 +52,6 @@ impl Session {
             if let Some(iso_date) = circ["due_date"].as_str() {
                 if self
                     .account()
-                    .unwrap()
                     .settings()
                     .due_date_use_sip_date_format()
                 {
@@ -65,6 +65,7 @@ impl Session {
             }
         }
 
+        let circ_lib_id = self.parse_id(&copy["circ_lib"]["id"])?;
         let circ_lib = copy["circ_lib"]["shortname"].as_str().unwrap(); // required
         let owning_lib = copy["call_number"]["owning_lib"]["shortname"]
             .as_str()
@@ -141,6 +142,7 @@ impl Session {
             barcode: barcode.to_string(),
             due_date,
             title,
+            circ_lib: circ_lib_id,
             deposit_amount,
             hold_queue_length,
             fee_type: fee_type.to_string(),
