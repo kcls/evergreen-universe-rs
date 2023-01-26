@@ -12,6 +12,7 @@ pub struct Item {
     pub destination_loc: String,
     pub owning_loc: String,
     pub deposit_amount: f64,
+    pub magnetic_media: bool,
     pub hold_queue_length: usize,
     pub media_type: String,
     pub hold_pickup_date: Option<String>,
@@ -132,6 +133,8 @@ impl Session {
             None => "001",
         };
 
+        let magnetic_media = self.parse_bool(&copy["circ_modifier"]["magnetic_media"]);
+
         let (title, _) = self.get_copy_title_author(&copy)?;
         let title = match title {
             Some(t) => t,
@@ -145,6 +148,7 @@ impl Session {
             circ_lib: circ_lib_id,
             deposit_amount,
             hold_queue_length,
+            magnetic_media,
             fee_type: fee_type.to_string(),
             circ_status: circ_status.to_string(),
             current_loc: circ_lib.to_string(),

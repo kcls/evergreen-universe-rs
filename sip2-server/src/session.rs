@@ -283,10 +283,10 @@ impl Session {
             None => Err(format!("No such account: {username}"))?,
         };
 
-        let mut login_ok = "0";
+        let mut login_ok = sip2::util::num_bool(false);
 
         if account.sip_password().eq(&password) {
-            login_ok = "1";
+            login_ok = sip2::util::num_bool(true);
             self.account = Some(account.clone());
         } else {
             self.account = None;

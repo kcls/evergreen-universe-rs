@@ -59,3 +59,10 @@ pub fn sip_bool(value: bool) -> &'static str {
         false => "N",
     }
 }
+
+pub fn num_bool(value: bool) -> &'static str {
+    match value {
+        true => "1",
+        false => "0",
+    }
+}

@@ -1,6 +1,5 @@
 use super::session::Session;
 use super::item;
-use chrono::prelude::*;
 use chrono::DateTime;
 use evergreen as eg;
 
@@ -16,19 +15,32 @@ pub enum AlertType {
 impl From<&str> for AlertType {
     fn from(v: &str) -> AlertType {
         match v {
+            "00" => Self::Unknown,
             "01" => Self::LocalHold,
             "02" => Self::RemoteHold,
             "03" => Self::Ill,
             "04" => Self::Transit,
             "99" => Self::Other,
-            _ => Self::Unknown
+            _ => panic!("Unknown alert type: {}", v),
+        }
+    }
+}
+
+impl From<AlertType> for &str {
+    fn from(a: AlertType) -> &'static str {
+        match a {
+            AlertType::Unknown => "00",
+            AlertType::LocalHold => "01",
+            AlertType::RemoteHold => "02",
+            AlertType::Ill => "03",
+            AlertType::Transit => "04",
+            AlertType::Other => "99",
         }
     }
 }
 
 pub struct CheckinResult {
     ok: bool,
-    alert: bool,
     current_loc: String,
     permanent_loc: String,
     destination_loc: Option<String>,
@@ -71,7 +83,49 @@ impl Session {
             self.account().settings().checkin_override_all(),
         )?;
 
-        todo!()
+        let mut resp = sip2::Message::new(
+            &sip2::spec::M_CHECKIN_RESP,
+            vec![
+                sip2::FixedField::new(&sip2::spec::FF_CHECKIN_OK,
+                    sip2::util::num_bool(result.ok)).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_RESENSITIZE,
+                    sip2::util::sip_bool(!item.magnetic_media)).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_MAGNETIC_MEDIA,
+                    sip2::util::sip_bool(item.magnetic_media)).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_ALERT,
+                    sip2::util::sip_bool(result.alert_type.is_some())).unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_DATE,
+                    &sip2::util::sip_date_now()).unwrap(),
+            ],
+            Vec::new(),
+        );
+
+        resp.add_field("AB", &barcode);
+        resp.add_field("AO", self.account().settings().institution());
+        resp.add_field("AJ", &item.title);
+        resp.add_field("AP", &result.current_loc);
+        resp.add_field("AP", &result.permanent_loc);
+        resp.add_field("BG", &item.owning_loc);
+        resp.add_field("BT", &item.fee_type);
+        resp.add_field("CI", sip2::util::num_bool(false));
+
+        if let Some(ref bc) = result.patron_barcode {
+            resp.add_field("AA", bc);
+        }
+        if let Some(at) = result.alert_type {
+            resp.add_field("CV", at.into());
+        }
+        if let Some(ref loc) = result.destination_loc {
+            resp.add_field("CT", loc);
+        }
+        if let Some(ref bc) = result.hold_patron_barcode {
+            resp.add_field("CY", bc);
+        }
+        if let Some(ref n) = result.hold_patron_name {
+            resp.add_field("DA", n);
+        }
+
+        Ok(resp)
     }
 
     fn return_checkin_item_not_found(&self, barcode: &str) -> sip2::Message {
@@ -90,7 +144,7 @@ impl Session {
 
         resp.add_field("AB", &barcode);
         resp.add_field("AO", self.account().settings().institution());
-        resp.add_field("CV", "00"); // unkown alert type
+        resp.add_field("CV", AlertType::Unknown.into());
 
         resp
     }
@@ -188,7 +242,6 @@ impl Session {
 
         let mut result = CheckinResult {
             ok: false,
-            alert: false,
             current_loc,
             permanent_loc,
             destination_loc,
@@ -209,11 +262,27 @@ impl Session {
 
         self.handle_hold(&evt, &mut result)?;
 
-        // MORE TODO HERE
+        if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
+            result.ok = true;
+        } else if evt.textcode().eq("ROUTE_ITEM") {
+
+            result.ok = true;
+            if result.alert_type.is_none() {
+                result.alert_type = Some(AlertType::Transit);
+            }
+
+        } else {
+            result.ok = false;
+            if result.alert_type.is_none() {
+                result.alert_type = Some(AlertType::Unknown);
+            }
+        }
 
         Ok(result)
     }
 
+    /// See if checkin resulted in a hold capture and collect
+    /// related info.
     fn handle_hold(
         &mut self,
         evt: &eg::event::EgEvent,
@@ -238,25 +307,23 @@ impl Session {
             }
         }
 
-
-        let pl_id;
-        let pl = &hold["pickup_lib"];
+        let pickup_lib_id;
+        let pickup_lib = &hold["pickup_lib"];
 
         // hold pickup lib may or may not be fleshed here.
-        if pl.is_object() {
+        if pickup_lib.is_object() {
 
             result.destination_loc =
-                Some(pl["shortname"].as_str().unwrap().to_string());
-            pl_id = self.parse_id(&pl["id"])?;
+                Some(pickup_lib["shortname"].as_str().unwrap().to_string());
+            pickup_lib_id = self.parse_id(&pickup_lib["id"])?;
 
         } else {
 
-            pl_id = self.parse_id(&pl)?;
-            result.destination_loc = self.org_sn_from_id(pl_id)?;
+            pickup_lib_id = self.parse_id(&pickup_lib)?;
+            result.destination_loc = self.org_sn_from_id(pickup_lib_id)?;
         }
 
-        result.alert = true;
-        if pl_id == self.get_ws_org_id()? {
+        if pickup_lib_id == self.get_ws_org_id()? {
             result.alert_type = Some(AlertType::LocalHold);
         } else {
             result.alert_type = Some(AlertType::RemoteHold);

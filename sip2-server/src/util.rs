@@ -40,7 +40,6 @@ impl Session {
         } else if let Some(b) = value.as_bool() {
             b
         } else {
-            log::warn!("Unexpected boolean value: {value}");
             false
         }
     }
