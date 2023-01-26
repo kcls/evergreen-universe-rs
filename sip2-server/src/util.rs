@@ -125,4 +125,32 @@ impl Session {
 
         self.parse_id(field)
     }
+
+    pub fn get_user_and_card(&mut self, user_id: i64) -> Result<Option<json::JsonValue>, String> {
+
+        let ops = json::object! {
+            flesh: 1,
+            flesh_fields: {au: ["card"]}
+        };
+
+        self.editor_mut().retrieve_with_ops("au", user_id, ops)
+    }
+
+    pub fn format_user_name(&self, user: &json::JsonValue) -> String {
+        let mut name = String::new();
+
+        if let Some(n) = user["first_given_name"].as_str() {
+            name += n;
+        }
+
+        if let Some(n) = user["second_given_name"].as_str() {
+            name += &format!(" {n}");
+        }
+
+        if let Some(n) = user["first_given_name"].as_str() {
+            name += &format!(" {n}");
+        }
+
+        name
+    }
 }

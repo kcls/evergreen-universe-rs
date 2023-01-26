@@ -200,20 +200,10 @@ impl Session {
 
         let circ = &evt.payload()["circ"];
         if circ.is_object() {
-            // If we checked in a circ, collect some data about it.
-
-            let ops = json::object! {
-                flesh: 1,
-                flesh_fields: {au: ["card"]}
-            };
-
-            let user_id = self.parse_id(&circ["usr"])?;
-            let user = self.editor_mut().retrieve_with_ops("au", user_id, ops)?
-                .expect("Circ user should be defined");
-
-            // Technically possible for barcode value to be null.
-            if let Some(bc) = user["card"]["barcode"].as_str() {
-                result.patron_barcode = Some(bc.to_string());
+            if let Some(user) = self.get_user_and_card(self.parse_id(&circ["usr"])?)? {
+                if let Some(bc) = user["card"]["barcode"].as_str() {
+                    result.patron_barcode = Some(bc.to_string());
+                }
             }
         }
 
@@ -230,8 +220,49 @@ impl Session {
         result: &mut CheckinResult
     ) -> Result<(), String> {
 
-        todo!()
+        let rh = &evt.payload()["remote_hold"];
+        let lh = &evt.payload()["hold"];
 
+        let hold = if rh.is_object() {
+            rh
+        } else if lh.is_object() {
+            lh
+        } else {
+            return Ok(());
+        };
+
+        if let Some(user) = self.get_user_and_card(self.parse_id(&hold["usr"])?)? {
+            result.hold_patron_name = Some(self.format_user_name(&user));
+            if let Some(bc) = user["card"]["barcode"].as_str() {
+                result.hold_patron_barcode = Some(bc.to_string());
+            }
+        }
+
+
+        let pl_id;
+        let pl = &hold["pickup_lib"];
+
+        // hold pickup lib may or may not be fleshed here.
+        if pl.is_object() {
+
+            result.destination_loc =
+                Some(pl["shortname"].as_str().unwrap().to_string());
+            pl_id = self.parse_id(&pl["id"])?;
+
+        } else {
+
+            pl_id = self.parse_id(&pl)?;
+            result.destination_loc = self.org_sn_from_id(pl_id)?;
+        }
+
+        result.alert = true;
+        if pl_id == self.get_ws_org_id()? {
+            result.alert_type = Some(AlertType::LocalHold);
+        } else {
+            result.alert_type = Some(AlertType::RemoteHold);
+        }
+
+        Ok(())
     }
 }
 
