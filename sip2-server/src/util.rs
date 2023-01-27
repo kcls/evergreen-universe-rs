@@ -1,4 +1,6 @@
 use super::session::Session;
+use chrono::prelude::*;
+use chrono::DateTime;
 
 // NOTE some of these could live in opensrf.
 
@@ -152,4 +154,14 @@ impl Session {
 
         name
     }
+
+    /// Create a DateTime from a Postgres date string.
+    ///
+    /// chrono has a parse_from_rfc3339() function, but it does
+    /// not like time zones without colons.  Dates, amiright?
+    pub fn parse_pg_date(&self, pg_iso_date: &str) -> Result<DateTime<FixedOffset>, String> {
+        DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
+            .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}")))
+    }
 }
+

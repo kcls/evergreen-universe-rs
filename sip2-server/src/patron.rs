@@ -1,7 +1,6 @@
 use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
-use chrono::DateTime;
 use json::JsonValue;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
@@ -639,12 +638,7 @@ impl Session {
         patron: &mut Patron,
     ) -> Result<(), String> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
-
-        // chrono has a parse_from_rfc3339() function, but it does
-        // not precisely match the format returned by PG, which uses
-        // timezone without colons.
-        let expire_date = DateTime::parse_from_str(&expire_date_str, "%Y-%m-%dT%H:%M:%S%z")
-            .or_else(|e| Err(format!("Invalid expire date: {e} {expire_date_str}")))?;
+        let expire_date = self.parse_pg_date(&expire_date_str)?;
 
         if expire_date < Local::now() {
             // Patron is expired.  Don't bother checking other penalties, etc.

@@ -90,7 +90,10 @@ impl Session {
         };
 
         if let Err(e) = ses.start() {
-            log::error!("{ses} exited on error: {e}");
+            // This is not necessarily an error.  The client may simply
+            // have disconnected.  There is no "disconnect" message in
+            // SIP -- you just chop off the socket.
+            log::info!("{ses} exited on with message: {e}");
         }
     }
 

@@ -1,6 +1,6 @@
 use super::session::Session;
 use super::item;
-use chrono::DateTime;
+use chrono::NaiveDateTime;
 use evergreen as eg;
 
 pub enum AlertType {
@@ -104,7 +104,7 @@ impl Session {
         resp.add_field("AO", self.account().settings().institution());
         resp.add_field("AJ", &item.title);
         resp.add_field("AP", &result.current_loc);
-        resp.add_field("AP", &result.permanent_loc);
+        resp.add_field("AQ", &result.permanent_loc);
         resp.add_field("BG", &item.owning_loc);
         resp.add_field("BT", &item.fee_type);
         resp.add_field("CI", sip2::util::num_bool(false));
@@ -167,10 +167,12 @@ impl Session {
             args["revert_hold_fulfillment"] = json::from(cancel);
         }
 
-        if return_date.trim().len() > 0 {
-            // SIP return date is YYYYMMDD
+        if return_date.trim().len() == 18 {
+            let fmt = sip2::spec::SIP_DATE_FORMAT;
 
-            if let Some(sip_date) = DateTime::parse_from_str(return_date, "%Y%m%d").ok() {
+            // Use NaiveDate since SIP dates don't typically include a
+            // time zone value.
+            if let Some(sip_date) = NaiveDateTime::parse_from_str(return_date, fmt).ok() {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("Checking in with backdate: {iso_date}");
 
@@ -204,6 +206,8 @@ impl Session {
             None => Err(format!("API call {method} failed to return a response"))?,
         };
 
+        log::debug!("Checkin of {} returned: {resp}", item.barcode);
+
         let evt_json = match resp {
             json::JsonValue::Array(list) => list[0].to_owned(),
             _ => resp
@@ -230,6 +234,8 @@ impl Session {
             // for our response.  It could mean the copy's circ lib
             // changed because it floats.
 
+            log::debug!("Checkin of {} returned a copy object", item.barcode);
+
             if let Ok(circ_lib) = self.parse_id(&copy["circ_lib"]) {
                 if circ_lib != item.circ_lib {
                     if let Some(loc) = self.org_sn_from_id(circ_lib)? {
@@ -253,6 +259,8 @@ impl Session {
 
         let circ = &evt.payload()["circ"];
         if circ.is_object() {
+            log::debug!("Checkin of {} returned a circulation object", item.barcode);
+
             if let Some(user) = self.get_user_and_card(self.parse_id(&circ["usr"])?)? {
                 if let Some(bc) = user["card"]["barcode"].as_str() {
                     result.patron_barcode = Some(bc.to_string());
@@ -299,6 +307,8 @@ impl Session {
         } else {
             return Ok(());
         };
+
+        log::debug!("Checkin returned a hold object id={}", hold["id"]);
 
         if let Some(user) = self.get_user_and_card(self.parse_id(&hold["usr"])?)? {
             result.hold_patron_name = Some(self.format_user_name(&user));

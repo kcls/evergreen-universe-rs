@@ -56,11 +56,22 @@ impl Server {
             pool.queued_count()
         );
 
+        // TODO
+        // Just because a thread is 'active' does not mean the SIP
+        // client it manages is sending requests.  It may just be hunkered
+        // down on the socket, idle for long stretches of time.
+        // Consider an option to send a message to SIP threads telling
+        // idle threads to self-destruct in cases where we hit/approach
+        // the max thread limit.
+
         let threads = pool.active_count() + pool.queued_count();
         let maxcon = self.sip_config.max_clients();
 
         log::debug!("Working thread count = {threads}");
 
+        // It does no good to queue up a new connection if we hit max
+        // threads, because active threads have a long life time, even
+        // when they are not currently busy.
         if threads >= maxcon {
             log::warn!("Max clients={maxcon} reached.  Rejecting new connections");
 

@@ -56,10 +56,9 @@ impl Session {
                     .settings()
                     .due_date_use_sip_date_format()
                 {
-                    due_date = match sip2::util::sip_date(iso_date) {
-                        Ok(d) => Some(d),
-                        Err(e) => Err(format!("Cannot parse due date: {iso_date} {e}"))?,
-                    }
+
+                    let due_dt = self.parse_pg_date(iso_date)?;
+                    due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
                     due_date = Some(iso_date.to_string());
                 }
@@ -92,9 +91,8 @@ impl Session {
                 .to_string();
 
             if let Some(date) = hold["shelf_expire_time"].as_str() {
-                if let Ok(date2) = sip2::util::sip_date(date) {
-                    hold_pickup_date_op = Some(date2);
-                }
+                let pu_date = self.parse_pg_date(date)?;
+                hold_pickup_date_op = Some(sip2::util::sip_date_from_dt(&pu_date));
             }
 
             if let Some(bc) = hold["usr"]["card"]["barcode"].as_str() {
