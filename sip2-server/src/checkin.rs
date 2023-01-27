@@ -123,24 +123,20 @@ impl Session {
     }
 
     fn return_checkin_item_not_found(&self, barcode: &str) -> sip2::Message {
-
-        let mut resp = sip2::Message::new(
-            &sip2::spec::M_CHECKIN_RESP,
-            vec![
-                sip2::FixedField::new(&sip2::spec::FF_CHECKIN_OK, sip2::util::num_bool(false)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_RESENSITIZE, sip2::util::sip_bool(false)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_MAGNETIC_MEDIA, sip2::util::sip_bool(false)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_ALERT, "N").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
+        sip2::Message::from_values(
+            "10",
+            &[
+                sip2::util::num_bool(false), // checkin ok
+                sip2::util::sip_bool(false), // resensitize
+                sip2::util::sip_bool(false), // magnetic
+                sip2::util::sip_bool(false), // alert
+                &sip2::util::sip_date_now(),
+            ], &[
+                ("AB", &barcode),
+                ("AO", self.account().settings().institution()),
+                ("CV", AlertType::Unknown.into()),
             ],
-            Vec::new(),
-        );
-
-        resp.add_field("AB", &barcode);
-        resp.add_field("AO", self.account().settings().institution());
-        resp.add_field("CV", AlertType::Unknown.into());
-
-        resp
+        ).unwrap()
     }
 
     fn checkin(

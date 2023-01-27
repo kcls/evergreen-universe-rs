@@ -4,6 +4,9 @@ use super::item;
 use chrono::NaiveDateTime;
 use evergreen as eg;
 
+pub struct CheckoutResult {
+}
+
 impl Session {
 
     pub fn handle_checkout(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
@@ -17,6 +20,8 @@ impl Session {
             .get_field_value("AA")
             .ok_or(format!("checkout() missing patron barcode"))?;
 
+        let fee_ack_op = msg.get_field_value("BO");
+
         let item = match self.get_item_details(&item_barcode)? {
             Some(c) => c,
             None => return Ok(self.checkout_item_not_found(&item_barcode, &patron_barcode)),
@@ -27,6 +32,7 @@ impl Session {
             None => return Ok(self.checkout_item_not_found(&item_barcode, &patron_barcode)),
         };
 
+        let result = self.checkout(&item_barcode, &patron_barcode, fee_ack_op.is_some(), false)?;
 
         todo!()
     }
@@ -45,6 +51,18 @@ impl Session {
                 ("AB", &item_barcode),
             ]
         ).unwrap()
+    }
+
+
+    fn checkout(
+        &mut self,
+        item_barcode: &str,
+        patron_barcode: &str,
+        fee_ack: bool,
+        is_renewal: bool,
+    ) -> Result<CheckoutResult, String> {
+
+        todo!()
     }
 }
 
