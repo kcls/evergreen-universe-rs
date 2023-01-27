@@ -32,23 +32,19 @@ impl Session {
     }
 
     pub fn checkout_item_not_found(&self, item_barcode: &str, patron_barcode: &str) -> sip2::Message {
-
-        let mut resp = sip2::Message::new(
-            &sip2::spec::M_CHECKOUT_RESP,
-            vec![
-                sip2::FixedField::new(&sip2::spec::FF_CHECKIN_OK, sip2::util::num_bool(false)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_RENEW_OK, sip2::util::sip_bool(false)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_MAGNETIC_MEDIA, sip2::util::sip_bool(false)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DESENSITIZE, sip2::util::sip_bool(false)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
-            ],
-            Vec::new(),
-        );
-
-        resp.add_field("AA", &patron_barcode);
-        resp.add_field("AB", &item_barcode);
-
-        resp
+        sip2::Message::from_values(
+            "12",                              // checkout response
+            &[
+                sip2::util::num_bool(false),   // checkin ok
+                sip2::util::sip_bool(false),   // renew ok
+                sip2::util::sip_bool(false),   // magnetic
+                sip2::util::sip_bool(false),   // desensitize
+                &sip2::util::sip_date_now(),   // timestamp
+            ], &[
+                ("AA", &patron_barcode),
+                ("AB", &item_barcode),
+            ]
+        ).unwrap()
     }
 }
 

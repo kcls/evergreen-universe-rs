@@ -296,11 +296,7 @@ impl Session {
             self.account = None;
         }
 
-        Ok(sip2::Message::new(
-            &sip2::spec::M_LOGIN_RESP,
-            vec![sip2::FixedField::new(&sip2::spec::FF_OK, login_ok).unwrap()],
-            Vec::new(),
-        ))
+        Ok(sip2::Message::from_ff_values("94", &[login_ok]).unwrap())
     }
 
     fn handle_sc_status(&mut self, _msg: &sip2::Message) -> Result<sip2::Message, String> {
@@ -308,24 +304,23 @@ impl Session {
             Err(format!("SC Status before login disabled"))?;
         }
 
-        let mut resp = sip2::Message::new(
-            &sip2::spec::M_ACS_STATUS,
-            vec![
-                sip2::FixedField::new(&sip2::spec::FF_ONLINE_STATUS, "Y").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_CHECKIN_OK, "Y").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_CHECKOUT_OK, "Y").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_ACS_RENEWAL_POLICY, "Y").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_STATUS_UPDATE_OK, "N").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_OFFLINE_OK, "N").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_TIMEOUT_PERIOD, "999").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_RETRIES_ALLOWED, "999").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_PROTOCOL_VERSION, "2.00").unwrap(),
-            ],
-            Vec::new(),
-        );
-
-        resp.add_field("BX", INSTITUTION_SUPPORTS.join("").as_str());
+        let mut resp = sip2::Message::from_values(
+            "98",
+            &[
+                sip2::util::sip_bool(true),     // online status
+                sip2::util::sip_bool(true),     // checkin ok
+                sip2::util::sip_bool(true),     // checkout ok
+                sip2::util::sip_bool(true),     // renewal policy
+                sip2::util::sip_bool(false),    // status update
+                sip2::util::sip_bool(false),    // offline ok
+                "999",                          // timeout
+                "999",                          // max retries
+                &sip2::util::sip_date_now(),
+                "2.00",                         // SIP version
+            ], &[
+                ("BX", INSTITUTION_SUPPORTS.join("").as_str())
+            ]
+        ).unwrap();
 
         if let Some(a) = &self.account {
             resp.add_field("AO", a.settings().institution());

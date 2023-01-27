@@ -173,28 +173,26 @@ impl Session {
             }
         };
 
-        let mut resp = sip2::Message::new(
-            &sip2::spec::M_ITEM_INFO_RESP,
-            vec![
-                sip2::FixedField::new(&sip2::spec::FF_CIRCULATION_STATUS, &item.circ_status)
-                    .unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_SECURITY_MARKER, "02").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_FEE_TYPE, &item.fee_type).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
-            ],
-            Vec::new(),
-        );
-
-        resp.add_field("AB", &item.barcode);
-        resp.add_field("AJ", &item.title);
-        resp.add_field("AP", &item.current_loc);
-        resp.add_field("AQ", &item.permanent_loc);
-        resp.add_field("BG", &item.owning_loc);
-        resp.add_field("CT", &item.destination_loc);
-        resp.add_field("BH", self.sip_config().currency());
-        resp.add_field("BV", &format!("{}", item.deposit_amount));
-        resp.add_field("CF", &format!("{}", item.hold_queue_length));
-        resp.add_field("CK", &item.media_type);
+        let mut resp = sip2::Message::from_values(
+            "18",
+            &[
+                &item.circ_status,
+                "02", // security marker
+                &item.fee_type,
+                &sip2::util::sip_date_now()
+            ], &[
+                ("AB", &item.barcode),
+                ("AJ", &item.title),
+                ("AP", &item.current_loc),
+                ("AQ", &item.permanent_loc),
+                ("BG", &item.owning_loc),
+                ("CT", &item.destination_loc),
+                ("BH", self.sip_config().currency()),
+                ("BV", &format!("{}", item.deposit_amount)),
+                ("CF", &format!("{}", item.hold_queue_length)),
+                ("CK", &item.media_type),
+            ]
+        ).unwrap();
 
         resp.maybe_add_field("CM", item.hold_pickup_date.as_deref());
         resp.maybe_add_field("CY", item.hold_patron_barcode.as_deref());
@@ -305,20 +303,20 @@ impl Session {
     fn return_item_not_found(&self, barcode: &str) -> sip2::Message {
         log::debug!("No copy found with barcode: {barcode}");
 
-        let mut resp = sip2::Message::new(
-            &sip2::spec::M_ITEM_INFO_RESP,
-            vec![
-                // circ status unknown
-                sip2::FixedField::new(&sip2::spec::FF_CIRCULATION_STATUS, "01").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_SECURITY_MARKER, "01").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_FEE_TYPE, "01").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
-            ],
-            Vec::new(),
-        );
-
-        resp.add_field("AB", &barcode);
-        resp.add_field("AJ", "");
+        let resp = sip2::Message::from_values(
+            "18",
+            &[
+                "01", // circ status
+                "01", // security marker
+                "01", // fee type
+                &sip2::util::sip_date_now()
+            ], &[
+                ("AB", &barcode),
+                // For some SIP clients, an empty title is how we
+                // know an item does not exist.
+                ("AJ", ""),
+            ]
+        ).unwrap();
 
         resp
     }

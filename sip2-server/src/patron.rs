@@ -887,75 +887,70 @@ impl Session {
         barcode: &str,
         patron_op: Option<&Patron>,
     ) -> Result<sip2::Message, String> {
-        let msg_spec = sip2::spec::Message::from_code(msg_code)
-            .ok_or(format!("Invalid SIP message code: {msg_code}"))?;
+        let sbool = |v| sip2::util::space_bool(v);
 
         if patron_op.is_none() {
+
             let status = format!(
                 "{}{}{}{}          ",
-                sip2::util::space_bool(false),
-                sip2::util::space_bool(false),
-                sip2::util::space_bool(false),
-                sip2::util::space_bool(false)
+                sbool(false),
+                sbool(false),
+                sbool(false),
+                sbool(false)
             );
 
-            let mut resp = sip2::Message::new(
-                msg_spec,
-                vec![
-                    sip2::FixedField::new(&sip2::spec::FF_PATRON_STATUS, &status).unwrap(),
-                    sip2::FixedField::new(&sip2::spec::FF_LANGUAGE, "000").unwrap(),
-                    sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now())
-                        .unwrap(),
-                ],
-                Vec::new(),
-            );
-
-            resp.add_field("AO", self.account().settings().institution());
-            resp.add_field("AA", barcode);
-            resp.add_field("BL", sip2::util::sip_bool(false)); // valid patron
-            resp.add_field("CQ", sip2::util::sip_bool(false)); // valid patron password
+            let resp = sip2::Message::from_values(
+                msg_code,
+                &[
+                    &status,
+                    "000", // language
+                    &sip2::util::sip_date_now()
+                ], &[
+                    ("AO", self.account().settings().institution()),
+                    ("AA", barcode),
+                    ("BL", sip2::util::sip_bool(false)), // valid patron
+                    ("CQ", sip2::util::sip_bool(false)), // valid patron password
+                ]
+            ).unwrap();
 
             return Ok(resp);
         }
 
         let patron = patron_op.unwrap();
 
-        log::debug!("PATRON: {patron:?}");
-
         let status = format!(
             "{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
-            sip2::util::space_bool(patron.charge_denied),
-            sip2::util::space_bool(patron.renew_denied),
-            sip2::util::space_bool(patron.recall_denied),
-            sip2::util::space_bool(patron.holds_denied),
-            sip2::util::space_bool(patron.card_active),
-            sip2::util::space_bool(false), // max charged
-            sip2::util::space_bool(patron.max_overdue),
-            sip2::util::space_bool(false), // max renewals
-            sip2::util::space_bool(false), // max claims returned
-            sip2::util::space_bool(false), // max lost
-            sip2::util::space_bool(patron.max_fines),
-            sip2::util::space_bool(patron.max_fines),
-            sip2::util::space_bool(false), // recall overdue
-            sip2::util::space_bool(patron.max_fines)
+            sbool(patron.charge_denied),
+            sbool(patron.renew_denied),
+            sbool(patron.recall_denied),
+            sbool(patron.holds_denied),
+            sbool(patron.card_active),
+            sbool(false), // max charged
+            sbool(patron.max_overdue),
+            sbool(false), // max renewals
+            sbool(false), // max claims returned
+            sbool(false), // max lost
+            sbool(patron.max_fines),
+            sbool(patron.max_fines),
+            sbool(false), // recall overdue
+            sbool(patron.max_fines)
         );
 
-        let mut resp = sip2::Message::new(
-            msg_spec,
-            vec![
-                sip2::FixedField::new(&sip2::spec::FF_PATRON_STATUS, &status).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_LANGUAGE, "000").unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE, &sip2::util::sip_date_now()).unwrap(),
-            ],
-            Vec::new(),
-        );
-
-        resp.add_field("AA", barcode);
-        resp.add_field("AO", self.account().settings().institution());
-        resp.add_field("BH", self.sip_config().currency());
-        resp.add_field("BL", sip2::util::sip_bool(true)); // valid patron
-        resp.add_field("BV", &format!("{:.2}", patron.balance_owed));
-        resp.add_field("CQ", sip2::util::sip_bool(patron.password_verified));
+        let resp = sip2::Message::from_values(
+            msg_code,
+            &[
+                &status,
+                "000", // language
+                &sip2::util::sip_date_now()
+            ], &[
+                ("AO", self.account().settings().institution()),
+                ("AA", barcode),
+                ("BH", self.sip_config().currency()),
+                ("BL", sip2::util::sip_bool(true)), // valid patron
+                ("BV", &format!("{:.2}", patron.balance_owed)),
+                ("CQ", sip2::util::sip_bool(patron.password_verified)),
+            ]
+        ).unwrap();
 
         Ok(resp)
     }

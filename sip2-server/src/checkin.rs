@@ -83,31 +83,25 @@ impl Session {
             self.account().settings().checkin_override_all(),
         )?;
 
-        let mut resp = sip2::Message::new(
-            &sip2::spec::M_CHECKIN_RESP,
-            vec![
-                sip2::FixedField::new(&sip2::spec::FF_CHECKIN_OK,
-                    sip2::util::num_bool(result.ok)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_RESENSITIZE,
-                    sip2::util::sip_bool(!item.magnetic_media)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_MAGNETIC_MEDIA,
-                    sip2::util::sip_bool(item.magnetic_media)).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_ALERT,
-                    sip2::util::sip_bool(result.alert_type.is_some())).unwrap(),
-                sip2::FixedField::new(&sip2::spec::FF_DATE,
-                    &sip2::util::sip_date_now()).unwrap(),
-            ],
-            Vec::new(),
-        );
-
-        resp.add_field("AB", &barcode);
-        resp.add_field("AO", self.account().settings().institution());
-        resp.add_field("AJ", &item.title);
-        resp.add_field("AP", &result.current_loc);
-        resp.add_field("AQ", &result.permanent_loc);
-        resp.add_field("BG", &item.owning_loc);
-        resp.add_field("BT", &item.fee_type);
-        resp.add_field("CI", sip2::util::num_bool(false));
+        let mut resp = sip2::Message::from_values(
+            "10",
+            &[
+                sip2::util::num_bool(result.ok), // checkin ok
+                sip2::util::sip_bool(!item.magnetic_media), // resensitize
+                sip2::util::sip_bool(item.magnetic_media), // magnetic
+                sip2::util::sip_bool(result.alert_type.is_some()), // alert
+                &sip2::util::sip_date_now(),
+            ], &[
+                ("AB", &barcode),
+                ("AO", self.account().settings().institution()),
+                ("AJ", &item.title),
+                ("AP", &result.current_loc),
+                ("AQ", &result.permanent_loc),
+                ("BG", &item.owning_loc),
+                ("BT", &item.fee_type),
+                ("CI", sip2::util::num_bool(false)),
+            ]
+        ).unwrap();
 
         if let Some(ref bc) = result.patron_barcode {
             resp.add_field("AA", bc);
