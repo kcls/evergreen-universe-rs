@@ -265,6 +265,7 @@ impl Session {
 
         match code {
             "09" => self.handle_checkin(msg),
+            "11" => self.handle_checkout(msg),
             "17" => self.handle_item_info(msg),
             "23" => self.handle_patron_status(msg),
             "63" => self.handle_patron_info(msg),

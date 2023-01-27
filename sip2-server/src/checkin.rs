@@ -133,7 +133,7 @@ impl Session {
         let mut resp = sip2::Message::new(
             &sip2::spec::M_CHECKIN_RESP,
             vec![
-                sip2::FixedField::new(&sip2::spec::FF_CHECKIN_OK, "0").unwrap(),
+                sip2::FixedField::new(&sip2::spec::FF_CHECKIN_OK, sip2::util::num_bool(false)).unwrap(),
                 sip2::FixedField::new(&sip2::spec::FF_RESENSITIZE, sip2::util::sip_bool(false)).unwrap(),
                 sip2::FixedField::new(&sip2::spec::FF_MAGNETIC_MEDIA, sip2::util::sip_bool(false)).unwrap(),
                 sip2::FixedField::new(&sip2::spec::FF_ALERT, "N").unwrap(),

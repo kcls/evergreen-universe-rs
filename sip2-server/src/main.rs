@@ -2,6 +2,7 @@ use evergreen as eg;
 use getopts;
 
 mod checkin;
+mod checkout;
 mod conf;
 mod item;
 mod patron;
