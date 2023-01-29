@@ -5,6 +5,7 @@ mod checkin;
 mod checkout;
 mod conf;
 mod item;
+mod monitor;
 mod patron;
 mod server;
 mod session;

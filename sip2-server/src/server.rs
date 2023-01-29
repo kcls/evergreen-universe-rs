@@ -1,23 +1,35 @@
 use super::conf::Config;
 use super::session::Session;
+use super::monitor::{Monitor, MonitorEvent};
 use evergreen as eg;
 use std::net;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use threadpool::ThreadPool;
+use std::sync::mpsc;
 
 pub struct Server {
     ctx: eg::init::Context,
     sip_config: Config,
     sesid: usize,
+    to_parent_tx: mpsc::Sender<MonitorEvent>,
+    to_parent_rx: mpsc::Receiver<MonitorEvent>,
 }
 
 impl Server {
     pub fn new(sip_config: Config, ctx: eg::init::Context) -> Server {
+
+        let (tx, rx): (
+            mpsc::Sender<MonitorEvent>,
+            mpsc::Receiver<MonitorEvent>,
+        ) = mpsc::channel();
+
         Server {
             ctx,
             sip_config,
             sesid: 0,
+            to_parent_tx: tx,
+            to_parent_rx: rx,
         }
     }
 
@@ -63,8 +75,8 @@ impl Server {
         // Consider an option to send a message to SIP threads telling
         // idle threads to self-destruct in cases where we hit/approach
         // the max thread limit.
-
-        let threads = pool.active_count() + pool.queued_count();
+        // +1 for the monitor thread.
+        let threads = pool.active_count() + pool.queued_count() + 1;
         let maxcon = self.sip_config.max_clients();
 
         log::debug!("Working thread count = {threads}");
