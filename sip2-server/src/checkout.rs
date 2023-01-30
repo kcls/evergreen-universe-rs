@@ -5,7 +5,6 @@ use chrono::NaiveDateTime;
 use gettextrs::*;
 use evergreen as eg;
 
-
 const RENEW_METHOD: &str = "open-ils.circ.renew";
 const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
 const CHECKOUT_METHOD: &str = "open-ils.circ.checkout.full";
@@ -88,9 +87,11 @@ impl Session {
 
         resp.maybe_add_field("AF", result.screen_msg.as_deref());
         resp.maybe_add_field("AH", result.due_date.as_deref());
+
         if let Some(id)  = result.circ_id {
             resp.add_field("BK", &format!("{id}"));
         }
+
         if item.deposit_amount > 0.0 {
             resp.add_field("BV", &format!("{:.2}", item.deposit_amount));
         }

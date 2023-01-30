@@ -8,6 +8,7 @@ mod conf;
 mod item;
 mod monitor;
 mod patron;
+mod payment;
 mod server;
 mod session;
 mod util;
