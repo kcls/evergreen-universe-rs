@@ -19,6 +19,15 @@ sc-status-before-login: false
 # SIP Currency Type value
 currency: "USD"
 
+# Bus address where the monitor thread watches for commands.
+# The value listed here will be appended to opensrf:client:$domain:*,
+# which is needed for bus access permissions.
+# If no value is present, a default/random opensrf-style bus 
+# address will be used.
+# NOTE: if multiple SIP servers run on the same bus domain, they
+# will each need their own address suffix.
+monitor-address: sipserver
+
 setting-groups:
 
     # Free-form name for this collection of settings.

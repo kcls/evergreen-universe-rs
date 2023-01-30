@@ -155,6 +155,16 @@ impl ClientAddress {
         }
     }
 
+    /// Allow the caller to provide the address content after the domain.
+    pub fn set_remainder(&mut self, remainder: &str) {
+        self.addr.full = format!(
+            "{}:client:{}:{}",
+            BUS_ADDR_NAMESPACE,
+            self.domain(),
+            remainder,
+        );
+    }
+
     pub fn addr(&self) -> &BusAddress {
         &self.addr
     }

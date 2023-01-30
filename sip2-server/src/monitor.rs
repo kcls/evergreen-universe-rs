@@ -4,6 +4,7 @@ use super::conf;
 use evergreen as eg;
 use opensrf as osrf;
 use osrf::bus::Bus;
+use osrf::addr::ClientAddress;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // Wake up occaisonally to see if we need to shutdown.
@@ -70,6 +71,12 @@ impl Monitor {
     }
 
     pub fn run(&mut self) {
+
+        let mut bus_addr = self.osrf_bus.address().clone();
+        if let Some(a) = self.sip_config.monitor_address() {
+            bus_addr.set_remainder(a);
+            self.osrf_bus.set_address(&bus_addr);
+        }
 
         println!("SIP Monitor listening at {}", self.osrf_bus.address().full());
 
