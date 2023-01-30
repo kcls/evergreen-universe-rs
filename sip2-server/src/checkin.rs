@@ -99,7 +99,7 @@ impl Session {
                 ("AQ", &result.permanent_loc),
                 ("BG", &item.owning_loc),
                 ("BT", &item.fee_type),
-                ("CI", sip2::util::num_bool(false)),
+                ("CI", sip2::util::num_bool(false)), // security inhibit
             ]
         ).unwrap();
 
