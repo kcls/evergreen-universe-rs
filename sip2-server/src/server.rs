@@ -1,18 +1,20 @@
 use super::conf::Config;
 use super::session::Session;
-use super::monitor::{Monitor, MonitorEvent, MonitorAction, ShutdownStyle};
+use super::monitor::{Monitor, MonitorEvent, MonitorAction};
 use evergreen as eg;
 use std::net;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use threadpool::ThreadPool;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Server {
     ctx: eg::init::Context,
     sip_config: Config,
     sesid: usize,
-    shutdown: bool,
+    /// If this ever contains a true, we shut down.
+    shutdown: Arc<AtomicBool>,
     from_monitor_tx: mpsc::Sender<MonitorEvent>,
     from_monitor_rx: mpsc::Receiver<MonitorEvent>,
 }
@@ -29,9 +31,9 @@ impl Server {
             ctx,
             sip_config,
             sesid: 0,
-            shutdown: false,
             from_monitor_tx: tx,
             from_monitor_rx: rx,
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -39,6 +41,15 @@ impl Server {
         log::info!("SIP2Meditor server staring up");
 
         let pool = ThreadPool::new(self.sip_config.max_clients());
+
+        let mut monitor = Monitor::new(
+            self.sip_config.clone(),
+            self.ctx.config().clone(),
+            self.from_monitor_tx.clone(),
+            self.shutdown.clone(),
+        );
+
+        pool.execute(move || monitor.run());
 
         let bind = format!("{}:{}", self.sip_config.sip_address(), self.sip_config.sip_port());
 
@@ -48,13 +59,13 @@ impl Server {
             let sesid = self.next_sesid();
 
             match stream {
-                Ok(s) => self.dispatch(&pool, s, sesid),
+                Ok(s) => self.dispatch(&pool, s, sesid, self.shutdown.clone()),
                 Err(e) => log::error!("Error accepting TCP connection {}", e),
             }
 
             self.process_monitor_events();
 
-            if self.shutdown {
+            if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
         }
@@ -77,22 +88,20 @@ impl Server {
                     // Monitor thread exited.
                     mpsc::TryRecvError::Disconnected => {
                         log::error!("Monitor thread exited.  Shutting down.");
-                        return self.shutdown(&ShutdownStyle::Graceful);
+                        self.shutdown.store(true, Ordering::Relaxed);
+                        return;
                     }
                 }
             };
 
             match event.action() {
-                MonitorAction::Shutdown(style) => self.shutdown(style),
                 MonitorAction::AddAccount(account) => todo!(),
                 MonitorAction::DisableAccount(username) => todo!(),
+                // we can ignore the Shutdown action since it results
+                // in a direct update to our shutdown atomic bool.
                 _ => todo!(),
             }
         }
-    }
-
-    fn shutdown(&mut self, style: &ShutdownStyle) {
-        self.shutdown = true;
     }
 
     fn next_sesid(&mut self) -> usize {
@@ -101,7 +110,7 @@ impl Server {
     }
 
     /// Pass the new SIP TCP stream off to a thread for processing.
-    fn dispatch(&self, pool: &ThreadPool, stream: TcpStream, sesid: usize) {
+    fn dispatch(&self, pool: &ThreadPool, stream: TcpStream, sesid: usize, shutdown: Arc<AtomicBool>) {
         log::info!(
             "Accepting new SIP connection; active={} pending={}",
             pool.active_count(),
@@ -139,6 +148,6 @@ impl Server {
         let idl = self.ctx.idl().clone();
         let osrf_config = self.ctx.config().clone();
 
-        pool.execute(move || Session::run(conf, osrf_config, idl, stream, sesid));
+        pool.execute(move || Session::run(conf, osrf_config, idl, stream, sesid, shutdown));
     }
 }

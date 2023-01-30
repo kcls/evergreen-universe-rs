@@ -7,6 +7,7 @@ use std::fmt;
 use std::net;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Block this many seconds before waking to see if we need
 // to perform any maintenance / shutdown.
@@ -35,7 +36,7 @@ const INSTITUTION_SUPPORTS: &[&str] = &[
 pub struct Session {
     sesid: usize,
     sip_connection: sip2::Connection,
-    shutdown: bool,
+    shutdown: Arc<AtomicBool>,
     sip_config: conf::Config,
     osrf_client: osrf::Client,
     editor: eg::editor::Editor,
@@ -54,6 +55,7 @@ impl Session {
         idl: Arc<eg::idl::Parser>,
         stream: net::TcpStream,
         sesid: usize,
+        shutdown: Arc<AtomicBool>,
     ) {
         match stream.peer_addr() {
             Ok(a) => log::info!("New SIP connection from {}", a),
@@ -81,10 +83,10 @@ impl Session {
         let mut ses = Session {
             sesid,
             editor,
+            shutdown,
             sip_config,
             osrf_client,
             account: None,
-            shutdown: false,
             sip_connection: con,
             org_sn_cache: HashMap::new(),
         };
@@ -207,25 +209,21 @@ impl Session {
         log::debug!("{} starting", self);
 
         loop {
+
+            if self.shutdown.load(Ordering::Relaxed) {
+                log::debug!("{self} Shutdown notice received, exiting listen loop");
+                break;
+            }
+
             // Blocks waiting for a SIP request to arrive
             let sip_req_op = self
                 .sip_connection
                 .recv_with_timeout(SIP_RECV_TIMEOUT)
                 .or_else(|e| Err(format!("SIP recv() failed: {e}")))?;
 
-            let sip_req = match sip_req_op {
-                Some(r) => r,
-                None => {
-                    if self.shutdown {
-                        break;
-                    }
-                    // Receive timed out w/ no value.  Go back
-                    // and try again.
-                    continue;
-                }
-            };
+            let sip_req = match sip_req_op { Some(r) => r, None => continue };
 
-            log::trace!("{} Read SIP message: {:?}", self, sip_req);
+            log::trace!("{self} Read SIP message: {:?}", sip_req);
 
             let sip_resp = self.handle_sip_request(&sip_req)?;
 
