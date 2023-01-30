@@ -199,7 +199,13 @@ impl Session {
         log::debug!("Checkin of {} returned: {resp}", item.barcode);
 
         let evt_json = match resp {
-            json::JsonValue::Array(list) => list[0].to_owned(),
+            json::JsonValue::Array(list) => {
+                if list.len() > 0 {
+                    list[0].to_owned()
+                } else {
+                    json::JsonValue::Null
+                }
+            }
             _ => resp
         };
 

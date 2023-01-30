@@ -111,7 +111,12 @@ impl Monitor {
                     self.shutdown.store(true, Ordering::Relaxed);
                 }
                 _ => {
-                    self.to_parent_tx.send(event);
+                    if let Err(e) = self.to_parent_tx.send(event) {
+                        log::error!("Error sending event to server process: {e}");
+                        // likely all is lost here, but do our best to
+                        // perform a graceful shutdown.
+                        self.shutdown.store(true, Ordering::Relaxed);
+                    }
                 }
             }
         }
