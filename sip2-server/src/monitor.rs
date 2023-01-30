@@ -6,14 +6,28 @@ use opensrf as osrf;
 use osrf::bus::Bus;
 
 #[derive(Debug, Clone)]
+pub enum ShutdownStyle {
+    Graceful,
+    Fast,
+    Now
+}
+
+#[derive(Debug, Clone)]
 pub enum MonitorAction {
-    AddAcount(conf::SipAccount),
+    Shutdown(ShutdownStyle),
+    AddAccount(conf::SipAccount),
     DisableAccount(String),
 }
 
 #[derive(Debug, Clone)]
 pub struct MonitorEvent {
     action: MonitorAction,
+}
+
+impl MonitorEvent {
+    pub fn action(&self) -> &MonitorAction {
+        &self.action
+    }
 }
 
 pub struct Monitor {

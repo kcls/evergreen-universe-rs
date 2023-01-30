@@ -1,6 +1,6 @@
 use super::conf::Config;
 use super::session::Session;
-use super::monitor::{Monitor, MonitorEvent};
+use super::monitor::{Monitor, MonitorEvent, MonitorAction, ShutdownStyle};
 use evergreen as eg;
 use std::net;
 use std::net::TcpListener;
@@ -12,8 +12,9 @@ pub struct Server {
     ctx: eg::init::Context,
     sip_config: Config,
     sesid: usize,
-    to_parent_tx: mpsc::Sender<MonitorEvent>,
-    to_parent_rx: mpsc::Receiver<MonitorEvent>,
+    shutdown: bool,
+    from_monitor_tx: mpsc::Sender<MonitorEvent>,
+    from_monitor_rx: mpsc::Receiver<MonitorEvent>,
 }
 
 impl Server {
@@ -28,8 +29,9 @@ impl Server {
             ctx,
             sip_config,
             sesid: 0,
-            to_parent_tx: tx,
-            to_parent_rx: rx,
+            shutdown: false,
+            from_monitor_tx: tx,
+            from_monitor_rx: rx,
         }
     }
 
@@ -44,15 +46,53 @@ impl Server {
 
         for stream in listener.incoming() {
             let sesid = self.next_sesid();
+
             match stream {
                 Ok(s) => self.dispatch(&pool, s, sesid),
                 Err(e) => log::error!("Error accepting TCP connection {}", e),
+            }
+
+            self.process_monitor_events();
+
+            if self.shutdown {
+                break;
             }
         }
 
         log::info!("SIP2Mediator shutting down; waiting for threads to complete");
 
         pool.join();
+    }
+
+    fn process_monitor_events(&mut self) {
+
+        loop {
+            let event = match self.from_monitor_rx.try_recv() {
+                Ok(e) => e,
+                Err(e) => match e {
+
+                    // No more events to process
+                    mpsc::TryRecvError::Empty => return,
+
+                    // Monitor thread exited.
+                    mpsc::TryRecvError::Disconnected => {
+                        log::error!("Monitor thread exited.  Shutting down.");
+                        return self.shutdown(&ShutdownStyle::Graceful);
+                    }
+                }
+            };
+
+            match event.action() {
+                MonitorAction::Shutdown(style) => self.shutdown(style),
+                MonitorAction::AddAccount(account) => todo!(),
+                MonitorAction::DisableAccount(username) => todo!(),
+                _ => todo!(),
+            }
+        }
+    }
+
+    fn shutdown(&mut self, style: &ShutdownStyle) {
+        self.shutdown = true;
     }
 
     fn next_sesid(&mut self) -> usize {
