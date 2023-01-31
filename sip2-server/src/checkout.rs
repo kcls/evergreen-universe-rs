@@ -63,7 +63,7 @@ impl Session {
             self.account().settings().checkout_override_all(),
         )?;
 
-        let mut renew_ok = result.renewal_remaining > 0 && !patron.renew_denied;
+        let renew_ok = result.renewal_remaining > 0 && !patron.renew_denied;
         let magnetic = item.magnetic_media;
 
         let mut resp = sip2::Message::from_values(

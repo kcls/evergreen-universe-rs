@@ -1,6 +1,7 @@
 use super::session::Session;
 use super::patron::Patron;
 use gettextrs::*;
+use evergreen as eg;
 
 pub struct PaymentResult {
     success: bool,
@@ -76,7 +77,15 @@ impl Session {
             return Ok(self.compile_response(&result));
         }
 
-        self.apply_payments(&user, &mut result, &pay_type, &register_login_op, payments)?;
+        self.apply_payments(
+            &user,
+            &mut result,
+            &pay_type,
+            &terminal_xact_op,
+            &check_number_op,
+            &register_login_op,
+            payments
+        )?;
 
         Ok(self.compile_response(&result))
     }
@@ -195,6 +204,8 @@ impl Session {
         user: &json::JsonValue,
         result: &mut PaymentResult,
         pay_type: &str,
+        terminal_xact_op: &Option<String>,
+        check_number_op: &Option<String>,
         register_login_op: &Option<String>,
         payments: Vec<(i64, f64)>,
     ) -> Result<(), String> {
@@ -221,19 +232,62 @@ impl Session {
             gettext("VIA SIP2")
         };
 
-        let mut pay_array: json::JsonValue = json::JsonValue::new_array();
+        let mut pay_array = json::array![];
         for p in payments {
             let sub_array = json::array! [p.0, p.1];
             pay_array.push(sub_array);
         }
 
-        let args = json::object! {
+        let mut args = json::object! {
             userid: self.parse_id(&user["id"])?,
             note: note,
             payments: pay_array,
-            payment_type: "cash_payment",
         };
 
-        todo!()
+        match pay_type {
+            "01" | "02" => { // '01' is "VISA"; '02' is "credit card"
+
+                args["cc_args"]["terminal_xact"] = match terminal_xact_op {
+                    Some(tx) => json::from(tx.as_str()),
+                    None => json::from(gettext("Not provided by SIP client")),
+                };
+
+                args["payment_type"] = json::from("credit_card_payment");
+            }
+
+            "05" => { // Check payment
+                args["payment_type"] = json::from("check_payment");
+                args["check_number"] = match check_number_op {
+                    Some(s) => json::from(s.as_str()),
+                    None => json::from(gettext("Not provided by SIP client")),
+                };
+            }
+            _ => {
+                args["payment_type"] = json::from("cash_payment");
+            }
+        }
+
+        let authtoken = json::from(self.authtoken()?);
+        let last_xact_id = user["last_xact_id"].as_str().unwrap(); // required
+
+        let resp = self.osrf_client_mut().sendrecvone(
+            "open-ils.circ",
+            "open-ils.circ.money.payment",
+            vec![authtoken, args, json::from(last_xact_id)]
+        )?;
+
+        let resp = resp.ok_or(format!("Payment API returned no response"))?;
+
+        if let Some(evt) = eg::event::EgEvent::parse(&resp) {
+            if let Some(d) = evt.desc() {
+                result.screen_msg = Some(d.to_string());
+            } else {
+                result.screen_msg = Some(evt.textcode().to_string());
+            }
+        } else {
+            result.success = true;
+        }
+
+        Ok(())
     }
 }
