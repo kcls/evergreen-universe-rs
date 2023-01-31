@@ -554,7 +554,7 @@ impl Session {
         Ok(())
     }
 
-    fn get_patron_xacts(
+    pub fn get_patron_xacts(
         &mut self,
         patron: &Patron,
         summary_ops: Option<&SummaryListOptions>,
