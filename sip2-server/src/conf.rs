@@ -129,6 +129,23 @@ pub struct SipAccount {
 }
 
 impl SipAccount {
+    pub fn new(
+        settings: &SipSettings,
+        sip_username: &str,
+        sip_password: &str,
+        ils_username: &str
+    ) -> SipAccount {
+
+         SipAccount {
+            settings: settings.clone(),
+            sip_username: sip_username.to_string(),
+            sip_password: sip_password.to_string(),
+            ils_username: ils_username.to_string(),
+            ils_user_id: None,
+            workstation: None,
+        }
+    }
+
     pub fn settings(&self) -> &SipSettings {
         &self.settings
     }
@@ -143,6 +160,9 @@ impl SipAccount {
     }
     pub fn ils_user_id(&self) -> Option<i64> {
         self.ils_user_id
+    }
+    pub fn set_workstation(&mut self, workstation: Option<&str>) {
+        self.workstation = workstation.map(|s| s.to_string());
     }
     pub fn set_ils_user_id(&mut self, id: i64) {
         self.ils_user_id = Some(id)
@@ -304,14 +324,12 @@ impl Config {
 
                 let username = account["sip-username"].as_str().unwrap();
 
-                let mut acct = SipAccount {
-                    settings: sgroup.clone(),
-                    sip_username: account["sip-username"].as_str().unwrap().to_string(),
-                    sip_password: account["sip-password"].as_str().unwrap().to_string(),
-                    ils_username: account["ils-username"].as_str().unwrap().to_string(),
-                    ils_user_id: None,
-                    workstation: None,
-                };
+                let mut acct = SipAccount::new(
+                    &sgroup,
+                    account["sip-username"].as_str().unwrap(),
+                    account["sip-password"].as_str().unwrap(),
+                    account["ils-username"].as_str().unwrap(),
+                );
 
                 if let Some(ws) = account["workstation"].as_str() {
                     acct.workstation = Some(ws.to_string());
@@ -322,6 +340,9 @@ impl Config {
         };
     }
 
+    pub fn get_settings(&self, name: &str) -> Option<&SipSettings> {
+        self.setting_groups.get(name)
+    }
     pub fn get_account(&self, username: &str) -> Option<&SipAccount> {
         self.accounts.get(username)
     }

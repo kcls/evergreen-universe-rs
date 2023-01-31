@@ -26,23 +26,6 @@ impl MonitorEvent {
     }
 }
 
-impl TryFrom<json::JsonValue> for MonitorEvent {
-    type Error = String;
-    fn try_from(v: json::JsonValue) -> Result<MonitorEvent, Self::Error> {
-        let action = v["action"]
-            .as_str()
-            .ok_or(format!("MonitorEvent has no action"))?;
-
-        match action {
-            "shutdown" => Ok(MonitorEvent {
-                action: MonitorAction::Shutdown,
-            }),
-            "add-account" => todo!(),
-            "disable-account" => todo!(),
-            _ => Err(format!("Monitor command not supported: {action}")),
-        }
-    }
-}
 
 pub struct Monitor {
     sip_config: conf::Config,
@@ -66,6 +49,59 @@ impl Monitor {
             to_parent_tx,
             shutdown,
         }
+    }
+
+    pub fn parse_event(&self, v: &json::JsonValue) -> Result<MonitorEvent, String> {
+        let action = v["action"]
+            .as_str()
+            .ok_or(format!("MonitorEvent has no action"))?;
+
+        if action.eq("shutdown") {
+            return Ok(MonitorEvent { action: MonitorAction::Shutdown });
+        }
+
+        if action.eq("add-account") {
+
+            let settings = match v["settings"].as_str() {
+                Some(s) => match self.sip_config.get_settings(s) {
+                    Some(s2) => s2,
+                    None => Err(format!("No such SIP settings group: {s}"))?,
+                }
+                None => Err(format!("SIP setting group name required"))?,
+            };
+
+            let sgroup = v["settings"].as_str()
+                .ok_or(format!("settings name required"))?;
+
+            let settings = self.sip_config.get_settings(sgroup)
+                .ok_or(format!("No such sip setting group: {settings:?}"))?;
+
+            let sip_username = v["sip_username"].as_str()
+                .ok_or(format!("sip_username required"))?;
+
+            let sip_password = v["sip_password"].as_str()
+                .ok_or(format!("sip_password required"))?;
+
+            let ils_username = v["ils_username"].as_str()
+                .ok_or(format!("ils_username required"))?;
+
+            let mut account = conf::SipAccount::new(
+                settings,
+                sip_username,
+                sip_password,
+                ils_username,
+            );
+
+            account.set_workstation(v["workstation"].as_str());
+
+            return Ok(MonitorEvent { action: MonitorAction::AddAccount(account) });
+        }
+
+        if action.eq("disable-account") {
+            todo!()
+        }
+
+        Err(format!("Monitor command not supported: {action}"))
     }
 
     pub fn run(&mut self) {
@@ -97,9 +133,10 @@ impl Monitor {
                 continue;
             }
 
-            let event: MonitorEvent = match json_value_op.unwrap().try_into() {
+            let event: MonitorEvent = match self.parse_event(&json_value_op.unwrap()) {
                 Ok(e) => e,
                 Err(e) => {
+                    // TODO reply to caller with error message
                     log::warn!("Monitor command error: {e}");
                     continue;
                 }
