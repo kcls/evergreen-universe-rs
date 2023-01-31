@@ -184,6 +184,7 @@ pub struct Config {
     currency: String,
     source: Option<yaml_rust::Yaml>,
     monitor_address: Option<String>,
+    monitor_port: Option<u16>,
 }
 
 impl Config {
@@ -199,6 +200,7 @@ impl Config {
             sc_status_before_login: false,
             source: None,
             monitor_address: None,
+            monitor_port: None,
         }
     }
 
@@ -236,6 +238,12 @@ impl Config {
 
         if let Some(v) = root["monitor-address"].as_str() {
             self.monitor_address = Some(v.to_string());
+        };
+
+        if let Some(v) = root["monitor-port"].as_i64() {
+            if let Ok(port) = v.try_into() {
+                self.monitor_port = Some(port);
+            }
         };
 
         self.add_setting_groups(root);
@@ -340,6 +348,13 @@ impl Config {
         };
     }
 
+    /// Add a SIP account, replacing any existing account with the same sip_username
+    pub fn add_account(&mut self, account: &SipAccount) {
+        self.accounts.insert(account.sip_username().to_string(), account.clone());
+    }
+    pub fn remove_account(&mut self, sip_username: &str) -> Option<SipAccount> {
+        self.accounts.remove(sip_username)
+    }
     pub fn get_settings(&self, name: &str) -> Option<&SipSettings> {
         self.setting_groups.get(name)
     }
@@ -366,5 +381,8 @@ impl Config {
     }
     pub fn monitor_address(&self) -> Option<&str> {
         self.monitor_address.as_deref()
+    }
+    pub fn monitor_port(&self) -> Option<u16> {
+        self.monitor_port
     }
 }

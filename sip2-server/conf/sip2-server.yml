@@ -4,6 +4,10 @@
 sip-address: "127.0.0.1"
 sip-port: 6001
 
+# Monitor/control process listens for incoming connections here.
+monitor-address: "127.0.0.1"
+monitor-port: 6002
+
 # Maximum number of allowed SIP client connections.  Once reached,
 # new connection attempts are rejected.
 max-clients: 128
@@ -18,15 +22,6 @@ sc-status-before-login: false
 
 # SIP Currency Type value
 currency: "USD"
-
-# Bus address where the monitor thread watches for commands.
-# The value listed here will be appended to opensrf:client:$domain:*,
-# which is needed for bus access permissions.
-# If no value is present, a default/random opensrf-style bus 
-# address will be used.
-# NOTE: if multiple SIP servers run on the same bus domain, they
-# will each need their own address suffix.
-monitor-address: sipserver
 
 setting-groups:
 

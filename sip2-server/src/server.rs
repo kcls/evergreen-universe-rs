@@ -21,7 +21,10 @@ pub struct Server {
 
 impl Server {
     pub fn new(sip_config: Config, ctx: eg::init::Context) -> Server {
-        let (tx, rx): (mpsc::Sender<MonitorEvent>, mpsc::Receiver<MonitorEvent>) = mpsc::channel();
+        let (tx, rx): (
+            mpsc::Sender<MonitorEvent>,
+            mpsc::Receiver<MonitorEvent>
+        ) = mpsc::channel();
 
         Server {
             ctx,
@@ -40,7 +43,6 @@ impl Server {
 
         let mut monitor = Monitor::new(
             self.sip_config.clone(),
-            self.ctx.config().clone(),
             self.from_monitor_tx.clone(),
             self.shutdown.clone(),
         );
@@ -93,8 +95,14 @@ impl Server {
             };
 
             match event.action() {
-                MonitorAction::AddAccount(account) => todo!(),
-                MonitorAction::DisableAccount(username) => todo!(),
+                MonitorAction::AddAccount(account) => {
+                    self.sip_config.add_account(account);
+                }
+
+                MonitorAction::DisableAccount(username) => {
+                    self.sip_config.remove_account(username);
+                }
+
                 // we can ignore the Shutdown action since it results
                 // in a direct update to our shutdown atomic bool.
                 _ => todo!(),
