@@ -1,7 +1,7 @@
 use super::conf;
 use std::str;
 use std::time::Duration;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -134,6 +134,8 @@ impl Monitor {
                 None => break,
             };
 
+            log::info!("Monitor read command: {command}");
+
             if let Err(e) = self.handle_command(&mut stream, &command) {
                 // TODO report error to the caller
                 break;
@@ -146,6 +148,9 @@ impl Monitor {
     }
 
     fn handle_command(&self, stream: &mut TcpStream, command: &str) -> Result<(), String> {
+
+        stream.write(format!("GOT: {command}\n").as_bytes());
+
         todo!()
     }
 
@@ -197,7 +202,8 @@ impl Monitor {
                 }
             };
 
-            return Some(chunk.trim().to_string());
+            // remove \0 chars and trailing newlines
+            return Some(chunk.trim_matches(char::from(0)).trim_end().to_string());
         }
     }
 
