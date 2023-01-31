@@ -1,13 +1,13 @@
 use super::conf::Config;
+use super::monitor::{Monitor, MonitorAction, MonitorEvent};
 use super::session::Session;
-use super::monitor::{Monitor, MonitorEvent, MonitorAction};
 use evergreen as eg;
 use std::net;
 use std::net::TcpListener;
 use std::net::TcpStream;
-use threadpool::ThreadPool;
-use std::sync::{Arc, mpsc};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use threadpool::ThreadPool;
 
 pub struct Server {
     ctx: eg::init::Context,
@@ -21,11 +21,7 @@ pub struct Server {
 
 impl Server {
     pub fn new(sip_config: Config, ctx: eg::init::Context) -> Server {
-
-        let (tx, rx): (
-            mpsc::Sender<MonitorEvent>,
-            mpsc::Receiver<MonitorEvent>,
-        ) = mpsc::channel();
+        let (tx, rx): (mpsc::Sender<MonitorEvent>, mpsc::Receiver<MonitorEvent>) = mpsc::channel();
 
         Server {
             ctx,
@@ -51,7 +47,11 @@ impl Server {
 
         pool.execute(move || monitor.run());
 
-        let bind = format!("{}:{}", self.sip_config.sip_address(), self.sip_config.sip_port());
+        let bind = format!(
+            "{}:{}",
+            self.sip_config.sip_address(),
+            self.sip_config.sip_port()
+        );
 
         let listener = TcpListener::bind(bind).expect("Error starting SIP server");
 
@@ -76,12 +76,10 @@ impl Server {
     }
 
     fn process_monitor_events(&mut self) {
-
         loop {
             let event = match self.from_monitor_rx.try_recv() {
                 Ok(e) => e,
                 Err(e) => match e {
-
                     // No more events to process
                     mpsc::TryRecvError::Empty => return,
 
@@ -91,7 +89,7 @@ impl Server {
                         self.shutdown.store(true, Ordering::Relaxed);
                         return;
                     }
-                }
+                },
             };
 
             match event.action() {
@@ -110,7 +108,13 @@ impl Server {
     }
 
     /// Pass the new SIP TCP stream off to a thread for processing.
-    fn dispatch(&self, pool: &ThreadPool, stream: TcpStream, sesid: usize, shutdown: Arc<AtomicBool>) {
+    fn dispatch(
+        &self,
+        pool: &ThreadPool,
+        stream: TcpStream,
+        sesid: usize,
+        shutdown: Arc<AtomicBool>,
+    ) {
         log::info!(
             "Accepting new SIP connection; active={} pending={}",
             pool.active_count(),

@@ -1,7 +1,7 @@
-use super::session::Session;
 use super::patron::Patron;
-use gettextrs::*;
+use super::session::Session;
 use evergreen as eg;
+use gettextrs::*;
 
 pub struct PaymentResult {
     success: bool,
@@ -20,11 +20,9 @@ impl PaymentResult {
 }
 
 impl Session {
-
     pub fn handle_payment(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         self.set_authtoken()?;
 
-        let fee_type = msg.fixed_fields()[1].value();
         let pay_type = msg.fixed_fields()[2].value();
 
         let patron_barcode = msg
@@ -35,8 +33,9 @@ impl Session {
             .get_field_value("BV")
             .ok_or(format!("handle_payment() missing pay amount field"))?;
 
-        let pay_amount: f64 = pay_amount_str.parse()
-            .or_else(|e| Err(format!("Invalid payment amount: '{pay_amount_str}'")))?;
+        let pay_amount: f64 = pay_amount_str
+            .parse()
+            .or_else(|_| Err(format!("Invalid payment amount: '{pay_amount_str}'")))?;
 
         let terminal_xact_op = msg.get_field_value("BK"); // optional
 
@@ -84,7 +83,7 @@ impl Session {
             &terminal_xact_op,
             &check_number_op,
             &register_login_op,
-            payments
+            payments,
         )?;
 
         Ok(self.compile_response(&result))
@@ -96,11 +95,13 @@ impl Session {
             &[
                 sip2::util::num_bool(result.success),
                 &sip2::util::sip_date_now(),
-            ], &[
+            ],
+            &[
                 ("AA", &result.patron_barcode),
                 ("AO", self.account().settings().institution()),
-            ]
-        ).unwrap();
+            ],
+        )
+        .unwrap();
 
         resp.maybe_add_field("AF", result.screen_msg.as_deref());
 
@@ -112,9 +113,8 @@ impl Session {
         user: &json::JsonValue,
         xact_id: i64,
         pay_amount: f64,
-        result: &mut PaymentResult
+        result: &mut PaymentResult,
     ) -> Result<Vec<(i64, f64)>, String> {
-
         let sum = match self.editor_mut().retrieve("mbts", xact_id)? {
             Some(s) => s,
             None => {
@@ -140,11 +140,12 @@ impl Session {
         &mut self,
         user: &json::JsonValue,
         pay_amount: f64,
-        result: &mut PaymentResult
+        result: &mut PaymentResult,
     ) -> Result<Vec<(i64, f64)>, String> {
-
         let mut payments: Vec<(i64, f64)> = Vec::new();
-        let patron = Patron::new(&result.patron_barcode);
+        let mut patron = Patron::new(&result.patron_barcode);
+        patron.id = self.parse_id(&user["id"])?;
+
         let xacts = self.get_patron_xacts(&patron, None)?; // see patron mod
 
         if xacts.len() == 0 {
@@ -154,13 +155,14 @@ impl Session {
 
         let mut amount_remaining = pay_amount;
         for xact in xacts {
-
             let xact_id = self.parse_id(&xact["id"])?;
             let balance_owed = self.parse_float(&xact["balance_owed"])?;
 
-            if balance_owed < 0.0 { continue; }
+            if balance_owed < 0.0 {
+                continue;
+            }
 
-            let mut payment = 0.0;
+            let payment;
 
             if balance_owed >= amount_remaining {
                 // We owe as much or more than the amount of money
@@ -171,8 +173,7 @@ impl Session {
                 // Less is owed on this transaction than we have to
                 // distribute, so pay the full amount on this one.
                 payment = balance_owed;
-                amount_remaining =
-                    (amount_remaining * 100.00 - balance_owed + 100.00) / 100.00;
+                amount_remaining = (amount_remaining * 100.00 - balance_owed + 100.00) / 100.00;
             }
 
             log::info!(
@@ -209,7 +210,6 @@ impl Session {
         register_login_op: &Option<String>,
         payments: Vec<(i64, f64)>,
     ) -> Result<(), String> {
-
         log::info!("{self} applying payments: {payments:?}");
 
         // Add the register login to the payment note if present.
@@ -227,15 +227,14 @@ impl Session {
             };
 
             gettext!("Via SIP2: Register login '{}'", login)
-
         } else {
             gettext("VIA SIP2")
         };
 
         let mut pay_array = json::array![];
         for p in payments {
-            let sub_array = json::array! [p.0, p.1];
-            pay_array.push(sub_array);
+            let sub_array = json::array![p.0, p.1];
+            pay_array.push(sub_array).ok();
         }
 
         let mut args = json::object! {
@@ -245,7 +244,8 @@ impl Session {
         };
 
         match pay_type {
-            "01" | "02" => { // '01' is "VISA"; '02' is "credit card"
+            "01" | "02" => {
+                // '01' is "VISA"; '02' is "credit card"
 
                 args["cc_args"]["terminal_xact"] = match terminal_xact_op {
                     Some(tx) => json::from(tx.as_str()),
@@ -255,7 +255,8 @@ impl Session {
                 args["payment_type"] = json::from("credit_card_payment");
             }
 
-            "05" => { // Check payment
+            "05" => {
+                // Check payment
                 args["payment_type"] = json::from("check_payment");
                 args["check_number"] = match check_number_op {
                     Some(s) => json::from(s.as_str()),
@@ -273,7 +274,7 @@ impl Session {
         let resp = self.osrf_client_mut().sendrecvone(
             "open-ils.circ",
             "open-ils.circ.money.payment",
-            vec![authtoken, args, json::from(last_xact_id)]
+            vec![authtoken, args, json::from(last_xact_id)],
         )?;
 
         let resp = resp.ok_or(format!("Payment API returned no response"))?;

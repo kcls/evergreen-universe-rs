@@ -1,15 +1,11 @@
 use super::session::Session;
-use super::patron;
-use super::item;
-use chrono::NaiveDateTime;
-use gettextrs::*;
 use evergreen as eg;
+use gettextrs::*;
 
 const RENEW_METHOD: &str = "open-ils.circ.renew";
 const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
 const CHECKOUT_METHOD: &str = "open-ils.circ.checkout.full";
 const CHECKOUT_OVERRIDE_METHOD: &str = "open-ils.circ.checkout.full.override";
-
 
 pub struct CheckoutResult {
     /// Presence of a circ_id implies success.
@@ -31,7 +27,6 @@ impl CheckoutResult {
 }
 
 impl Session {
-
     pub fn handle_checkout(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         self.set_authtoken()?;
 
@@ -42,6 +37,8 @@ impl Session {
         let patron_barcode = msg
             .get_field_value("AA")
             .ok_or(format!("checkout() missing patron barcode"))?;
+
+        log::info!("{self} Checking out item {item_barcode} to patron {patron_barcode}");
 
         let fee_ack_op = msg.get_field_value("BO");
 
@@ -67,14 +64,15 @@ impl Session {
         let magnetic = item.magnetic_media;
 
         let mut resp = sip2::Message::from_values(
-            "12",                              // checkout response
+            "12", // checkout response
             &[
-                sip2::util::num_bool(result.circ_id.is_some()),   // checkin ok
-                sip2::util::sip_bool(renew_ok),     // renew ok
-                sip2::util::sip_bool(magnetic),     // magnetic
-                sip2::util::sip_bool(!magnetic),    // desensitize
-                &sip2::util::sip_date_now(),        // timestamp
-            ], &[
+                sip2::util::num_bool(result.circ_id.is_some()), // checkin ok
+                sip2::util::sip_bool(renew_ok),                 // renew ok
+                sip2::util::sip_bool(magnetic),                 // magnetic
+                sip2::util::sip_bool(!magnetic),                // desensitize
+                &sip2::util::sip_date_now(),                    // timestamp
+            ],
+            &[
                 ("AA", &patron_barcode),
                 ("AB", &item_barcode),
                 ("AJ", &item.title),
@@ -82,13 +80,14 @@ impl Session {
                 ("BT", &item.fee_type),
                 ("CI", sip2::util::num_bool(false)), // security inhibit
                 ("CK", &item.media_type),
-            ]
-        ).unwrap();
+            ],
+        )
+        .unwrap();
 
         resp.maybe_add_field("AF", result.screen_msg.as_deref());
         resp.maybe_add_field("AH", result.due_date.as_deref());
 
-        if let Some(id)  = result.circ_id {
+        if let Some(id) = result.circ_id {
             resp.add_field("BK", &format!("{id}"));
         }
 
@@ -99,22 +98,24 @@ impl Session {
         Ok(resp)
     }
 
-    pub fn checkout_item_not_found(&self, item_barcode: &str, patron_barcode: &str) -> sip2::Message {
+    pub fn checkout_item_not_found(
+        &self,
+        item_barcode: &str,
+        patron_barcode: &str,
+    ) -> sip2::Message {
         sip2::Message::from_values(
-            "12",                              // checkout response
+            "12", // checkout response
             &[
-                sip2::util::num_bool(false),   // checkin ok
-                sip2::util::sip_bool(false),   // renew ok
-                sip2::util::sip_bool(false),   // magnetic
-                sip2::util::sip_bool(false),   // desensitize
-                &sip2::util::sip_date_now(),   // timestamp
-            ], &[
-                ("AA", &patron_barcode),
-                ("AB", &item_barcode),
-            ]
-        ).unwrap()
+                sip2::util::num_bool(false), // checkin ok
+                sip2::util::sip_bool(false), // renew ok
+                sip2::util::sip_bool(false), // magnetic
+                sip2::util::sip_bool(false), // desensitize
+                &sip2::util::sip_date_now(), // timestamp
+            ],
+            &[("AA", &patron_barcode), ("AB", &item_barcode)],
+        )
+        .unwrap()
     }
-
 
     fn checkout(
         &mut self,
@@ -124,13 +125,12 @@ impl Session {
         is_renewal: bool,
         ovride: bool,
     ) -> Result<CheckoutResult, String> {
-
-        let params = vec! [
+        let params = vec![
             json::from(self.authtoken()?),
             json::object! {
                 copy_barcode: item_barcode,
                 patron_barcode: patron_barcode,
-            }
+            },
         ];
 
         let method = match is_renewal {
@@ -141,16 +141,18 @@ impl Session {
             false => match ovride {
                 true => CHECKOUT_OVERRIDE_METHOD,
                 false => CHECKOUT_METHOD,
-            }
+            },
         };
 
-        let resp = match
-            self.osrf_client_mut().sendrecvone("open-ils.circ", method, params)? {
+        let resp = match self
+            .osrf_client_mut()
+            .sendrecvone("open-ils.circ", method, params)?
+        {
             Some(r) => r,
             None => Err(format!("API call {method} failed to return a response"))?,
         };
 
-        log::debug!("Checkout of {item_barcode} returned: {resp}");
+        log::debug!("{self} Checkout of {item_barcode} returned: {resp}");
 
         let event = if let json::JsonValue::Array(list) = resp {
             list[0].to_owned()
@@ -178,21 +180,26 @@ impl Session {
                     result.due_date = Some(iso_date.to_string());
                 }
 
-                return Ok(result)
+                return Ok(result);
             }
         }
 
         if !ovride {
-            if self.account().settings().checkout_override().contains(&evt.textcode().to_string()) {
+            if self
+                .account()
+                .settings()
+                .checkout_override()
+                .contains(&evt.textcode().to_string())
+            {
                 // Event is configured for override
 
                 return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
-
             } else if fee_ack {
                 // Caller acknowledges a fee is required.
 
-                if  evt.textcode().eq("ITEM_DEPOSIT_FEE_REQUIRED") ||
-                    evt.textcode().eq("ITEM_RENTAL_FEE_REQUIRED") {
+                if evt.textcode().eq("ITEM_DEPOSIT_FEE_REQUIRED")
+                    || evt.textcode().eq("ITEM_RENTAL_FEE_REQUIRED")
+                {
                     return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
                 }
             }
@@ -200,16 +207,12 @@ impl Session {
 
         if evt.textcode().eq("OPEN_CIRCULATION_EXISTS") {
             result.screen_msg = Some(gettext("This item is already checked out"));
-
         } else {
-            result.screen_msg =
-                Some(gettext("Patron is not allowed to checkout the selected item"));
+            result.screen_msg = Some(gettext(
+                "Patron is not allowed to checkout the selected item",
+            ));
         }
 
         Ok(result)
     }
 }
-
-
-
-

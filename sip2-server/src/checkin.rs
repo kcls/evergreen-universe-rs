@@ -1,5 +1,5 @@
-use super::session::Session;
 use super::item;
+use super::session::Session;
 use chrono::NaiveDateTime;
 use evergreen as eg;
 
@@ -51,7 +51,6 @@ pub struct CheckinResult {
 }
 
 impl Session {
-
     pub fn handle_checkin(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         self.set_authtoken()?;
 
@@ -66,7 +65,7 @@ impl Session {
         // cancel == un-fulfill hold this copy currently fulfills
         let cancel_op = msg.get_field_value("BI");
 
-        log::info!("Checking in item {barcode}");
+        log::info!("{self} Checking in item {barcode}");
 
         let item = match self.get_item_details(&barcode)? {
             Some(c) => c,
@@ -86,12 +85,13 @@ impl Session {
         let mut resp = sip2::Message::from_values(
             "10",
             &[
-                sip2::util::num_bool(result.ok), // checkin ok
-                sip2::util::sip_bool(!item.magnetic_media), // resensitize
-                sip2::util::sip_bool(item.magnetic_media), // magnetic
+                sip2::util::num_bool(result.ok),                   // checkin ok
+                sip2::util::sip_bool(!item.magnetic_media),        // resensitize
+                sip2::util::sip_bool(item.magnetic_media),         // magnetic
                 sip2::util::sip_bool(result.alert_type.is_some()), // alert
                 &sip2::util::sip_date_now(),
-            ], &[
+            ],
+            &[
                 ("AB", &barcode),
                 ("AO", self.account().settings().institution()),
                 ("AJ", &item.title),
@@ -100,8 +100,9 @@ impl Session {
                 ("BG", &item.owning_loc),
                 ("BT", &item.fee_type),
                 ("CI", sip2::util::num_bool(false)), // security inhibit
-            ]
-        ).unwrap();
+            ],
+        )
+        .unwrap();
 
         if let Some(ref bc) = result.patron_barcode {
             resp.add_field("AA", bc);
@@ -131,12 +132,14 @@ impl Session {
                 sip2::util::sip_bool(false), // magnetic
                 sip2::util::sip_bool(false), // alert
                 &sip2::util::sip_date_now(),
-            ], &[
+            ],
+            &[
                 ("AB", &barcode),
                 ("AO", self.account().settings().institution()),
                 ("CV", AlertType::Unknown.into()),
             ],
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     fn checkin(
@@ -145,9 +148,8 @@ impl Session {
         current_loc_op: &Option<String>,
         return_date: &str,
         cancel: bool,
-        ovride: bool
+        ovride: bool,
     ) -> Result<CheckinResult, String> {
-
         let mut args = json::object! {
             copy_barcode: item.barcode.as_str(),
             hold_as_transit: self.account().settings().checkin_holds_as_transits(),
@@ -164,12 +166,11 @@ impl Session {
             // time zone value.
             if let Some(sip_date) = NaiveDateTime::parse_from_str(return_date, fmt).ok() {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
-                log::info!("Checking in with backdate: {iso_date}");
+                log::info!("{self} Checking in with backdate: {iso_date}");
 
                 args["backdate"] = json::from(iso_date);
-
             } else {
-                log::warn!("Invalid checkin return date: {return_date}");
+                log::warn!("{self} Invalid checkin return date: {return_date}");
             }
         }
 
@@ -190,13 +191,15 @@ impl Session {
 
         let params = vec![json::from(self.authtoken()?), args];
 
-        let resp = match
-            self.osrf_client_mut().sendrecvone("open-ils.circ", method, params)? {
+        let resp = match self
+            .osrf_client_mut()
+            .sendrecvone("open-ils.circ", method, params)?
+        {
             Some(r) => r,
             None => Err(format!("API call {method} failed to return a response"))?,
         };
 
-        log::debug!("Checkin of {} returned: {resp}", item.barcode);
+        log::debug!("{self} Checkin of {} returned: {resp}", item.barcode);
 
         let evt_json = match resp {
             json::JsonValue::Array(list) => {
@@ -206,18 +209,23 @@ impl Session {
                     json::JsonValue::Null
                 }
             }
-            _ => resp
+            _ => resp,
         };
 
         let evt = eg::event::EgEvent::parse(&evt_json)
             .ok_or(format!("API call {method} failed to return an event"))?;
 
-        if !ovride &&
-            self.account().settings().checkin_override().contains(&evt.textcode().to_string()) {
+        if !ovride
+            && self
+                .account()
+                .settings()
+                .checkin_override()
+                .contains(&evt.textcode().to_string())
+        {
             return self.checkin(item, current_loc_op, return_date, cancel, true);
         }
 
-        let mut current_loc = item.current_loc.to_string();     // item.circ_lib
+        let mut current_loc = item.current_loc.to_string(); // item.circ_lib
         let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
         let mut destination_loc = None;
         if let Some(org_id) = evt.org() {
@@ -230,7 +238,7 @@ impl Session {
             // for our response.  It could mean the copy's circ lib
             // changed because it floats.
 
-            log::debug!("Checkin of {} returned a copy object", item.barcode);
+            log::debug!("{self} Checkin of {} returned a copy object", item.barcode);
 
             if let Ok(circ_lib) = self.parse_id(&copy["circ_lib"]) {
                 if circ_lib != item.circ_lib {
@@ -255,7 +263,7 @@ impl Session {
 
         let circ = &evt.payload()["circ"];
         if circ.is_object() {
-            log::debug!("Checkin of {} returned a circulation object", item.barcode);
+            log::debug!("{self} Checkin of {} returned a circulation object", item.barcode);
 
             if let Some(user) = self.get_user_and_card(self.parse_id(&circ["usr"])?)? {
                 if let Some(bc) = user["card"]["barcode"].as_str() {
@@ -269,12 +277,10 @@ impl Session {
         if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
             result.ok = true;
         } else if evt.textcode().eq("ROUTE_ITEM") {
-
             result.ok = true;
             if result.alert_type.is_none() {
                 result.alert_type = Some(AlertType::Transit);
             }
-
         } else {
             result.ok = false;
             if result.alert_type.is_none() {
@@ -290,9 +296,8 @@ impl Session {
     fn handle_hold(
         &mut self,
         evt: &eg::event::EgEvent,
-        result: &mut CheckinResult
+        result: &mut CheckinResult,
     ) -> Result<(), String> {
-
         let rh = &evt.payload()["remote_hold"];
         let lh = &evt.payload()["hold"];
 
@@ -304,7 +309,7 @@ impl Session {
             return Ok(());
         };
 
-        log::debug!("Checkin returned a hold object id={}", hold["id"]);
+        log::debug!("{self} Checkin returned a hold object id={}", hold["id"]);
 
         if let Some(user) = self.get_user_and_card(self.parse_id(&hold["usr"])?)? {
             result.hold_patron_name = Some(self.format_user_name(&user));
@@ -318,13 +323,9 @@ impl Session {
 
         // hold pickup lib may or may not be fleshed here.
         if pickup_lib.is_object() {
-
-            result.destination_loc =
-                Some(pickup_lib["shortname"].as_str().unwrap().to_string());
+            result.destination_loc = Some(pickup_lib["shortname"].as_str().unwrap().to_string());
             pickup_lib_id = self.parse_id(&pickup_lib["id"])?;
-
         } else {
-
             pickup_lib_id = self.parse_id(&pickup_lib)?;
             result.destination_loc = self.org_sn_from_id(pickup_lib_id)?;
         }
@@ -338,5 +339,3 @@ impl Session {
         Ok(())
     }
 }
-
-

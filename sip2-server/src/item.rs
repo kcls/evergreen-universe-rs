@@ -51,12 +51,7 @@ impl Session {
 
         if let Ok(Some(circ)) = self.get_copy_circ(self.parse_id(&copy["id"])?) {
             if let Some(iso_date) = circ["due_date"].as_str() {
-                if self
-                    .account()
-                    .settings()
-                    .due_date_use_sip_date_format()
-                {
-
+                if self.account().settings().due_date_use_sip_date_format() {
                     let due_dt = self.parse_pg_date(iso_date)?;
                     due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
@@ -164,7 +159,7 @@ impl Session {
             .get_field_value("AB")
             .ok_or(format!("handle_item_info() missing item barcode"))?;
 
-        log::info!("Item Information {barcode}");
+        log::info!("{self} Item Information {barcode}");
 
         let item = match self.get_item_details(&barcode)? {
             Some(c) => c,
@@ -179,8 +174,9 @@ impl Session {
                 &item.circ_status,
                 "02", // security marker
                 &item.fee_type,
-                &sip2::util::sip_date_now()
-            ], &[
+                &sip2::util::sip_date_now(),
+            ],
+            &[
                 ("AB", &item.barcode),
                 ("AJ", &item.title),
                 ("AP", &item.current_loc),
@@ -191,8 +187,9 @@ impl Session {
                 ("BV", &format!("{}", item.deposit_amount)),
                 ("CF", &format!("{}", item.hold_queue_length)),
                 ("CK", &item.media_type),
-            ]
-        ).unwrap();
+            ],
+        )
+        .unwrap();
 
         resp.maybe_add_field("CM", item.hold_pickup_date.as_deref());
         resp.maybe_add_field("CY", item.hold_patron_barcode.as_deref());
@@ -301,7 +298,7 @@ impl Session {
     /// Returns a basic response with an empty title, which indicates
     /// (to some SIP clients, at least) that the item was not found.
     fn return_item_not_found(&self, barcode: &str) -> sip2::Message {
-        log::debug!("No copy found with barcode: {barcode}");
+        log::debug!("{self} No copy found with barcode: {barcode}");
 
         let resp = sip2::Message::from_values(
             "18",
@@ -309,14 +306,16 @@ impl Session {
                 "01", // circ status
                 "01", // security marker
                 "01", // fee type
-                &sip2::util::sip_date_now()
-            ], &[
+                &sip2::util::sip_date_now(),
+            ],
+            &[
                 ("AB", &barcode),
                 // For some SIP clients, an empty title is how we
                 // know an item does not exist.
                 ("AJ", ""),
-            ]
-        ).unwrap();
+            ],
+        )
+        .unwrap();
 
         resp
     }

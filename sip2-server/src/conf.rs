@@ -1,8 +1,6 @@
-use std::collections::HashMap;
 use std::fs;
 use yaml_rust::YamlLoader;
-use opensrf as osrf;
-use osrf::addr;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Msg64HoldDatatype {
@@ -122,8 +120,8 @@ impl SipSettings {
 
 #[derive(Debug, Clone)]
 pub struct SipAccount {
-    // username is tracked in the config accounts hash.
     settings: SipSettings,
+    sip_username: String,
     sip_password: String,
     ils_username: String,
     ils_user_id: Option<i64>,
@@ -133,6 +131,9 @@ pub struct SipAccount {
 impl SipAccount {
     pub fn settings(&self) -> &SipSettings {
         &self.settings
+    }
+    pub fn sip_username(&self) -> &str {
+        &self.sip_username
     }
     pub fn sip_password(&self) -> &str {
         &self.sip_password
@@ -305,6 +306,7 @@ impl Config {
 
                 let mut acct = SipAccount {
                     settings: sgroup.clone(),
+                    sip_username: account["sip-username"].as_str().unwrap().to_string(),
                     sip_password: account["sip-password"].as_str().unwrap().to_string(),
                     ils_username: account["ils-username"].as_str().unwrap().to_string(),
                     ils_user_id: None,

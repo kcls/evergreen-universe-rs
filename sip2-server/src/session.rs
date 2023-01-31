@@ -3,11 +3,11 @@ use eg::auth;
 use evergreen as eg;
 use opensrf as osrf;
 use sip2;
+use std::collections::HashMap;
 use std::fmt;
 use std::net;
-use std::sync::Arc;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 // Block this many seconds before waking to see if we need
 // to perform any maintenance / shutdown.
@@ -58,9 +58,9 @@ impl Session {
         shutdown: Arc<AtomicBool>,
     ) {
         match stream.peer_addr() {
-            Ok(a) => log::info!("New SIP connection from {}", a),
+            Ok(a) => log::info!("New SIP connection from {a}"),
             Err(e) => {
-                log::error!("SIP connection has no peer addr? {}", e);
+                log::error!("SIP connection has no peer addr? {e}");
                 return;
             }
         }
@@ -206,10 +206,9 @@ impl Session {
     }
 
     fn start(&mut self) -> Result<(), String> {
-        log::debug!("{} starting", self);
+        log::debug!("{self} starting");
 
         loop {
-
             if self.shutdown.load(Ordering::Relaxed) {
                 log::debug!("{self} Shutdown notice received, exiting listen loop");
                 break;
@@ -219,9 +218,12 @@ impl Session {
             let sip_req_op = self
                 .sip_connection
                 .recv_with_timeout(SIP_RECV_TIMEOUT)
-                .or_else(|e| Err(format!("SIP recv() failed: {e}")))?;
+                .or_else(|e| Err(format!("{self} SIP recv() failed: {e}")))?;
 
-            let sip_req = match sip_req_op { Some(r) => r, None => continue };
+            let sip_req = match sip_req_op {
+                Some(r) => r,
+                None => continue,
+            };
 
             log::trace!("{self} Read SIP message: {:?}", sip_req);
 
@@ -234,10 +236,10 @@ impl Session {
                 .send(&sip_resp)
                 .or_else(|e| Err(format!("SIP send failed: {e}")))?;
 
-            log::debug!("{} Successfully relayed response back to SIP client", self);
+            log::debug!("{self} Successfully relayed response back to SIP client");
         }
 
-        log::info!("{} shutting down", self);
+        log::info!("{self} shutting down");
 
         self.sip_connection.disconnect().ok();
 
@@ -306,20 +308,20 @@ impl Session {
         let mut resp = sip2::Message::from_values(
             "98",
             &[
-                sip2::util::sip_bool(true),     // online status
-                sip2::util::sip_bool(true),     // checkin ok
-                sip2::util::sip_bool(true),     // checkout ok
-                sip2::util::sip_bool(true),     // renewal policy
-                sip2::util::sip_bool(false),    // status update
-                sip2::util::sip_bool(false),    // offline ok
-                "999",                          // timeout
-                "999",                          // max retries
+                sip2::util::sip_bool(true),  // online status
+                sip2::util::sip_bool(true),  // checkin ok
+                sip2::util::sip_bool(true),  // checkout ok
+                sip2::util::sip_bool(true),  // renewal policy
+                sip2::util::sip_bool(false), // status update
+                sip2::util::sip_bool(false), // offline ok
+                "999",                       // timeout
+                "999",                       // max retries
                 &sip2::util::sip_date_now(),
-                "2.00",                         // SIP version
-            ], &[
-                ("BX", INSTITUTION_SUPPORTS.join("").as_str())
-            ]
-        ).unwrap();
+                "2.00", // SIP version
+            ],
+            &[("BX", INSTITUTION_SUPPORTS.join("").as_str())],
+        )
+        .unwrap();
 
         if let Some(a) = &self.account {
             resp.add_field("AO", a.settings().institution());
@@ -331,6 +333,10 @@ impl Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session {}", self.sesid)
+        if let Some(ref acct) = self.account {
+            write!(f, "SIPSession({} {})", self.sesid, acct.sip_username())
+        } else {
+            write!(f, "SIPSession({})", self.sesid)
+        }
     }
 }

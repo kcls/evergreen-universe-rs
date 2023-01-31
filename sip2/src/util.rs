@@ -1,7 +1,7 @@
 //! SIP utility functions
 use super::error;
 use super::spec;
-use chrono::{DateTime, Local, FixedOffset};
+use chrono::{DateTime, FixedOffset, Local};
 use log::error;
 
 /// Clean up a string for inclusion in a SIP message

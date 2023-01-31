@@ -134,10 +134,7 @@ impl Message {
     /// Returns an error if the message code is not supported or the
     /// fixed field values provided are not correct for the specified
     /// message type.
-    pub fn from_ff_values(
-        msg_code: &str,
-        fixed_fields: &[&str],
-    ) -> Result<Message, Error> {
+    pub fn from_ff_values(msg_code: &str, fixed_fields: &[&str]) -> Result<Message, Error> {
         let msg_spec = match spec::Message::from_code(msg_code) {
             Some(m) => m,
             None => {
@@ -171,7 +168,6 @@ impl Message {
         }
         Ok(msg)
     }
-
 
     /// Keep fields sorted for consistent to_sip output.
     fn sort_fields(&mut self) {

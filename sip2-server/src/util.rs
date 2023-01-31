@@ -83,7 +83,9 @@ impl Session {
             return Ok(Some(*id));
         }
 
-        let orgs = self.editor_mut().search("aou", json::object! {shortname: sn})?;
+        let orgs = self
+            .editor_mut()
+            .search("aou", json::object! {shortname: sn})?;
 
         if orgs.len() > 0 {
             let org = &orgs[0];
@@ -92,7 +94,7 @@ impl Session {
             return Ok(Some(id));
         }
 
-        return Ok(None)
+        return Ok(None);
     }
 
     pub fn org_sn_from_id(&mut self, org_id: i64) -> Result<Option<String>, String> {
@@ -104,7 +106,7 @@ impl Session {
 
         let org = match self.editor_mut().retrieve("aou", org_id)? {
             Some(o) => o,
-            None => return Ok(None)
+            None => return Ok(None),
         };
 
         let sn = org["shortname"].as_str().unwrap();
@@ -115,8 +117,9 @@ impl Session {
 
     /// Panics if this session is not authenticated.
     pub fn get_ws_org_id(&self) -> Result<i64, String> {
-
-        let requestor = self.editor().requestor()
+        let requestor = self
+            .editor()
+            .requestor()
             .ok_or(format!("Editor requestor is unset"))?;
 
         let mut field = &requestor["ws_ou"];
@@ -128,7 +131,6 @@ impl Session {
     }
 
     pub fn get_user_and_card(&mut self, user_id: i64) -> Result<Option<json::JsonValue>, String> {
-
         let ops = json::object! {
             flesh: 1,
             flesh_fields: {au: ["card"]}
@@ -164,4 +166,3 @@ impl Session {
             .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}")))
     }
 }
-

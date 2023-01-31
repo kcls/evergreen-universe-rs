@@ -139,9 +139,14 @@ impl Session {
         // keep checking for expired sessions during our data collection.
         self.set_authtoken()?;
 
+        log::info!("{self} SIP patron details for {barcode}");
+
         let user = match self.get_user(barcode)? {
             Some(u) => u,
-            None => return Ok(None),
+            None => {
+                log::warn!("{self} No such patron: {barcode}");
+                return Ok(None);
+            }
         };
 
         let username = user["usrname"].as_str().unwrap(); // required
@@ -890,7 +895,6 @@ impl Session {
         let sbool = |v| sip2::util::space_bool(v);
 
         if patron_op.is_none() {
-
             let status = format!(
                 "{}{}{}{}          ",
                 sbool(false),
@@ -904,14 +908,16 @@ impl Session {
                 &[
                     &status,
                     "000", // language
-                    &sip2::util::sip_date_now()
-                ], &[
+                    &sip2::util::sip_date_now(),
+                ],
+                &[
                     ("AO", self.account().settings().institution()),
                     ("AA", barcode),
                     ("BL", sip2::util::sip_bool(false)), // valid patron
                     ("CQ", sip2::util::sip_bool(false)), // valid patron password
-                ]
-            ).unwrap();
+                ],
+            )
+            .unwrap();
 
             return Ok(resp);
         }
@@ -941,16 +947,18 @@ impl Session {
             &[
                 &status,
                 "000", // language
-                &sip2::util::sip_date_now()
-            ], &[
+                &sip2::util::sip_date_now(),
+            ],
+            &[
                 ("AO", self.account().settings().institution()),
                 ("AA", barcode),
                 ("BH", self.sip_config().currency()),
                 ("BL", sip2::util::sip_bool(true)), // valid patron
                 ("BV", &format!("{:.2}", patron.balance_owed)),
                 ("CQ", sip2::util::sip_bool(patron.password_verified)),
-            ]
-        ).unwrap();
+            ],
+        )
+        .unwrap();
 
         Ok(resp)
     }
