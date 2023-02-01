@@ -93,6 +93,10 @@ impl Monitor {
 
             log::info!("Monitor read command: {command}");
 
+            if command.eq("exit") || command.eq("quit") {
+                break;
+            }
+
             if let Err(e) = self.handle_command(&mut stream, &command) {
                 if let Err(e2) = stream.write(
                     format!("Command failed: {command} {e}\n").as_bytes()) {
@@ -134,6 +138,12 @@ impl Monitor {
                     response += &format!("settings={} username={}\n",
                         acct.settings().name(), acct.sip_username());
                 }
+
+                // As a separate thread, we operator on a cloned version
+                // of the SIP config.  To include manually added
+                // (in-memory only) accounts, we'd have to request
+                // an updated list of accounts from the main server process.
+                response += "\n* Does not include live changes *\n";
             }
             "add-account" => {
                 self.add_account(commands)?;
