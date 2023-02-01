@@ -7,6 +7,15 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::net::{TcpListener, TcpStream, Shutdown};
 
+const HELP_TEXT: &str = r#"
+Commands:
+  help
+  shutdown
+  list-accounts
+  add-account <setting-group> <sip-user> <sip-pass> <ils-user> [<workstation>]
+  disable-account <sip-user>
+"#;
+
 // Wake up occaisonally to see if we need to shutdown, which can
 // be initiated via external actions.
 const POLL_TIMEOUT: u64 = 5;
@@ -14,14 +23,13 @@ const POLL_TIMEOUT: u64 = 5;
 // Read data from the socket in chunks this size.
 const READ_BUFSIZE: usize = 512;
 
-#[derive(Debug, Clone)]
+/// Set of actions that may be delivered to the parent/server process
+/// for handling.
 pub enum MonitorAction {
-    Shutdown,
     AddAccount(conf::SipAccount),
     DisableAccount(String),
 }
 
-#[derive(Debug, Clone)]
 pub struct MonitorEvent {
     action: MonitorAction,
 }
@@ -49,57 +57,6 @@ impl Monitor {
             to_parent_tx,
             shutdown,
         }
-    }
-
-    pub fn parse_event(&self, v: &json::JsonValue) -> Result<MonitorEvent, String> {
-        let action = v["action"]
-            .as_str()
-            .ok_or(format!("MonitorEvent has no action"))?;
-
-        if action.eq("shutdown") {
-            return Ok(MonitorEvent { action: MonitorAction::Shutdown });
-        }
-
-        if action.eq("add-account") {
-            let sgroup = v["settings"].as_str()
-                .ok_or(format!("settings name required"))?;
-
-            let settings = self.sip_config.get_settings(sgroup)
-                .ok_or(format!("No such sip setting group: {sgroup}"))?;
-
-            let sip_username = v["sip_username"].as_str()
-                .ok_or(format!("sip_username required"))?;
-
-            let sip_password = v["sip_password"].as_str()
-                .ok_or(format!("sip_password required"))?;
-
-            let ils_username = v["ils_username"].as_str()
-                .ok_or(format!("ils_username required"))?;
-
-            let mut account = conf::SipAccount::new(
-                settings,
-                sip_username,
-                sip_password,
-                ils_username,
-            );
-
-            account.set_workstation(v["workstation"].as_str());
-
-            return Ok(MonitorEvent { action: MonitorAction::AddAccount(account) });
-        }
-
-        if action.eq("disable-account") {
-
-            if let Some(username) = v["sip_username"].as_str() {
-                return Ok(MonitorEvent {
-                    action: MonitorAction::DisableAccount(username.to_string())
-                });
-            } else {
-                return Err(format!("sip_username value required"));
-            }
-        }
-
-        Err(format!("Monitor command not supported: {action}"))
     }
 
     pub fn run(&mut self) {
@@ -137,21 +94,60 @@ impl Monitor {
             log::info!("Monitor read command: {command}");
 
             if let Err(e) = self.handle_command(&mut stream, &command) {
-                // TODO report error to the caller
-                break;
+                if let Err(e2) = stream.write(
+                    format!("Command failed: {command} {e}\n").as_bytes()) {
+                    log::error!("Error replying to caller.  Exiting: {e2}");
+                    break;
+                }
             }
         }
 
         log::info!("Monitor disconnecting from client: {stream:?}");
 
-        stream.shutdown(Shutdown::Both);
+        stream.shutdown(Shutdown::Both).ok();
     }
 
-    fn handle_command(&self, stream: &mut TcpStream, command: &str) -> Result<(), String> {
+    fn handle_command(&mut self, stream: &mut TcpStream, commands: &str) -> Result<(), String> {
 
-        stream.write(format!("GOT: {command}\n").as_bytes());
+        let command = match commands.split(" ").next() {
+            Some(c) => {
+                if c.len() == 0 { // empty line
+                    return Ok(());
+                } else {
+                    c
+                }
+            },
+            None => return Ok(())
+        };
 
-        todo!()
+        let mut response = "-------------------------------------\n".to_string();
+
+        match command {
+            "help" => response += HELP_TEXT,
+            "shutdown" => {
+                response += "OK\n";
+                self.shutdown.store(true, Ordering::Relaxed);
+                // TODO: connect to server port to wake it up?
+            }
+            "list-accounts" => {
+                for acct in self.sip_config.accounts() {
+                    response += &format!("settings={} username={}\n",
+                        acct.settings().name(), acct.sip_username());
+                }
+            }
+            "add-account" => {
+                self.add_account(commands)?;
+                response += "OK\n";
+            }
+            _ => Err(format!("Unrecognized command"))?
+        }
+
+        response += "-------------------------------------\n";
+
+        stream.write(response.as_bytes())
+            .or_else(|e| Err(format!("Error sending monitor reply: {e}")))?;
+
+        Ok(())
     }
 
     fn read_stream(&self, stream: &mut TcpStream) -> Option<String> {
@@ -207,22 +203,56 @@ impl Monitor {
         }
     }
 
-        /*
-        log::info!("Monitor received command: {event:?}");
+    fn add_account(&mut self, command: &str) -> Result<(), String> {
 
-        match event.action() {
-            MonitorAction::Shutdown => {
-                self.shutdown.store(true, Ordering::Relaxed);
-            }
-            _ => {
-                if let Err(e) = self.to_parent_tx.send(event) {
-                    log::error!("Error sending event to server process: {e}");
-                    // likely all is lost here, but do our best to
-                    // perform a graceful shutdown.
-                    self.shutdown.store(true, Ordering::Relaxed);
-                }
+        let commands: Vec<&str> = command.split(" ").collect();
+
+        if commands.len() < 5 {
+            Err(format!("Account missing parameters"))?;
+        }
+
+        let sgroup = &commands[1];
+
+        let settings = self.sip_config.get_settings(sgroup)
+            .ok_or(format!("No such sip setting group: {sgroup}"))?;
+
+        let mut account = conf::SipAccount::new(
+            settings,
+            &commands[2], // sip user
+            &commands[3], // sip pass
+            &commands[4], // ils user
+        );
+
+        if let Some(w) = commands.get(5) {
+            account.set_workstation(Some(w));
+        }
+
+        let event = MonitorEvent {
+            action: MonitorAction::AddAccount(account)
+        };
+
+        if let Err(e) = self.to_parent_tx.send(event) {
+            log::error!("Error sending event to server process: {e}");
+            // likely all is lost here, but do our best to
+            // perform a graceful shutdown.
+            self.shutdown.store(true, Ordering::Relaxed);
+        }
+
+        Ok(())
+    }
+
+        /*
+        if action.eq("disable-account") {
+
+            if let Some(username) = v["sip_username"].as_str() {
+                return Ok(MonitorEvent {
+                    action: MonitorAction::DisableAccount(username.to_string())
+                });
+            } else {
+                return Err(format!("sip_username value required"));
             }
         }
         */
+
 
 }

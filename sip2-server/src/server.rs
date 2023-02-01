@@ -102,10 +102,6 @@ impl Server {
                 MonitorAction::DisableAccount(username) => {
                     self.sip_config.remove_account(username);
                 }
-
-                // we can ignore the Shutdown action since it results
-                // in a direct update to our shutdown atomic bool.
-                _ => todo!(),
             }
         }
     }

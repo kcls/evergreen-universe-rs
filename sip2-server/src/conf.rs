@@ -36,6 +36,7 @@ impl From<&str> for AvFormat {
 
 #[derive(Debug, Clone)]
 pub struct SipSettings {
+    name: String,
     institution: String,
     due_date_use_sip_date_format: bool,
     patron_status_permit_all: bool,
@@ -52,8 +53,9 @@ pub struct SipSettings {
 }
 
 impl SipSettings {
-    pub fn new(institution: &str) -> Self {
+    pub fn new(name: &str, institution: &str) -> Self {
         SipSettings {
+            name: name.to_string(),
             institution: institution.to_string(),
             due_date_use_sip_date_format: true,
             patron_status_permit_all: false,
@@ -68,6 +70,9 @@ impl SipSettings {
             checkout_override: Vec::new(),
             checkin_override: Vec::new(),
         }
+    }
+    pub fn name(&self) -> &str {
+        &self.name
     }
     pub fn institution(&self) -> &str {
         &self.institution
@@ -261,7 +266,7 @@ impl Config {
                     .as_str()
                     .expect("Setting group institution required");
 
-                let mut grp = SipSettings::new(inst);
+                let mut grp = SipSettings::new(name, inst);
 
                 if let Some(b) = group["due-date-use-sip-date-format"].as_bool() {
                     grp.due_date_use_sip_date_format = b;
@@ -354,6 +359,9 @@ impl Config {
     }
     pub fn remove_account(&mut self, sip_username: &str) -> Option<SipAccount> {
         self.accounts.remove(sip_username)
+    }
+    pub fn accounts(&self) -> Vec<&SipAccount> {
+        self.accounts.values().collect()
     }
     pub fn get_settings(&self, name: &str) -> Option<&SipSettings> {
         self.setting_groups.get(name)
