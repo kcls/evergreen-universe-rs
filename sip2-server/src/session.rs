@@ -13,7 +13,7 @@ use std::sync::Arc;
 // to perform any maintenance / shutdown.
 const SIP_RECV_TIMEOUT: u64 = 5;
 
-const INSTITUTION_SUPPORTS: &[&str] = &[
+const INSTITUTION_SUPPORTS: [&str; 16] = [
     "Y", // patron status request,
     "Y", // checkout,
     "Y", // checkin,

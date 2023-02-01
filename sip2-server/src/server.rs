@@ -136,9 +136,8 @@ impl Server {
         // Consider an option to send a message to SIP threads telling
         // idle threads to self-destruct in cases where we hit/approach
         // the max thread limit.
-        // +1 for the monitor thread.
-        let threads = pool.active_count() + pool.queued_count() + 1;
-        let maxcon = self.sip_config.max_clients();
+        let threads = pool.active_count() + pool.queued_count();
+        let maxcon = self.sip_config.max_clients() + 1; // +1 monitor thread
 
         log::debug!("Working thread count = {threads}");
 
@@ -160,6 +159,7 @@ impl Server {
         let idl = self.ctx.idl().clone();
         let osrf_config = self.ctx.config().clone();
 
-        pool.execute(move || Session::run(conf, osrf_config, idl, stream, sesid, shutdown));
+        pool.execute(move ||
+            Session::run(conf, osrf_config, idl, stream, sesid, shutdown));
     }
 }

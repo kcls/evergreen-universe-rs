@@ -1,4 +1,4 @@
-# SIP2 Mediator Configuration File
+# SIP2 Server Configuration File
 
 # Server listens for SIP clients on this address and port.
 sip-address: "127.0.0.1"
@@ -19,7 +19,7 @@ max-clients: 128
 ascii: true
 
 # Allow message 99 even if the SIP client has not yet logged in.
-# This must be global since we may not have login info yet.
+# This must be global since we may not have account info yet.
 sc-status-before-login: false
 
 # SIP Currency Type value
@@ -70,5 +70,6 @@ accounts:
     sip-password: "sip-pass"  # SIP CO value
     ils-username: "admin"     # ILS user with SIP-related permissions
     #workstation: "BR1-PC123" # Optional.
-    settings: "default"       # Refers to a 'setting-groups' name.
+    settings: "default"       # Refers to a setting-groups' name.
+    activity-as: "sip2"       # Evergreen config.usr_activity_type.ewho
 

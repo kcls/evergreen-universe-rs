@@ -167,11 +167,28 @@ impl Session {
             self.set_patron_summary_list_items(&mut patron, ops)?;
         }
 
-        //
-        // TODO
-        // self.log_activity
+        self.log_activity(patron.id)?;
 
         Ok(Some(patron))
+    }
+
+    fn log_activity(&mut self, patron_id: i64) -> Result<(), String> {
+
+        let who = self.account().activity_as().unwrap_or("sip2");
+
+        let query = json::object! {
+            from: [
+                "actor.insert_usr_activity",
+                patron_id,
+                who,
+                "verify",
+                "sip2", // ingress
+            ]
+        };
+
+        // editor xact
+
+        Ok(())
     }
 
     /// Caller wants to see specific values of a given type, e.g. list
@@ -222,7 +239,8 @@ impl Session {
         let mut author: Option<String> = None;
 
         let fee_type = if last_btype.eq("Lost Materials") {
-            // XXX ugh
+            // XXX ugh @ parsing billing type labels
+            // TODO: get the btype from the billing row.
             "LOST"
         } else if last_btype.starts_with("Overdue") {
             "FINE"
@@ -840,6 +858,8 @@ impl Session {
         // fixed fields are required for correctly formatted messages.
         let summary_ff = &msg.fixed_fields()[2];
 
+        // Position of the "Y" value, of which there should only be 1,
+        // indicates which type of extra summary data to include.
         let list_type = match summary_ff.value().find("Y") {
             Some(idx) => match idx {
                 0 => SummaryListType::HoldItems,
@@ -881,8 +901,6 @@ impl Session {
             detail_items.iter().for_each(|i| resp.add_field(code, i));
         };
 
-        // TODO
-
         Ok(resp)
     }
 
@@ -892,7 +910,7 @@ impl Session {
         barcode: &str,
         patron_op: Option<&Patron>,
     ) -> Result<sip2::Message, String> {
-        let sbool = |v| sip2::util::space_bool(v);
+        let sbool = |v| sip2::util::space_bool(v); // local shorthand
 
         if patron_op.is_none() {
             let status = format!(

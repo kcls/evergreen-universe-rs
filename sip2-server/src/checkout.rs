@@ -44,12 +44,16 @@ impl Session {
 
         let item = match self.get_item_details(&item_barcode)? {
             Some(c) => c,
-            None => return Ok(self.checkout_item_not_found(&item_barcode, &patron_barcode)),
+            None => return Ok(
+                self.checkout_item_not_found(&item_barcode, &patron_barcode)
+            ),
         };
 
         let patron = match self.get_patron_details(&patron_barcode, None, None)? {
             Some(c) => c,
-            None => return Ok(self.checkout_item_not_found(&item_barcode, &patron_barcode)),
+            None => return Ok(
+                self.checkout_item_not_found(&item_barcode, &patron_barcode)
+            ),
         };
 
         let result = self.checkout(

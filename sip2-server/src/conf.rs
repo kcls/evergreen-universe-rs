@@ -131,6 +131,7 @@ pub struct SipAccount {
     ils_username: String,
     ils_user_id: Option<i64>,
     workstation: Option<String>,
+    activity_as: Option<String>
 }
 
 impl SipAccount {
@@ -148,6 +149,7 @@ impl SipAccount {
             ils_username: ils_username.to_string(),
             ils_user_id: None,
             workstation: None,
+            activity_as: None,
         }
     }
 
@@ -174,6 +176,9 @@ impl SipAccount {
     }
     pub fn workstation(&self) -> Option<&str> {
         self.workstation.as_deref()
+    }
+    pub fn activity_as(&self) -> Option<&str> {
+        self.activity_as.as_deref()
     }
 }
 
@@ -352,6 +357,9 @@ impl Config {
 
                 if let Some(ws) = account["workstation"].as_str() {
                     acct.workstation = Some(ws.to_string());
+                }
+                if let Some(ws) = account["activity-as"].as_str() {
+                    acct.activity_as = Some(ws.to_string());
                 }
 
                 self.accounts.insert(username.to_string(), acct);

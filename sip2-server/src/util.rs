@@ -2,7 +2,7 @@ use super::session::Session;
 use chrono::prelude::*;
 use chrono::DateTime;
 
-// NOTE some of these could live in opensrf.
+// NOTE some of these could live in evergreen / opensrf.
 
 impl Session {
     /// Translate a number or numeric-string into a number.

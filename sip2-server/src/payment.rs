@@ -23,6 +23,7 @@ impl Session {
     pub fn handle_payment(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         self.set_authtoken()?;
 
+        // credit card, cash, etc.
         let pay_type = msg.fixed_fields()[2].value();
 
         let patron_barcode = msg
@@ -108,6 +109,8 @@ impl Session {
         resp
     }
 
+    /// Caller wants to pay a specific transaction by ID.  Make sure that's
+    /// a viable choice.
     fn compile_one_xact(
         &mut self,
         user: &json::JsonValue,
@@ -136,6 +139,7 @@ impl Session {
         Ok(vec![(xact_id, pay_amount)])
     }
 
+    /// Find transactions to pay
     fn compile_multi_xacts(
         &mut self,
         user: &json::JsonValue,
@@ -144,6 +148,7 @@ impl Session {
     ) -> Result<Vec<(i64, f64)>, String> {
         let mut payments: Vec<(i64, f64)> = Vec::new();
         let mut patron = Patron::new(&result.patron_barcode);
+
         patron.id = self.parse_id(&user["id"])?;
 
         let xacts = self.get_patron_xacts(&patron, None)?; // see patron mod
@@ -200,6 +205,7 @@ impl Session {
         Ok(payments)
     }
 
+    /// Send payment data to the server for processing.
     fn apply_payments(
         &mut self,
         user: &json::JsonValue,
