@@ -27,7 +27,7 @@ fn main() -> Result<(), String> {
         println!("Fetched org unit: {}", org["shortname"]);
     }
 
-    let query = json::object! {"id": json::object!{"<": 10}};
+    let query = json::object! {"id": json::object!{"<": 10u8}};
     for perm in editor.search("ppl", query)? {
         println!("Search found permission: {}", perm["code"]);
     }
@@ -35,7 +35,7 @@ fn main() -> Result<(), String> {
     // Testing internal auth
     let args = eg::auth::AuthInternalLoginArgs::new(1, "temp");
 
-    let auth_ses = match eg::auth::AuthSession::create_internal_session(client, &args)? {
+    let auth_ses = match eg::auth::AuthSession::internal_session(client, &args)? {
         Some(s) => s,
         None => panic!("Internal Login failed"),
     };
