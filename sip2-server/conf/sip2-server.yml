@@ -5,6 +5,8 @@ sip-address: "127.0.0.1"
 sip-port: 6001
 
 # Monitor/control process listens for incoming connections here.
+# Monitor offers a simple telnet-style interface for interracting.
+monitor-enabled: true
 monitor-address: "127.0.0.1"
 monitor-port: 6002
 

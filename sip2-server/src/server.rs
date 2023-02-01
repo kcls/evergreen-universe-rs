@@ -41,13 +41,17 @@ impl Server {
 
         let pool = ThreadPool::new(self.sip_config.max_clients());
 
-        let mut monitor = Monitor::new(
-            self.sip_config.clone(),
-            self.from_monitor_tx.clone(),
-            self.shutdown.clone(),
-        );
+        if self.sip_config.monitor_enabled() {
+            log::info!("Starting monitor thread");
 
-        pool.execute(move || monitor.run());
+            let mut monitor = Monitor::new(
+                self.sip_config.clone(),
+                self.from_monitor_tx.clone(),
+                self.shutdown.clone(),
+            );
+
+            pool.execute(move || monitor.run());
+        }
 
         let bind = format!(
             "{}:{}",

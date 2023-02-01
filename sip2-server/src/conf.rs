@@ -188,6 +188,7 @@ pub struct Config {
     sc_status_before_login: bool,
     currency: String,
     source: Option<yaml_rust::Yaml>,
+    monitor_enabled: bool,
     monitor_address: Option<String>,
     monitor_port: Option<u16>,
 }
@@ -204,6 +205,7 @@ impl Config {
             currency: "USD".to_string(),
             sc_status_before_login: false,
             source: None,
+            monitor_enabled: false,
             monitor_address: None,
             monitor_port: None,
         }
@@ -239,6 +241,10 @@ impl Config {
 
         if let Some(v) = root["sc-status-before-login"].as_bool() {
             self.sc_status_before_login = v;
+        }
+
+        if let Some(v) = root["monitor-enabled"].as_bool() {
+            self.monitor_enabled = v;
         }
 
         if let Some(v) = root["monitor-address"].as_str() {
@@ -386,6 +392,9 @@ impl Config {
     }
     pub fn sc_status_before_login(&self) -> bool {
         self.sc_status_before_login
+    }
+    pub fn monitor_enabled(&self) -> bool {
+        self.monitor_enabled
     }
     pub fn monitor_address(&self) -> Option<&str> {
         self.monitor_address.as_deref()
