@@ -61,11 +61,13 @@ impl Translator {
 
     fn run(&mut self) {
 
-        //osrf_thread: thread::JoinHandle<()>,
-        //websocket_thread: thread::JoinHandle<()>,
+        //inbound_thread: thread::JoinHandle<()>,
+        //outbound_thread: thread::JoinHandle<()>,
     }
 }
 
+/// Allows the outbound thread to tell the inbound thread when a
+/// session should be tracked as connected.
 #[derive(Debug, Clone)]
 struct SessionEvent {
     thread: String,
@@ -80,18 +82,14 @@ struct InboundThread {
     /// Source address of OpenSRF requests
     address: ClientAddress,
 
-    // Map of thread to backend worker addresses
+    /// Map of thread to backend worker addresses
     sessions: HashMap<String, ClientAddress>,
 
+    /// Receive messages from the outbound thread here.
     to_inbound_rx: mpsc::Receiver<SessionEvent>,
 }
 
 impl InboundThread {
-    /*
-    to_inbound_tx: mpsc::Sender<WorkerStateEvent>,
-    to_inbound_rx: mpsc::Receiver<WorkerStateEvent>,
-    */
-
     fn new(
         config: Arc<conf::Config>,
         address: ClientAddress,
@@ -133,8 +131,10 @@ impl InboundThread {
     }
 
     fn relay_stdin_to_osrf(&mut self, bus: &mut Bus, msg: &str) -> Result<(), String> {
-        let wrapper = json::parse(msg)
-            .or_else(|e| Err(format!("Cannot parse websocket message: {e} {msg}")))?;
+        let wrapper = match json::parse(msg) {
+            Ok(w) => w,
+            Err(e) => Err(format!("Cannot parse websocket message: {e} {msg}"))?,
+        };
 
         let osrf_msg = wrapper["osrf_msg"]
             .as_str()
@@ -275,6 +275,7 @@ struct OutboundThread {
     /// Recipient address for OpenSRF responses.
     address: ClientAddress,
 
+    /// For sending session connectivity info to the inbound thread.
     to_inbound_tx: mpsc::Sender<SessionEvent>,
 }
 
@@ -304,11 +305,8 @@ impl OutboundThread {
             log::debug!("OutboundThread waiting for OpenSRF Responses");
 
             match bus.recv(-1, Some(sent_to)) {
-                Ok(msg_op) => match msg_op {
-                    Some(tm) => self.relay_osrf_to_stdout(&mut bus, &tm)?,
-                    None => {
-                        continue;
-                    }
+                Ok(msg_op) => if let Some(tm) = msg_op {
+                    self.relay_osrf_to_stdout(&mut bus, &tm)?;
                 },
                 Err(e) => {
                     // transport_error -- can we get the thread? TODO
