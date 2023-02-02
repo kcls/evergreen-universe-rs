@@ -1,6 +1,4 @@
-use eg::idl;
 use evergreen as eg;
-use opensrf as osrf;
 
 fn main() -> Result<(), String> {
     let ctx = eg::init::init()?;

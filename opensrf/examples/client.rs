@@ -1,5 +1,4 @@
 use opensrf::Client;
-use opensrf::SettingsClient;
 use std::collections::HashMap;
 
 //const SERVICE: &str = "opensrf.settings";
@@ -13,7 +12,7 @@ fn main() -> Result<(), String> {
 
     let conf = conf.into_shared();
 
-    let mut client = Client::connect(conf.clone())?;
+    let client = Client::connect(conf.clone())?;
 
     let domain = conf.client().domain().name();
 

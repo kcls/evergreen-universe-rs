@@ -7,7 +7,7 @@ const METHOD: &str = "opensrf.system.echo";
 fn main() -> Result<(), String> {
     let conf = opensrf::init::init()?;
 
-    let mut client = Client::connect(conf.into_shared())?;
+    let client = Client::connect(conf.into_shared())?;
 
     // ---------------------------------------------------------
     // SESSION + MANUAL REQUEST --------------------------------

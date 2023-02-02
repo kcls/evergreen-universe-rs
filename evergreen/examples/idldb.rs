@@ -1,10 +1,7 @@
 use eg::db::DatabaseConnection;
-use eg::idl;
 use eg::idldb::{IdlClassSearch, OrderBy, OrderByDir, Pager, Translator};
 use evergreen as eg;
 use getopts;
-use opensrf as osrf;
-use std::env;
 
 fn main() -> Result<(), String> {
     let mut opts = getopts::Options::new();

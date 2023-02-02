@@ -34,11 +34,13 @@ impl From<&Personality> for &str {
     }
 }
 
+/*
 pub struct QueryOps {
     limit: Option<usize>,
     offset: Option<usize>,
     order_by: Option<(String, String)>,
 }
+*/
 
 pub struct Editor {
     client: osrf::Client,

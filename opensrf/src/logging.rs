@@ -18,7 +18,7 @@ const TRIM_THREAD_ID: usize = 5;
 /// NOTE this logs directly to the syslog UNIX path instead of going through
 /// the syslog crate.  This approach gives us much more control.
 pub struct Logger {
-    logfile: conf::LogFile,
+    _logfile: conf::LogFile,
     loglevel: log::LevelFilter,
     facility: syslog::Facility,
     writer: Option<UnixDatagram>,
@@ -43,7 +43,7 @@ impl Logger {
         };
 
         Ok(Logger {
-            logfile: file.clone(),
+            _logfile: file.clone(),
             loglevel: level.clone(),
             facility: facility.clone(),
             writer: None,
