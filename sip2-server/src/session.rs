@@ -275,7 +275,6 @@ impl Session {
     }
 
     fn handle_login(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
-
         self.account = None;
         let mut login_ok = sip2::util::num_bool(false);
 
@@ -284,16 +283,13 @@ impl Session {
                 // Caller sent enough values to attempt login
 
                 if let Some(account) = self.sip_config().get_account(&username) {
-
                     if account.sip_password().eq(&password) {
                         login_ok = sip2::util::num_bool(true);
                         self.account = Some(account.clone());
                     }
-
                 } else {
                     log::warn!("No such SIP account: {username}");
                 }
-
             } else {
                 log::warn!("Login called with no password");
             }

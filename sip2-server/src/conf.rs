@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::fs;
 use yaml_rust::YamlLoader;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Msg64HoldDatatype {
@@ -131,7 +131,7 @@ pub struct SipAccount {
     ils_username: String,
     ils_user_id: Option<i64>,
     workstation: Option<String>,
-    activity_as: Option<String>
+    activity_as: Option<String>,
 }
 
 impl SipAccount {
@@ -139,10 +139,9 @@ impl SipAccount {
         settings: &SipSettings,
         sip_username: &str,
         sip_password: &str,
-        ils_username: &str
+        ils_username: &str,
     ) -> SipAccount {
-
-         SipAccount {
+        SipAccount {
             settings: settings.clone(),
             sip_username: sip_username.to_string(),
             sip_password: sip_password.to_string(),
@@ -369,7 +368,8 @@ impl Config {
 
     /// Add a SIP account, replacing any existing account with the same sip_username
     pub fn add_account(&mut self, account: &SipAccount) {
-        self.accounts.insert(account.sip_username().to_string(), account.clone());
+        self.accounts
+            .insert(account.sip_username().to_string(), account.clone());
     }
     pub fn remove_account(&mut self, sip_username: &str) -> Option<SipAccount> {
         self.accounts.remove(sip_username)

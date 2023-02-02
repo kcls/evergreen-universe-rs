@@ -21,10 +21,7 @@ pub struct Server {
 
 impl Server {
     pub fn new(sip_config: Config, ctx: eg::init::Context) -> Server {
-        let (tx, rx): (
-            mpsc::Sender<MonitorEvent>,
-            mpsc::Receiver<MonitorEvent>
-        ) = mpsc::channel();
+        let (tx, rx): (mpsc::Sender<MonitorEvent>, mpsc::Receiver<MonitorEvent>) = mpsc::channel();
 
         Server {
             ctx,
@@ -62,7 +59,6 @@ impl Server {
         let listener = TcpListener::bind(bind).expect("Error starting SIP server");
 
         for stream in listener.incoming() {
-
             // This can happen while we are waiting for a TCP connect.
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
@@ -170,7 +166,6 @@ impl Server {
         let idl = self.ctx.idl().clone();
         let osrf_config = self.ctx.config().clone();
 
-        pool.execute(move ||
-            Session::run(conf, osrf_config, idl, stream, sesid, shutdown));
+        pool.execute(move || Session::run(conf, osrf_config, idl, stream, sesid, shutdown));
     }
 }

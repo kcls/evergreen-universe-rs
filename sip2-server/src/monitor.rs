@@ -1,11 +1,11 @@
 use super::conf;
-use std::str;
-use std::time::Duration;
 use std::io::{Read, Write};
+use std::net::{Shutdown, TcpListener, TcpStream};
+use std::str;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::net::{TcpListener, TcpStream, Shutdown};
+use std::time::Duration;
 
 const HELP_TEXT: &str = r#"
 Commands entered here affect the running instance only, not the config files.
@@ -64,7 +64,6 @@ impl Monitor {
     }
 
     pub fn run(&mut self) {
-
         let bind = format!(
             "{}:{}",
             self.sip_config.monitor_address().unwrap_or("127.0.0.1"),
@@ -74,7 +73,6 @@ impl Monitor {
         let listener = TcpListener::bind(bind).expect("Error starting SIP monitor");
 
         for stream in listener.incoming() {
-
             match stream {
                 Ok(s) => self.handle_client(s),
                 Err(e) => log::error!("Error accepting TCP connection {}", e),
@@ -89,7 +87,6 @@ impl Monitor {
 
     fn handle_client(&mut self, mut stream: TcpStream) {
         loop {
-
             let command = match self.read_stream(&mut stream) {
                 Some(c) => c,
                 None => break,
@@ -102,8 +99,8 @@ impl Monitor {
             }
 
             if let Err(e) = self.handle_command(&mut stream, &command) {
-                if let Err(e2) = stream.write(
-                    format!("Command failed: {command} {e}\n").as_bytes()) {
+                if let Err(e2) = stream.write(format!("Command failed: {command} {e}\n").as_bytes())
+                {
                     log::error!("Error replying to caller.  Exiting: {e2}");
                     break;
                 }
@@ -116,16 +113,16 @@ impl Monitor {
     }
 
     fn handle_command(&mut self, stream: &mut TcpStream, commands: &str) -> Result<(), String> {
-
         let command = match commands.split(" ").next() {
             Some(c) => {
-                if c.len() == 0 { // empty line
+                if c.len() == 0 {
+                    // empty line
                     return Ok(());
                 } else {
                     c
                 }
-            },
-            None => return Ok(())
+            }
+            None => return Ok(()),
         };
 
         let mut response = "-------------------------------------\n".to_string();
@@ -140,8 +137,11 @@ impl Monitor {
 
             "list-accounts" => {
                 for acct in self.sip_config.accounts() {
-                    response += &format!("settings={} username={}\n",
-                        acct.settings().name(), acct.sip_username());
+                    response += &format!(
+                        "settings={} username={}\n",
+                        acct.settings().name(),
+                        acct.sip_username()
+                    );
                 }
 
                 // As a separate thread, we operator on a cloned version
@@ -160,12 +160,13 @@ impl Monitor {
                 self.wake_server();
                 response += "OK\n";
             }
-            _ => Err(format!("Unrecognized command"))?
+            _ => Err(format!("Unrecognized command"))?,
         }
 
         response += "-------------------------------------\n";
 
-        stream.write(response.as_bytes())
+        stream
+            .write(response.as_bytes())
             .or_else(|e| Err(format!("Error sending monitor reply: {e}")))?;
 
         Ok(())
@@ -177,9 +178,9 @@ impl Monitor {
     /// The server only wakes to check for shutdown signals, etc. when
     /// a new client connects to its SIP port.
     fn wake_server(&self) {
-        if let Ok(stream) = TcpStream::connect(
-            (self.sip_config.sip_address(), self.sip_config.sip_port())) {
-
+        if let Ok(stream) =
+            TcpStream::connect((self.sip_config.sip_address(), self.sip_config.sip_port()))
+        {
             // And immediately disconnect
             stream.shutdown(Shutdown::Both).ok();
         }
@@ -196,7 +197,6 @@ impl Monitor {
         }
 
         loop {
-
             if self.shutdown.load(Ordering::Relaxed) {
                 log::info!("Monitor thread exiting on shutdown command");
                 return None;
@@ -206,24 +206,24 @@ impl Monitor {
 
             let num_bytes = match stream.read(&mut buf) {
                 Ok(n) => n,
-                Err(e) => {
-                    match e.kind() {
-                        std::io::ErrorKind::WouldBlock => {
-                            log::trace!("SIP tcp read timed out.  trying again");
-                            continue;
-                        }
-                        _ => {
-                            log::error!("recv() failed: {e}");
-                            return None;
-                        }
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock => {
+                        log::trace!("SIP tcp read timed out.  trying again");
+                        continue;
                     }
-                }
+                    _ => {
+                        log::error!("recv() failed: {e}");
+                        return None;
+                    }
+                },
             };
 
             // Reading zero bytes can mean the client disconnected.
             // There will at least be a newline character during
             // normal interactions.
-            if num_bytes == 0 { return None; }
+            if num_bytes == 0 {
+                return None;
+            }
 
             let chunk = match str::from_utf8(&buf) {
                 Ok(s) => s,
@@ -233,7 +233,7 @@ impl Monitor {
                 }
             };
 
-            // remove \0 chars and trailing newlines
+            // remove '\0' chars and trailing newlines
             return Some(chunk.trim_matches(char::from(0)).trim_end().to_string());
         }
     }
@@ -248,7 +248,7 @@ impl Monitor {
         };
 
         let event = MonitorEvent {
-            action: MonitorAction::DisableAccount(username.to_string())
+            action: MonitorAction::DisableAccount(username.to_string()),
         };
 
         if let Err(e) = self.to_parent_tx.send(event) {
@@ -260,7 +260,6 @@ impl Monitor {
     }
 
     fn add_account(&mut self, command: &str) -> Result<(), String> {
-
         let commands: Vec<&str> = command.split(" ").collect();
 
         if commands.len() < 5 {
@@ -269,7 +268,9 @@ impl Monitor {
 
         let sgroup = &commands[1];
 
-        let settings = self.sip_config.get_settings(sgroup)
+        let settings = self
+            .sip_config
+            .get_settings(sgroup)
             .ok_or(format!("No such sip setting group: {sgroup}"))?;
 
         let mut account = conf::SipAccount::new(
@@ -284,7 +285,7 @@ impl Monitor {
         }
 
         let event = MonitorEvent {
-            action: MonitorAction::AddAccount(account)
+            action: MonitorAction::AddAccount(account),
         };
 
         if let Err(e) = self.to_parent_tx.send(event) {

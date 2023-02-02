@@ -173,7 +173,6 @@ impl Session {
     }
 
     fn log_activity(&mut self, patron_id: i64) -> Result<(), String> {
-
         let who = self.account().activity_as().unwrap_or("sip2");
 
         let query = json::object! {
@@ -206,13 +205,14 @@ impl Session {
         patron: &mut Patron,
         summary_ops: &SummaryListOptions,
     ) -> Result<(), String> {
+        type SL = SummaryListType; // local shorthand
         match summary_ops.list_type() {
-            SummaryListType::HoldItems => self.add_hold_items(patron, summary_ops, false)?,
-            SummaryListType::UnavailHoldItems => self.add_hold_items(patron, summary_ops, true)?,
-            SummaryListType::ChargedItems => self.add_items_out(patron, summary_ops)?,
-            SummaryListType::OverdueItems => self.add_overdue_items(patron, summary_ops)?,
-            SummaryListType::FineItems => self.add_fine_items(patron, summary_ops)?,
-            SummaryListType::Unsupported => {} // NO-OP not necessarily an error.
+            SL::HoldItems => self.add_hold_items(patron, summary_ops, false)?,
+            SL::UnavailHoldItems => self.add_hold_items(patron, summary_ops, true)?,
+            SL::ChargedItems => self.add_items_out(patron, summary_ops)?,
+            SL::OverdueItems => self.add_overdue_items(patron, summary_ops)?,
+            SL::FineItems => self.add_fine_items(patron, summary_ops)?,
+            SL::Unsupported => {} // NO-OP not necessarily an error.
         }
 
         Ok(())

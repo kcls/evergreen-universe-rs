@@ -263,7 +263,10 @@ impl Session {
 
         let circ = &evt.payload()["circ"];
         if circ.is_object() {
-            log::debug!("{self} Checkin of {} returned a circulation object", item.barcode);
+            log::debug!(
+                "{self} Checkin of {} returned a circulation object",
+                item.barcode
+            );
 
             if let Some(user) = self.get_user_and_card(self.parse_id(&circ["usr"])?)? {
                 if let Some(bc) = user["card"]["barcode"].as_str() {
