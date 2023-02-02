@@ -155,9 +155,11 @@ impl Session {
     }
 
     pub fn handle_item_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
-        let barcode = msg
-            .get_field_value("AB")
-            .ok_or(format!("handle_item_info() missing item barcode"))?;
+
+        let barcode = match msg.get_field_value("AB") {
+            Some(b) => b,
+            None => return Ok(self.return_item_not_found("")),
+        };
 
         log::info!("{self} Item Information {barcode}");
 
@@ -169,7 +171,7 @@ impl Session {
         };
 
         let mut resp = sip2::Message::from_values(
-            "18",
+            &sip2::spec::M_ITEM_INFO_RESP,
             &[
                 &item.circ_status,
                 "02", // security marker
@@ -301,7 +303,7 @@ impl Session {
         log::debug!("{self} No copy found with barcode: {barcode}");
 
         let resp = sip2::Message::from_values(
-            "18",
+            &sip2::spec::M_ITEM_INFO_RESP,
             &[
                 "01", // circ status
                 "01", // security marker

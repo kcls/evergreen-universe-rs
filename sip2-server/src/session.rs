@@ -13,37 +13,46 @@ use std::sync::Arc;
 // to perform any maintenance / shutdown.
 const SIP_RECV_TIMEOUT: u64 = 5;
 
-const INSTITUTION_SUPPORTS: [&str; 16] = [
-    "Y", // patron status request,
-    "Y", // checkout,
-    "Y", // checkin,
-    "N", // block patron,
-    "Y", // acs status,
-    "N", // request sc/acs resend,
-    "Y", // login,
-    "Y", // patron information,
-    "N", // end patron session,
-    "Y", // fee paid,
-    "Y", // item information,
-    "N", // item status update,
-    "N", // patron enable,
-    "N", // hold,
-    "Y", // renew,
-    "N", // renew all,
-];
+/* --------------------------------------------------------- */
+// By order of appearance in the INSTITUTION_SUPPORTS string:
+// patron status request
+// checkout
+// checkin
+// block patron
+// acs status
+// request sc/acs resend
+// login
+// patron information
+// end patron session
+// fee paid
+// item information
+// item status update
+// patron enable
+// hold
+// renew
+// renew all
+const INSTITUTION_SUPPORTS: &str = "YYYNYNYYNYYNNNYN";
+/* --------------------------------------------------------- */
 
-/// Manages the connection between a SIP client and the HTTP backend.
+/// Manages a single SIP client connection.
 pub struct Session {
+    /// Unique session identifier; mostly for logging.
     sesid: usize,
+
     sip_connection: sip2::Connection,
+
+    /// If true, the server is shutting down, so we should exit.
     shutdown: Arc<AtomicBool>,
     sip_config: conf::Config,
     osrf_client: osrf::Client,
+
+    /// Used for pulling trivial data from Evergreen, i.e. no API required.
     editor: eg::editor::Editor,
 
     // We won't have some values until the SIP client logs in.
     account: Option<conf::SipAccount>,
 
+    /// Cache of org unit shortnames and IDs.
     org_sn_cache: HashMap<String, i64>,
 }
 
@@ -65,7 +74,7 @@ impl Session {
             }
         }
 
-        let mut con = sip2::Connection::new_from_stream(stream);
+        let mut con = sip2::Connection::from_stream(stream);
         con.set_ascii(sip_config.ascii());
 
         let osrf_client = match osrf::Client::connect(osrf_config.clone()) {
@@ -95,7 +104,7 @@ impl Session {
             // This is not necessarily an error.  The client may simply
             // have disconnected.  There is no "disconnect" message in
             // SIP -- you just chop off the socket.
-            log::info!("{ses} exited on with message: {e}");
+            log::info!("{ses} exited with message: {e}");
         }
     }
 
@@ -107,6 +116,7 @@ impl Session {
         &mut self.org_sn_cache
     }
 
+    /// True if our SIP client has successfully logged in.
     pub fn has_account(&self) -> bool {
         self.account.is_some()
     }
@@ -137,7 +147,8 @@ impl Session {
         &self.editor
     }
 
-    /// Return the authtoken wrapped as a JSON string for easier use in API calls.
+    /// Verifies the existing authtoken if present, requesting a new
+    /// authtoken when necessary.
     ///
     /// Returns Err if we fail to verify the token or login as needed.
     pub fn set_authtoken(&mut self) -> Result<(), String> {
@@ -157,7 +168,10 @@ impl Session {
         }
     }
 
-    /// Cache the user id after the first lookup
+    /// Find the ID of the ILS user account whose username matches
+    /// the ILS username for our SIP account.
+    ///
+    /// Cache the user id after the first lookup.
     fn get_ils_user_id(&mut self) -> Result<i64, String> {
         if let Some(id) = self.account().ils_user_id() {
             return Ok(id);
@@ -182,6 +196,7 @@ impl Session {
         Ok(user_id)
     }
 
+    /// Create a internal auth session in the ILS
     fn login(&mut self) -> Result<(), String> {
         let ils_user_id = self.get_ils_user_id()?;
         let mut args = auth::AuthInternalLoginArgs::new(ils_user_id, "staff");
@@ -205,6 +220,9 @@ impl Session {
         Ok(())
     }
 
+    /// Wait for SIP requests in a loop and send replies.
+    ///
+    /// Exits when the shutdown signal is set or on unrecoverable error.
     fn start(&mut self) -> Result<(), String> {
         log::debug!("{self} starting");
 
@@ -231,7 +249,7 @@ impl Session {
 
             log::trace!("{self} server replying with {sip_resp:?}");
 
-            // Send the HTTP response back to the SIP client as a SIP message.
+            // Send the SIP response back to the SIP client
             self.sip_connection
                 .send(&sip_resp)
                 .or_else(|e| Err(format!("SIP send failed: {e}")))?;
@@ -246,9 +264,7 @@ impl Session {
         Ok(())
     }
 
-    /// Send a SIP client request to the HTTP backend for processing.
-    ///
-    /// Blocks waiting for a response.
+    /// Process a single SIP request.
     fn handle_sip_request(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         let code = msg.spec().code;
 
@@ -297,7 +313,7 @@ impl Session {
             log::warn!("Login called with no username");
         }
 
-        Ok(sip2::Message::from_ff_values("94", &[login_ok]).unwrap())
+        Ok(sip2::Message::from_ff_values(&sip2::spec::M_LOGIN_RESP, &[login_ok]).unwrap())
     }
 
     fn handle_sc_status(&mut self, _msg: &sip2::Message) -> Result<sip2::Message, String> {
@@ -306,7 +322,7 @@ impl Session {
         }
 
         let mut resp = sip2::Message::from_values(
-            "98",
+            &sip2::spec::M_ACS_STATUS,
             &[
                 sip2::util::sip_bool(true),  // online status
                 sip2::util::sip_bool(true),  // checkin ok
@@ -319,7 +335,7 @@ impl Session {
                 &sip2::util::sip_date_now(),
                 "2.00", // SIP version
             ],
-            &[("BX", INSTITUTION_SUPPORTS.join("").as_str())],
+            &[("BX", INSTITUTION_SUPPORTS)],
         )
         .unwrap();
 

@@ -838,13 +838,24 @@ impl Session {
         let password_op = msg.get_field_value("AD"); // optional
 
         let patron_op = self.get_patron_details(&barcode, password_op.as_deref(), None)?;
-        self.patron_response_common("24", &barcode, patron_op.as_ref())
+        self.patron_response_common(
+            &sip2::spec::M_PATRON_STATUS_RESP,
+            &barcode,
+            patron_op.as_ref()
+        )
     }
 
     pub fn handle_patron_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
-        let barcode = msg
-            .get_field_value("AA")
-            .ok_or(format!("handle_patron_status() missing patron barcode"))?;
+        let barcode = match msg.get_field_value("AA") {
+            Some(b) => b,
+            None => return Ok(
+                self.patron_response_common(
+                    &sip2::spec::M_PATRON_INFO_RESP,
+                    "",
+                    None
+                )?
+            ),
+        };
 
         let password_op = msg.get_field_value("AD"); // optional
 
@@ -889,7 +900,11 @@ impl Session {
         let patron_op =
             self.get_patron_details(&barcode, password_op.as_deref(), Some(&list_ops))?;
 
-        let mut resp = self.patron_response_common("64", &barcode, patron_op.as_ref())?;
+        let mut resp = self.patron_response_common(
+            &sip2::spec::M_PATRON_INFO_RESP,
+            &barcode,
+            patron_op.as_ref()
+        )?;
 
         let patron = match patron_op {
             Some(p) => p,
@@ -914,13 +929,15 @@ impl Session {
 
     fn patron_response_common(
         &self,
-        msg_code: &str,
+        msg_spec: &'static sip2::spec::Message,
         barcode: &str,
         patron_op: Option<&Patron>,
     ) -> Result<sip2::Message, String> {
         let sbool = |v| sip2::util::space_bool(v); // local shorthand
 
         if patron_op.is_none() {
+            log::warn!("Replying to patron lookup for not-found patron");
+
             let status = format!(
                 "{}{}{}{}          ",
                 sbool(false),
@@ -930,7 +947,7 @@ impl Session {
             );
 
             let resp = sip2::Message::from_values(
-                msg_code,
+                msg_spec,
                 &[
                     &status,
                     "000", // language
@@ -969,7 +986,7 @@ impl Session {
         );
 
         let resp = sip2::Message::from_values(
-            msg_code,
+            msg_spec,
             &[
                 &status,
                 "000", // language

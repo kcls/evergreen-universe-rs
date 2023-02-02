@@ -131,18 +131,12 @@ impl Message {
 
     /// Creates a new message from a set of fixed field values.
     ///
-    /// Returns an error if the message code is not supported or the
-    /// fixed field values provided are not correct for the specified
-    /// message type.
-    pub fn from_ff_values(msg_code: &str, fixed_fields: &[&str]) -> Result<Message, Error> {
-        let msg_spec = match spec::Message::from_code(msg_code) {
-            Some(m) => m,
-            None => {
-                log::error!("Unsupported message code: {msg_code}");
-                return Err(Error::MessageFormatError);
-            }
-        };
-
+    /// Returns an error if the fixed field values provided are not
+    /// the correct length for the specified message type.
+    pub fn from_ff_values(
+        msg_spec: &'static spec::Message,
+        fixed_fields: &[&str]
+    ) -> Result<Message, Error> {
         let mut ff: Vec<FixedField> = Vec::new();
         for (idx, ff_spec) in msg_spec.fixed_fields.iter().enumerate() {
             if let Some(v) = fixed_fields.get(idx) {
@@ -157,17 +151,19 @@ impl Message {
         })
     }
 
+    /// Create a new message from a list of fixed field and field string values.
     pub fn from_values(
-        msg_code: &str,
+        spec: &'static spec::Message,
         fixed_fields: &[&str],
         fields: &[(&str, &str)],
     ) -> Result<Message, Error> {
-        let mut msg = Message::from_ff_values(msg_code, fixed_fields)?;
+        let mut msg = Message::from_ff_values(spec, fixed_fields)?;
         for field in fields {
             msg.add_field(field.0, field.1);
         }
         Ok(msg)
     }
+
 
     /// Keep fields sorted for consistent to_sip output.
     fn sort_fields(&mut self) {

@@ -1,6 +1,8 @@
 use super::session::Session;
 use evergreen as eg;
 use gettextrs::*;
+use super::item::Item;
+use super::patron::Patron;
 
 const RENEW_METHOD: &str = "open-ils.circ.renew";
 const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
@@ -30,13 +32,21 @@ impl Session {
     pub fn handle_checkout(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         self.set_authtoken()?;
 
-        let item_barcode = msg
-            .get_field_value("AB")
-            .ok_or(format!("checkout() missing item barcode"))?;
+        let item_barcode = match msg.get_field_value("AB") {
+            Some(v) => v,
+            None => {
+                log::error!("checkout() missing item barcode");
+                return Ok(self.checkout_item_not_found("", ""));
+            }
+        };
 
-        let patron_barcode = msg
-            .get_field_value("AA")
-            .ok_or(format!("checkout() missing patron barcode"))?;
+        let patron_barcode = match msg.get_field_value("AA") {
+            Some(v) => v,
+            None => {
+                log::error!("checkout() missing patron barcode");
+                return Ok(self.checkout_item_not_found(&item_barcode, ""));
+            }
+        };
 
         log::info!("{self} Checking out item {item_barcode} to patron {patron_barcode}");
 
@@ -60,11 +70,21 @@ impl Session {
             self.account().settings().checkout_override_all(),
         )?;
 
+        self.compile_checkout_response(&item, &patron, &result)
+    }
+
+    fn compile_checkout_response(
+        &self,
+        item: &Item,
+        patron: &Patron,
+        result: &CheckoutResult
+    ) -> Result<sip2::Message, String> {
+
         let renew_ok = result.renewal_remaining > 0 && !patron.renew_denied;
         let magnetic = item.magnetic_media;
 
         let mut resp = sip2::Message::from_values(
-            "12", // checkout response
+            &sip2::spec::M_CHECKOUT_RESP,
             &[
                 sip2::util::num_bool(result.circ_id.is_some()), // checkin ok
                 sip2::util::sip_bool(renew_ok),                 // renew ok
@@ -73,8 +93,8 @@ impl Session {
                 &sip2::util::sip_date_now(),                    // timestamp
             ],
             &[
-                ("AA", &patron_barcode),
-                ("AB", &item_barcode),
+                ("AA", &patron.barcode),
+                ("AB", &item.barcode),
                 ("AJ", &item.title),
                 ("AO", self.account().settings().institution()),
                 ("BT", &item.fee_type),
@@ -104,7 +124,7 @@ impl Session {
         patron_barcode: &str,
     ) -> sip2::Message {
         sip2::Message::from_values(
-            "12", // checkout response
+            &sip2::spec::M_CHECKOUT_RESP,
             &[
                 sip2::util::num_bool(false), // checkin ok
                 sip2::util::sip_bool(false), // renew ok

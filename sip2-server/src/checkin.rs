@@ -83,7 +83,7 @@ impl Session {
         )?;
 
         let mut resp = sip2::Message::from_values(
-            "10",
+            &sip2::spec::M_LOGIN_RESP,
             &[
                 sip2::util::num_bool(result.ok),                   // checkin ok
                 sip2::util::sip_bool(!item.magnetic_media),        // resensitize
@@ -125,7 +125,7 @@ impl Session {
 
     fn return_checkin_item_not_found(&self, barcode: &str) -> sip2::Message {
         sip2::Message::from_values(
-            "10",
+            &sip2::spec::M_CHECKIN_RESP,
             &[
                 sip2::util::num_bool(false), // checkin ok
                 sip2::util::sip_bool(false), // resensitize

@@ -23,20 +23,34 @@ impl Session {
     pub fn handle_payment(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         self.set_authtoken()?;
 
+        let patron_barcode = match msg.get_field_value("AA") {
+            Some(v) => v,
+            None => {
+                log::error!("handle_payment() missing patron barcode field");
+                return Ok(self.compile_payment_response(&PaymentResult::new("")));
+            }
+        };
+
+        let mut result = PaymentResult::new(&patron_barcode);
+
+        let pay_amount_str = match msg.get_field_value("BV") {
+            Some(v) => v,
+            None => {
+                log::error!("Payment requires amount field (BV)");
+                return Ok(self.compile_payment_response(&result));
+            }
+        };
+
+        let pay_amount: f64 = match pay_amount_str.parse() {
+            Ok(v) => v,
+            Err(_) => {
+                log::error!("Invalid payment amount: '{pay_amount_str}'");
+                return Ok(self.compile_payment_response(&result));
+            }
+        };
+
         // credit card, cash, etc.
         let pay_type = msg.fixed_fields()[2].value();
-
-        let patron_barcode = msg
-            .get_field_value("AA")
-            .ok_or(format!("handle_payment() missing patron barcode field"))?;
-
-        let pay_amount_str = msg
-            .get_field_value("BV")
-            .ok_or(format!("handle_payment() missing pay amount field"))?;
-
-        let pay_amount: f64 = pay_amount_str
-            .parse()
-            .or_else(|_| Err(format!("Invalid payment amount: '{pay_amount_str}'")))?;
 
         let terminal_xact_op = msg.get_field_value("BK"); // optional
 
@@ -45,14 +59,13 @@ impl Session {
         let register_login_op = msg.get_field_value("OR");
         let check_number_op = msg.get_field_value("RN");
 
-        let mut result = PaymentResult::new(&patron_barcode);
 
         let search = json::object! { barcode: patron_barcode };
         let ops = json::object! { flesh: 1u8, flesh_fields: {ac: ["usr"]} };
         let mut cards = self.editor_mut().search_with_ops("ac", search, ops)?;
 
         if cards.len() == 0 {
-            return Ok(self.compile_response(&result));
+            return Ok(self.compile_payment_response(&result));
         }
 
         // Swap the fleshing to favor usr->card over card->usr
@@ -61,12 +74,14 @@ impl Session {
 
         let payments: Vec<(i64, f64)>;
 
+        // Caller can request to pay toward a specific transaction or have
+        // the back-end select transactions to pay.
         if let Some(xact_id_str) = msg.get_field_value("CG") {
             if let Ok(xact_id) = xact_id_str.parse::<i64>() {
                 payments = self.compile_one_xact(&user, xact_id, pay_amount, &mut result)?;
             } else {
                 log::warn!("{self} Invalid transaction ID in payment: {xact_id_str}");
-                return Ok(self.compile_response(&result));
+                return Ok(self.compile_payment_response(&result));
             }
         } else {
             // No transaction is specified.  Pay whatever we can.
@@ -74,7 +89,7 @@ impl Session {
         }
 
         if payments.len() == 0 {
-            return Ok(self.compile_response(&result));
+            return Ok(self.compile_payment_response(&result));
         }
 
         self.apply_payments(
@@ -87,12 +102,13 @@ impl Session {
             payments,
         )?;
 
-        Ok(self.compile_response(&result))
+        Ok(self.compile_payment_response(&result))
     }
 
-    fn compile_response(&self, result: &PaymentResult) -> sip2::Message {
+    /// Create the SIP response message
+    fn compile_payment_response(&self, result: &PaymentResult) -> sip2::Message {
         let mut resp = sip2::Message::from_values(
-            "38",
+            &sip2::spec::M_FEE_PAID_RESP,
             &[
                 sip2::util::num_bool(result.success),
                 &sip2::util::sip_date_now(),
@@ -101,8 +117,7 @@ impl Session {
                 ("AA", &result.patron_barcode),
                 ("AO", self.account().settings().institution()),
             ],
-        )
-        .unwrap();
+        ).unwrap();
 
         resp.maybe_add_field("AF", result.screen_msg.as_deref());
 

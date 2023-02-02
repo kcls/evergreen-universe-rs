@@ -79,11 +79,12 @@ impl Server {
             }
         }
 
-        log::info!("SIP2Mediator shutting down; waiting for threads to complete");
+        log::info!("Server shutting down; waiting for threads to complete");
 
         pool.join();
     }
 
+    /// Check for messages from the monitor thread.
     fn process_monitor_events(&mut self) {
         loop {
             let event = match self.from_monitor_rx.try_recv() {
@@ -136,13 +137,6 @@ impl Server {
             pool.queued_count()
         );
 
-        // TODO
-        // Just because a thread is 'active' does not mean the SIP
-        // client it manages is sending requests.  It may just be hunkered
-        // down on the socket, idle for long stretches of time.
-        // Consider an option to send a message to SIP threads telling
-        // idle threads to self-destruct in cases where we hit/approach
-        // the max thread limit.
         let threads = pool.active_count() + pool.queued_count();
         let maxcon = self.sip_config.max_clients() + 1; // +1 monitor thread
 

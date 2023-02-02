@@ -44,7 +44,7 @@ impl Connection {
         }
     }
 
-    pub fn new_from_stream(tcp_stream: TcpStream) -> Self {
+    pub fn from_stream(tcp_stream: TcpStream) -> Self {
         Connection {
             ascii: false,
             tcp_stream: tcp_stream,
