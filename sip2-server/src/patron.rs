@@ -186,9 +186,17 @@ impl Session {
             ]
         };
 
-        // editor xact
+        self.editor_mut().xact_begin()?;
 
-        Ok(())
+        let resp = self.editor_mut().json_query(query)?;
+
+        if resp.len() > 0 {
+            self.editor_mut().commit()?;
+            Ok(())
+        } else {
+            self.editor_mut().rollback()?;
+            Err(format!("Patron activity logging returned no response"))
+        }
     }
 
     /// Caller wants to see specific values of a given type, e.g. list

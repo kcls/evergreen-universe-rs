@@ -194,6 +194,12 @@ impl Editor {
         self.disconnect()
     }
 
+    /// Commit the active transaction and disconnect from the worker.
+    pub fn commit(&mut self) -> Result<(), String> {
+        self.xact_commit()?;
+        self.disconnect()
+    }
+
     /// Generate a method name prefixed with the app name of our personality.
     fn app_method(&self, part: &str) -> String {
         let p: &str = self.personality().into();
@@ -212,6 +218,7 @@ impl Editor {
     }
 
     pub fn xact_begin(&mut self) -> Result<(), String> {
+        self.connect()?;
         if let Some(id) = self.request_np(&self.app_method("transaction.begin"))? {
             if let Some(id_str) = id.as_str() {
                 log::debug!("New transaction started with id {}", id_str);
@@ -245,6 +252,12 @@ impl Editor {
     }
 
     pub fn connect(&mut self) -> Result<(), String> {
+        if let Some(ref ses) = self.session {
+            if ses.connected() {
+                // Already connected.
+                return Ok(());
+            }
+        }
         self.session().connect()
     }
 

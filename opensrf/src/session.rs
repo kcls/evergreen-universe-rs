@@ -376,6 +376,10 @@ impl Session {
             return Ok(());
         }
 
+        // Discard any knowledge about previous communication
+        // with a specific worker since we are not connected.
+        self.worker_addr = None;
+
         debug!("{self} sending CONNECT");
 
         let trace = self.incr_thread_trace();
