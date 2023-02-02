@@ -1,4 +1,4 @@
-# Evergreen Universe Rust
+# Evergreen Universe / Rust
 
 Rust bindings, libs, and binaries for Evergreen and related projects.
 
@@ -20,6 +20,6 @@ SIP2 client library
 
 ## sip2-server
 
-Threaded SIP2 server custom built for working with Evergreen.
+Threaded SIP2 server custom built for Evergreen.
 
 
