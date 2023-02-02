@@ -1,5 +1,6 @@
 use super::session::Session;
 
+/// A copy object with SIP-related data collected and attached.
 pub struct Item {
     pub barcode: String,
     pub circ_lib: i64,
@@ -95,22 +96,7 @@ impl Session {
             }
         }
 
-        let deposit_amount = match copy["deposit_amount"].as_f64() {
-            Some(a) => a,
-            None => match copy["deposit_amount"].as_str() {
-                Some(s) => match s.parse::<f64>() {
-                    Ok(v) => v,
-                    Err(e) => Err(format!(
-                        "Invalid deposit amount: {} {e}",
-                        copy["deposit_amount"]
-                    ))?,
-                },
-                None => Err(format!(
-                    "Unexpected deposit amount: {}",
-                    copy["deposit_amount"]
-                ))?,
-            },
-        };
+        let deposit_amount = self.parse_float(&copy["deposit_amount"])?;
 
         let mut fee_type = "01";
         if copy["deposit"].as_str().unwrap().eq("f") {
@@ -120,19 +106,11 @@ impl Session {
         }
 
         let circ_status = self.circ_status(copy);
-
-        let media_type = match copy["circ_modifier"]["sip2_media_type"].as_str() {
-            Some(t) => t,
-            None => "001",
-        };
-
+        let media_type = copy["circ_modifier"]["sip2_media_type"].as_str().unwrap_or("001");
         let magnetic_media = self.parse_bool(&copy["circ_modifier"]["magnetic_media"]);
 
         let (title, _) = self.get_copy_title_author(&copy)?;
-        let title = match title {
-            Some(t) => t,
-            _ => String::new(), // not impossible
-        };
+        let title = title.unwrap_or(String::new());
 
         Ok(Some(Item {
             barcode: barcode.to_string(),

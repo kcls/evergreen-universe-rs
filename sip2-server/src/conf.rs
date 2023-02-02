@@ -34,6 +34,7 @@ impl From<&str> for AvFormat {
     }
 }
 
+/// Named collection of SIP session settings.
 #[derive(Debug, Clone)]
 pub struct SipSettings {
     name: String,
@@ -181,6 +182,7 @@ impl SipAccount {
     }
 }
 
+/// Global SIP configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
     sip_address: String,
@@ -219,11 +221,11 @@ impl Config {
     ///
     /// Panics if the file is not formatted correctly
     pub fn read_yaml(&mut self, filename: &str) {
-        let yaml_text =
-            fs::read_to_string(filename).expect("Read YAML configuration file to string");
+        let yaml_text = fs::read_to_string(filename)
+            .expect("Read YAML configuration file to string");
 
-        let yaml_docs =
-            YamlLoader::load_from_str(&yaml_text).expect("Parsing configuration file as YAML");
+        let yaml_docs = YamlLoader::load_from_str(&yaml_text)
+            .expect("Parsing configuration file as YAML");
 
         let root = &yaml_docs[0];
 
@@ -268,71 +270,69 @@ impl Config {
     }
 
     fn add_setting_groups(&mut self, root: &yaml_rust::Yaml) {
-        if root["setting-groups"].is_array() {
-            for group in root["setting-groups"].as_vec().unwrap() {
-                let name = group["name"].as_str().expect("Setting group name required");
+        if !root["setting-groups"].is_array() {
+            return;
+        }
 
-                let inst = group["institution"]
-                    .as_str()
-                    .expect("Setting group institution required");
+        for group in root["setting-groups"].as_vec().unwrap() {
 
-                let mut grp = SipSettings::new(name, inst);
 
-                if let Some(b) = group["due-date-use-sip-date-format"].as_bool() {
-                    grp.due_date_use_sip_date_format = b;
-                }
-                if let Some(b) = group["patron-status-permit-all"].as_bool() {
-                    grp.patron_status_permit_all = b;
-                }
-                if let Some(b) = group["patron-status-permit-loans"].as_bool() {
-                    grp.patron_status_permit_loans = b;
-                }
-                if let Some(b) = group["msg64-hold-items-available"].as_bool() {
-                    grp.msg64_hold_items_available = b;
-                }
-                if let Some(b) = group["checkin-holds-as-transits"].as_bool() {
-                    grp.checkin_holds_as_transits = b;
-                }
-                if let Some(b) = group["checkout-override-all"].as_bool() {
-                    grp.checkout_override_all = b;
-                }
-                if let Some(b) = group["checkin-override-all"].as_bool() {
-                    grp.checkin_override_all = b;
-                }
+            let name = group["name"].as_str().expect("Setting group name required");
 
-                if let Some(s) = group["msg64-hold-datatype"].as_str() {
-                    if s.to_lowercase().starts_with("t") {
-                        grp.msg64_hold_datatype = Msg64HoldDatatype::Title;
-                    }
-                }
-                if let Some(s) = group["msg64-summary-datatype"].as_str() {
-                    if s.to_lowercase().starts_with("t") {
-                        grp.msg64_summary_datatype = Msg64SummaryDatatype::Title;
-                    }
-                }
-                if let Some(s) = group["av-format"].as_str() {
-                    grp.av_format = s.into();
-                }
+            let inst = group["institution"]
+                .as_str()
+                .expect("Setting group institution required");
 
-                if group["checkin-override"].is_array() {
-                    for ovride in group["checkin-override"].as_vec().unwrap() {
-                        if let Some(code) = ovride.as_str() {
-                            grp.checkin_override.push(code.to_string());
-                        }
-                    }
-                }
+            let mut grp = SipSettings::new(name, inst);
 
-                if group["checkout-override"].is_array() {
-                    for ovride in group["checkout-override"].as_vec().unwrap() {
-                        if let Some(code) = ovride.as_str() {
-                            grp.checkout_override.push(code.to_string());
-                        }
-                    }
+            // Local shorthand for pulling a bool value from the yaml
+            // node and applying to a setting value.
+            let set_bool = |g: &yaml_rust::Yaml, k: &str, f: &mut bool| {
+                if let Some(v) = g[k].as_bool() {
+                    *f = v;
                 }
+            };
 
-                log::debug!("Adding setting group '{name}'");
-                self.setting_groups.insert(name.to_string(), grp);
+            set_bool(group, "due-date-use-sip-date-format", &mut grp.due_date_use_sip_date_format);
+            set_bool(group, "patron-status-permit-all", &mut grp.patron_status_permit_all);
+            set_bool(group, "patron-status-permit-loans", &mut grp.patron_status_permit_loans);
+            set_bool(group, "msg64-hold-items-available", &mut grp.msg64_hold_items_available);
+            set_bool(group, "checkin-holds-as-transits", &mut grp.checkin_holds_as_transits);
+            set_bool(group, "checkout-override-all", &mut grp.checkout_override_all);
+            set_bool(group, "checkin-override-all", &mut grp.checkin_override_all);
+
+            if let Some(s) = group["msg64-hold-datatype"].as_str() {
+                if s.to_lowercase().starts_with("t") {
+                    grp.msg64_hold_datatype = Msg64HoldDatatype::Title;
+                }
             }
+            if let Some(s) = group["msg64-summary-datatype"].as_str() {
+                if s.to_lowercase().starts_with("t") {
+                    grp.msg64_summary_datatype = Msg64SummaryDatatype::Title;
+                }
+            }
+            if let Some(s) = group["av-format"].as_str() {
+                grp.av_format = s.into();
+            }
+
+            if group["checkin-override"].is_array() {
+                for ovride in group["checkin-override"].as_vec().unwrap() {
+                    if let Some(code) = ovride.as_str() {
+                        grp.checkin_override.push(code.to_string());
+                    }
+                }
+            }
+
+            if group["checkout-override"].is_array() {
+                for ovride in group["checkout-override"].as_vec().unwrap() {
+                    if let Some(code) = ovride.as_str() {
+                        grp.checkout_override.push(code.to_string());
+                    }
+                }
+            }
+
+            log::debug!("Adding setting group '{name}'");
+            self.setting_groups.insert(name.to_string(), grp);
         }
     }
 

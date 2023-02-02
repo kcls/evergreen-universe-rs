@@ -204,24 +204,22 @@ impl Session {
             }
         }
 
-        if !ovride {
-            if self
+        if !ovride
+            && self
                 .account()
                 .settings()
                 .checkout_override()
                 .contains(&evt.textcode().to_string())
+        {
+            return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
+        }
+
+        if !ovride && fee_ack {
+            // Caller acknowledges a fee is required.
+            if evt.textcode().eq("ITEM_DEPOSIT_FEE_REQUIRED")
+                || evt.textcode().eq("ITEM_RENTAL_FEE_REQUIRED")
             {
-                // Event is configured for override
-
                 return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
-            } else if fee_ack {
-                // Caller acknowledges a fee is required.
-
-                if evt.textcode().eq("ITEM_DEPOSIT_FEE_REQUIRED")
-                    || evt.textcode().eq("ITEM_RENTAL_FEE_REQUIRED")
-                {
-                    return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
-                }
             }
         }
 

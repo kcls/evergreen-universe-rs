@@ -66,10 +66,10 @@ setting-groups:
       - "PATRON_EXCEEDS_FINES"
 
 accounts:
-  - sip-username: "sip-user"  # SIP CN value
-    sip-password: "sip-pass"  # SIP CO value
+  - sip-username: "sip-user"  # SIP Login CN value
+    sip-password: "sip-pass"  # SIP Login CO value
     ils-username: "admin"     # ILS user with SIP-related permissions
-    #workstation: "BR1-PC123" # Optional.
     settings: "default"       # Refers to a setting-groups' name.
-    activity-as: "sip2"       # Evergreen config.usr_activity_type.ewho
+    #workstation: "BR1-PC123" # Optional.
+    #activity-as: "sip2"      # Optional.  Evergreen config.usr_activity_type.ewho
 
