@@ -275,26 +275,30 @@ impl Session {
     }
 
     fn handle_login(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
-        let username = msg
-            .get_field_value("CN")
-            .ok_or(format!("login() missing username"))?;
 
-        let password = msg
-            .get_field_value("CO")
-            .ok_or(format!("login() missing password"))?;
-
-        let account = match self.sip_config().get_account(&username) {
-            Some(a) => a,
-            None => Err(format!("No such account: {username}"))?,
-        };
-
+        self.account = None;
         let mut login_ok = sip2::util::num_bool(false);
 
-        if account.sip_password().eq(&password) {
-            login_ok = sip2::util::num_bool(true);
-            self.account = Some(account.clone());
+        if let Some(username) = msg.get_field_value("CN") {
+            if let Some(password) = msg.get_field_value("CO") {
+                // Caller sent enough values to attempt login
+
+                if let Some(account) = self.sip_config().get_account(&username) {
+
+                    if account.sip_password().eq(&password) {
+                        login_ok = sip2::util::num_bool(true);
+                        self.account = Some(account.clone());
+                    }
+
+                } else {
+                    log::warn!("No such SIP account: {username}");
+                }
+
+            } else {
+                log::warn!("Login called with no password");
+            }
         } else {
-            self.account = None;
+            log::warn!("Login called with no username");
         }
 
         Ok(sip2::Message::from_ff_values("94", &[login_ok]).unwrap())

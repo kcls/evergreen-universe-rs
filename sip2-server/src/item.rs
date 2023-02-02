@@ -131,7 +131,7 @@ impl Session {
         let (title, _) = self.get_copy_title_author(&copy)?;
         let title = match title {
             Some(t) => t,
-            _ => String::new(),
+            _ => String::new(), // not impossible
         };
 
         Ok(Some(Item {

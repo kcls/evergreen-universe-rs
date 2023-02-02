@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::net::{TcpListener, TcpStream, Shutdown};
 
 const HELP_TEXT: &str = r#"
+Commands entered here affect the running instance only, not the config files.
+
 Commands:
   help
   shutdown
@@ -25,11 +27,13 @@ const READ_BUFSIZE: usize = 512;
 
 /// Set of actions that may be delivered to the parent/server process
 /// for handling.
+#[derive(Debug)]
 pub enum MonitorAction {
     AddAccount(conf::SipAccount),
     DisableAccount(String),
 }
 
+#[derive(Debug)]
 pub struct MonitorEvent {
     action: MonitorAction,
 }
@@ -131,8 +135,9 @@ impl Monitor {
             "shutdown" => {
                 response += "OK\n";
                 self.shutdown.store(true, Ordering::Relaxed);
-                // TODO: connect to server port to wake it up?
+                self.wake_server();
             }
+
             "list-accounts" => {
                 for acct in self.sip_config.accounts() {
                     response += &format!("settings={} username={}\n",
@@ -147,6 +152,12 @@ impl Monitor {
             }
             "add-account" => {
                 self.add_account(commands)?;
+                self.wake_server();
+                response += "OK\n";
+            }
+            "disable-account" => {
+                self.disable_account(commands)?;
+                self.wake_server();
                 response += "OK\n";
             }
             _ => Err(format!("Unrecognized command"))?
@@ -158,6 +169,20 @@ impl Monitor {
             .or_else(|e| Err(format!("Error sending monitor reply: {e}")))?;
 
         Ok(())
+    }
+
+    /// Connect to the TCP port of our server to wake it up and process
+    /// pending commands.
+    ///
+    /// The server only wakes to check for shutdown signals, etc. when
+    /// a new client connects to its SIP port.
+    fn wake_server(&self) {
+        if let Ok(stream) = TcpStream::connect(
+            (self.sip_config.sip_address(), self.sip_config.sip_port())) {
+
+            // And immediately disconnect
+            stream.shutdown(Shutdown::Both).ok();
+        }
     }
 
     fn read_stream(&self, stream: &mut TcpStream) -> Option<String> {
@@ -213,12 +238,33 @@ impl Monitor {
         }
     }
 
+    fn disable_account(&mut self, command: &str) -> Result<(), String> {
+        let commands: Vec<&str> = command.split(" ").collect();
+
+        let username = if commands.len() > 1 {
+            &commands[1]
+        } else {
+            Err(format!("disable-account missing parameters"))?
+        };
+
+        let event = MonitorEvent {
+            action: MonitorAction::DisableAccount(username.to_string())
+        };
+
+        if let Err(e) = self.to_parent_tx.send(event) {
+            log::error!("Error sending event to server process: {e}");
+            self.shutdown.store(true, Ordering::Relaxed);
+        }
+
+        Ok(())
+    }
+
     fn add_account(&mut self, command: &str) -> Result<(), String> {
 
         let commands: Vec<&str> = command.split(" ").collect();
 
         if commands.len() < 5 {
-            Err(format!("Account missing parameters"))?;
+            Err(format!("add-account missing parameters"))?;
         }
 
         let sgroup = &commands[1];
@@ -243,26 +289,9 @@ impl Monitor {
 
         if let Err(e) = self.to_parent_tx.send(event) {
             log::error!("Error sending event to server process: {e}");
-            // likely all is lost here, but do our best to
-            // perform a graceful shutdown.
             self.shutdown.store(true, Ordering::Relaxed);
         }
 
         Ok(())
     }
-
-        /*
-        if action.eq("disable-account") {
-
-            if let Some(username) = v["sip_username"].as_str() {
-                return Ok(MonitorEvent {
-                    action: MonitorAction::DisableAccount(username.to_string())
-                });
-            } else {
-                return Err(format!("sip_username value required"));
-            }
-        }
-        */
-
-
 }

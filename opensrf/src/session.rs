@@ -422,7 +422,7 @@ impl Session {
 
         debug!("{self} sending DISCONNECT");
 
-        let trace = self.incr_thread_trace(); // TODO move into below
+        let trace = self.incr_thread_trace();
 
         let tmsg = TransportMessage::with_body(
             dest_addr.full(),

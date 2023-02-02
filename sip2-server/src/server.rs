@@ -62,6 +62,12 @@ impl Server {
         let listener = TcpListener::bind(bind).expect("Error starting SIP server");
 
         for stream in listener.incoming() {
+
+            // This can happen while we are waiting for a TCP connect.
+            if self.shutdown.load(Ordering::Relaxed) {
+                break;
+            }
+
             let sesid = self.next_sesid();
 
             match stream {
@@ -71,6 +77,7 @@ impl Server {
 
             self.process_monitor_events();
 
+            // This can happen while we are launching a new thread.
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
@@ -98,12 +105,16 @@ impl Server {
                 },
             };
 
+            log::debug!("Server received monito event: {event:?}");
+
             match event.action() {
                 MonitorAction::AddAccount(account) => {
+                    log::info!("Adding new account {}", account.sip_username());
                     self.sip_config.add_account(account);
                 }
 
                 MonitorAction::DisableAccount(username) => {
+                    log::info!("Disabling account {username}");
                     self.sip_config.remove_account(username);
                 }
             }
