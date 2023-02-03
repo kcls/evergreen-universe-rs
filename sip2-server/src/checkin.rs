@@ -240,7 +240,7 @@ impl Session {
 
             log::debug!("{self} Checkin of {} returned a copy object", item.barcode);
 
-            if let Ok(circ_lib) = self.parse_id(&copy["circ_lib"]) {
+            if let Ok(circ_lib) = eg::util::json_int(&copy["circ_lib"]) {
                 if circ_lib != item.circ_lib {
                     if let Some(loc) = self.org_sn_from_id(circ_lib)? {
                         current_loc = loc.to_string();
@@ -268,7 +268,7 @@ impl Session {
                 item.barcode
             );
 
-            if let Some(user) = self.get_user_and_card(self.parse_id(&circ["usr"])?)? {
+            if let Some(user) = self.get_user_and_card(eg::util::json_int(&circ["usr"])?)? {
                 if let Some(bc) = user["card"]["barcode"].as_str() {
                     result.patron_barcode = Some(bc.to_string());
                 }
@@ -314,7 +314,7 @@ impl Session {
 
         log::debug!("{self} Checkin returned a hold object id={}", hold["id"]);
 
-        if let Some(user) = self.get_user_and_card(self.parse_id(&hold["usr"])?)? {
+        if let Some(user) = self.get_user_and_card(eg::util::json_int(&hold["usr"])?)? {
             result.hold_patron_name = Some(self.format_user_name(&user));
             if let Some(bc) = user["card"]["barcode"].as_str() {
                 result.hold_patron_barcode = Some(bc.to_string());
@@ -327,9 +327,9 @@ impl Session {
         // hold pickup lib may or may not be fleshed here.
         if pickup_lib.is_object() {
             result.destination_loc = Some(pickup_lib["shortname"].as_str().unwrap().to_string());
-            pickup_lib_id = self.parse_id(&pickup_lib["id"])?;
+            pickup_lib_id = eg::util::json_int(&pickup_lib["id"])?;
         } else {
-            pickup_lib_id = self.parse_id(&pickup_lib)?;
+            pickup_lib_id = eg::util::json_int(&pickup_lib)?;
             result.destination_loc = self.org_sn_from_id(pickup_lib_id)?;
         }
 

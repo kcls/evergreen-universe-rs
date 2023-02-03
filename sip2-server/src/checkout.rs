@@ -189,8 +189,8 @@ impl Session {
             let circ = &evt.payload()["circ"];
 
             if circ.is_object() {
-                result.circ_id = Some(self.parse_id(&circ["id"])?);
-                result.renewal_remaining = self.parse_id(&circ["renewal_remaining"])?;
+                result.circ_id = Some(eg::util::json_int(&circ["id"])?);
+                result.renewal_remaining = eg::util::json_int(&circ["renewal_remaining"])?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
                 if self.account().settings().due_date_use_sip_date_format() {

@@ -2,6 +2,7 @@ use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
 use json::JsonValue;
+use evergreen as eg;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 const DEFAULT_LIST_ITEM_SIZE: usize = 10;
@@ -153,11 +154,11 @@ impl Session {
 
         let mut patron = Patron::new(barcode);
 
-        patron.id = self.parse_id(&user["id"])?;
+        patron.id = eg::util::json_int(&user["id"])?;
         patron.password_verified = self.check_password(&username, password_op)?;
 
         if let Some(summary) = self.editor_mut().retrieve("mous", patron.id)? {
-            patron.balance_owed = self.parse_float(&summary["balance_owed"])?;
+            patron.balance_owed = eg::util::json_float(&summary["balance_owed"])?;
         }
 
         self.set_patron_privileges(&user, &mut patron)?;
@@ -240,8 +241,8 @@ impl Session {
         let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
         let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
 
-        let xact_id = self.parse_id(&xact["id"])?;
-        let balance_owed = self.parse_float(&xact["balance_owed"])?;
+        let xact_id = eg::util::json_int(&xact["id"])?;
+        let balance_owed = eg::util::json_float(&xact["balance_owed"])?;
 
         let mut title: Option<String> = None;
         let mut author: Option<String> = None;
@@ -460,13 +461,13 @@ impl Session {
     }
 
     fn find_title_for_hold(&mut self, hold: &JsonValue) -> Result<Option<String>, String> {
-        let hold_id = self.parse_id(&hold["id"])?;
+        let hold_id = eg::util::json_int(&hold["id"])?;
         let bib_link = match self.editor_mut().retrieve("rhrr", hold_id)? {
             Some(l) => l,
             None => return Ok(None), // shouldn't be happen-able
         };
 
-        let bib_id = self.parse_id(&bib_link["bib_record"])?;
+        let bib_id = eg::util::json_int(&bib_link["bib_record"])?;
         let search = json::object! {
             source: bib_id,
             name: "title",
@@ -486,12 +487,12 @@ impl Session {
     fn find_copy_for_hold(&mut self, hold: &JsonValue) -> Result<Option<JsonValue>, String> {
         if !hold["current_copy"].is_null() {
             // We have a captured copy.  Use it.
-            let copy_id = self.parse_id(&hold["current_copy"])?;
+            let copy_id = eg::util::json_int(&hold["current_copy"])?;
             return self.editor_mut().retrieve("acp", copy_id);
         }
 
         let hold_type = hold["hold_type"].as_str().unwrap(); // required
-        let hold_target = self.parse_id(&hold["target"])?;
+        let hold_target = eg::util::json_int(&hold["target"])?;
 
         if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
             // These are all copy-level hold types
@@ -509,7 +510,7 @@ impl Session {
             let search = json::object! { metarecord: hold_target };
             let maps = self.editor_mut().search("mmrsm", search)?;
             for map in maps {
-                bre_ids.push(self.parse_id(&map["record"])?);
+                bre_ids.push(eg::util::json_int(&map["record"])?);
             }
         } else {
             bre_ids.push(hold_target);
@@ -527,7 +528,7 @@ impl Session {
 
         let copy_id_hashes = self.editor_mut().json_query(query)?;
         if copy_id_hashes.len() > 0 {
-            let copy_id = self.parse_id(&copy_id_hashes[0]["id"])?;
+            let copy_id = eg::util::json_int(&copy_id_hashes[0]["id"])?;
             return self.editor_mut().retrieve("acp", copy_id);
         }
 
@@ -646,7 +647,7 @@ impl Session {
         let id_hash_list = self.editor_mut().json_query(query)?;
 
         for hash in id_hash_list {
-            let hold_id = self.parse_id(&hash["id"])?;
+            let hold_id = eg::util::json_int(&hash["id"])?;
             if unavail {
                 patron.unavail_hold_ids.push(hold_id);
             } else {
@@ -692,10 +693,10 @@ impl Session {
 
         patron.max_fines = self.penalties_contain(1, &penalties)?; // PATRON_EXCEEDS_FINES
         patron.max_overdue = self.penalties_contain(2, &penalties)?; // PATRON_EXCEEDS_OVERDUE_COUNT
-        patron.card_active = self.parse_bool(&user["card"]["active"]);
+        patron.card_active = eg::util::json_bool(&user["card"]["active"]);
 
-        let blocked = self.parse_bool(&user["barred"])
-            || !self.parse_bool(&user["active"])
+        let blocked = eg::util::json_bool(&user["barred"])
+            || !eg::util::json_bool(&user["active"])
             || !patron.card_active;
 
         let mut block_tags = String::new();
@@ -735,7 +736,7 @@ impl Session {
         penalties: &Vec<JsonValue>,
     ) -> Result<bool, String> {
         for pen in penalties.iter() {
-            let pen_id = self.parse_id(&pen["id"])?;
+            let pen_id = eg::util::json_int(&pen["id"])?;
             if pen_id == penalty_id {
                 return Ok(true);
             }
@@ -824,7 +825,7 @@ impl Session {
         )?;
 
         if let Some(resp) = req.recv(60)? {
-            Ok(self.parse_bool(&resp))
+            Ok(eg::util::json_bool(&resp))
         } else {
             Err(format!("API call timed out"))
         }

@@ -1,50 +1,11 @@
 use super::session::Session;
 use chrono::prelude::*;
 use chrono::DateTime;
+use evergreen as eg;
 
 // NOTE some of these could live in evergreen / opensrf.
 
 impl Session {
-    /// Translate a number or numeric-string into a number.
-    ///
-    /// Values returned from the database vary in stringy-ness.
-    pub fn parse_id(&self, value: &json::JsonValue) -> Result<i64, String> {
-        if let Some(n) = value.as_i64() {
-            return Ok(n);
-        } else if let Some(s) = value.as_str() {
-            if let Ok(n) = s.parse::<i64>() {
-                return Ok(n);
-            }
-        }
-        Err(format!("Invalid numeric value: {}", value))
-    }
-
-    /// Translate a number or numeric-string into a number.
-    ///
-    /// Values returned from the database vary in stringy-ness.
-    pub fn parse_float(&self, value: &json::JsonValue) -> Result<f64, String> {
-        if let Some(n) = value.as_f64() {
-            return Ok(n);
-        } else if let Some(s) = value.as_str() {
-            if let Ok(n) = s.parse::<f64>() {
-                return Ok(n);
-            }
-        }
-        Err(format!("Invalid float value: {}", value))
-    }
-
-    // The server returns a variety of true-ish values.
-    pub fn parse_bool(&self, value: &json::JsonValue) -> bool {
-        if let Some(n) = value.as_i64() {
-            n != 0
-        } else if let Some(s) = value.as_str() {
-            s.len() > 0 && (s[..1].eq("t") || s[..1].eq("T"))
-        } else if let Some(b) = value.as_bool() {
-            b
-        } else {
-            false
-        }
-    }
 
     /// This one comes up a lot...
     ///
@@ -55,7 +16,7 @@ impl Session {
     ) -> Result<(Option<String>, Option<String>), String> {
         let mut resp = (None, None);
 
-        if self.parse_id(&copy["call_number"]["id"])? == -1 {
+        if eg::util::json_int(&copy["call_number"]["id"])? == -1 {
             if let Some(title) = copy["dummy_title"].as_str() {
                 resp.0 = Some(title.to_string());
             }
@@ -89,7 +50,7 @@ impl Session {
 
         if orgs.len() > 0 {
             let org = &orgs[0];
-            let id = self.parse_id(&org["id"])?;
+            let id = eg::util::json_int(&org["id"])?;
             self.org_sn_cache_mut().insert(sn.to_string(), id);
             return Ok(Some(id));
         }
@@ -127,7 +88,7 @@ impl Session {
             field = &requestor["home_ou"];
         };
 
-        self.parse_id(field)
+        eg::util::json_int(field)
     }
 
     pub fn get_user_and_card(&mut self, user_id: i64) -> Result<Option<json::JsonValue>, String> {

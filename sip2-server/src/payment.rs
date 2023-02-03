@@ -141,12 +141,12 @@ impl Session {
             }
         };
 
-        if self.parse_id(&sum["usr"]) != self.parse_id(&user["id"]) {
+        if eg::util::json_int(&sum["usr"]) != eg::util::json_int(&user["id"]) {
             log::warn!("{self} Payment transaction {xact_id} does not link to provided user");
             return Ok(Vec::new());
         }
 
-        if pay_amount > self.parse_float(&sum["balance_owed"])? {
+        if pay_amount > eg::util::json_float(&sum["balance_owed"])? {
             result.screen_msg = Some(gettext("Overpayment not allowed"));
             return Ok(Vec::new());
         }
@@ -164,7 +164,7 @@ impl Session {
         let mut payments: Vec<(i64, f64)> = Vec::new();
         let mut patron = Patron::new(&result.patron_barcode);
 
-        patron.id = self.parse_id(&user["id"])?;
+        patron.id = eg::util::json_int(&user["id"])?;
 
         let xacts = self.get_patron_xacts(&patron, None)?; // see patron mod
 
@@ -175,8 +175,8 @@ impl Session {
 
         let mut amount_remaining = pay_amount;
         for xact in xacts {
-            let xact_id = self.parse_id(&xact["id"])?;
-            let balance_owed = self.parse_float(&xact["balance_owed"])?;
+            let xact_id = eg::util::json_int(&xact["id"])?;
+            let balance_owed = eg::util::json_float(&xact["balance_owed"])?;
 
             if balance_owed < 0.0 {
                 continue;
@@ -259,7 +259,7 @@ impl Session {
         }
 
         let mut args = json::object! {
-            userid: self.parse_id(&user["id"])?,
+            userid: eg::util::json_int(&user["id"])?,
             note: note,
             payments: pay_array,
         };

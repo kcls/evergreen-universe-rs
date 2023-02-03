@@ -1,4 +1,5 @@
 use super::session::Session;
+use evergreen as eg;
 
 /// A copy object with SIP-related data collected and attached.
 pub struct Item {
@@ -50,7 +51,7 @@ impl Session {
 
         let mut due_date: Option<String> = None;
 
-        if let Ok(Some(circ)) = self.get_copy_circ(self.parse_id(&copy["id"])?) {
+        if let Ok(Some(circ)) = self.get_copy_circ(eg::util::json_int(&copy["id"])?) {
             if let Some(iso_date) = circ["due_date"].as_str() {
                 if self.account().settings().due_date_use_sip_date_format() {
                     let due_dt = self.parse_pg_date(iso_date)?;
@@ -61,7 +62,7 @@ impl Session {
             }
         }
 
-        let circ_lib_id = self.parse_id(&copy["circ_lib"]["id"])?;
+        let circ_lib_id = eg::util::json_int(&copy["circ_lib"]["id"])?;
         let circ_lib = copy["circ_lib"]["shortname"].as_str().unwrap(); // required
         let owning_lib = copy["call_number"]["owning_lib"]["shortname"]
             .as_str()
@@ -96,7 +97,7 @@ impl Session {
             }
         }
 
-        let deposit_amount = self.parse_float(&copy["deposit_amount"])?;
+        let deposit_amount = eg::util::json_float(&copy["deposit_amount"])?;
 
         let mut fee_type = "01";
         if copy["deposit"].as_str().unwrap().eq("f") {
@@ -107,7 +108,7 @@ impl Session {
 
         let circ_status = self.circ_status(copy);
         let media_type = copy["circ_modifier"]["sip2_media_type"].as_str().unwrap_or("001");
-        let magnetic_media = self.parse_bool(&copy["circ_modifier"]["magnetic_media"]);
+        let magnetic_media = eg::util::json_bool(&copy["circ_modifier"]["magnetic_media"]);
 
         let (title, _) = self.get_copy_title_author(&copy)?;
         let title = title.unwrap_or(String::new());
@@ -185,12 +186,12 @@ impl Session {
         copy: &json::JsonValue,
         transit: &Option<json::JsonValue>,
     ) -> Result<Option<json::JsonValue>, String> {
-        let copy_status = self.parse_id(&copy["status"]["id"])?;
+        let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 8 {
             // On Holds Shelf
             if let Some(t) = transit {
-                if self.parse_id(&t["copy_status"])? != 8 {
+                if eg::util::json_int(&t["copy_status"])? != 8 {
                     // Copy in transit for non-hold reasons
                     return Ok(None);
                 }
@@ -200,7 +201,7 @@ impl Session {
             }
         }
 
-        let copy_id = self.parse_id(&copy["id"])?;
+        let copy_id = eg::util::json_int(&copy["id"])?;
 
         let search = json::object! {
             current_copy: copy_id,
@@ -229,13 +230,13 @@ impl Session {
         &mut self,
         copy: &json::JsonValue,
     ) -> Result<Option<json::JsonValue>, String> {
-        let copy_status = self.parse_id(&copy["status"]["id"])?;
+        let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 6 {
             return Ok(None);
         }
 
-        let copy_id = self.parse_id(&copy["id"])?;
+        let copy_id = eg::util::json_int(&copy["id"])?;
 
         let search = json::object! {
             target_copy: copy_id,
@@ -259,7 +260,7 @@ impl Session {
 
     fn circ_status(&self, copy: &json::JsonValue) -> &str {
         // copy.status is fleshed
-        let copy_status = self.parse_id(&copy["status"]["id"]).unwrap();
+        let copy_status = eg::util::json_int(&copy["status"]["id"]).unwrap();
 
         match copy_status {
             9 => "02",      // on order
