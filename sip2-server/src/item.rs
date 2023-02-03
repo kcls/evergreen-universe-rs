@@ -54,7 +54,7 @@ impl Session {
         if let Ok(Some(circ)) = self.get_copy_circ(eg::util::json_int(&copy["id"])?) {
             if let Some(iso_date) = circ["due_date"].as_str() {
                 if self.account().settings().due_date_use_sip_date_format() {
-                    let due_dt = self.parse_pg_date(iso_date)?;
+                    let due_dt = eg::util::parse_pg_date(iso_date)?;
                     due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
                     due_date = Some(iso_date.to_string());
@@ -88,7 +88,7 @@ impl Session {
                 .to_string();
 
             if let Some(date) = hold["shelf_expire_time"].as_str() {
-                let pu_date = self.parse_pg_date(date)?;
+                let pu_date = eg::util::parse_pg_date(date)?;
                 hold_pickup_date_op = Some(sip2::util::sip_date_from_dt(&pu_date));
             }
 

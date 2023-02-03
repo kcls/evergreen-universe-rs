@@ -670,7 +670,7 @@ impl Session {
         patron: &mut Patron,
     ) -> Result<(), String> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
-        let expire_date = self.parse_pg_date(&expire_date_str)?;
+        let expire_date = eg::util::parse_pg_date(&expire_date_str)?;
 
         if expire_date < Local::now() {
             // Patron is expired.  Don't bother checking other penalties, etc.

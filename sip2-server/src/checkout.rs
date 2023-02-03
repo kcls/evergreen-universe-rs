@@ -194,7 +194,7 @@ impl Session {
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
                 if self.account().settings().due_date_use_sip_date_format() {
-                    let due_dt = self.parse_pg_date(iso_date)?;
+                    let due_dt = eg::util::parse_pg_date(iso_date)?;
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
                     result.due_date = Some(iso_date.to_string());

@@ -1,4 +1,6 @@
 use json::JsonValue;
+use chrono::prelude::*;
+use chrono::DateTime;
 
 /// We support a variety of true-ish values.
 ///
@@ -10,9 +12,7 @@ use json::JsonValue;
 /// assert!(evergreen::util::json_bool(&json::from("trooo")));
 /// assert!(!evergreen::util::json_bool(&json::from(0i8)));
 /// assert!(!evergreen::util::json_bool(&json::from(false)));
-
 /// ```
-
 pub fn json_bool(value: &JsonValue) -> bool {
     if let Some(n) = value.as_i64() {
         n != 0
@@ -63,7 +63,6 @@ pub fn json_float(value: &JsonValue) -> Result<f64, String> {
 ///
 /// let res = evergreen::util::json_int(&json::from(12));
 /// assert_eq!(res.unwrap(), 12);
-
 pub fn json_int(value: &JsonValue) -> Result<i64, String> {
     if let Some(n) = value.as_i64() {
         return Ok(n);
@@ -73,5 +72,21 @@ pub fn json_int(value: &JsonValue) -> Result<i64, String> {
         }
     }
     Err(format!("Invalid int value: {}", value))
+}
+
+/// Create a DateTime from a Postgres date string.
+///
+/// chrono has a parse_from_rfc3339() function, but it does
+/// not like time zones without colons.  Dates, amiright?
+/// ```
+/// let res = evergreen::util::parse_pg_date("2023-02-03T12:23:19-0400");
+/// assert!(res.is_ok());
+///
+/// let d = res.unwrap().to_rfc3339();
+/// assert_eq!(d, "2023-02-03T12:23:19-04:00");
+/// ```
+pub fn parse_pg_date(pg_iso_date: &str) -> Result<DateTime<FixedOffset>, String> {
+    DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
+        .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}")))
 }
 
