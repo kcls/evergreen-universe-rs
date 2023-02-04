@@ -406,25 +406,6 @@ impl Session {
         }
     }
 
-    fn get_data_range(
-        &self,
-        summary_ops: &SummaryListOptions,
-        values: &Vec<String>,
-    ) -> Vec<String> {
-        let limit = summary_ops.limit();
-        let offset = summary_ops.offset();
-
-        let mut new_values: Vec<String> = Vec::new();
-
-        for idx in offset..(offset + limit) {
-            if let Some(v) = values.get(idx) {
-                new_values.push(v.to_string());
-            }
-        }
-
-        new_values
-    }
-
     /// Collect details on holds.
     fn add_hold_items(
         &mut self,
@@ -439,9 +420,19 @@ impl Session {
             false => &patron.hold_ids,
         };
 
+        let mut trimmed_hold_ids = Vec::new();
+        let limit = summary_ops.limit();
+        let offset = summary_ops.offset();
+
+        for idx in offset..(offset + limit) {
+            if let Some(id) = hold_ids.get(idx) {
+                trimmed_hold_ids.push(id);
+            }
+        }
+
         let mut hold_items: Vec<String> = Vec::new();
 
-        for hold_id in hold_ids {
+        for hold_id in trimmed_hold_ids {
             if let Some(hold) = self.editor_mut().retrieve("ahr", *hold_id)? {
                 if format == conf::Msg64HoldDatatype::Barcode {
                     if let Some(copy) = self.find_copy_for_hold(&hold)? {
@@ -455,7 +446,7 @@ impl Session {
             }
         }
 
-        patron.detail_items = Some(self.get_data_range(summary_ops, &hold_items));
+        patron.detail_items = Some(hold_items);
 
         Ok(())
     }

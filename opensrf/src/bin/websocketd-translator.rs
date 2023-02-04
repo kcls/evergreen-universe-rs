@@ -335,6 +335,7 @@ impl OutboundThread {
                 }
 
                 if *s.status() as isize >= message::MessageStatus::BadRequest as isize {
+                    // TODO tell Inbound to remove this thread from the session cache
                     Err(format!("Request returned unexpected status"))?;
                 }
             }

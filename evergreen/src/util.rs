@@ -84,6 +84,9 @@ pub fn json_int(value: &JsonValue) -> Result<i64, String> {
 ///
 /// let d = res.unwrap().to_rfc3339();
 /// assert_eq!(d, "2023-02-03T12:23:19-04:00");
+///
+/// let res = evergreen::util::parse_pg_date("2023-02-03T123");
+/// assert!(res.is_err());
 /// ```
 pub fn parse_pg_date(pg_iso_date: &str) -> Result<DateTime<FixedOffset>, String> {
     DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
