@@ -60,9 +60,44 @@ impl Translator {
     */
 
     fn run(&mut self) {
+        let (tx, rx): (mpsc::Sender<SessionEvent>, mpsc::Receiver<SessionEvent>) = mpsc::channel();
 
-        //inbound_thread: thread::JoinHandle<()>,
-        //outbound_thread: thread::JoinHandle<()>,
+        let mut inbound = InboundThread::new(
+            self.config.clone(),
+            self.address.clone(),
+            rx,
+            self.stopping.clone(),
+        );
+
+        let mut outbound = OutboundThread::new(
+            self.config.clone(),
+            self.address.clone(),
+            tx,
+            self.stopping.clone(),
+        );
+
+        let outbound_thread: thread::JoinHandle<()> = thread::spawn(move || {
+            log::info!("Starting outbound thread");
+            match outbound.run() {
+                Ok(()) => log::info!("Outbound thread exited cleanly"),
+                Err(e) => log::error!("Outbound thread exited with error: {e}"),
+            }
+        });
+
+        let inbound_thread: thread::JoinHandle<()> = thread::spawn(move || {
+            log::info!("Starting inbound thread");
+            match inbound.run() {
+                Ok(()) => log::info!("Inbound thread exited cleanly"),
+                Err(e) => log::error!("Inbound thread exited with error: {e}"),
+            }
+        });
+
+        if let Err(e) = inbound_thread.join() {
+            log::error!("Inbound thread join() failed: {e:?}");
+        }
+        if let Err(e) = outbound_thread.join() {
+            log::error!("Outbound thread join() failed: {e:?}");
+        }
     }
 }
 
@@ -77,7 +112,7 @@ struct SessionEvent {
 
 /// Relay messages from STDIN (websocketd) to OpenSRF.
 struct InboundThread {
-    config: Arc<conf::Config>,
+    config: conf::BusClient,
 
     /// Source address of OpenSRF requests
     address: ClientAddress,
@@ -87,28 +122,41 @@ struct InboundThread {
 
     /// Receive messages from the outbound thread here.
     to_inbound_rx: mpsc::Receiver<SessionEvent>,
+
+    stopping: Arc<AtomicBool>,
 }
 
 impl InboundThread {
     fn new(
-        config: Arc<conf::Config>,
+        config: conf::BusClient,
         address: ClientAddress,
         to_inbound_rx: mpsc::Receiver<SessionEvent>,
+        stopping: Arc<AtomicBool>,
     ) -> Self {
         InboundThread {
             address,
             config,
             to_inbound_rx,
+            stopping,
             sessions: HashMap::new(),
         }
     }
 
     fn run(&mut self) -> Result<(), String> {
-        let conf = self.config.gateway().unwrap(); // known good
-        let mut bus = Bus::new(&conf)?;
+        let mut bus = Bus::new(&self.config)?;
 
         loop {
             log::debug!("InboundThread awaiting STDIN data");
+
+            // TODO check for active sessions / keepalive
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("Inbound recv'ed shutdown request");
+                return Ok(());
+            }
+
+            if let Err(e) = self.check_session_events() {
+                Err(format!("Error reading session events. Exiting"))?
+            }
 
             let mut buffer = String::new();
             if let Err(e) = io::stdin().read_line(&mut buffer) {
@@ -121,6 +169,12 @@ impl InboundThread {
                     buffer.len()
                 );
                 continue;
+            }
+
+            // TODO check for active sessions / keepalive
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("Inbound recv'ed shutdown request");
+                return Ok(());
             }
 
             if let Err(e) = self.check_session_events() {
@@ -253,7 +307,7 @@ impl InboundThread {
 
         let mut tm = message::TransportMessage::with_body_vec(
             &recipient,
-            bus.address().full(),
+            self.address.full(),
             thread,
             body_vec,
         );
@@ -299,31 +353,34 @@ impl InboundThread {
 
 /// Relay messages from OpenSRF to STDOUT (websocketd).
 struct OutboundThread {
-    config: Arc<conf::Config>,
+    config: conf::BusClient,
 
     /// Recipient address for OpenSRF responses.
     address: ClientAddress,
 
     /// For sending session connectivity info to the inbound thread.
     to_inbound_tx: mpsc::Sender<SessionEvent>,
+
+    stopping: Arc<AtomicBool>,
 }
 
 impl OutboundThread {
     fn new(
-        config: Arc<conf::Config>,
+        config: conf::BusClient,
         address: ClientAddress,
         to_inbound_tx: mpsc::Sender<SessionEvent>,
+        stopping: Arc<AtomicBool>,
     ) -> Self {
         OutboundThread {
             config,
             address,
+            stopping,
             to_inbound_tx,
         }
     }
 
     fn run(&mut self) -> Result<(), String> {
-        let conf = self.config.gateway().unwrap(); // known good
-        let mut bus = Bus::new(&conf)?;
+        let mut bus = Bus::new(&self.config)?;
 
         // Our bus-level address will not match the address of the
         // inbound thread bus.  Listen for responses on this agreed-
@@ -333,34 +390,32 @@ impl OutboundThread {
         loop {
             log::debug!("OutboundThread waiting for OpenSRF Responses");
 
+            // TODO check for active sessions / keepalive
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("Inbound recv'ed shutdown request");
+                return Ok(());
+            }
+
             let msg_op = match bus.recv(-1, Some(&sent_to)) {
                 Ok(o) => o,
                 Err(e) => {
                     log::error!("Fatal error bus.recv(): {e}");
-                    // TODO tell Inbound to remove this thread from the session cache
                     continue;
                 }
             };
 
             let tm = match msg_op {
                 Some(tm) => tm,
-                None => {
-                    // OK to receive no message
-                    continue;
-                }
+                None => continue, // OK to receive no message
             };
 
-            if let Err(e) = self.relay_osrf_to_stdout(&mut bus, &tm) {
+            if let Err(e) = self.relay_osrf_to_stdout(&tm) {
                 log::error!("Fatal error writing reply to STDOUT: {e}");
             }
         }
     }
 
-    fn relay_osrf_to_stdout(
-        &mut self,
-        bus: &mut Bus,
-        tm: &message::TransportMessage
-    ) -> Result<(), String> {
+    fn relay_osrf_to_stdout(&mut self, tm: &message::TransportMessage) -> Result<(), String> {
 
         let msg_list = tm.body();
         let sender = tm.from();
@@ -377,7 +432,7 @@ impl OutboundThread {
                 if *s.status() as isize >= message::MessageStatus::BadRequest as isize {
                     transport_error = true;
                     log::error!("Request returned unexpected status: {:?}", msg);
-                    self.update_session_state(tm.thread(), false, None);
+                    self.update_session_state(tm.thread(), false, None)?;
                 }
             }
 
