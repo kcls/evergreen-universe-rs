@@ -53,7 +53,7 @@ pub struct Session {
     account: Option<conf::SipAccount>,
 
     /// Cache of org unit shortnames and IDs.
-    org_sn_cache: HashMap<String, i64>,
+    org_cache: HashMap<i64, json::JsonValue>,
 }
 
 impl Session {
@@ -97,7 +97,7 @@ impl Session {
             osrf_client,
             account: None,
             sip_connection: con,
-            org_sn_cache: HashMap::new(),
+            org_cache: HashMap::new(),
         };
 
         if let Err(e) = ses.start() {
@@ -108,12 +108,12 @@ impl Session {
         }
     }
 
-    pub fn org_sn_cache(&self) -> &HashMap<String, i64> {
-        &self.org_sn_cache
+    pub fn org_cache(&self) -> &HashMap<i64, json::JsonValue> {
+        &self.org_cache
     }
 
-    pub fn org_sn_cache_mut(&mut self) -> &mut HashMap<String, i64> {
-        &mut self.org_sn_cache
+    pub fn org_cache_mut(&mut self) -> &mut HashMap<i64, json::JsonValue> {
+        &mut self.org_cache
     }
 
     /// True if our SIP client has successfully logged in.
@@ -209,7 +209,7 @@ impl Session {
 
         let auth_ses = match auth::AuthSession::internal_session(&self.osrf_client, &args)? {
             Some(s) => s,
-            None => panic!("Internal Login failed"),
+            None => Err(format!("Internal Login failed"))?,
         };
 
         self.editor.set_authtoken(auth_ses.token());
@@ -335,12 +335,21 @@ impl Session {
                 &sip2::util::sip_date_now(),
                 "2.00", // SIP version
             ],
-            &[("BX", INSTITUTION_SUPPORTS)],
+            &[("BX", INSTITUTION_SUPPORTS), ("AF", ""), ("AG", "")],
         )
         .unwrap();
 
         if let Some(a) = &self.account {
             resp.add_field("AO", a.settings().institution());
+
+            // This sets the requestor value on our editor so we can
+            // find its workstation / home org.
+            self.set_authtoken()?;
+
+            if let Some(org) = self.org_from_id(self.get_ws_org_id()?)? {
+                resp.add_field("AM", org["name"].as_str().unwrap());
+                resp.add_field("AN", org["shortname"].as_str().unwrap());
+            }
         }
 
         Ok(resp)

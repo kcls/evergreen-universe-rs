@@ -175,8 +175,8 @@ impl Session {
         }
 
         if let Some(sn) = current_loc_op {
-            if let Some(org_id) = self.org_id_from_sn(sn)? {
-                args["circ_lib"] = json::from(org_id);
+            if let Some(org) = self.org_from_sn(sn)? {
+                args["circ_lib"] = org["id"].clone();
             }
         }
 
@@ -229,7 +229,11 @@ impl Session {
         let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
         let mut destination_loc = None;
         if let Some(org_id) = evt.org() {
-            destination_loc = self.org_sn_from_id(*org_id)?;
+            if let Some(org) = self.org_from_id(*org_id)? {
+                if let Some(sn) = org["shortname"].as_str() {
+                    destination_loc = Some(sn.to_string());
+                }
+            }
         }
 
         let copy = &evt.payload()["copy"];
@@ -242,7 +246,8 @@ impl Session {
 
             if let Ok(circ_lib) = eg::util::json_int(&copy["circ_lib"]) {
                 if circ_lib != item.circ_lib {
-                    if let Some(loc) = self.org_sn_from_id(circ_lib)? {
+                    if let Some(org) = self.org_from_id(circ_lib)? {
+                        let loc = org["shortname"].as_str().unwrap();
                         current_loc = loc.to_string();
                         permanent_loc = loc.to_string();
                     }
@@ -330,7 +335,11 @@ impl Session {
             pickup_lib_id = eg::util::json_int(&pickup_lib["id"])?;
         } else {
             pickup_lib_id = eg::util::json_int(&pickup_lib)?;
-            result.destination_loc = self.org_sn_from_id(pickup_lib_id)?;
+            if let Some(org) = self.org_from_id(pickup_lib_id)? {
+                if let Some(sn) = org["shortname"].as_str() {
+                    result.destination_loc = Some(sn.to_string());
+                }
+            }
         }
 
         if pickup_lib_id == self.get_ws_org_id()? {

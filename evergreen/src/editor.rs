@@ -271,7 +271,7 @@ impl Editor {
 
     fn logtag(&self) -> String {
         let requestor = match self.requestor() {
-            Some(req) => format!("{}", req),
+            Some(req) => format!("{}", req["id"]),
             None => "0".to_string(),
         };
 

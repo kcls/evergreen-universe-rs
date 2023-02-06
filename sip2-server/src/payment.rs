@@ -162,7 +162,7 @@ impl Session {
         result: &mut PaymentResult,
     ) -> Result<Vec<(i64, f64)>, String> {
         let mut payments: Vec<(i64, f64)> = Vec::new();
-        let mut patron = Patron::new(&result.patron_barcode);
+        let mut patron = Patron::new(&result.patron_barcode, self.format_user_name(&user));
 
         patron.id = eg::util::json_int(&user["id"])?;
 

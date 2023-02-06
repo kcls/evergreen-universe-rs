@@ -96,6 +96,8 @@ impl Session {
                 ("AA", &patron.barcode),
                 ("AB", &item.barcode),
                 ("AJ", &item.title),
+                ("AF", ""),
+                ("AG", ""),
                 ("AO", self.account().settings().institution()),
                 ("BT", &item.fee_type),
                 ("CI", sip2::util::num_bool(false)), // security inhibit
@@ -132,7 +134,14 @@ impl Session {
                 sip2::util::sip_bool(false), // desensitize
                 &sip2::util::sip_date_now(), // timestamp
             ],
-            &[("AA", &patron_barcode), ("AB", &item_barcode)],
+            &[
+                ("AA", &patron_barcode),
+                ("AB", &item_barcode),
+                ("AJ", ""),
+                ("AF", ""),
+                ("AG", ""),
+                ("AO", self.account().settings().institution()),
+            ]
         )
         .unwrap()
     }

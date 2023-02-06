@@ -94,12 +94,14 @@ pub struct Patron {
     /// May contain holds, checkouts, overdues, or fines depending
     /// on the patron info summary string.
     pub detail_items: Option<Vec<String>>,
+    pub name: String,
 }
 
 impl Patron {
-    pub fn new(barcode: &str) -> Patron {
+    pub fn new(barcode: &str, name: String) -> Patron {
         Patron {
             id: 0,
+            name,
             barcode: barcode.to_string(),
             charge_denied: false,
             renew_denied: false,
@@ -152,7 +154,7 @@ impl Session {
 
         let username = user["usrname"].as_str().unwrap(); // required
 
-        let mut patron = Patron::new(barcode);
+        let mut patron = Patron::new(barcode, self.format_user_name(&user));
 
         patron.id = eg::util::json_int(&user["id"])?;
         patron.password_verified = self.check_password(&username, password_op)?;
@@ -932,10 +934,10 @@ impl Session {
 
             let status = format!(
                 "{}{}{}{}          ",
-                sbool(false),
-                sbool(false),
-                sbool(false),
-                sbool(false)
+                sbool(true),
+                sbool(true),
+                sbool(true),
+                sbool(true)
             );
 
             let resp = sip2::Message::from_values(
@@ -948,6 +950,9 @@ impl Session {
                 &[
                     ("AO", self.account().settings().institution()),
                     ("AA", barcode),
+                    ("AE", ""), // Name
+                    ("AF", ""), // screen message
+                    ("AG", ""), // print line
                     ("BL", sip2::util::sip_bool(false)), // valid patron
                     ("CQ", sip2::util::sip_bool(false)), // valid patron password
                 ],
@@ -987,6 +992,9 @@ impl Session {
             &[
                 ("AO", self.account().settings().institution()),
                 ("AA", barcode),
+                ("AE", &patron.name),
+                ("AF", ""), // screen message
+                ("AG", ""), // print line
                 ("BH", self.sip_config().currency()),
                 ("BL", sip2::util::sip_bool(true)), // valid patron
                 ("BV", &format!("{:.2}", patron.balance_owed)),

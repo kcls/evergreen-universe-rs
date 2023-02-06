@@ -1,6 +1,4 @@
 use super::session::Session;
-use chrono::prelude::*;
-use chrono::DateTime;
 use evergreen as eg;
 
 impl Session {
@@ -37,9 +35,24 @@ impl Session {
         Ok(resp)
     }
 
-    pub fn org_id_from_sn(&mut self, sn: &str) -> Result<Option<i64>, String> {
-        if let Some(id) = self.org_sn_cache().get(sn) {
-            return Ok(Some(*id));
+    pub fn org_from_id(&mut self, id: i64) -> Result<Option<&json::JsonValue>, String> {
+        if self.org_cache().contains_key(&id) {
+            return Ok(self.org_cache().get(&id));
+        }
+
+        if let Some(org) = self.editor_mut().retrieve("aou", id)? {
+            self.org_cache_mut().insert(id, org);
+            return Ok(self.org_cache().get(&id));
+        }
+
+        Ok(None)
+    }
+
+    pub fn org_from_sn(&mut self, sn: &str) -> Result<Option<&json::JsonValue>, String> {
+        for (id, org) in self.org_cache() {
+            if org["shortname"].as_str().unwrap().eq(sn) {
+                return Ok(self.org_cache().get(id));
+            }
         }
 
         let orgs = self
@@ -49,29 +62,11 @@ impl Session {
         if orgs.len() > 0 {
             let org = &orgs[0];
             let id = eg::util::json_int(&org["id"])?;
-            self.org_sn_cache_mut().insert(sn.to_string(), id);
-            return Ok(Some(id));
+            self.org_cache_mut().insert(id, orgs[0].to_owned());
+            return Ok(self.org_cache().get(&id));
         }
 
         return Ok(None);
-    }
-
-    pub fn org_sn_from_id(&mut self, org_id: i64) -> Result<Option<String>, String> {
-        for (sn, id) in self.org_sn_cache() {
-            if id == &org_id {
-                return Ok(Some(sn.to_string()));
-            }
-        }
-
-        let org = match self.editor_mut().retrieve("aou", org_id)? {
-            Some(o) => o,
-            None => return Ok(None),
-        };
-
-        let sn = org["shortname"].as_str().unwrap();
-        self.org_sn_cache_mut().insert(sn.to_string(), org_id);
-
-        Ok(Some(sn.to_string()))
     }
 
     /// Panics if this session is not authenticated.
