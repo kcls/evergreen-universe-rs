@@ -123,9 +123,38 @@ impl InboundThread {
                 continue;
             }
 
+            if let Err(e) = self.check_session_events() {
+                Err(format!("Error reading session events. Exiting"))?
+            }
+
             if let Err(e) = self.relay_stdin_to_osrf(&mut bus, &buffer) {
                 log::error!("Error processing websocket message: {e}");
                 continue;
+            }
+        }
+    }
+
+    fn check_session_events(&mut self) -> Result<(), String> {
+
+        loop {
+
+            let event = match self.to_inbound_rx.try_recv() {
+                Ok(e) => e,
+                Err(e) => match e {
+                    mpsc::TryRecvError::Empty => return Ok(()),
+                    _ => Err(format!("Session events read error: {e}"))?,
+                }
+            };
+
+            let thread = event.thread.to_owned();
+
+            log::debug!("Inbound received session event: {event:?}");
+
+            if event.add {
+                let address = event.address.unwrap().to_owned();
+                self.sessions.insert(thread, address);
+            } else {
+                self.sessions.remove(&thread);
             }
         }
     }
@@ -299,28 +328,40 @@ impl OutboundThread {
         // Our bus-level address will not match the address of the
         // inbound thread bus.  Listen for responses on this agreed-
         // upon recipient address.
-        let sent_to = self.address.full();
+        let sent_to = self.address.full().to_string();
 
         loop {
             log::debug!("OutboundThread waiting for OpenSRF Responses");
 
-            match bus.recv(-1, Some(sent_to)) {
-                Ok(msg_op) => if let Some(tm) = msg_op {
-                    self.relay_osrf_to_stdout(&mut bus, &tm)?;
-                },
+            let msg_op = match bus.recv(-1, Some(&sent_to)) {
+                Ok(o) => o,
                 Err(e) => {
-                    // transport_error -- can we get the thread? TODO
-                    self.write_stdout("", json::JsonValue::new_array(), true)?;
+                    log::error!("Fatal error bus.recv(): {e}");
+                    // TODO tell Inbound to remove this thread from the session cache
+                    continue;
                 }
+            };
+
+            let tm = match msg_op {
+                Some(tm) => tm,
+                None => {
+                    // OK to receive no message
+                    continue;
+                }
+            };
+
+            if let Err(e) = self.relay_osrf_to_stdout(&mut bus, &tm) {
+                log::error!("Fatal error writing reply to STDOUT: {e}");
             }
         }
     }
 
     fn relay_osrf_to_stdout(
-        &self,
+        &mut self,
         bus: &mut Bus,
-        tm: &message::TransportMessage,
+        tm: &message::TransportMessage
     ) -> Result<(), String> {
+
         let msg_list = tm.body();
         let sender = tm.from();
 
@@ -330,20 +371,50 @@ impl OutboundThread {
         for msg in msg_list.iter() {
             if let message::Payload::Status(s) = msg.payload() {
                 if s.status() == &message::MessageStatus::Ok {
-                    // TODO
-                    // Tell Inbound to add this thread/recipient to session cache
+                    self.update_session_state(tm.thread(), true, Some(tm.from()))?;
                 }
 
                 if *s.status() as isize >= message::MessageStatus::BadRequest as isize {
-                    // TODO tell Inbound to remove this thread from the session cache
-                    Err(format!("Request returned unexpected status"))?;
+                    transport_error = true;
+                    log::error!("Request returned unexpected status: {:?}", msg);
+                    self.update_session_state(tm.thread(), false, None);
                 }
             }
 
-            body.push(msg.to_json_value());
+            if let Err(e) = body.push(msg.to_json_value()) {
+                Err(format!("Error building message response: {e}"))?;
+            }
         }
 
-        self.write_stdout(tm.thread(), body, false)
+        self.write_stdout(tm.thread(), body, transport_error)
+    }
+
+    fn update_session_state(
+        &mut self,
+        thread: &str,
+        add: bool,
+        addr: Option<&str>
+    ) -> Result<(), String> {
+
+        let mut address: Option<ClientAddress> = None;
+        if let Some(a) = addr {
+            match ClientAddress::from_string(a) {
+                Ok(aa) => address = Some(aa),
+                Err(e) => Err(format!("Invalid client address: {e} {a}"))?,
+            }
+        }
+
+        let event = SessionEvent {
+            add,
+            address,
+            thread: thread.to_string(),
+        };
+
+        if let Err(e) = self.to_inbound_tx.send(event) {
+            Err(format!("Error reporting session status to inbound: {e}"))?;
+        }
+
+        Ok(())
     }
 
     fn write_stdout(

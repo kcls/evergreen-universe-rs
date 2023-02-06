@@ -130,7 +130,7 @@ impl Bus {
                 return Ok(None);
             }
 
-            value = resp[1].to_string(); // resp = [key, value]
+            value = resp[1].to_owned(); // resp = [key, value]
         }
 
         log::trace!("recv_one_value() pulled from bus: {}", value);
@@ -143,9 +143,9 @@ impl Bus {
     fn recv_one_value(
         &mut self,
         timeout: i32,
-        stream: Option<&str>,
+        recipient: Option<&str>,
     ) -> Result<Option<json::JsonValue>, String> {
-        let json_string = match self.recv_one_chunk(timeout, stream)? {
+        let json_string = match self.recv_one_chunk(timeout, recipient)? {
             Some(s) => s,
             None => {
                 return Ok(None);
@@ -174,17 +174,17 @@ impl Bus {
     pub fn recv_json_value(
         &mut self,
         timeout: i32,
-        stream: Option<&str>,
+        recipient: Option<&str>,
     ) -> Result<Option<json::JsonValue>, String> {
         let mut option: Option<json::JsonValue>;
 
         if timeout == 0 {
             // See if any data is ready now
-            return self.recv_one_value(timeout, stream);
+            return self.recv_one_value(timeout, recipient);
         } else if timeout < 0 {
             // Keep trying until we have a result.
             loop {
-                option = self.recv_one_value(timeout, stream)?;
+                option = self.recv_one_value(timeout, recipient)?;
                 if let Some(_) = option {
                     return Ok(option);
                 }
@@ -198,7 +198,7 @@ impl Bus {
         while seconds > 0 {
             let now = time::SystemTime::now();
 
-            option = self.recv_one_value(timeout, stream)?;
+            option = self.recv_one_value(timeout, recipient)?;
 
             match option {
                 None => {
@@ -218,9 +218,9 @@ impl Bus {
     pub fn recv(
         &mut self,
         timeout: i32,
-        stream: Option<&str>,
+        recipient: Option<&str>,
     ) -> Result<Option<TransportMessage>, String> {
-        let json_op = self.recv_json_value(timeout, stream)?;
+        let json_op = self.recv_json_value(timeout, recipient)?;
 
         match json_op {
             Some(ref jv) => Ok(TransportMessage::from_json_value(jv)),
@@ -249,19 +249,19 @@ impl Bus {
         Ok(())
     }
 
-    /// Remove all pending data from the stream while leaving the stream intact.
-    pub fn clear_stream(&mut self) -> Result<(), String> {
+    /// Remove all pending data from the recipient queue.
+    pub fn clear_bus(&mut self) -> Result<(), String> {
         let sname = self.address().full().to_string();
-        self.clear_named_stream(&sname)
+        self.clear_named_queue(&sname)
     }
 
-    pub fn clear_named_stream(&mut self, stream: &str) -> Result<(), String> {
+    pub fn clear_named_queue(&mut self, stream: &str) -> Result<(), String> {
         log::trace!("Clearing stream {stream}");
 
         let res: Result<i32, _> = self.connection().del(stream);
 
         if let Err(e) = res {
-            return Err(format!("Error in clear_stream(): {e}"));
+            return Err(format!("Error in queue clear(): {e}"));
         }
 
         Ok(())
@@ -272,7 +272,7 @@ impl Bus {
     /// Redis connectionts are closed on free, so no specific
     /// disconnect action is taken.
     pub fn disconnect(&mut self) -> Result<(), String> {
-        self.clear_stream()
+        self.clear_bus()
     }
 
     // See Redis KEYS command.

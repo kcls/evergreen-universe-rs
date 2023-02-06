@@ -280,7 +280,7 @@ impl Client {
     /// stream of pending messages on the bus.
     pub fn clear(&self) -> Result<(), String> {
         self.singleton().borrow_mut().clear_backlog();
-        self.singleton().borrow_mut().bus_mut().clear_stream()
+        self.singleton().borrow_mut().bus_mut().clear_bus()
     }
 
     pub fn send_router_command(
