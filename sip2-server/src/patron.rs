@@ -1,8 +1,8 @@
 use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
-use json::JsonValue;
 use evergreen as eg;
+use json::JsonValue;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 const DEFAULT_LIST_ITEM_SIZE: usize = 10;
@@ -203,9 +203,9 @@ impl Session {
         }
 
         let phone = user["day_phone"].as_str().unwrap_or(
-            user["evening_phone"].as_str().unwrap_or(
-                user["other_phone"].as_str().unwrap_or("")
-            )
+            user["evening_phone"]
+                .as_str()
+                .unwrap_or(user["other_phone"].as_str().unwrap_or("")),
         );
 
         if phone.len() > 0 {
@@ -875,9 +875,11 @@ impl Session {
             ],
         )?;
 
-
         if let Some(resp) = req.recv(60)? {
-            log::debug!("{self} verify password returned {resp:?} {}", eg::util::json_bool(&resp));
+            log::debug!(
+                "{self} verify password returned {resp:?} {}",
+                eg::util::json_bool(&resp)
+            );
             Ok(eg::util::json_bool(&resp))
         } else {
             Err(format!("API call timed out"))
@@ -895,20 +897,20 @@ impl Session {
         self.patron_response_common(
             &sip2::spec::M_PATRON_STATUS_RESP,
             &barcode,
-            patron_op.as_ref()
+            patron_op.as_ref(),
         )
     }
 
     pub fn handle_patron_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         let barcode = match msg.get_field_value("AA") {
             Some(b) => b,
-            None => return Ok(
-                self.patron_response_common(
+            None => {
+                return Ok(self.patron_response_common(
                     &sip2::spec::M_PATRON_INFO_RESP,
                     "",
-                    None
-                )?
-            ),
+                    None,
+                )?)
+            }
         };
 
         let password_op = msg.get_field_value("AD"); // optional
@@ -957,7 +959,7 @@ impl Session {
         let mut resp = self.patron_response_common(
             &sip2::spec::M_PATRON_INFO_RESP,
             &barcode,
-            patron_op.as_ref()
+            patron_op.as_ref(),
         )?;
 
         let patron = match patron_op {
@@ -1023,9 +1025,9 @@ impl Session {
                 &[
                     ("AO", self.account().settings().institution()),
                     ("AA", barcode),
-                    ("AE", ""), // Name
-                    ("AF", ""), // screen message
-                    ("AG", ""), // print line
+                    ("AE", ""),                          // Name
+                    ("AF", ""),                          // screen message
+                    ("AG", ""),                          // print line
                     ("BL", sip2::util::sip_bool(false)), // valid patron
                     ("CQ", sip2::util::sip_bool(false)), // valid patron password
                 ],
@@ -1044,7 +1046,7 @@ impl Session {
             sbool(patron.recall_denied),
             sbool(patron.holds_denied),
             sbool(!patron.card_active), // card reported lost
-            sbool(false), // max charged
+            sbool(false),               // max charged
             sbool(patron.max_overdue),
             sbool(false), // max renewals
             sbool(false), // max claims returned
@@ -1064,7 +1066,7 @@ impl Session {
                 &sip2::util::sip_count4(patron.holds_count), // holds count
                 &sip2::util::sip_count4(patron.items_overdue_count), // overdue count
                 &sip2::util::sip_count4(patron.items_out_count), // out count
-                &sip2::util::sip_count4(patron.fine_count), // fine count
+                &sip2::util::sip_count4(patron.fine_count),  // fine count
                 &sip2::util::sip_count4(patron.recall_count), // recall count
                 &sip2::util::sip_count4(patron.unavail_holds_count), // unavail holds count
             ],
@@ -1074,7 +1076,13 @@ impl Session {
                 ("AE", &patron.name),
                 ("AF", ""), // screen message
                 ("AG", ""), // print line
-                ("BE", match &patron.email { Some(e) => e, _ => "" }),
+                (
+                    "BE",
+                    match &patron.email {
+                        Some(e) => e,
+                        _ => "",
+                    },
+                ),
                 ("BH", self.sip_config().currency()),
                 ("BL", sip2::util::sip_bool(true)), // valid patron
                 ("BV", &format!("{:.2}", patron.balance_owed)),
@@ -1089,18 +1097,17 @@ impl Session {
         Ok(resp)
     }
 
-
-    pub fn handle_end_patron_session(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    pub fn handle_end_patron_session(
+        &mut self,
+        msg: &sip2::Message,
+    ) -> Result<sip2::Message, String> {
         let resp = sip2::Message::from_values(
             &sip2::spec::M_END_PATRON_SESSION_RESP,
-            &[
-                sip2::util::sip_bool(true),
-                &sip2::util::sip_date_now(),
-            ],
+            &[sip2::util::sip_bool(true), &sip2::util::sip_date_now()],
             &[
                 ("AO", self.account().settings().institution()),
                 ("AA", &msg.get_field_value("AA").unwrap_or(String::new())),
-            ]
+            ],
         )
         .unwrap();
 

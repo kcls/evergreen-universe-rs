@@ -135,7 +135,7 @@ impl Message {
     /// the correct length for the specified message type.
     pub fn from_ff_values(
         msg_spec: &'static spec::Message,
-        fixed_fields: &[&str]
+        fixed_fields: &[&str],
     ) -> Result<Message, Error> {
         let mut ff: Vec<FixedField> = Vec::new();
 
@@ -146,7 +146,10 @@ impl Message {
         }
 
         if ff.len() != msg_spec.fixed_fields.len() {
-            log::warn!("SIP message {} contains incorrect number of fixed fields", msg_spec.code);
+            log::warn!(
+                "SIP message {} contains incorrect number of fixed fields",
+                msg_spec.code
+            );
             return Err(Error::MessageFormatError);
         }
 
@@ -169,7 +172,6 @@ impl Message {
         }
         Ok(msg)
     }
-
 
     /// Keep fields sorted for consistent to_sip output.
     fn sort_fields(&mut self) {

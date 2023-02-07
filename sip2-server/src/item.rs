@@ -107,7 +107,9 @@ impl Session {
         }
 
         let circ_status = self.circ_status(copy);
-        let media_type = copy["circ_modifier"]["sip2_media_type"].as_str().unwrap_or("001");
+        let media_type = copy["circ_modifier"]["sip2_media_type"]
+            .as_str()
+            .unwrap_or("001");
         let magnetic_media = eg::util::json_bool(&copy["circ_modifier"]["magnetic_media"]);
 
         let (title, _) = self.get_copy_title_author(&copy)?;
@@ -134,7 +136,6 @@ impl Session {
     }
 
     pub fn handle_item_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
-
         let barcode = match msg.get_field_value("AB") {
             Some(b) => b,
             None => return Ok(self.return_item_not_found("")),

@@ -59,7 +59,6 @@ impl Session {
         let register_login_op = msg.get_field_value("OR");
         let check_number_op = msg.get_field_value("RN");
 
-
         let search = json::object! { barcode: patron_barcode };
         let ops = json::object! { flesh: 1u8, flesh_fields: {ac: ["usr"]} };
         let mut cards = self.editor_mut().search_with_ops("ac", search, ops)?;
@@ -117,7 +116,8 @@ impl Session {
                 ("AA", &result.patron_barcode),
                 ("AO", self.account().settings().institution()),
             ],
-        ).unwrap();
+        )
+        .unwrap();
 
         resp.maybe_add_field("AF", result.screen_msg.as_deref());
 

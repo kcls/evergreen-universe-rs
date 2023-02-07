@@ -2,7 +2,6 @@ use super::session::Session;
 use evergreen as eg;
 
 impl Session {
-
     /// This one comes up a lot...
     ///
     /// Assumes copy is fleshed out to the bib simple_record.

@@ -221,11 +221,11 @@ impl Config {
     ///
     /// Panics if the file is not formatted correctly
     pub fn read_yaml(&mut self, filename: &str) {
-        let yaml_text = fs::read_to_string(filename)
-            .expect("Read YAML configuration file to string");
+        let yaml_text =
+            fs::read_to_string(filename).expect("Read YAML configuration file to string");
 
-        let yaml_docs = YamlLoader::load_from_str(&yaml_text)
-            .expect("Parsing configuration file as YAML");
+        let yaml_docs =
+            YamlLoader::load_from_str(&yaml_text).expect("Parsing configuration file as YAML");
 
         let root = &yaml_docs[0];
 
@@ -275,8 +275,6 @@ impl Config {
         }
 
         for group in root["setting-groups"].as_vec().unwrap() {
-
-
             let name = group["name"].as_str().expect("Setting group name required");
 
             let inst = group["institution"]
@@ -293,12 +291,36 @@ impl Config {
                 }
             };
 
-            set_bool(group, "due-date-use-sip-date-format", &mut grp.due_date_use_sip_date_format);
-            set_bool(group, "patron-status-permit-all", &mut grp.patron_status_permit_all);
-            set_bool(group, "patron-status-permit-loans", &mut grp.patron_status_permit_loans);
-            set_bool(group, "msg64-hold-items-available", &mut grp.msg64_hold_items_available);
-            set_bool(group, "checkin-holds-as-transits", &mut grp.checkin_holds_as_transits);
-            set_bool(group, "checkout-override-all", &mut grp.checkout_override_all);
+            set_bool(
+                group,
+                "due-date-use-sip-date-format",
+                &mut grp.due_date_use_sip_date_format,
+            );
+            set_bool(
+                group,
+                "patron-status-permit-all",
+                &mut grp.patron_status_permit_all,
+            );
+            set_bool(
+                group,
+                "patron-status-permit-loans",
+                &mut grp.patron_status_permit_loans,
+            );
+            set_bool(
+                group,
+                "msg64-hold-items-available",
+                &mut grp.msg64_hold_items_available,
+            );
+            set_bool(
+                group,
+                "checkin-holds-as-transits",
+                &mut grp.checkin_holds_as_transits,
+            );
+            set_bool(
+                group,
+                "checkout-override-all",
+                &mut grp.checkout_override_all,
+            );
             set_bool(group, "checkin-override-all", &mut grp.checkin_override_all);
 
             if let Some(s) = group["msg64-hold-datatype"].as_str() {

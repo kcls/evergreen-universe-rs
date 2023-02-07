@@ -1,8 +1,8 @@
+use super::item::Item;
+use super::patron::Patron;
 use super::session::Session;
 use evergreen as eg;
 use gettextrs::*;
-use super::item::Item;
-use super::patron::Patron;
 
 const RENEW_METHOD: &str = "open-ils.circ.renew";
 const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
@@ -77,9 +77,8 @@ impl Session {
         &self,
         item: &Item,
         patron: &Patron,
-        result: &CheckoutResult
+        result: &CheckoutResult,
     ) -> Result<sip2::Message, String> {
-
         let renew_ok = result.renewal_remaining > 0 && !patron.renew_denied;
         let magnetic = item.magnetic_media;
 
@@ -141,7 +140,7 @@ impl Session {
                 ("AF", ""), // screen message
                 ("AG", ""), // print line
                 ("AO", self.account().settings().institution()),
-            ]
+            ],
         )
         .unwrap()
     }

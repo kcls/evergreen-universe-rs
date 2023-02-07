@@ -189,15 +189,13 @@ impl InboundThread {
     }
 
     fn check_session_events(&mut self) -> Result<(), String> {
-
         loop {
-
             let event = match self.to_inbound_rx.try_recv() {
                 Ok(e) => e,
                 Err(e) => match e {
                     mpsc::TryRecvError::Empty => return Ok(()),
                     _ => Err(format!("Session events read error: {e}"))?,
-                }
+                },
             };
 
             let thread = event.thread.to_owned();
@@ -416,7 +414,6 @@ impl OutboundThread {
     }
 
     fn relay_osrf_to_stdout(&mut self, tm: &message::TransportMessage) -> Result<(), String> {
-
         let msg_list = tm.body();
         let sender = tm.from();
 
@@ -448,9 +445,8 @@ impl OutboundThread {
         &mut self,
         thread: &str,
         add: bool,
-        addr: Option<&str>
+        addr: Option<&str>,
     ) -> Result<(), String> {
-
         let mut address: Option<ClientAddress> = None;
         if let Some(a) = addr {
             match ClientAddress::from_string(a) {

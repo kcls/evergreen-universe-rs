@@ -81,5 +81,3 @@ pub fn num_bool(value: bool) -> &'static str {
 pub fn sip_count4(value: usize) -> String {
     format!("{value:0>4}")
 }
-
-
