@@ -34,6 +34,21 @@ impl From<&str> for AvFormat {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldFilter {
+    field_code: String,
+    replace_with: Option<String>,
+}
+
+impl FieldFilter {
+    pub fn field_code(&self) -> &str {
+        &self.field_code
+    }
+    pub fn replace_with(&self) -> Option<&str> {
+        self.replace_with.as_deref()
+    }
+}
+
 /// Named collection of SIP session settings.
 #[derive(Debug, Clone)]
 pub struct SipSettings {
@@ -51,6 +66,7 @@ pub struct SipSettings {
     checkin_override_all: bool,
     checkout_override: Vec<String>,
     checkin_override: Vec<String>,
+    field_filters: Vec<FieldFilter>,
 }
 
 impl SipSettings {
@@ -70,6 +86,7 @@ impl SipSettings {
             checkin_override_all: false,
             checkout_override: Vec::new(),
             checkin_override: Vec::new(),
+            field_filters: Vec::new(),
         }
     }
     pub fn name(&self) -> &str {
@@ -121,6 +138,9 @@ impl SipSettings {
     }
     pub fn checkin_override(&self) -> &Vec<String> {
         &self.checkin_override
+    }
+    pub fn field_filters(&self) -> &Vec<FieldFilter> {
+        &self.field_filters
     }
 }
 
@@ -349,6 +369,23 @@ impl Config {
                 for ovride in group["checkout-override"].as_vec().unwrap() {
                     if let Some(code) = ovride.as_str() {
                         grp.checkout_override.push(code.to_string());
+                    }
+                }
+            }
+
+            if group["field-filters"].is_array() {
+                for filter in group["field-filters"].as_vec().unwrap() {
+                    if let Some(field) = filter["field-code"].as_str() {
+                        let mut mfilter = FieldFilter {
+                            field_code: field.to_string(),
+                            replace_with: None,
+                        };
+
+                        if let Some(rw) = filter["replace-with"].as_str() {
+                            mfilter.replace_with = Some(rw.to_string());
+                        }
+
+                        grp.field_filters.push(mfilter);
                     }
                 }
             }

@@ -245,9 +245,13 @@ impl Session {
 
             log::trace!("{self} Read SIP message: {:?}", sip_req);
 
-            let sip_resp = self.handle_sip_request(&sip_req)?;
+            let mut sip_resp = self.handle_sip_request(&sip_req)?;
 
             log::trace!("{self} server replying with {sip_resp:?}");
+
+            self.redact_sip_response(&mut sip_resp);
+
+            log::trace!("{self} server response after redaction: {sip_resp:?}");
 
             // Send the SIP response back to the SIP client
             self.sip_connection
@@ -262,6 +266,38 @@ impl Session {
         self.sip_connection.disconnect().ok();
 
         Ok(())
+    }
+
+    fn redact_sip_response(&self, resp: &mut sip2::Message) {
+        if !self.has_account() {
+            // Can happen if this is a pre-log SC response.
+            return;
+        }
+
+        for filter in self.account().settings().field_filters() {
+            if let Some(replacement) = filter.replace_with() {
+                for field in resp
+                    .fields_mut()
+                    .iter_mut()
+                    .filter(|f| f.code().eq(filter.field_code()))
+                {
+                    field.set_value(replacement);
+                }
+            } else {
+                loop {
+                    // Keep deleting till we got em all
+                    let pos = match resp
+                        .fields()
+                        .iter()
+                        .position(|f| f.code().eq(filter.field_code()))
+                    {
+                        Some(p) => p,
+                        None => break, // got them all
+                    };
+                    resp.fields_mut().remove(pos);
+                }
+            }
+        }
     }
 
     /// Process a single SIP request.

@@ -65,6 +65,10 @@ setting-groups:
       - "COPY_IN_TRANSIT"
       - "PATRON_EXCEEDS_FINES"
 
+    field-filters:
+      - field-code: ZZ          # SIP field 2-character code.  
+        replace-with: ZZ-VALUE  # Optional replacement value.  
+
 accounts:
   - sip-username: "sip-user"  # SIP Login CN value
     sip-password: "sip-pass"  # SIP Login CO value

@@ -1076,13 +1076,6 @@ impl Session {
                 ("AE", &patron.name),
                 ("AF", ""), // screen message
                 ("AG", ""), // print line
-                (
-                    "BE",
-                    match &patron.email {
-                        Some(e) => e,
-                        _ => "",
-                    },
-                ),
                 ("BH", self.sip_config().currency()),
                 ("BL", sip2::util::sip_bool(true)), // valid patron
                 ("BV", &format!("{:.2}", patron.balance_owed)),
@@ -1093,6 +1086,7 @@ impl Session {
         .unwrap();
 
         resp.maybe_add_field("BD", patron.address.as_deref());
+        resp.maybe_add_field("BE", patron.email.as_deref());
 
         Ok(resp)
     }

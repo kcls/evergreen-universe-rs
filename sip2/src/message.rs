@@ -77,6 +77,10 @@ impl Field {
         &self.value
     }
 
+    pub fn set_value(&mut self, value: &str) {
+        self.value = value.to_string();
+    }
+
     /// code getter
     pub fn code(&self) -> &str {
         &self.code
@@ -206,6 +210,26 @@ impl Message {
         }
     }
 
+    /// Remove a field by its code.  If 'all' is true, remove all occurrences.
+    pub fn remove_field(&mut self, code: &str, all: bool) -> usize {
+        let mut count: usize = 0;
+
+        loop {
+            let pos = match self.fields.iter().position(|f| f.code().eq(code)) {
+                Some(p) => p,
+                None => return count, // got them all
+            };
+
+            self.fields.remove(pos);
+
+            count += 1;
+
+            if !all {
+                return count;
+            }
+        }
+    }
+
     /// Return the first value with the specified field code.
     pub fn get_field_value(&self, code: &str) -> Option<String> {
         if let Some(f) = self.fields().iter().filter(|f| f.code() == code).next() {
@@ -221,6 +245,10 @@ impl Message {
 
     pub fn fields(&self) -> &Vec<Field> {
         &self.fields
+    }
+
+    pub fn fields_mut(&mut self) -> &mut Vec<Field> {
+        &mut self.fields
     }
 
     pub fn fixed_fields(&self) -> &Vec<FixedField> {
