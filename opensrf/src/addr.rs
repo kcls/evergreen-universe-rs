@@ -40,6 +40,15 @@ impl fmt::Display for BusAddress {
 
 impl BusAddress {
     /// Creates a new BusAddress from a bus address string.
+    ///
+    /// ```
+    /// let addr = opensrf::addr::BusAddress::new_from_string("opensrf:client:localhost:12345")
+    ///   .expect("Error creating address from string");
+    ///
+    /// assert!(addr.is_client());
+    /// assert!(addr.domain().is_some());
+    /// assert_eq!(addr.domain().unwrap(), "localhost");
+    /// ```
     pub fn new_from_string(full: &str) -> Result<Self, String> {
         let parts: Vec<&str> = full.split(':').collect();
 
@@ -255,6 +264,16 @@ impl RouterAddress {
         }
     }
 
+    /// Create a new router address from a string
+    ///
+    /// ```
+    /// let addr_res = opensrf::addr::RouterAddress::from_string("foo:bar");
+    /// assert!(addr_res.is_err());
+    ///
+    /// let addr_res = opensrf::addr::RouterAddress::from_string("opensrf:router:localhost");
+    /// assert!(addr_res.is_ok());
+    /// assert!(addr_res.unwrap().domain().eq("localhost"));
+    /// ```
     pub fn from_string(full: &str) -> Result<Self, String> {
         let addr = BusAddress::new_from_string(full)?;
         if !addr.is_router() {
@@ -267,6 +286,12 @@ impl RouterAddress {
         self.addr.full()
     }
 
+    /// Create a new router address from a domain.
+    ///
+    /// ```
+    /// let addr = opensrf::addr::RouterAddress::new("localhost");
+    /// assert_eq!(addr.full(), "opensrf:router:localhost");
+    /// ```
     pub fn new(domain: &str) -> Self {
         let full = format!("{}:router:{}", BUS_ADDR_NAMESPACE, &domain);
 

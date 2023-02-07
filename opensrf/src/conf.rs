@@ -38,8 +38,6 @@ impl LogOptions {
         self.log_level = Some(LogOptions::log_level_from_str(level));
     }
 
-    ///
-    ///
     /// Defaults to Info
     pub fn log_level_from_str(level: &str) -> log::LevelFilter {
         match level {
