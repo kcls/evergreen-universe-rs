@@ -65,9 +65,12 @@ setting-groups:
       - "COPY_IN_TRANSIT"
       - "PATRON_EXCEEDS_FINES"
 
+    # Optional set of sip fields to remove or have their values replaced
+    # before sending back to the SIP client.
     field-filters:
       - field-code: ZZ          # SIP field 2-character code.  
-        replace-with: ZZ-VALUE  # Optional replacement value.  
+      - field-code: ZY  
+        replace-with: ZY-VALUE  # Optional replacement value.  
 
 accounts:
   - sip-username: "sip-user"  # SIP Login CN value
