@@ -96,8 +96,8 @@ impl Session {
                 ("AA", &patron.barcode),
                 ("AB", &item.barcode),
                 ("AJ", &item.title),
-                ("AF", ""),
-                ("AG", ""),
+                ("AF", ""), // screen message
+                ("AG", ""), // print line
                 ("AO", self.account().settings().institution()),
                 ("BT", &item.fee_type),
                 ("CI", sip2::util::num_bool(false)), // security inhibit
@@ -137,9 +137,9 @@ impl Session {
             &[
                 ("AA", &patron_barcode),
                 ("AB", &item_barcode),
-                ("AJ", ""),
-                ("AF", ""),
-                ("AG", ""),
+                ("AJ", ""), // title
+                ("AF", ""), // screen message
+                ("AG", ""), // print line
                 ("AO", self.account().settings().institution()),
             ]
         )

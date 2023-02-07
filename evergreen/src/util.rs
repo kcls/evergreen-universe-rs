@@ -10,6 +10,7 @@ use chrono::DateTime;
 /// ```
 /// assert!(!evergreen::util::json_bool(&json::from(vec!["true"])));
 /// assert!(evergreen::util::json_bool(&json::from("trooo")));
+/// assert!(evergreen::util::json_bool(&json::from("1")));
 /// assert!(!evergreen::util::json_bool(&json::from(0i8)));
 /// assert!(!evergreen::util::json_bool(&json::from(false)));
 /// ```
@@ -19,7 +20,7 @@ pub fn json_bool(value: &JsonValue) -> bool {
     } else if let Some(n) = value.as_f64() {
         n != 0.0
     } else if let Some(s) = value.as_str() {
-        s.len() > 0 && (s[..1].eq("t") || s[..1].eq("T"))
+        s.len() > 0 && (s[..1].eq("1") || s[..1].eq("t") || s[..1].eq("T"))
     } else if let Some(b) = value.as_bool() {
         b
     } else {

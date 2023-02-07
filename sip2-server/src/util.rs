@@ -104,10 +104,41 @@ impl Session {
             name += &format!(" {n}");
         }
 
-        if let Some(n) = user["first_given_name"].as_str() {
+        if let Some(n) = user["family_name"].as_str() {
             name += &format!(" {n}");
         }
 
         name
+    }
+
+    /// Format an address as a single line value
+    pub fn format_address(&self, address: &json::JsonValue) -> String {
+        let mut addr = String::new();
+        if let Some(v) = address["street1"].as_str() {
+            addr += v;
+        }
+        if let Some(v) = address["street2"].as_str() {
+            if v.len() > 0 {
+                addr += &format!(" {v}");
+            }
+        }
+        if let Some(v) = address["city"].as_str() {
+            addr += &format!(" {v}");
+        }
+        if let Some(v) = address["state"].as_str() {
+            if v.len() > 0 {
+                addr += &format!(", {v}");
+            }
+        }
+        if let Some(v) = address["country"].as_str() {
+            if v.len() > 0 {
+                addr += &format!(" {v}");
+            }
+        }
+        if let Some(v) = address["post_code"].as_str() {
+            addr += &format!(" {v}");
+        }
+
+        addr
     }
 }

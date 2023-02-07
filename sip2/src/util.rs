@@ -76,3 +76,10 @@ pub fn num_bool(value: bool) -> &'static str {
         false => "0",
     }
 }
+
+/// Stringify a number left padded with zeros.
+pub fn sip_count4(value: usize) -> String {
+    format!("{value:0>4}")
+}
+
+

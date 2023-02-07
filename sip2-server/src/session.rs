@@ -284,6 +284,7 @@ impl Session {
             "11" => self.handle_checkout(msg),
             "17" => self.handle_item_info(msg),
             "23" => self.handle_patron_status(msg),
+            "35" => self.handle_end_patron_session(msg),
             "37" => self.handle_payment(msg),
             "63" => self.handle_patron_info(msg),
             _ => Err(format!("Unsupported SIP message code={}", msg.spec().code)),

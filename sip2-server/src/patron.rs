@@ -75,26 +75,28 @@ pub struct Patron {
     pub card_active: bool,
     pub balance_owed: f64,
     pub password_verified: bool,
-    pub recall_count: i64,
-
+    pub recall_count: usize,
     pub holds_count: usize,
     pub hold_ids: Vec<i64>,
-
     pub unavail_hold_ids: Vec<i64>,
     pub unavail_holds_count: usize,
-
     pub items_overdue_count: usize,
     pub items_overdue_ids: Vec<i64>,
-
     pub fine_count: usize,
-
     pub items_out_count: usize,
     pub items_out_ids: Vec<i64>,
-
     /// May contain holds, checkouts, overdues, or fines depending
     /// on the patron info summary string.
     pub detail_items: Option<Vec<String>>,
     pub name: String,
+    pub address: Option<String>,
+    pub email: Option<String>,
+    pub home_lib: Option<String>,
+    pub dob: Option<String>,
+    pub expire_date: Option<String>,
+    pub net_access: Option<String>,
+    pub profile: Option<String>,
+    pub phone: Option<String>,
 }
 
 impl Patron {
@@ -127,6 +129,14 @@ impl Patron {
             items_overdue_ids: Vec::new(),
             items_out_ids: Vec::new(),
             detail_items: None,
+            address: None,
+            email: None,
+            home_lib: None,
+            dob: None,
+            expire_date: None,
+            net_access: None,
+            profile: None,
+            phone: None,
         }
     }
 }
@@ -161,6 +171,51 @@ impl Session {
 
         if let Some(summary) = self.editor_mut().retrieve("mous", patron.id)? {
             patron.balance_owed = eg::util::json_float(&summary["balance_owed"])?;
+        }
+
+        if user["billing_address"].is_object() {
+            patron.address = Some(self.format_address(&user["billing_address"]));
+        } else if user["mailing_address"].is_object() {
+            patron.address = Some(self.format_address(&user["mailing_address"]));
+        }
+
+        if let Some(email) = user["email"].as_str() {
+            if email.len() > 0 {
+                patron.email = Some(email.to_string());
+            }
+        };
+
+        if let Some(sn) = user["home_ou"]["shortname"].as_str() {
+            patron.home_lib = Some(sn.to_string());
+        }
+
+        if let Some(dob) = user["dob"].as_str() {
+            let ymd = dob.replace("-", ""); // YYYY-MM-DD => YYYYMMDD
+            patron.dob = Some(ymd);
+        }
+
+        if let Some(net) = user["net_access_level"]["name"].as_str() {
+            patron.net_access = Some(net.to_string());
+        }
+
+        if let Some(profile) = user["profile"]["name"].as_str() {
+            patron.profile = Some(profile.to_string());
+        }
+
+        let phone = user["day_phone"].as_str().unwrap_or(
+            user["evening_phone"].as_str().unwrap_or(
+                user["other_phone"].as_str().unwrap_or("")
+            )
+        );
+
+        if phone.len() > 0 {
+            patron.phone = Some(phone.to_string());
+        }
+
+        if let Some(expire) = user["expire_date"].as_str() {
+            if let Ok(date) = eg::util::parse_pg_date(expire) {
+                patron.expire_date = Some(date.format("%Y%m%d").to_string());
+            }
         }
 
         self.set_patron_privileges(&user, &mut patron)?;
@@ -777,7 +832,8 @@ impl Session {
             flesh: 3,
             flesh_fields: {
                 ac: ["usr"],
-                au: ["billing_address", "mailing_address", "profile", "stat_cat_entries"],
+                au: ["billing_address", "mailing_address", "profile",
+                    "stat_cat_entries", "home_ou", "net_access_level"],
                 actscecm: ["stat_cat"]
             }
         };
@@ -804,6 +860,8 @@ impl Session {
             None => return Ok(false),
         };
 
+        log::debug!("{self} verifying password for {username}");
+
         let mut ses = self.osrf_client_mut().session("open-ils.actor");
 
         let mut req = ses.request(
@@ -817,7 +875,9 @@ impl Session {
             ],
         )?;
 
+
         if let Some(resp) = req.recv(60)? {
+            log::debug!("{self} verify password returned {resp:?} {}", eg::util::json_bool(&resp));
             Ok(eg::util::json_bool(&resp))
         } else {
             Err(format!("API call timed out"))
@@ -905,6 +965,13 @@ impl Session {
             None => return Ok(resp),
         };
 
+        resp.maybe_add_field("AQ", patron.home_lib.as_deref());
+        resp.maybe_add_field("BF", patron.phone.as_deref());
+        resp.maybe_add_field("PB", patron.dob.as_deref());
+        resp.maybe_add_field("PA", patron.expire_date.as_deref());
+        resp.maybe_add_field("PI", patron.net_access.as_deref());
+        resp.maybe_add_field("PC", patron.profile.as_deref());
+
         if let Some(detail_items) = patron.detail_items {
             let code = match list_type {
                 SummaryListType::HoldItems => "AS",
@@ -932,7 +999,7 @@ impl Session {
         if patron_op.is_none() {
             log::warn!("Replying to patron lookup for not-found patron");
 
-            let status = format!(
+            let summary = format!(
                 "{}{}{}{}          ",
                 sbool(true),
                 sbool(true),
@@ -943,9 +1010,15 @@ impl Session {
             let resp = sip2::Message::from_values(
                 msg_spec,
                 &[
-                    &status,
+                    &summary,
                     "000", // language
                     &sip2::util::sip_date_now(),
+                    &sip2::util::sip_count4(0), // holds count
+                    &sip2::util::sip_count4(0), // overdue count
+                    &sip2::util::sip_count4(0), // out count
+                    &sip2::util::sip_count4(0), // fine count
+                    &sip2::util::sip_count4(0), // recall count
+                    &sip2::util::sip_count4(0), // unavail holds count
                 ],
                 &[
                     ("AO", self.account().settings().institution()),
@@ -964,13 +1037,13 @@ impl Session {
 
         let patron = patron_op.unwrap();
 
-        let status = format!(
+        let summary = format!(
             "{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
             sbool(patron.charge_denied),
             sbool(patron.renew_denied),
             sbool(patron.recall_denied),
             sbool(patron.holds_denied),
-            sbool(patron.card_active),
+            sbool(!patron.card_active), // card reported lost
             sbool(false), // max charged
             sbool(patron.max_overdue),
             sbool(false), // max renewals
@@ -982,12 +1055,18 @@ impl Session {
             sbool(patron.max_fines)
         );
 
-        let resp = sip2::Message::from_values(
+        let mut resp = sip2::Message::from_values(
             msg_spec,
             &[
-                &status,
+                &summary,
                 "000", // language
                 &sip2::util::sip_date_now(),
+                &sip2::util::sip_count4(patron.holds_count), // holds count
+                &sip2::util::sip_count4(patron.items_overdue_count), // overdue count
+                &sip2::util::sip_count4(patron.items_out_count), // out count
+                &sip2::util::sip_count4(patron.fine_count), // fine count
+                &sip2::util::sip_count4(patron.recall_count), // recall count
+                &sip2::util::sip_count4(patron.unavail_holds_count), // unavail holds count
             ],
             &[
                 ("AO", self.account().settings().institution()),
@@ -995,11 +1074,33 @@ impl Session {
                 ("AE", &patron.name),
                 ("AF", ""), // screen message
                 ("AG", ""), // print line
+                ("BE", match &patron.email { Some(e) => e, _ => "" }),
                 ("BH", self.sip_config().currency()),
                 ("BL", sip2::util::sip_bool(true)), // valid patron
                 ("BV", &format!("{:.2}", patron.balance_owed)),
                 ("CQ", sip2::util::sip_bool(patron.password_verified)),
+                ("XI", &format!("{}", patron.id)),
             ],
+        )
+        .unwrap();
+
+        resp.maybe_add_field("BD", patron.address.as_deref());
+
+        Ok(resp)
+    }
+
+
+    pub fn handle_end_patron_session(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+        let resp = sip2::Message::from_values(
+            &sip2::spec::M_END_PATRON_SESSION_RESP,
+            &[
+                sip2::util::sip_bool(true),
+                &sip2::util::sip_date_now(),
+            ],
+            &[
+                ("AO", self.account().settings().institution()),
+                ("AA", &msg.get_field_value("AA").unwrap_or(String::new())),
+            ]
         )
         .unwrap();
 

@@ -110,7 +110,7 @@ impl Session {
         let mut resp = sip2::Message::from_values(
             &sip2::spec::M_FEE_PAID_RESP,
             &[
-                sip2::util::num_bool(result.success),
+                sip2::util::sip_bool(result.success),
                 &sip2::util::sip_date_now(),
             ],
             &[

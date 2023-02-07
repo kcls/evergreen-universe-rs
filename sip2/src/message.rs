@@ -138,10 +138,16 @@ impl Message {
         fixed_fields: &[&str]
     ) -> Result<Message, Error> {
         let mut ff: Vec<FixedField> = Vec::new();
+
         for (idx, ff_spec) in msg_spec.fixed_fields.iter().enumerate() {
             if let Some(v) = fixed_fields.get(idx) {
                 ff.push(FixedField::new(ff_spec, v)?);
             }
+        }
+
+        if ff.len() != msg_spec.fixed_fields.len() {
+            log::warn!("SIP message {} contains incorrect number of fixed fields", msg_spec.code);
+            return Err(Error::MessageFormatError);
         }
 
         Ok(Message {
