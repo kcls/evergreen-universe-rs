@@ -142,6 +142,16 @@ pub struct AuthSession {
 }
 
 impl AuthSession {
+    /// Logout and remove the cached auth session.
+    pub fn logout(client: &Client, token: &str) -> Result<(), String> {
+        let mut ses = client.session("open-ils.auth");
+        let mut req = ses.request("open-ils.auth.session.delete", token)?;
+        // We don't care so much about the response from logout,
+        // only that the call completed OK.
+        req.recv(LOGIN_TIMEOUT)?;
+        Ok(())
+    }
+
     /// Login and acquire an authtoken.
     ///
     /// Returns None on login failure, Err on error.

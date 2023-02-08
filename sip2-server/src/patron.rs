@@ -189,6 +189,7 @@ impl Session {
             patron.home_lib = Some(sn.to_string());
         }
 
+        // DoB is stored in the database as a YYYY-MM-DD value / no time.
         if let Some(dob) = user["dob"].as_str() {
             let ymd = dob.replace("-", ""); // YYYY-MM-DD => YYYYMMDD
             patron.dob = Some(ymd);
@@ -997,39 +998,30 @@ impl Session {
         patron_op: Option<&Patron>,
     ) -> Result<sip2::Message, String> {
         let sbool = |v| sip2::util::space_bool(v); // local shorthand
+        let sipdate = sip2::util::sip_date_now();
 
         if patron_op.is_none() {
             log::warn!("Replying to patron lookup for not-found patron");
 
-            let summary = format!(
-                "{}{}{}{}          ",
-                sbool(true),
-                sbool(true),
-                sbool(true),
-                sbool(true)
-            );
-
             let resp = sip2::Message::from_values(
                 msg_spec,
                 &[
-                    &summary,
-                    "000", // language
-                    &sip2::util::sip_date_now(),
-                    &sip2::util::sip_count4(0), // holds count
-                    &sip2::util::sip_count4(0), // overdue count
-                    &sip2::util::sip_count4(0), // out count
-                    &sip2::util::sip_count4(0), // fine count
-                    &sip2::util::sip_count4(0), // recall count
-                    &sip2::util::sip_count4(0), // unavail holds count
+                    "YYYY          ",   // patron status
+                    "000",              // language
+                    &sipdate,
+                    "0000",             // holds count
+                    "0000",             // overdue count
+                    "0000",             // out count
+                    "0000",             // fine count
+                    "0000",             // recall count
+                    "0000",             // unavail holds count
                 ],
                 &[
                     ("AO", self.account().settings().institution()),
                     ("AA", barcode),
-                    ("AE", ""),                          // Name
-                    ("AF", ""),                          // screen message
-                    ("AG", ""),                          // print line
-                    ("BL", sip2::util::sip_bool(false)), // valid patron
-                    ("CQ", sip2::util::sip_bool(false)), // valid patron password
+                    ("AE", ""),     // Name
+                    ("BL", "N"),    // valid patron
+                    ("CQ", "N"),    // valid patron password
                 ],
             )
             .unwrap();
@@ -1045,15 +1037,15 @@ impl Session {
             sbool(patron.renew_denied),
             sbool(patron.recall_denied),
             sbool(patron.holds_denied),
-            sbool(!patron.card_active), // card reported lost
-            sbool(false),               // max charged
+            sbool(!patron.card_active),
+            " ", // max charged
             sbool(patron.max_overdue),
-            sbool(false), // max renewals
-            sbool(false), // max claims returned
-            sbool(false), // max lost
+            " ", // max renewals
+            " ", // max claims returned
+            " ", // max lost
             sbool(patron.max_fines),
             sbool(patron.max_fines),
-            sbool(false), // recall overdue
+            " ", // recall overdue
             sbool(patron.max_fines)
         );
 
@@ -1062,20 +1054,18 @@ impl Session {
             &[
                 &summary,
                 "000", // language
-                &sip2::util::sip_date_now(),
-                &sip2::util::sip_count4(patron.holds_count), // holds count
-                &sip2::util::sip_count4(patron.items_overdue_count), // overdue count
-                &sip2::util::sip_count4(patron.items_out_count), // out count
-                &sip2::util::sip_count4(patron.fine_count),  // fine count
-                &sip2::util::sip_count4(patron.recall_count), // recall count
-                &sip2::util::sip_count4(patron.unavail_holds_count), // unavail holds count
+                &sipdate,
+                &sip2::util::sip_count4(patron.holds_count),
+                &sip2::util::sip_count4(patron.items_overdue_count),
+                &sip2::util::sip_count4(patron.items_out_count),
+                &sip2::util::sip_count4(patron.fine_count),
+                &sip2::util::sip_count4(patron.recall_count),
+                &sip2::util::sip_count4(patron.unavail_holds_count),
             ],
             &[
                 ("AO", self.account().settings().institution()),
                 ("AA", barcode),
                 ("AE", &patron.name),
-                ("AF", ""), // screen message
-                ("AG", ""), // print line
                 ("BH", self.sip_config().currency()),
                 ("BL", sip2::util::sip_bool(true)), // valid patron
                 ("BV", &format!("{:.2}", patron.balance_owed)),

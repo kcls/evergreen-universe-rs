@@ -83,7 +83,7 @@ impl Session {
         )?;
 
         let mut resp = sip2::Message::from_values(
-            &sip2::spec::M_LOGIN_RESP,
+            &sip2::spec::M_CHECKIN_RESP,
             &[
                 sip2::util::num_bool(result.ok),                   // checkin ok
                 sip2::util::sip_bool(!item.magnetic_media),        // resensitize
@@ -99,7 +99,7 @@ impl Session {
                 ("AQ", &result.permanent_loc),
                 ("BG", &item.owning_loc),
                 ("BT", &item.fee_type),
-                ("CI", sip2::util::num_bool(false)), // security inhibit
+                ("CI", "N"),            // security inhibit
             ],
         )
         .unwrap();
@@ -127,10 +127,10 @@ impl Session {
         sip2::Message::from_values(
             &sip2::spec::M_CHECKIN_RESP,
             &[
-                sip2::util::num_bool(false), // checkin ok
-                sip2::util::sip_bool(false), // resensitize
-                sip2::util::sip_bool(false), // magnetic
-                sip2::util::sip_bool(false), // alert
+                "0", // checkin ok
+                "N", // resensitize
+                "N", // magnetic
+                "N", // alert
                 &sip2::util::sip_date_now(),
             ],
             &[

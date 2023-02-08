@@ -1,5 +1,6 @@
 use super::conf;
 use eg::auth;
+use eg::auth::AuthSession;
 use evergreen as eg;
 use opensrf as osrf;
 use sip2;
@@ -153,8 +154,12 @@ impl Session {
     /// Returns Err if we fail to verify the token or login as needed.
     pub fn set_authtoken(&mut self) -> Result<(), String> {
         if self.editor.authtoken().is_some() {
+            // If we have an authtoken, verify it's still valid.
             if self.editor.checkauth()? {
                 return Ok(());
+            } else {
+                // Stale authtoken.  Remove it.
+                AuthSession::logout(&self.osrf_client, self.authtoken()?)?;
             }
         }
 
@@ -207,7 +212,7 @@ impl Session {
             }
         }
 
-        let auth_ses = match auth::AuthSession::internal_session(&self.osrf_client, &args)? {
+        let auth_ses = match AuthSession::internal_session(&self.osrf_client, &args)? {
             Some(s) => s,
             None => Err(format!("Internal Login failed"))?,
         };
@@ -265,6 +270,10 @@ impl Session {
 
         self.sip_connection.disconnect().ok();
 
+        if self.authtoken().is_ok() {
+            AuthSession::logout(&self.osrf_client, self.authtoken()?).ok();
+        }
+
         Ok(())
     }
 
@@ -305,8 +314,12 @@ impl Session {
         let code = msg.spec().code;
 
         if code.eq("99") {
+            // May not require an existing login / account
             return self.handle_sc_status(msg);
-        } else if code.eq("93") {
+        }
+
+        if code.eq("93") {
+            // Create a login / account
             return self.handle_login(msg);
         }
 
@@ -329,7 +342,7 @@ impl Session {
 
     fn handle_login(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
         self.account = None;
-        let mut login_ok = sip2::util::num_bool(false);
+        let mut login_ok = "0";
 
         if let Some(username) = msg.get_field_value("CN") {
             if let Some(password) = msg.get_field_value("CO") {
@@ -337,7 +350,7 @@ impl Session {
 
                 if let Some(account) = self.sip_config().get_account(&username) {
                     if account.sip_password().eq(&password) {
-                        login_ok = sip2::util::num_bool(true);
+                        login_ok = "1";
                         self.account = Some(account.clone());
                     }
                 } else {
@@ -361,18 +374,18 @@ impl Session {
         let mut resp = sip2::Message::from_values(
             &sip2::spec::M_ACS_STATUS,
             &[
-                sip2::util::sip_bool(true),  // online status
-                sip2::util::sip_bool(true),  // checkin ok
-                sip2::util::sip_bool(true),  // checkout ok
-                sip2::util::sip_bool(true),  // renewal policy
-                sip2::util::sip_bool(false), // status update
-                sip2::util::sip_bool(false), // offline ok
-                "999",                       // timeout
-                "999",                       // max retries
+                "Y",    // online status
+                "Y",    // checkin ok
+                "Y",    // checkout ok
+                "Y",    // renewal policy
+                "N",    // status update
+                "N",    // offline ok
+                "999",  // timeout
+                "999",  // max retries
                 &sip2::util::sip_date_now(),
                 "2.00", // SIP version
             ],
-            &[("BX", INSTITUTION_SUPPORTS), ("AF", ""), ("AG", "")],
+            &[("BX", INSTITUTION_SUPPORTS)],
         )
         .unwrap();
 

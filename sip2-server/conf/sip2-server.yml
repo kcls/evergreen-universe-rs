@@ -19,7 +19,7 @@ max-clients: 128
 ascii: true
 
 # Allow message 99 even if the SIP client has not yet logged in.
-# This must be global since we may not have account info yet.
+# This must be global since we won't have account info pre-login.
 sc-status-before-login: false
 
 # SIP Currency Type value
@@ -28,6 +28,7 @@ currency: "USD"
 setting-groups:
 
     # Free-form name for this collection of settings.
+    # The name is used to link this group of settings to accounts.
   - name: "default"
 
     # SIP institution value
@@ -51,7 +52,8 @@ setting-groups:
     # If true, all checkout calls are mde with the global override flag
     checkout-override-all: false
 
-    # List of checkin event text codes to automatically override
+    # List of checkin event text codes to automatically override.
+    # These are ignored if checkin-override-all is true.
     checkin-override:
       - "COPY_ALERT_MESSAGE"
       - "COPY_BAD_STATUS"
@@ -59,6 +61,7 @@ setting-groups:
       - "COPY_STATUS_LOST"
 
     # List of checkout event codes to automatically override.
+    # These are ignored if checkout-override-all is true.
     checkout-override:
       - "COPY_ALERT_MESSAGE"
       - "COPY_NOT_AVAILABLE"
@@ -67,10 +70,9 @@ setting-groups:
 
     # Optional set of sip fields to remove or have their values replaced
     # before sending back to the SIP client.
-    field-filters:
-      - field-code: ZZ          # SIP field 2-character code.  
-      - field-code: ZY  
-        replace-with: ZY-VALUE  # Optional replacement value.  
+#    field-filters:
+#      - field-code: ZY          # 2-char SIP field code
+#        replace-with: ZY-VALUE  # Optional replacement value.  
 
 accounts:
   - sip-username: "sip-user"  # SIP Login CN value

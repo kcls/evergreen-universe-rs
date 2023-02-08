@@ -19,6 +19,17 @@ pub enum ParamCount {
 }
 
 impl ParamCount {
+    /// Returns true if the number of params provided matches the
+    /// number specified by the ParamCount enum.
+    ///
+    /// ```
+    /// use opensrf::method::ParamCount;
+    /// assert!(ParamCount::matches(&ParamCount::Any, 0));
+    /// assert!(!ParamCount::matches(&ParamCount::Exactly(1), 10));
+    /// assert!(ParamCount::matches(&ParamCount::AtLeast(10), 20));
+    /// assert!(!ParamCount::matches(&ParamCount::AtLeast(20), 10));
+    /// assert!(ParamCount::matches(&ParamCount::Range(4, 6), 5));
+    /// ```
     pub fn matches(pc: &ParamCount, count: u8) -> bool {
         match *pc {
             ParamCount::Any => {

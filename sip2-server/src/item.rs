@@ -51,7 +51,7 @@ impl Session {
 
         let mut due_date: Option<String> = None;
 
-        if let Ok(Some(circ)) = self.get_copy_circ(eg::util::json_int(&copy["id"])?) {
+        if let Some(circ) = self.get_copy_circ(&copy)? {
             if let Some(iso_date) = circ["due_date"].as_str() {
                 if self.account().settings().due_date_use_sip_date_format() {
                     let due_dt = eg::util::parse_pg_date(iso_date)?;
@@ -303,7 +303,15 @@ impl Session {
     }
 
     /// Find an open circulation linked to the copy.
-    fn get_copy_circ(&mut self, copy_id: i64) -> Result<Option<json::JsonValue>, String> {
+    fn get_copy_circ(&mut self, copy: &json::JsonValue) -> Result<Option<json::JsonValue>, String> {
+        let copy_status = eg::util::json_int(&copy["status"]["id"])?;
+
+        if copy_status != 1 { // Checked Out
+            return Ok(None);
+        }
+
+        let copy_id = eg::util::json_int(&copy["id"])?;
+
         let search = json::object! {
             target_copy: copy_id,
             checkin_time: json::JsonValue::Null,
