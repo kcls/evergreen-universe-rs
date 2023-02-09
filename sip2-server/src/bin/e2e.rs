@@ -1,6 +1,7 @@
 use evergreen as eg;
 use sip2;
 use getopts;
+use std::time::SystemTime;
 
 const HELP_TEXT: &str = r#"
     --sip-host
@@ -42,43 +43,54 @@ fn main() -> Result<(), String> {
 
     let mut editor = eg::Editor::new(ctx.client(), ctx.idl());
 
-    test_invalid_login(&mut sipcon, &user, &pass);
-    println!("OK test_invalid_login");
+    let t = test_invalid_login(&mut sipcon, &user, &pass);
+    println!("OK [{t}] test_invalid_login");
 
-    test_valid_login(&mut sipcon, &user, &pass);
-    println!("OK test_valid_login");
+    let t = test_valid_login(&mut sipcon, &user, &pass);
+    println!("OK [{t}] test_valid_login");
+
+    let t = test_sc_status(&mut sipcon);
+    println!("OK [{t}] test_sc_status");
 
     sipcon.disconnect().ok();
 
     Ok(())
 }
 
-fn test_invalid_login(sipcon: &mut sip2::Connection, user: &str, pass: &str) -> Result<(), String> {
+fn duration(micros: u128) -> String {
+    // We'll never need a full u128.
+    let millis = (micros as f64) / 1000.0;
+    format!("{:.3}ms", millis)
+}
 
-    let mut req = sip2::Message::from_values(
+fn test_invalid_login(sipcon: &mut sip2::Connection, user: &str, pass: &str) -> String {
+
+    let req = sip2::Message::from_values(
         &sip2::spec::M_LOGIN,
         &[
             "0",    // UID algo
             "0",    // PW algo
         ],
         &[
-            ("CN", "%%%"),   // SIP login username
-            ("CO", "%%%"),   // SIP login password
+            ("CN", &format!("+{user}+")),   // SIP login username
+            ("CO", &format!("+{pass}+")),   // SIP login password
         ],
     ).unwrap();
 
+    let now = SystemTime::now();
     let resp = sipcon.sendrecv(&req).unwrap();
+    let duration = duration(now.elapsed().unwrap().as_micros());
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
     assert_eq!(resp.fixed_fields().len(), 1);
     assert_eq!(resp.fixed_fields()[0].value(), "0");
 
-    Ok(())
+    duration
 }
 
-fn test_valid_login(sipcon: &mut sip2::Connection, user: &str, pass: &str) -> Result<(), String> {
+fn test_valid_login(sipcon: &mut sip2::Connection, user: &str, pass: &str) -> String {
 
-    let mut req = sip2::Message::from_values(
+    let req = sip2::Message::from_values(
         &sip2::spec::M_LOGIN,
         &[
             "0",    // UID algo
@@ -90,12 +102,33 @@ fn test_valid_login(sipcon: &mut sip2::Connection, user: &str, pass: &str) -> Re
         ],
     ).unwrap();
 
+    let now = SystemTime::now();
     let resp = sipcon.sendrecv(&req).unwrap();
+    let duration = duration(now.elapsed().unwrap().as_micros());
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
     assert_eq!(resp.fixed_fields().len(), 1);
     assert_eq!(resp.fixed_fields()[0].value(), "1");
 
-    Ok(())
+    duration
 }
 
+fn test_sc_status(sipcon: &mut sip2::Connection) -> String {
+    let req = sip2::Message::from_ff_values(
+        &sip2::spec::M_SC_STATUS,
+        &[
+            "0",    // status code
+            "999",  // max print width
+            &sip2::spec::SIP_PROTOCOL_VERSION,
+        ]
+    ).unwrap();
+
+    let now = SystemTime::now();
+    let resp = sipcon.sendrecv(&req).unwrap();
+    let duration = duration(now.elapsed().unwrap().as_micros());
+
+    assert!(resp.fixed_fields().len() > 0);
+    assert_eq!(resp.fixed_fields()[0].value(), "Y");
+
+    duration
+}
