@@ -88,7 +88,6 @@ impl BusWatch {
                         // time we called keys() and llen().
                         if l > 0 {
                             obj["stats"][key]["count"] = json::from(l);
-                            /*
                             // Uncomment this chunk to see the next opensrf
                             // message in the queue for this key as JSON.
                             if let Ok(list) = self.bus.lrange(key, 0, 1) {
@@ -96,7 +95,6 @@ impl BusWatch {
                                     obj["stats"][key]["next_value"] = json::from(s.as_str());
                                 }
                             }
-                            */
                         }
                     }
                     Err(e) => {

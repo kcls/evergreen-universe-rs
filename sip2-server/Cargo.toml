@@ -1,5 +1,5 @@
 [package]
-name = "sip2-server"
+name = "sip2server"
 version = "0.1.0"
 edition = "2021"
 
