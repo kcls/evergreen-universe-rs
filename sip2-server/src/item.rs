@@ -166,7 +166,7 @@ impl Session {
                 ("BG", &item.owning_loc),
                 ("CT", &item.destination_loc),
                 ("BH", self.sip_config().currency()),
-                ("BV", &format!("{}", item.deposit_amount)),
+                ("BV", &format!("{:.2}", item.deposit_amount)),
                 ("CF", &format!("{}", item.hold_queue_length)),
                 ("CK", &item.media_type),
             ],

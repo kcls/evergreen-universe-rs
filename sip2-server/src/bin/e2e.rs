@@ -101,7 +101,7 @@ fn main() -> Result<(), String> {
     };
 
     let now = SystemTime::now();
-    let (acp, acn, ac, au) = create_test_assets(&mut tester)?;
+    let (acp, acn, au) = create_test_assets(&mut tester)?;
     let t = now.elapsed().unwrap().as_micros();
     log(t, "Create Test Assets");
 
@@ -109,8 +109,15 @@ fn main() -> Result<(), String> {
         eprintln!("Tester exited with error: {e}");
     };
 
+    // Run them twice to get a sense of the speed difference
+    // for collecting some of the same data (e.g. org units) within
+    // an existing back-end sip server thread.
+    if let Err(e) = run_tests(&mut tester) {
+        eprintln!("Tester exited with error: {e}");
+    };
+
     let now = SystemTime::now();
-    delete_test_assets(&mut tester, &acp, &acn, &ac, &au)?;
+    delete_test_assets(&mut tester, &acp, &acn, &au)?;
     let t = now.elapsed().unwrap().as_micros();
     log(t, "Delete Test Assets");
 
@@ -124,20 +131,20 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     log(test_invalid_login(tester)?, "test_invalid_login");
     log(test_valid_login(tester)?, "test_valid_login");
     log(test_sc_status(tester)?, "test_sc_status");
-    log(test_sc_status(tester)?, "test_sc_status (2nd time)");
     log(test_invalid_item_info(tester)?, "test_invalid_item_info");
     log(test_item_info(tester)?, "test_item_info");
+    log(test_patron_status(tester)?, "test_patron_status");
 
     Ok(())
 }
 
-fn create_test_assets(tester: &mut Tester
-    ) -> Result<(
-        json::JsonValue,
-        json::JsonValue,
-        json::JsonValue,
-        json::JsonValue
-    ), String> {
+fn create_test_assets(
+    tester: &mut Tester
+) -> Result<(
+    json::JsonValue,
+    json::JsonValue,
+    json::JsonValue,
+), String> {
 
     let seed = json::object! {
         creator: tester.acn_creator,
@@ -192,19 +199,17 @@ fn create_test_assets(tester: &mut Tester
     };
 
     let ac = tester.idl.create_from("ac", seed)?;
-    let ac = e.create(&ac)?;
-    // TODO do we need to link to user back to the card.
+    e.create(&ac)?;
 
     e.commit()?;
 
-    Ok((acp, acn, ac, au))
+    Ok((acp, acn, au))
 }
 
 fn delete_test_assets(
     tester: &mut Tester,
     acp: &json::JsonValue,
     acn: &json::JsonValue,
-    ac: &json::JsonValue,
     au: &json::JsonValue,
 ) -> Result<(), String> {
     let e = &mut tester.editor;
@@ -215,6 +220,7 @@ fn delete_test_assets(
     e.delete(acn)?;
 
     // Purge the user
+    // This deletes the ac (card) we created as well.
     let query = json::object! {
         from: ["actor.usr_delete", au["id"].clone(), json::JsonValue::Null]
     };
@@ -369,9 +375,34 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
     assert_eq!(resp.get_field_value("CT").unwrap(), tester.org_shortname);
     assert_eq!(resp.get_field_value("BG").unwrap(), tester.org_shortname);
     assert_eq!(resp.get_field_value("AP").unwrap(), tester.org_shortname);
-    assert_eq!(&resp.get_field_value("BV").unwrap(), "0"); // fee amount
+    assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
     assert_eq!(&resp.get_field_value("CF").unwrap(), "0"); // hold queue len
     assert_eq!(&resp.get_field_value("CK").unwrap(), "001"); // media type
+
+    Ok(duration)
+}
+
+fn test_patron_status(tester: &mut Tester) -> Result<u128, String> {
+
+    let req = sip2::Message::from_values(
+        &sip2::spec::M_PATRON_STATUS,
+        &["000", &sip2::util::sip_date_now()],
+        &[
+            ("AA", &tester.au_barcode),
+            ("AD", &tester.au_barcode),
+            ("AO", &tester.institution),
+        ],
+    ).unwrap();
+
+    let now = SystemTime::now();
+    let resp = tester.sipcon.sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+    let duration = now.elapsed().unwrap().as_micros();
+
+    assert_eq!(resp.get_field_value("AA").unwrap(), tester.au_barcode);
+    assert_eq!(resp.get_field_value("BL").unwrap(), "Y"); // valid patron
+    assert_eq!(resp.get_field_value("CQ").unwrap(), "Y"); // valid password
+    assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
 
     Ok(duration)
 }
