@@ -2,6 +2,18 @@ use evergreen as eg;
 use sip2;
 use getopts;
 use std::time::SystemTime;
+use std::sync::Arc;
+
+// Default values for assets
+const ACN_CREATOR: i64 = 1;
+const ACN_RECORD: i64 = 1;
+const ACN_OWNING_LIB: i64 = 4;
+const ACN_LABEL: &str = "_SIP_TEST_";
+const ACN_LABEL_CLASS: i64 = 1; // Generic
+const ACP_STATUS: i64 = 0; // Available
+const ACP_BARCODE: &str = "_SIP_TEST_";
+const ACP_LOAN_DURATION: i64 = 1;
+const ACP_FINE_LEVEL: i64 = 2; // Medium?
 
 struct Tester {
     sip_user: String,
@@ -9,6 +21,12 @@ struct Tester {
     institution: String,
     sipcon: sip2::Connection,
     editor: eg::Editor,
+    idl: Arc<eg::idl::Parser>,
+    acn_creator: i64,
+    acn_record: i64,
+    acn_owning_lib: i64,
+    acn_label: String,
+    acn_label_class: i64,
 }
 
 const HELP_TEXT: &str = r#"
@@ -30,9 +48,12 @@ fn main() -> Result<(), String> {
     opts.optopt("", "sip-pass", "", "");
     opts.optopt("", "institution", "", "");
 
+    let mut eg_ops = eg::init::InitOptions::new();
+    eg_ops.skip_host_settings = true;
+
     // OpenSRF connect, get host settings, parse IDL, etc.
     let now = SystemTime::now();
-    let ctx = eg::init::init_with_options(&mut opts).expect("Evergreen Init");
+    let ctx = eg::init::init_with_more_options(&mut opts, &eg_ops).expect("Evergreen Init");
     let t = now.elapsed().unwrap().as_micros();
     log(t, "EG Init");
 
@@ -57,10 +78,19 @@ fn main() -> Result<(), String> {
     let mut tester = Tester {
         sipcon,
         editor,
+        idl: ctx.idl().clone(),
+        // TODO command line ops
+        acn_creator: ACN_CREATOR,
+        acn_record: ACN_RECORD,
+        acn_owning_lib: ACN_OWNING_LIB,
+        acn_label: ACN_LABEL.to_string(),
+        acn_label_class: ACN_LABEL_CLASS,
         sip_user: options.opt_get_default("sip-user", "sip-user".to_string()).unwrap(),
         sip_pass: options.opt_get_default("sip-pass", "sip-pass".to_string()).unwrap(),
         institution: options.opt_get_default("institution", "example".to_string()).unwrap(),
     };
+
+    create_test_assets(&mut tester)?;
 
     log(test_invalid_login(&mut tester), "test_invalid_login");
     log(test_valid_login(&mut tester), "test_valid_login");
@@ -68,7 +98,54 @@ fn main() -> Result<(), String> {
     log(test_sc_status(&mut tester), "test_sc_status (2nd time)");
     log(test_invalid_item_info(&mut tester), "test_invalid_item_info");
 
+    delete_test_assets(&mut tester)?;
+
     tester.sipcon.disconnect().ok();
+
+    Ok(())
+}
+
+fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
+
+    let obj = json::object! {
+        creator: tester.acn_creator,
+        editor: tester.acn_creator,
+        record: tester.acn_record,
+        owning_lib: tester.acn_owning_lib,
+        label: tester.acn_label.to_string(),
+        label_class: tester.acn_label_class,
+    };
+
+    let acn = tester.idl.create_from("acn", obj)?;
+
+    let e = &mut tester.editor;
+
+    e.xact_begin()?;
+
+    // Grab the from-database version of the acn.
+    let acn = e.create(&acn)?;
+
+    let obj = json::object! {
+        call_number: acn["id"].clone(),
+        creator: tester.acn_creator,
+        editor: tester.acn_creator,
+        status: ACP_STATUS,
+        circ_lib: tester.acn_owning_lib,
+        loan_duration: ACP_LOAN_DURATION,
+        fine_level: ACP_FINE_LEVEL,
+        barcode: ACP_BARCODE,
+    };
+
+    let acp = tester.idl.create_from("acp", obj)?;
+
+    let acp = e.create(&acp)?;
+
+    e.xact_rollback()?;
+
+    Ok(())
+}
+
+fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {
 
     Ok(())
 }
@@ -170,8 +247,10 @@ fn test_invalid_item_info(tester: &mut Tester) -> u128 {
     let barcode = resp.get_field_value("AB");
     let title = resp.get_field_value("AJ");
 
+    // We should get title/barcode fields in the response.
     assert!(barcode.is_some());
     assert!(title.is_some());
+
     assert_eq!(barcode.unwrap(), dummy);
     assert_eq!(title.unwrap(), "");
     assert_eq!(circ_status, "01");

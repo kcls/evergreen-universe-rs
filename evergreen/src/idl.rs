@@ -555,6 +555,7 @@ impl Parser {
         false
     }
 
+    // TODO create a Pkey type that can handle numbers and strings.
     pub fn get_pkey_value(&self, obj: &json::JsonValue) -> Option<String> {
         if !self.is_idl_object(obj) {
             return None;
@@ -571,6 +572,44 @@ impl Parser {
         }
 
         None
+    }
+
+    /// Create the seed of an IDL object with the requested class.
+    pub fn create(&self, classname: &str) -> Result<json::JsonValue, String> {
+        if !self.classes.contains_key(classname) {
+            Err(format!("Invalid IDL class: {classname}"))?;
+        }
+
+        let mut obj = json::JsonValue::new_object();
+        obj[CLASSNAME_KEY] = json::from(classname);
+
+        Ok(obj)
+    }
+
+    /// Stamp the object with the requested class and confirm any
+    /// existing fields are valid for the class.
+    pub fn create_from(
+        &self,
+        classname: &str,
+        mut obj: json::JsonValue
+    ) -> Result<json::JsonValue, String> {
+
+        if !obj.is_object() {
+            Err(format!("IDL cannot create_from() on a non-object"))?;
+        }
+
+        let idlclass = self.classes.get(classname)
+            .ok_or(format!("IDL no such class {classname}"))?;
+
+        for (field, _) in obj.entries() {
+            if !idlclass.fields().contains_key(field) {
+                Err(format!("IDL class {classname} has no field {field}"))?;
+            }
+        }
+
+        obj[CLASSNAME_KEY] = json::from(classname);
+
+        Ok(obj)
     }
 }
 

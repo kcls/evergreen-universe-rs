@@ -34,13 +34,15 @@ impl Context {
 }
 
 pub struct InitOptions {
-    osrf_ops: osrf::init::InitOptions,
+    pub osrf_ops: osrf::init::InitOptions,
+    pub skip_host_settings: bool,
 }
 
 impl InitOptions {
     pub fn new() -> Self {
         InitOptions {
             osrf_ops: osrf::init::InitOptions::new(),
+            skip_host_settings: false,
         }
     }
 }
@@ -63,6 +65,7 @@ pub fn init_with_more_options(
     options: &InitOptions,
 ) -> Result<Context, String> {
     opts.optopt("", "idl-file", "Path to IDL file", "IDL_PATH");
+    opts.optflag("", "skip-host-settings", "Skip Host Settings");
 
     let (config, _) = osrf::init::init_with_more_options(opts, &options.osrf_ops)?;
     let config = config.into_shared();
@@ -80,11 +83,13 @@ pub fn init_with_more_options(
     let mut idl_file = DEFAULT_IDL_PATH.to_string();
     let mut host_settings: Option<Arc<osrf::sclient::HostSettings>> = None;
 
-    if let Ok(s) = osrf::sclient::SettingsClient::get_host_settings(&client, false) {
-        if let Some(fname) = s.value("/IDL").as_str() {
-            idl_file = fname.to_string();
+    if !params.opt_present("skip-host-settings") {
+        if let Ok(s) = osrf::sclient::SettingsClient::get_host_settings(&client, false) {
+            if let Some(fname) = s.value("/IDL").as_str() {
+                idl_file = fname.to_string();
+            }
+            host_settings = Some(s.into_shared());
         }
-        host_settings = Some(s.into_shared());
     }
 
     // Always honor the command line option if present.

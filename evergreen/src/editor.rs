@@ -453,4 +453,33 @@ impl Editor {
 
         Ok(())
     }
+
+    pub fn create(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, String> {
+        if !self.has_xact_id() {
+            Err(format!("Transaction required for CREATE"))?;
+        }
+
+        let idlclass = object[idl::CLASSNAME_KEY].as_str()
+            .ok_or(format!("CREATE called on non-IDL object"))?;
+
+        let fmapper = self.get_fieldmapper(idlclass)?;
+
+        let method = self.app_method(&format!("direct.{fmapper}.create"));
+
+        if let Some(resp) = self.request(&method, object)? {
+
+            if let Some(pkey) = self.idl.get_pkey_value(&resp) {
+                log::info!("Created new {idlclass} object with pkey: {pkey}");
+            } else {
+                // Don't think we can get here, but mabye.
+                log::debug!("Created new {idlclass} object: {resp:?}");
+            }
+
+            Ok(resp)
+
+        } else {
+            Err(format!("Create returned no response"))
+        }
+    }
 }
+
