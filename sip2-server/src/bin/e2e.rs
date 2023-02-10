@@ -404,6 +404,10 @@ fn test_patron_status(tester: &mut Tester) -> Result<u128, String> {
     assert_eq!(resp.get_field_value("CQ").unwrap(), "Y"); // valid password
     assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
 
+    let status = resp.fixed_fields()[0].value();
+    assert_eq!(status.len(), 14);
+    assert!(!status.contains("Y")); // no blocks
+
     Ok(duration)
 }
 
