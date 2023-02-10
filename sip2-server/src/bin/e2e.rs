@@ -38,7 +38,6 @@ const HELP_TEXT: &str = r#"
 "#;
 
 fn main() -> Result<(), String> {
-
     let mut opts = getopts::Options::new();
 
     opts.optflag("h", "help", "");
@@ -48,12 +47,9 @@ fn main() -> Result<(), String> {
     opts.optopt("", "sip-pass", "", "");
     opts.optopt("", "institution", "", "");
 
-    let mut eg_ops = eg::init::InitOptions::new();
-    eg_ops.skip_host_settings = true;
-
     // OpenSRF connect, get host settings, parse IDL, etc.
     let now = SystemTime::now();
-    let ctx = eg::init::init_with_more_options(&mut opts, &eg_ops).expect("Evergreen Init");
+    let ctx = eg::init::init_with_options(&mut opts).expect("Evergreen Init");
     let t = now.elapsed().unwrap().as_micros();
     log(t, "EG Init");
 
@@ -90,22 +86,31 @@ fn main() -> Result<(), String> {
         institution: options.opt_get_default("institution", "example".to_string()).unwrap(),
     };
 
-    create_test_assets(&mut tester)?;
+    let (acp, acn) = create_test_assets(&mut tester)?;
 
-    log(test_invalid_login(&mut tester), "test_invalid_login");
-    log(test_valid_login(&mut tester), "test_valid_login");
-    log(test_sc_status(&mut tester), "test_sc_status");
-    log(test_sc_status(&mut tester), "test_sc_status (2nd time)");
-    log(test_invalid_item_info(&mut tester), "test_invalid_item_info");
+    if let Err(e) = run_tests(&mut tester) {
+        eprintln!("Tester exited with error: {e}");
+    };
 
-    delete_test_assets(&mut tester)?;
+    delete_test_assets(&mut tester, &acp, &acn)?;
+
+    Ok(())
+}
+
+fn run_tests(tester: &mut Tester) -> Result<(), String> {
+
+    log(test_invalid_login(tester)?, "test_invalid_login");
+    log(test_valid_login(tester)?, "test_valid_login");
+    log(test_sc_status(tester)?, "test_sc_status");
+    log(test_sc_status(tester)?, "test_sc_status (2nd time)");
+    log(test_invalid_item_info(tester)?, "test_invalid_item_info");
 
     tester.sipcon.disconnect().ok();
 
     Ok(())
 }
 
-fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
+fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::JsonValue), String> {
 
     let obj = json::object! {
         creator: tester.acn_creator,
@@ -140,12 +145,22 @@ fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
 
     let acp = e.create(&acp)?;
 
-    e.xact_rollback()?;
+    e.commit()?;
 
-    Ok(())
+    Ok((acp, acn))
 }
 
-fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {
+fn delete_test_assets(
+    tester: &mut Tester,
+    acp: &json::JsonValue,
+    acn: &json::JsonValue,
+) -> Result<(), String> {
+    let e = &mut tester.editor;
+
+    e.xact_begin()?;
+    e.delete(acp)?;
+    e.delete(acn)?;
+    e.commit()?;
 
     Ok(())
 }
@@ -156,7 +171,7 @@ fn log(duration: u128, test: &str) {
     println!("OK [{:.3} ms]\t{test}", millis);
 }
 
-fn test_invalid_login(tester: &mut Tester) -> u128 {
+fn test_invalid_login(tester: &mut Tester) -> Result<u128, String> {
 
     let req = sip2::Message::from_values(
         &sip2::spec::M_LOGIN,
@@ -171,17 +186,18 @@ fn test_invalid_login(tester: &mut Tester) -> u128 {
     ).unwrap();
 
     let now = SystemTime::now();
-    let resp = tester.sipcon.sendrecv(&req).unwrap();
+    let resp = tester.sipcon.sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
     let duration = now.elapsed().unwrap().as_micros();
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
     assert_eq!(resp.fixed_fields().len(), 1);
     assert_eq!(resp.fixed_fields()[0].value(), "0");
 
-    duration
+    Ok(duration)
 }
 
-fn test_valid_login(tester: &mut Tester) -> u128 {
+fn test_valid_login(tester: &mut Tester) -> Result<u128, String> {
 
     let req = sip2::Message::from_values(
         &sip2::spec::M_LOGIN,
@@ -196,17 +212,18 @@ fn test_valid_login(tester: &mut Tester) -> u128 {
     ).unwrap();
 
     let now = SystemTime::now();
-    let resp = tester.sipcon.sendrecv(&req).unwrap();
+    let resp = tester.sipcon.sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
     let duration = now.elapsed().unwrap().as_micros();
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
     assert_eq!(resp.fixed_fields().len(), 1);
     assert_eq!(resp.fixed_fields()[0].value(), "1");
 
-    duration
+    Ok(duration)
 }
 
-fn test_sc_status(tester: &mut Tester) -> u128 {
+fn test_sc_status(tester: &mut Tester) -> Result<u128, String> {
     let req = sip2::Message::from_ff_values(
         &sip2::spec::M_SC_STATUS,
         &[
@@ -217,16 +234,17 @@ fn test_sc_status(tester: &mut Tester) -> u128 {
     ).unwrap();
 
     let now = SystemTime::now();
-    let resp = tester.sipcon.sendrecv(&req).unwrap();
+    let resp = tester.sipcon.sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
     let duration = now.elapsed().unwrap().as_micros();
 
     assert!(resp.fixed_fields().len() > 0);
     assert_eq!(resp.fixed_fields()[0].value(), "Y");
 
-    duration
+    Ok(duration)
 }
 
-fn test_invalid_item_info(tester: &mut Tester) -> u128 {
+fn test_invalid_item_info(tester: &mut Tester) -> Result<u128, String> {
 
     let dummy = "I-AM-BAD-BARCODE";
 
@@ -240,7 +258,8 @@ fn test_invalid_item_info(tester: &mut Tester) -> u128 {
     ).unwrap();
 
     let now = SystemTime::now();
-    let resp = tester.sipcon.sendrecv(&req).unwrap();
+    let resp = tester.sipcon.sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
     let duration = now.elapsed().unwrap().as_micros();
 
     let circ_status = resp.fixed_fields()[0].value();
@@ -255,5 +274,5 @@ fn test_invalid_item_info(tester: &mut Tester) -> u128 {
     assert_eq!(title.unwrap(), "");
     assert_eq!(circ_status, "01");
 
-    duration
+    Ok(duration)
 }

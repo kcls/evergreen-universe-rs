@@ -460,7 +460,7 @@ impl Editor {
         }
 
         let idlclass = object[idl::CLASSNAME_KEY].as_str()
-            .ok_or(format!("CREATE called on non-IDL object"))?;
+            .ok_or(format!("CREATE called on non-IDL object: {object:?}"))?;
 
         let fmapper = self.get_fieldmapper(idlclass)?;
 
@@ -477,6 +477,28 @@ impl Editor {
 
             Ok(resp)
 
+        } else {
+            Err(format!("Create returned no response"))
+        }
+    }
+
+    /// Delete an IDL Object.
+    ///
+    /// Response is the PKEY value as a JsonValue.
+    pub fn delete(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, String> {
+        if !self.has_xact_id() {
+            Err(format!("Transaction required for DELETE"))?;
+        }
+
+        let idlclass = object[idl::CLASSNAME_KEY].as_str()
+            .ok_or(format!("DELETE called on non-IDL object {object:?}"))?;
+
+        let fmapper = self.get_fieldmapper(idlclass)?;
+
+        let method = self.app_method(&format!("direct.{fmapper}.delete"));
+
+        if let Some(resp) = self.request(&method, object)? {
+            Ok(resp)
         } else {
             Err(format!("Create returned no response"))
         }
