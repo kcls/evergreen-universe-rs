@@ -7,13 +7,14 @@ use std::sync::Arc;
 // Default values for assets
 const ACN_CREATOR: i64 = 1;
 const ACN_RECORD: i64 = 1;
-const ACN_OWNING_LIB: i64 = 4;
 const ACN_LABEL: &str = "_SIP_TEST_";
 const ACN_LABEL_CLASS: i64 = 1; // Generic
 const ACP_STATUS: i64 = 0; // Available
 const ACP_BARCODE: &str = "_SIP_TEST_";
 const ACP_LOAN_DURATION: i64 = 1;
 const ACP_FINE_LEVEL: i64 = 2; // Medium?
+const ORG_ID: i64 = 4;
+const ORG_SHORTNAME: &str = "BR1";
 
 struct Tester {
     sip_user: String,
@@ -24,7 +25,8 @@ struct Tester {
     idl: Arc<eg::idl::Parser>,
     acn_creator: i64,
     acn_record: i64,
-    acn_owning_lib: i64,
+    org_id: i64,
+    org_shortname: String,
     acn_label: String,
     acn_label_class: i64,
     acp_barcode: String,
@@ -79,22 +81,29 @@ fn main() -> Result<(), String> {
         // TODO command line ops
         acn_creator: ACN_CREATOR,
         acn_record: ACN_RECORD,
-        acn_owning_lib: ACN_OWNING_LIB,
+        org_id: ORG_ID,
         acn_label: ACN_LABEL.to_string(),
         acn_label_class: ACN_LABEL_CLASS,
         acp_barcode: ACP_BARCODE.to_string(),
+        org_shortname: ORG_SHORTNAME.to_string(),
         sip_user: options.opt_get_default("sip-user", "sip-user".to_string()).unwrap(),
         sip_pass: options.opt_get_default("sip-pass", "sip-pass".to_string()).unwrap(),
         institution: options.opt_get_default("institution", "example".to_string()).unwrap(),
     };
 
+    let now = SystemTime::now();
     let (acp, acn) = create_test_assets(&mut tester)?;
+    let t = now.elapsed().unwrap().as_micros();
+    log(t, "Create Test Assets");
 
     if let Err(e) = run_tests(&mut tester) {
         eprintln!("Tester exited with error: {e}");
     };
 
+    let now = SystemTime::now();
     delete_test_assets(&mut tester, &acp, &acn)?;
+    let t = now.elapsed().unwrap().as_micros();
+    log(t, "Delete Test Assets");
 
     tester.sipcon.disconnect().ok();
 
@@ -119,7 +128,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::Jso
         creator: tester.acn_creator,
         editor: tester.acn_creator,
         record: tester.acn_record,
-        owning_lib: tester.acn_owning_lib,
+        owning_lib: tester.org_id,
         label: tester.acn_label.to_string(),
         label_class: tester.acn_label_class,
     };
@@ -138,7 +147,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::Jso
         creator: tester.acn_creator,
         editor: tester.acn_creator,
         status: ACP_STATUS,
-        circ_lib: tester.acn_owning_lib,
+        circ_lib: tester.org_id,
         loan_duration: ACP_LOAN_DURATION,
         fine_level: ACP_FINE_LEVEL,
         barcode: tester.acp_barcode.to_string(),
@@ -296,8 +305,6 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
     let duration = now.elapsed().unwrap().as_micros();
 
-    println!("ITEM INFO: {resp:?}");
-
     let circ_status = resp.fixed_fields()[0].value();
     let barcode = resp.get_field_value("AB");
     let title = resp.get_field_value("AJ");
@@ -310,5 +317,11 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
     assert_ne!(title.unwrap(), "");
     assert_eq!(circ_status, "03");
 
+    assert_eq!(resp.get_field_value("CT").unwrap(), tester.org_shortname);
+    assert_eq!(resp.get_field_value("BG").unwrap(), tester.org_shortname);
+    assert_eq!(resp.get_field_value("AP").unwrap(), tester.org_shortname);
+
     Ok(duration)
 }
+
+
