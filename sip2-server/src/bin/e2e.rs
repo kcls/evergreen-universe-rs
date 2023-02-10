@@ -15,6 +15,9 @@ const ACP_LOAN_DURATION: i64 = 1;
 const ACP_FINE_LEVEL: i64 = 2; // Medium?
 const ORG_ID: i64 = 4;
 const ORG_SHORTNAME: &str = "BR1";
+const AU_BARCODE: &str = "_SIP_TEST_";
+const AU_PROFILE: i64 = 2; // Patrons
+const AU_IDENT_TYPE: i64 = 3; // Other
 
 struct Tester {
     sip_user: String,
@@ -30,6 +33,9 @@ struct Tester {
     acn_label: String,
     acn_label_class: i64,
     acp_barcode: String,
+    au_barcode: String,
+    au_profile: i64,
+    au_ident_type: i64,
 }
 
 const HELP_TEXT: &str = r#"
@@ -86,13 +92,16 @@ fn main() -> Result<(), String> {
         acn_label_class: ACN_LABEL_CLASS,
         acp_barcode: ACP_BARCODE.to_string(),
         org_shortname: ORG_SHORTNAME.to_string(),
+        au_barcode: AU_BARCODE.to_string(),
+        au_profile: AU_PROFILE,
+        au_ident_type: AU_IDENT_TYPE,
         sip_user: options.opt_get_default("sip-user", "sip-user".to_string()).unwrap(),
         sip_pass: options.opt_get_default("sip-pass", "sip-pass".to_string()).unwrap(),
         institution: options.opt_get_default("institution", "example".to_string()).unwrap(),
     };
 
     let now = SystemTime::now();
-    let (acp, acn) = create_test_assets(&mut tester)?;
+    let (acp, acn, ac, au) = create_test_assets(&mut tester)?;
     let t = now.elapsed().unwrap().as_micros();
     log(t, "Create Test Assets");
 
@@ -101,7 +110,7 @@ fn main() -> Result<(), String> {
     };
 
     let now = SystemTime::now();
-    delete_test_assets(&mut tester, &acp, &acn)?;
+    delete_test_assets(&mut tester, &acp, &acn, &ac, &au)?;
     let t = now.elapsed().unwrap().as_micros();
     log(t, "Delete Test Assets");
 
@@ -122,9 +131,15 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     Ok(())
 }
 
-fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::JsonValue), String> {
+fn create_test_assets(tester: &mut Tester
+    ) -> Result<(
+        json::JsonValue,
+        json::JsonValue,
+        json::JsonValue,
+        json::JsonValue
+    ), String> {
 
-    let obj = json::object! {
+    let seed = json::object! {
         creator: tester.acn_creator,
         editor: tester.acn_creator,
         record: tester.acn_record,
@@ -133,7 +148,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::Jso
         label_class: tester.acn_label_class,
     };
 
-    let acn = tester.idl.create_from("acn", obj)?;
+    let acn = tester.idl.create_from("acn", seed)?;
 
     let e = &mut tester.editor;
 
@@ -142,7 +157,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::Jso
     // Grab the from-database version of the acn.
     let acn = e.create(&acn)?;
 
-    let obj = json::object! {
+    let seed = json::object! {
         call_number: acn["id"].clone(),
         creator: tester.acn_creator,
         editor: tester.acn_creator,
@@ -153,25 +168,59 @@ fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::Jso
         barcode: tester.acp_barcode.to_string(),
     };
 
-    let acp = tester.idl.create_from("acp", obj)?;
+    let acp = tester.idl.create_from("acp", seed)?;
 
     let acp = e.create(&acp)?;
 
+    let seed = json::object! {
+        profile: tester.au_profile,
+        usrname: tester.au_barcode.to_string(),
+        passwd: tester.au_barcode.to_string(),
+        ident_type: tester.au_ident_type,
+        first_given_name: "SIP TEST",
+        family_name: "SIP TEST",
+        home_ou: ORG_ID,
+    };
+
+    let au = tester.idl.create_from("au", seed)?;
+
+    let au = e.create(&au)?;
+
+    let seed = json::object! {
+        barcode: tester.au_barcode.to_string(),
+        usr: au["id"].clone(),
+    };
+
+    let ac = tester.idl.create_from("ac", seed)?;
+    let ac = e.create(&ac)?;
+    // TODO do we need to link to user back to the card.
+
     e.commit()?;
 
-    Ok((acp, acn))
+    Ok((acp, acn, ac, au))
 }
 
 fn delete_test_assets(
     tester: &mut Tester,
     acp: &json::JsonValue,
     acn: &json::JsonValue,
+    ac: &json::JsonValue,
+    au: &json::JsonValue,
 ) -> Result<(), String> {
     let e = &mut tester.editor;
 
     e.xact_begin()?;
+
     e.delete(acp)?;
     e.delete(acn)?;
+
+    // Purge the user
+    let query = json::object! {
+        from: ["actor.usr_delete", au["id"].clone(), json::JsonValue::Null]
+    };
+
+    e.json_query(query)?;
+
     e.commit()?;
 
     Ok(())
@@ -320,6 +369,9 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
     assert_eq!(resp.get_field_value("CT").unwrap(), tester.org_shortname);
     assert_eq!(resp.get_field_value("BG").unwrap(), tester.org_shortname);
     assert_eq!(resp.get_field_value("AP").unwrap(), tester.org_shortname);
+    assert_eq!(&resp.get_field_value("BV").unwrap(), "0"); // fee amount
+    assert_eq!(&resp.get_field_value("CF").unwrap(), "0"); // hold queue len
+    assert_eq!(&resp.get_field_value("CK").unwrap(), "001"); // media type
 
     Ok(duration)
 }
