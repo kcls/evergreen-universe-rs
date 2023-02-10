@@ -27,6 +27,7 @@ struct Tester {
     acn_owning_lib: i64,
     acn_label: String,
     acn_label_class: i64,
+    acp_barcode: String,
 }
 
 const HELP_TEXT: &str = r#"
@@ -81,6 +82,7 @@ fn main() -> Result<(), String> {
         acn_owning_lib: ACN_OWNING_LIB,
         acn_label: ACN_LABEL.to_string(),
         acn_label_class: ACN_LABEL_CLASS,
+        acp_barcode: ACP_BARCODE.to_string(),
         sip_user: options.opt_get_default("sip-user", "sip-user".to_string()).unwrap(),
         sip_pass: options.opt_get_default("sip-pass", "sip-pass".to_string()).unwrap(),
         institution: options.opt_get_default("institution", "example".to_string()).unwrap(),
@@ -94,6 +96,8 @@ fn main() -> Result<(), String> {
 
     delete_test_assets(&mut tester, &acp, &acn)?;
 
+    tester.sipcon.disconnect().ok();
+
     Ok(())
 }
 
@@ -104,8 +108,7 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     log(test_sc_status(tester)?, "test_sc_status");
     log(test_sc_status(tester)?, "test_sc_status (2nd time)");
     log(test_invalid_item_info(tester)?, "test_invalid_item_info");
-
-    tester.sipcon.disconnect().ok();
+    log(test_item_info(tester)?, "test_item_info");
 
     Ok(())
 }
@@ -138,7 +141,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(json::JsonValue, json::Jso
         circ_lib: tester.acn_owning_lib,
         loan_duration: ACP_LOAN_DURATION,
         fine_level: ACP_FINE_LEVEL,
-        barcode: ACP_BARCODE,
+        barcode: tester.acp_barcode.to_string(),
     };
 
     let acp = tester.idl.create_from("acp", obj)?;
@@ -273,6 +276,39 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<u128, String> {
     assert_eq!(barcode.unwrap(), dummy);
     assert_eq!(title.unwrap(), "");
     assert_eq!(circ_status, "01");
+
+    Ok(duration)
+}
+
+fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
+
+    let req = sip2::Message::from_values(
+        &sip2::spec::M_ITEM_INFO,
+        &[&sip2::util::sip_date_now()],
+        &[
+            ("AB", &tester.acp_barcode),
+            ("AO", &tester.institution),
+        ]
+    ).unwrap();
+
+    let now = SystemTime::now();
+    let resp = tester.sipcon.sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+    let duration = now.elapsed().unwrap().as_micros();
+
+    println!("ITEM INFO: {resp:?}");
+
+    let circ_status = resp.fixed_fields()[0].value();
+    let barcode = resp.get_field_value("AB");
+    let title = resp.get_field_value("AJ");
+
+    // We should get title/barcode fields in the response.
+    assert!(barcode.is_some());
+    assert!(title.is_some());
+
+    assert_eq!(barcode.unwrap(), tester.acp_barcode);
+    assert_ne!(title.unwrap(), "");
+    assert_eq!(circ_status, "03");
 
     Ok(duration)
 }
