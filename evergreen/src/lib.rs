@@ -8,4 +8,5 @@ pub mod idl;
 pub mod idldb;
 pub mod init;
 pub mod norm;
+pub mod samples;
 pub mod util;

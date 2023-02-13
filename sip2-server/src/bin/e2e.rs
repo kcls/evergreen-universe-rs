@@ -1,23 +1,9 @@
 use evergreen as eg;
+use eg::samples::SampleData;
 use sip2;
 use getopts;
 use std::time::SystemTime;
 use std::sync::Arc;
-
-// Default values for assets
-const ACN_CREATOR: i64 = 1;
-const ACN_RECORD: i64 = 1;
-const ACN_LABEL: &str = "_SIP_TEST_";
-const ACN_LABEL_CLASS: i64 = 1; // Generic
-const ACP_STATUS: i64 = 0; // Available
-const ACP_BARCODE: &str = "_SIP_TEST_";
-const ACP_LOAN_DURATION: i64 = 1;
-const ACP_FINE_LEVEL: i64 = 2; // Medium?
-const ORG_ID: i64 = 4;
-const ORG_SHORTNAME: &str = "BR1";
-const AU_BARCODE: &str = "_SIP_TEST_";
-const AU_PROFILE: i64 = 2; // Patrons
-const AU_IDENT_TYPE: i64 = 3; // Other
 
 struct Tester {
     sip_user: String,
@@ -26,16 +12,7 @@ struct Tester {
     sipcon: sip2::Connection,
     editor: eg::Editor,
     idl: Arc<eg::idl::Parser>,
-    acn_creator: i64,
-    acn_record: i64,
-    org_id: i64,
-    org_shortname: String,
-    acn_label: String,
-    acn_label_class: i64,
-    acp_barcode: String,
-    au_barcode: String,
-    au_profile: i64,
-    au_ident_type: i64,
+    samples: SampleData,
 }
 
 const HELP_TEXT: &str = r#"
@@ -84,30 +61,27 @@ fn main() -> Result<(), String> {
         sipcon,
         editor,
         idl: ctx.idl().clone(),
-        // TODO command line ops
-        acn_creator: ACN_CREATOR,
-        acn_record: ACN_RECORD,
-        org_id: ORG_ID,
-        acn_label: ACN_LABEL.to_string(),
-        acn_label_class: ACN_LABEL_CLASS,
-        acp_barcode: ACP_BARCODE.to_string(),
-        org_shortname: ORG_SHORTNAME.to_string(),
-        au_barcode: AU_BARCODE.to_string(),
-        au_profile: AU_PROFILE,
-        au_ident_type: AU_IDENT_TYPE,
+        samples: SampleData::new(),
         sip_user: options.opt_get_default("sip-user", "sip-user".to_string()).unwrap(),
         sip_pass: options.opt_get_default("sip-pass", "sip-pass".to_string()).unwrap(),
         institution: options.opt_get_default("institution", "example".to_string()).unwrap(),
     };
 
     let now = SystemTime::now();
-    let (acp, acn, au) = create_test_assets(&mut tester)?;
+    delete_test_assets(&mut tester)?;
+    let t = now.elapsed().unwrap().as_micros();
+    log(t, "Pre-Delete Test Assets");
+
+    let now = SystemTime::now();
+    create_test_assets(&mut tester)?;
     let t = now.elapsed().unwrap().as_micros();
     log(t, "Create Test Assets");
 
     if let Err(e) = run_tests(&mut tester) {
         eprintln!("Tester exited with error: {e}");
     };
+
+    println!("--------------------------------------");
 
     // Run them twice to get a sense of the speed difference
     // for collecting some of the same data (e.g. org units) within
@@ -117,7 +91,7 @@ fn main() -> Result<(), String> {
     };
 
     let now = SystemTime::now();
-    delete_test_assets(&mut tester, &acp, &acn, &au)?;
+    delete_test_assets(&mut tester)?;
     let t = now.elapsed().unwrap().as_micros();
     log(t, "Delete Test Assets");
 
@@ -138,94 +112,26 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     Ok(())
 }
 
-fn create_test_assets(
-    tester: &mut Tester
-) -> Result<(
-    json::JsonValue,
-    json::JsonValue,
-    json::JsonValue,
-), String> {
-
-    let seed = json::object! {
-        creator: tester.acn_creator,
-        editor: tester.acn_creator,
-        record: tester.acn_record,
-        owning_lib: tester.org_id,
-        label: tester.acn_label.to_string(),
-        label_class: tester.acn_label_class,
-    };
-
-    let acn = tester.idl.create_from("acn", seed)?;
-
+fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
     let e = &mut tester.editor;
 
     e.xact_begin()?;
 
-    // Grab the from-database version of the acn.
-    let acn = e.create(&acn)?;
+    let acn = tester.samples.create_default_acn(e)?;
+    tester.samples.create_default_acp(e, eg::util::json_int(&acn["id"])?)?;
+    tester.samples.create_default_au(e)?;
 
-    let seed = json::object! {
-        call_number: acn["id"].clone(),
-        creator: tester.acn_creator,
-        editor: tester.acn_creator,
-        status: ACP_STATUS,
-        circ_lib: tester.org_id,
-        loan_duration: ACP_LOAN_DURATION,
-        fine_level: ACP_FINE_LEVEL,
-        barcode: tester.acp_barcode.to_string(),
-    };
-
-    let acp = tester.idl.create_from("acp", seed)?;
-
-    let acp = e.create(&acp)?;
-
-    let seed = json::object! {
-        profile: tester.au_profile,
-        usrname: tester.au_barcode.to_string(),
-        passwd: tester.au_barcode.to_string(),
-        ident_type: tester.au_ident_type,
-        first_given_name: "SIP TEST",
-        family_name: "SIP TEST",
-        home_ou: ORG_ID,
-    };
-
-    let au = tester.idl.create_from("au", seed)?;
-
-    let au = e.create(&au)?;
-
-    let seed = json::object! {
-        barcode: tester.au_barcode.to_string(),
-        usr: au["id"].clone(),
-    };
-
-    let ac = tester.idl.create_from("ac", seed)?;
-    e.create(&ac)?;
-
-    e.commit()?;
-
-    Ok((acp, acn, au))
+    e.commit()
 }
 
-fn delete_test_assets(
-    tester: &mut Tester,
-    acp: &json::JsonValue,
-    acn: &json::JsonValue,
-    au: &json::JsonValue,
-) -> Result<(), String> {
+fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {
     let e = &mut tester.editor;
 
     e.xact_begin()?;
 
-    e.delete(acp)?;
-    e.delete(acn)?;
-
-    // Purge the user
-    // This deletes the ac (card) we created as well.
-    let query = json::object! {
-        from: ["actor.usr_delete", au["id"].clone(), json::JsonValue::Null]
-    };
-
-    e.json_query(query)?;
+    tester.samples.delete_default_acp(e)?;
+    tester.samples.delete_default_acn(e)?;
+    tester.samples.delete_default_au(e)?;
 
     e.commit()?;
 
@@ -350,7 +256,7 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
         &sip2::spec::M_ITEM_INFO,
         &[&sip2::util::sip_date_now()],
         &[
-            ("AB", &tester.acp_barcode),
+            ("AB", &tester.samples.acp_barcode),
             ("AO", &tester.institution),
         ]
     ).unwrap();
@@ -368,13 +274,13 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
     assert!(barcode.is_some());
     assert!(title.is_some());
 
-    assert_eq!(barcode.unwrap(), tester.acp_barcode);
+    assert_eq!(barcode.unwrap(), tester.samples.acp_barcode);
     assert_ne!(title.unwrap(), "");
     assert_eq!(circ_status, "03");
 
-    assert_eq!(resp.get_field_value("CT").unwrap(), tester.org_shortname);
-    assert_eq!(resp.get_field_value("BG").unwrap(), tester.org_shortname);
-    assert_eq!(resp.get_field_value("AP").unwrap(), tester.org_shortname);
+    assert_eq!(resp.get_field_value("CT").unwrap(), tester.samples.org_shortname);
+    assert_eq!(resp.get_field_value("BG").unwrap(), tester.samples.org_shortname);
+    assert_eq!(resp.get_field_value("AP").unwrap(), tester.samples.org_shortname);
     assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
     assert_eq!(&resp.get_field_value("CF").unwrap(), "0"); // hold queue len
     assert_eq!(&resp.get_field_value("CK").unwrap(), "001"); // media type
@@ -388,8 +294,8 @@ fn test_patron_status(tester: &mut Tester) -> Result<u128, String> {
         &sip2::spec::M_PATRON_STATUS,
         &["000", &sip2::util::sip_date_now()],
         &[
-            ("AA", &tester.au_barcode),
-            ("AD", &tester.au_barcode),
+            ("AA", &tester.samples.au_barcode),
+            ("AD", &tester.samples.au_barcode),
             ("AO", &tester.institution),
         ],
     ).unwrap();
@@ -399,7 +305,7 @@ fn test_patron_status(tester: &mut Tester) -> Result<u128, String> {
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
     let duration = now.elapsed().unwrap().as_micros();
 
-    assert_eq!(resp.get_field_value("AA").unwrap(), tester.au_barcode);
+    assert_eq!(resp.get_field_value("AA").unwrap(), tester.samples.au_barcode);
     assert_eq!(resp.get_field_value("BL").unwrap(), "Y"); // valid patron
     assert_eq!(resp.get_field_value("CQ").unwrap(), "Y"); // valid password
     assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount

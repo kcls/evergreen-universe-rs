@@ -104,6 +104,11 @@ impl Editor {
         editor
     }
 
+    /// Offer a read-only version of the IDL to anyone who needs it.
+    pub fn idl(&self) -> &Arc<idl::Parser> {
+        &self.idl
+    }
+
     /// Verify our authtoken is still valid.
     ///
     /// Update our "requestor" object to match the user object linked
