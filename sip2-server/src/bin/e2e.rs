@@ -5,6 +5,25 @@ use getopts;
 use std::time::SystemTime;
 use std::sync::Arc;
 
+struct Timer {
+    start: SystemTime,
+}
+
+impl Timer {
+    fn new() -> Timer {
+        Timer {
+            start: SystemTime::now(),
+        }
+    }
+
+    fn done(&self, msg: &str) {
+        let duration = self.start.elapsed().unwrap().as_micros();
+        // translate micros to millis retaining 3 decimal places.
+        let millis = (duration as f64) / 1000.0;
+        println!("OK [{:.3} ms]\t{msg}", millis);
+    }
+}
+
 struct Tester {
     sip_user: String,
     sip_pass: String,
@@ -34,10 +53,9 @@ fn main() -> Result<(), String> {
     opts.optopt("", "institution", "", "");
 
     // OpenSRF connect, get host settings, parse IDL, etc.
-    let now = SystemTime::now();
+    let t = Timer::new();
     let ctx = eg::init::init_with_options(&mut opts).expect("Evergreen Init");
-    let t = now.elapsed().unwrap().as_micros();
-    log(t, "EG Init");
+    t.done("EG Init");
 
     let options = ctx.params();
 
@@ -52,10 +70,9 @@ fn main() -> Result<(), String> {
 
     let editor = eg::Editor::new(ctx.client(), ctx.idl());
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     let sipcon = sip2::Connection::new(&sip_host).expect("Error creating SIP connection");
-    let t = now.elapsed().unwrap().as_micros();
-    log(t, "SIP Connect");
+    t.done("SIP Connect");
 
     let mut tester = Tester {
         sipcon,
@@ -67,15 +84,15 @@ fn main() -> Result<(), String> {
         institution: options.opt_get_default("institution", "example".to_string()).unwrap(),
     };
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     delete_test_assets(&mut tester)?;
-    let t = now.elapsed().unwrap().as_micros();
-    log(t, "Pre-Delete Test Assets");
+    t.done("Pre-Delete Test Assets");
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     create_test_assets(&mut tester)?;
-    let t = now.elapsed().unwrap().as_micros();
-    log(t, "Create Test Assets");
+    t.done("Create Test Assets");
+
+    println!("--------------------------------------");
 
     if let Err(e) = run_tests(&mut tester) {
         eprintln!("Tester exited with error: {e}");
@@ -90,10 +107,11 @@ fn main() -> Result<(), String> {
         eprintln!("Tester exited with error: {e}");
     };
 
-    let now = SystemTime::now();
+    println!("--------------------------------------");
+
+    let t = Timer::new();
     delete_test_assets(&mut tester)?;
-    let t = now.elapsed().unwrap().as_micros();
-    log(t, "Delete Test Assets");
+    t.done("Delete Test Assets");
 
     tester.sipcon.disconnect().ok();
 
@@ -102,12 +120,12 @@ fn main() -> Result<(), String> {
 
 fn run_tests(tester: &mut Tester) -> Result<(), String> {
 
-    log(test_invalid_login(tester)?, "test_invalid_login");
-    log(test_valid_login(tester)?, "test_valid_login");
-    log(test_sc_status(tester)?, "test_sc_status");
-    log(test_invalid_item_info(tester)?, "test_invalid_item_info");
-    log(test_item_info(tester)?, "test_item_info");
-    log(test_patron_status(tester)?, "test_patron_status");
+    test_invalid_login(tester)?;
+    test_valid_login(tester)?;
+    test_sc_status(tester)?;
+    test_invalid_item_info(tester)?;
+    test_item_info(tester)?;
+    test_patron_status(tester)?;
 
     Ok(())
 }
@@ -138,13 +156,7 @@ fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {
     Ok(())
 }
 
-fn log(duration: u128, test: &str) {
-    // We'll never need a full u128.
-    let millis = (duration as f64) / 1000.0; // micros -> millis
-    println!("OK [{:.3} ms]\t{test}", millis);
-}
-
-fn test_invalid_login(tester: &mut Tester) -> Result<u128, String> {
+fn test_invalid_login(tester: &mut Tester) -> Result<(), String> {
 
     let req = sip2::Message::from_values(
         &sip2::spec::M_LOGIN,
@@ -158,19 +170,19 @@ fn test_invalid_login(tester: &mut Tester) -> Result<u128, String> {
         ],
     ).unwrap();
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     let resp = tester.sipcon.sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    let duration = now.elapsed().unwrap().as_micros();
+    t.done("test_invalid_login");
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
     assert_eq!(resp.fixed_fields().len(), 1);
     assert_eq!(resp.fixed_fields()[0].value(), "0");
 
-    Ok(duration)
+    Ok(())
 }
 
-fn test_valid_login(tester: &mut Tester) -> Result<u128, String> {
+fn test_valid_login(tester: &mut Tester) -> Result<(), String> {
 
     let req = sip2::Message::from_values(
         &sip2::spec::M_LOGIN,
@@ -184,19 +196,19 @@ fn test_valid_login(tester: &mut Tester) -> Result<u128, String> {
         ],
     ).unwrap();
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     let resp = tester.sipcon.sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    let duration = now.elapsed().unwrap().as_micros();
+    t.done("test_valid_login");
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
     assert_eq!(resp.fixed_fields().len(), 1);
     assert_eq!(resp.fixed_fields()[0].value(), "1");
 
-    Ok(duration)
+    Ok(())
 }
 
-fn test_sc_status(tester: &mut Tester) -> Result<u128, String> {
+fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_ff_values(
         &sip2::spec::M_SC_STATUS,
         &[
@@ -206,18 +218,18 @@ fn test_sc_status(tester: &mut Tester) -> Result<u128, String> {
         ]
     ).unwrap();
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     let resp = tester.sipcon.sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    let duration = now.elapsed().unwrap().as_micros();
+    t.done("test_sc_status");
 
     assert!(resp.fixed_fields().len() > 0);
     assert_eq!(resp.fixed_fields()[0].value(), "Y");
 
-    Ok(duration)
+    Ok(())
 }
 
-fn test_invalid_item_info(tester: &mut Tester) -> Result<u128, String> {
+fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
 
     let dummy = "I-AM-BAD-BARCODE";
 
@@ -230,10 +242,10 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<u128, String> {
         ]
     ).unwrap();
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     let resp = tester.sipcon.sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    let duration = now.elapsed().unwrap().as_micros();
+    t.done("test_invalid_item_info");
 
     let circ_status = resp.fixed_fields()[0].value();
     let barcode = resp.get_field_value("AB");
@@ -247,10 +259,10 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<u128, String> {
     assert_eq!(title.unwrap(), "");
     assert_eq!(circ_status, "01");
 
-    Ok(duration)
+    Ok(())
 }
 
-fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
+fn test_item_info(tester: &mut Tester) -> Result<(), String> {
 
     let req = sip2::Message::from_values(
         &sip2::spec::M_ITEM_INFO,
@@ -261,10 +273,10 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
         ]
     ).unwrap();
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     let resp = tester.sipcon.sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    let duration = now.elapsed().unwrap().as_micros();
+    t.done("test_item_info");
 
     let circ_status = resp.fixed_fields()[0].value();
     let barcode = resp.get_field_value("AB");
@@ -285,10 +297,10 @@ fn test_item_info(tester: &mut Tester) -> Result<u128, String> {
     assert_eq!(&resp.get_field_value("CF").unwrap(), "0"); // hold queue len
     assert_eq!(&resp.get_field_value("CK").unwrap(), "001"); // media type
 
-    Ok(duration)
+    Ok(())
 }
 
-fn test_patron_status(tester: &mut Tester) -> Result<u128, String> {
+fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
 
     let req = sip2::Message::from_values(
         &sip2::spec::M_PATRON_STATUS,
@@ -300,10 +312,10 @@ fn test_patron_status(tester: &mut Tester) -> Result<u128, String> {
         ],
     ).unwrap();
 
-    let now = SystemTime::now();
+    let t = Timer::new();
     let resp = tester.sipcon.sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    let duration = now.elapsed().unwrap().as_micros();
+    t.done("test_patron_status");
 
     assert_eq!(resp.get_field_value("AA").unwrap(), tester.samples.au_barcode);
     assert_eq!(resp.get_field_value("BL").unwrap(), "Y"); // valid patron
@@ -314,7 +326,7 @@ fn test_patron_status(tester: &mut Tester) -> Result<u128, String> {
     assert_eq!(status.len(), 14);
     assert!(!status.contains("Y")); // no blocks
 
-    Ok(duration)
+    Ok(())
 }
 
 
