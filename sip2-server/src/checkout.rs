@@ -79,7 +79,12 @@ impl Session {
         patron: &Patron,
         result: &CheckoutResult,
     ) -> Result<sip2::Message, String> {
-        let renew_ok = result.renewal_remaining > 0 && !patron.renew_denied;
+
+        // Will only be true if this item is already checked out to
+        // the patron and the checkout was renewed.
+        let renew_ok = false;
+        //let renew_ok = result.renewal_remaining > 0 && !patron.renew_denied;
+
         let magnetic = item.magnetic_media;
 
         let mut resp = sip2::Message::from_values(
