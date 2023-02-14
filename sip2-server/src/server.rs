@@ -8,6 +8,7 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
+use std::collections::HashMap;
 
 pub struct Server {
     ctx: eg::init::Context,
@@ -17,6 +18,8 @@ pub struct Server {
     shutdown: Arc<AtomicBool>,
     from_monitor_tx: mpsc::Sender<MonitorEvent>,
     from_monitor_rx: mpsc::Receiver<MonitorEvent>,
+    /// Cache of org unit shortnames and IDs.
+    org_cache: HashMap<i64, json::JsonValue>,
 }
 
 impl Server {
@@ -29,12 +32,36 @@ impl Server {
             sesid: 0,
             from_monitor_tx: tx,
             from_monitor_rx: rx,
+            org_cache: HashMap::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
+    /// Pre-cache data that's universally useful.
+    fn precache(&mut self) -> Result<(), String> {
+
+        let mut e = eg::Editor::new(self.ctx.client(), self.ctx.idl());
+
+        let search = json::object! {
+            id: {"!=": json::JsonValue::Null},
+        };
+
+        let orgs = e.search("aou", search)?;
+
+        for org in orgs {
+            self.org_cache.insert(eg::util::json_int(&org["id"])?, org.clone());
+        }
+
+        Ok(())
+    }
+
     pub fn serve(&mut self) {
         log::info!("SIP2Meditor server staring up");
+
+        if let Err(e) = self.precache() {
+            log::error!("Error pre-caching SIP data: {e}");
+            return;
+        }
 
         let pool = ThreadPool::new(self.sip_config.max_clients());
 
@@ -159,7 +186,9 @@ impl Server {
         let conf = self.sip_config.clone();
         let idl = self.ctx.idl().clone();
         let osrf_config = self.ctx.config().clone();
+        let org_cache = self.org_cache.clone();
 
-        pool.execute(move || Session::run(conf, osrf_config, idl, stream, sesid, shutdown));
+        pool.execute(move ||
+            Session::run(conf, osrf_config, idl, stream, sesid, shutdown, org_cache));
     }
 }

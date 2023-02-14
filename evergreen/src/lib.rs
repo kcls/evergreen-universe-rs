@@ -1,5 +1,6 @@
 pub use editor::Editor;
 
+pub mod apputil;
 pub mod auth;
 pub mod db;
 pub mod editor;

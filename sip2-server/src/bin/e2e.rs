@@ -119,15 +119,20 @@ fn main() -> Result<(), String> {
 fn run_tests(tester: &mut Tester) -> Result<(), String> {
     test_invalid_login(tester)?;
     test_valid_login(tester)?;
-    test_sc_status(tester)?;
+
+    // Run whatever tests we can multiple times to get a sense of
+    // timing for multiple scenarios.
+
     test_sc_status(tester)?;
     test_invalid_item_info(tester)?;
-    test_invalid_item_info(tester)?;
     test_item_info(tester)?;
-    test_item_info(tester)?;
-    test_patron_status(tester)?;
     test_patron_status(tester)?;
     test_patron_info(tester)?;
+
+    test_sc_status(tester)?;
+    test_invalid_item_info(tester)?;
+    test_item_info(tester)?;
+    test_patron_status(tester)?;
     test_patron_info(tester)?;
 
     test_checkout(tester)?;

@@ -66,6 +66,7 @@ impl Session {
         stream: net::TcpStream,
         sesid: usize,
         shutdown: Arc<AtomicBool>,
+        org_cache: HashMap<i64, json::JsonValue>,
     ) {
         match stream.peer_addr() {
             Ok(a) => log::info!("New SIP connection from {a}"),
@@ -96,9 +97,9 @@ impl Session {
             shutdown,
             sip_config,
             osrf_client,
+            org_cache,
             account: None,
             sip_connection: con,
-            org_cache: HashMap::new(),
         };
 
         if let Err(e) = ses.start() {

@@ -1,0 +1,59 @@
+use md5;
+use super::util;
+use super::editor::Editor;
+
+pub const PW_TYPE_MAIN: &str = "main";
+
+pub fn verify_migrated_user_password(e: &mut Editor, user_id: i64, password: &str, is_hashed: bool) -> Result<bool, String> {
+
+    let mut computed: Option<String> = None;
+
+    if !is_hashed {
+        // Only compute / allocate a new String if required.
+        computed = Some(format!("{:x}", md5::compute(password)));
+    }
+
+    let pass_hash = computed.as_deref().unwrap_or(password);
+
+    let query = json::object! {
+        from: [
+            "actor.get_salt",
+            user_id,
+            PW_TYPE_MAIN,
+        ]
+    };
+
+    let salt_list = e.json_query(query)?;
+
+    if let Some(hash) = salt_list.get(0) {
+        if let Some(salt) = hash["actor.get_salt"].as_str() {
+            let combined = format!("{}{}", salt, pass_hash);
+            let digested = format!("{:x}", md5::compute(combined));
+
+            return verify_user_password(e, user_id, &digested, PW_TYPE_MAIN);
+        }
+    }
+
+    Ok(false)
+}
+
+pub fn verify_user_password(e: &mut Editor, user_id: i64, password: &str, pw_type: &str) -> Result<bool, String> {
+
+    let query = json::object! {
+        from: [
+            "actor.verify_passwd",
+            user_id,
+            pw_type,
+            password
+        ]
+    };
+
+    let verify = e.json_query(query)?;
+
+    if let Some(resp) = verify.get(0) {
+        Ok(util::json_bool(&resp["actor.verify_passwd"]))
+    } else {
+        Err(format!("actor.verify_passwd failed to return a response"))
+    }
+}
+

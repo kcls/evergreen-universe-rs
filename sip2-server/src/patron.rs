@@ -148,8 +148,6 @@ impl Session {
         password_op: Option<&str>,
         summary_list_options: Option<&SummaryListOptions>,
     ) -> Result<Option<Patron>, String> {
-        // Make sure we have an authtoken here so we don't have to
-        // keep checking for expired sessions during our data collection.
         self.set_authtoken()?;
 
         log::info!("{self} SIP patron details for {barcode}");
@@ -167,7 +165,7 @@ impl Session {
         let mut patron = Patron::new(barcode, self.format_user_name(&user));
 
         patron.id = eg::util::json_int(&user["id"])?;
-        patron.password_verified = self.check_password(&username, password_op)?;
+        patron.password_verified = self.check_password(patron.id, password_op)?;
 
         if let Some(summary) = self.editor_mut().retrieve("mous", patron.id)? {
             patron.balance_owed = eg::util::json_float(&summary["balance_owed"])?;
@@ -853,7 +851,7 @@ impl Session {
 
     fn check_password(
         &mut self,
-        username: &str,
+        user_id: i64,
         password_op: Option<&str>,
     ) -> Result<bool, String> {
         let password = match password_op {
@@ -861,30 +859,8 @@ impl Session {
             None => return Ok(false),
         };
 
-        log::debug!("{self} verifying password for {username}");
-
-        let mut ses = self.osrf_client_mut().session("open-ils.actor");
-
-        let mut req = ses.request(
-            "open-ils.actor.verify_user_password",
-            vec![
-                json::from(self.authtoken()?),
-                JSON_NULL,
-                json::from(username),
-                JSON_NULL,
-                json::from(password),
-            ],
-        )?;
-
-        if let Some(resp) = req.recv(60)? {
-            log::debug!(
-                "{self} verify password returned {resp:?} {}",
-                eg::util::json_bool(&resp)
-            );
-            Ok(eg::util::json_bool(&resp))
-        } else {
-            Err(format!("API call timed out"))
-        }
+        log::debug!("{self} verifying password for user ID {user_id}");
+        eg::apputil::verify_migrated_user_password(self.editor_mut(), user_id, password, false)
     }
 
     pub fn handle_patron_status(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
