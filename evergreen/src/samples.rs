@@ -5,18 +5,17 @@ use json::JsonValue;
 pub const ACN_CREATOR: i64 = 1;
 pub const ACN_RECORD: i64 = 1;
 pub const ACN_LABEL: &str = "_EG_TEST_";
-pub const ACN_LABEL_CLASS: i64 = 1;             // Generic
-pub const ACP_STATUS: i64 = 0;                  // Available
+pub const ACN_LABEL_CLASS: i64 = 1; // Generic
+pub const ACP_STATUS: i64 = 0; // Available
 pub const ACP_BARCODE: &str = "_EG_TEST_";
 pub const ACP_LOAN_DURATION: i64 = 1;
-pub const ACP_FINE_LEVEL: i64 = 2;              // Medium?
+pub const ACP_FINE_LEVEL: i64 = 2; // Medium?
 pub const ORG_ID: i64 = 4;
 pub const ORG_SHORTNAME: &str = "BR1";
 
-pub const AU_BARCODE: &str = "_SIP_TEST_";
+pub const AU_BARCODE: &str = "_EG_TEST_";
 pub const AU_PROFILE: i64 = 2; // Patrons
 pub const AU_IDENT_TYPE: i64 = 3; // Other
-
 
 pub struct SampleData {
     pub acn_creator: i64,
@@ -32,7 +31,6 @@ pub struct SampleData {
 }
 
 impl SampleData {
-
     pub fn new() -> SampleData {
         SampleData {
             acn_creator: ACN_CREATOR,
@@ -81,8 +79,10 @@ impl SampleData {
     }
 
     pub fn delete_default_acn(&self, e: &mut Editor) -> Result<(), String> {
-        let acns = e.search("acn",
-            json::object! {label: self.acn_label.to_string(), deleted: "f"})?;
+        let acns = e.search(
+            "acn",
+            json::object! {label: self.acn_label.to_string(), deleted: "f"},
+        )?;
 
         if let Some(acn) = acns.get(0) {
             e.delete(acn)?;
@@ -92,8 +92,10 @@ impl SampleData {
     }
 
     pub fn delete_default_acp(&self, e: &mut Editor) -> Result<(), String> {
-        let acps = e.search("acp",
-            json::object! {barcode: self.acp_barcode.to_string(), deleted: "f"})?;
+        let acps = e.search(
+            "acp",
+            json::object! {barcode: self.acp_barcode.to_string(), deleted: "f"},
+        )?;
 
         if let Some(acp) = acps.get(0) {
             e.delete(acp)?;
@@ -104,14 +106,13 @@ impl SampleData {
 
     /// Create default user with a default card.
     pub fn create_default_au(&self, e: &mut Editor) -> Result<JsonValue, String> {
-
         let seed = json::object! {
             profile: self.au_profile,
             usrname: self.au_barcode.to_string(),
             passwd: self.au_barcode.to_string(),
             ident_type: self.au_ident_type,
-            first_given_name: "SIP TEST",
-            family_name: "SIP TEST",
+            first_given_name: "_EG_TEST_",
+            family_name: "_EG_TEST_",
             home_ou: self.org_id,
         };
 
@@ -131,8 +132,7 @@ impl SampleData {
 
     /// Delete the default user and its linked card.
     pub fn delete_default_au(&self, e: &mut Editor) -> Result<(), String> {
-        let cards = e.search("ac",
-            json::object! {barcode: self.au_barcode.to_string()})?;
+        let cards = e.search("ac", json::object! {barcode: self.au_barcode.to_string()})?;
 
         if let Some(ac) = cards.get(0) {
             // Purge the user, attached card, and any other data
@@ -147,4 +147,3 @@ impl SampleData {
         Ok(())
     }
 }
-

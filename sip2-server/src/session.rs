@@ -374,14 +374,14 @@ impl Session {
         let mut resp = sip2::Message::from_values(
             &sip2::spec::M_ACS_STATUS,
             &[
-                "Y",    // online status
-                "Y",    // checkin ok
-                "Y",    // checkout ok
-                "Y",    // renewal policy
-                "N",    // status update
-                "N",    // offline ok
-                "999",  // timeout
-                "999",  // max retries
+                "Y",   // online status
+                "Y",   // checkin ok
+                "Y",   // checkout ok
+                "Y",   // renewal policy
+                "N",   // status update
+                "N",   // offline ok
+                "999", // timeout
+                "999", // max retries
                 &sip2::util::sip_date_now(),
                 "2.00", // SIP version
             ],

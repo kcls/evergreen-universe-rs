@@ -1006,22 +1006,22 @@ impl Session {
             let resp = sip2::Message::from_values(
                 msg_spec,
                 &[
-                    "YYYY          ",   // patron status
-                    "000",              // language
+                    "YYYY          ", // patron status
+                    "000",            // language
                     &sipdate,
-                    "0000",             // holds count
-                    "0000",             // overdue count
-                    "0000",             // out count
-                    "0000",             // fine count
-                    "0000",             // recall count
-                    "0000",             // unavail holds count
+                    "0000", // holds count
+                    "0000", // overdue count
+                    "0000", // out count
+                    "0000", // fine count
+                    "0000", // recall count
+                    "0000", // unavail holds count
                 ],
                 &[
                     ("AO", self.account().settings().institution()),
                     ("AA", barcode),
-                    ("AE", ""),     // Name
-                    ("BL", "N"),    // valid patron
-                    ("CQ", "N"),    // valid patron password
+                    ("AE", ""),  // Name
+                    ("BL", "N"), // valid patron
+                    ("CQ", "N"), // valid patron password
                 ],
             )
             .unwrap();

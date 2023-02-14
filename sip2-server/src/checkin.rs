@@ -99,7 +99,7 @@ impl Session {
                 ("AQ", &result.permanent_loc),
                 ("BG", &item.owning_loc),
                 ("BT", &item.fee_type),
-                ("CI", "N"),            // security inhibit
+                ("CI", "N"), // security inhibit
             ],
         )
         .unwrap();

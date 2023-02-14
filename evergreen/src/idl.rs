@@ -591,14 +591,15 @@ impl Parser {
     pub fn create_from(
         &self,
         classname: &str,
-        mut obj: json::JsonValue
+        mut obj: json::JsonValue,
     ) -> Result<json::JsonValue, String> {
-
         if !obj.is_object() {
             Err(format!("IDL cannot create_from() on a non-object"))?;
         }
 
-        let idlclass = self.classes.get(classname)
+        let idlclass = self
+            .classes
+            .get(classname)
             .ok_or(format!("IDL no such class {classname}"))?;
 
         for (field, _) in obj.entries() {

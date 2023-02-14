@@ -97,7 +97,7 @@ impl Session {
                 ("AJ", &item.title),
                 ("AO", self.account().settings().institution()),
                 ("BT", &item.fee_type),
-                ("CI", "N"),            // security inhibit
+                ("CI", "N"), // security inhibit
                 ("CK", &item.media_type),
             ],
         )
@@ -125,10 +125,10 @@ impl Session {
         sip2::Message::from_values(
             &sip2::spec::M_CHECKOUT_RESP,
             &[
-                "0", // checkin ok
-                "N", // renew ok
-                "N", // magnetic
-                "N", // desensitize
+                "0",                         // checkin ok
+                "N",                         // renew ok
+                "N",                         // magnetic
+                "N",                         // desensitize
                 &sip2::util::sip_date_now(), // timestamp
             ],
             &[

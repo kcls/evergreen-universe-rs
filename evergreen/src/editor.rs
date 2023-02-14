@@ -464,7 +464,8 @@ impl Editor {
             Err(format!("Transaction required for CREATE"))?;
         }
 
-        let idlclass = object[idl::CLASSNAME_KEY].as_str()
+        let idlclass = object[idl::CLASSNAME_KEY]
+            .as_str()
             .ok_or(format!("CREATE called on non-IDL object: {object:?}"))?;
 
         let fmapper = self.get_fieldmapper(idlclass)?;
@@ -472,7 +473,6 @@ impl Editor {
         let method = self.app_method(&format!("direct.{fmapper}.create"));
 
         if let Some(resp) = self.request(&method, object)? {
-
             if let Some(pkey) = self.idl.get_pkey_value(&resp) {
                 log::info!("Created new {idlclass} object with pkey: {pkey}");
             } else {
@@ -481,7 +481,6 @@ impl Editor {
             }
 
             Ok(resp)
-
         } else {
             Err(format!("Create returned no response"))
         }
@@ -495,7 +494,8 @@ impl Editor {
             Err(format!("Transaction required for DELETE"))?;
         }
 
-        let idlclass = object[idl::CLASSNAME_KEY].as_str()
+        let idlclass = object[idl::CLASSNAME_KEY]
+            .as_str()
             .ok_or(format!("DELETE called on non-IDL object {object:?}"))?;
 
         let fmapper = self.get_fieldmapper(idlclass)?;
@@ -509,4 +509,3 @@ impl Editor {
         }
     }
 }
-

@@ -306,7 +306,8 @@ impl Session {
     fn get_copy_circ(&mut self, copy: &json::JsonValue) -> Result<Option<json::JsonValue>, String> {
         let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
-        if copy_status != 1 { // Checked Out
+        if copy_status != 1 {
+            // Checked Out
             return Ok(None);
         }
 
