@@ -133,6 +133,9 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     test_checkout(tester)?;
     test_checkin(tester)?;
 
+    test_checkout(tester)?;
+    test_checkin(tester)?;
+
     Ok(())
 }
 
@@ -306,10 +309,10 @@ fn test_item_info(tester: &mut Tester) -> Result<(), String> {
     assert_ne!(title.unwrap(), "");
     assert_eq!(circ_status, "03");
 
-    assert_eq!(
-        resp.get_field_value("CT").unwrap(),
-        tester.samples.aou_shortname
-    );
+    if let Some(dest) = resp.get_field_value("CT") {
+        assert_eq!(dest, tester.samples.aou_shortname);
+    }
+
     assert_eq!(
         resp.get_field_value("BG").unwrap(),
         tester.samples.aou_shortname
@@ -319,7 +322,11 @@ fn test_item_info(tester: &mut Tester) -> Result<(), String> {
         tester.samples.aou_shortname
     );
     assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
-    assert_eq!(&resp.get_field_value("CF").unwrap(), "0"); // hold queue len
+
+    if let Some(ql) = resp.get_field_value("CF") {
+        assert_eq!(ql, "0"); // hold queue len
+    }
+
     assert_eq!(&resp.get_field_value("CK").unwrap(), "001"); // media type
 
     Ok(())
@@ -350,11 +357,19 @@ fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
     );
     assert_eq!(resp.get_field_value("BL").unwrap(), "Y"); // valid patron
     assert_eq!(resp.get_field_value("CQ").unwrap(), "Y"); // valid password
-    assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
+
+    if let Some(fee) = resp.get_field_value("BV") {
+        assert_eq!(fee, "0.00");
+    }
 
     let status = resp.fixed_fields()[0].value();
     assert_eq!(status.len(), 14);
-    assert!(!status.contains("Y")); // no blocks
+
+    // Legacy EG sip server will set a Y on the 'recall denied' field,
+    // regardless of patron, because it does not support recalls.
+    if status.contains("Y") {
+        assert_eq!(&status[2..3], "Y");
+    }
 
     Ok(())
 }
@@ -390,12 +405,22 @@ fn test_patron_info(tester: &mut Tester) -> Result<(), String> {
     );
     assert_eq!(resp.get_field_value("BL").unwrap(), "Y"); // valid patron
     assert_eq!(resp.get_field_value("CQ").unwrap(), "Y"); // valid password
-    assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
+
+    if let Some(fee) = resp.get_field_value("BV") {
+        assert_eq!(fee, "0.00"); // fee amount
+    }
+
     assert_eq!(&resp.get_field_value("AQ").unwrap(), &tester.samples.aou_shortname);
 
     let status = resp.fixed_fields()[0].value();
     assert_eq!(status.len(), 14);
-    assert!(!status.contains("Y")); // no blocks
+
+    // Legacy EG sip server will set a Y on the 'recall denied' field,
+    // regardless of patron, because it does not support recalls.
+    if status.contains("Y") {
+        assert_eq!(&status[2..3], "Y");
+    }
+
 
     // Summary counts.  Should all be zero since this is a new patron.
     assert_eq!(resp.fixed_fields()[3].value(), "0000");

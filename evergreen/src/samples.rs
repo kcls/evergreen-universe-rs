@@ -118,7 +118,7 @@ impl SampleData {
 
         let au = e.idl().create_from("au", seed)?;
 
-        let au = e.create(&au)?;
+        let mut au = e.create(&au)?;
 
         let seed = json::object! {
             barcode: self.au_barcode.to_string(),
@@ -127,10 +127,16 @@ impl SampleData {
 
         let ac = e.idl().create_from("ac", seed)?;
 
-        e.create(&ac)
+        let ac = e.create(&ac)?;
+
+        // Link the user back to the card
+        au["card"] = ac["id"].clone();
+        e.update(&au)?;
+
+        Ok(au)
     }
 
-    /// Delete the default user and its linked card.
+    /// Purge the default user, including its linked card, transactions, etc.
     pub fn delete_default_au(&self, e: &mut Editor) -> Result<(), String> {
         let cards = e.search("ac", json::object! {barcode: self.au_barcode.to_string()})?;
 

@@ -67,6 +67,7 @@ pub struct SipSettings {
     checkout_override: Vec<String>,
     checkin_override: Vec<String>,
     field_filters: Vec<FieldFilter>,
+    sc_status_library_info: bool,
 }
 
 impl SipSettings {
@@ -84,6 +85,7 @@ impl SipSettings {
             av_format: AvFormat::ThreeM,
             checkout_override_all: false,
             checkin_override_all: false,
+            sc_status_library_info: false,
             checkout_override: Vec::new(),
             checkin_override: Vec::new(),
             field_filters: Vec::new(),
@@ -141,6 +143,10 @@ impl SipSettings {
     }
     pub fn field_filters(&self) -> &Vec<FieldFilter> {
         &self.field_filters
+    }
+
+    pub fn sc_status_library_info(&self) -> bool {
+        self.sc_status_library_info
     }
 }
 
@@ -342,6 +348,7 @@ impl Config {
                 &mut grp.checkout_override_all,
             );
             set_bool(group, "checkin-override-all", &mut grp.checkin_override_all);
+            set_bool(group, "sc-status-library-info", &mut grp.sc_status_library_info);
 
             if let Some(s) = group["msg64-hold-datatype"].as_str() {
                 if s.to_lowercase().starts_with("t") {

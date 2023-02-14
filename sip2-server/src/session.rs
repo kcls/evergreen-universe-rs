@@ -392,13 +392,15 @@ impl Session {
         if let Some(a) = &self.account {
             resp.add_field("AO", a.settings().institution());
 
-            // This sets the requestor value on our editor so we can
-            // find its workstation / home org.
-            self.set_authtoken()?;
+            if a.settings().sc_status_library_info() {
+                // This sets the requestor value on our editor so we can
+                // find its workstation / home org.
+                self.set_authtoken()?;
 
-            if let Some(org) = self.org_from_id(self.get_ws_org_id()?)? {
-                resp.add_field("AM", org["name"].as_str().unwrap());
-                resp.add_field("AN", org["shortname"].as_str().unwrap());
+                if let Some(org) = self.org_from_id(self.get_ws_org_id()?)? {
+                    resp.add_field("AM", org["name"].as_str().unwrap());
+                    resp.add_field("AN", org["shortname"].as_str().unwrap());
+                }
             }
         }
 
