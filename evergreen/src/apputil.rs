@@ -1,11 +1,20 @@
-use md5;
-use super::util;
 use super::editor::Editor;
+use super::util;
+use md5;
 
 pub const PW_TYPE_MAIN: &str = "main";
 
-pub fn verify_migrated_user_password(e: &mut Editor, user_id: i64, password: &str, is_hashed: bool) -> Result<bool, String> {
-
+/// Returns result of True if the password provides matches the user's password.
+///
+/// # Arguments
+///
+/// * 'is_hashed' - Set to true if the password has already been md5-hashed.
+pub fn verify_migrated_user_password(
+    e: &mut Editor,
+    user_id: i64,
+    password: &str,
+    is_hashed: bool,
+) -> Result<bool, String> {
     let mut computed: Option<String> = None;
 
     if !is_hashed {
@@ -37,8 +46,15 @@ pub fn verify_migrated_user_password(e: &mut Editor, user_id: i64, password: &st
     Ok(false)
 }
 
-pub fn verify_user_password(e: &mut Editor, user_id: i64, password: &str, pw_type: &str) -> Result<bool, String> {
-
+/// Returns result of True if the password provided matches the user's password.
+///
+/// Passwords are tested as-is without any additional hashing.
+pub fn verify_user_password(
+    e: &mut Editor,
+    user_id: i64,
+    password: &str,
+    pw_type: &str,
+) -> Result<bool, String> {
     let query = json::object! {
         from: [
             "actor.verify_passwd",
@@ -56,4 +72,3 @@ pub fn verify_user_password(e: &mut Editor, user_id: i64, password: &str, pw_typ
         Err(format!("actor.verify_passwd failed to return a response"))
     }
 }
-

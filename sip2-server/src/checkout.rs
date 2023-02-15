@@ -62,11 +62,14 @@ impl Session {
             None => return Ok(self.checkout_item_not_found(&item_barcode, &patron_barcode)),
         };
 
+        let renew_ok = msg.fixed_fields()[0].value().eq("Y");
+        let same_patron = item.circ_patron_id.unwrap_or(-1) == patron.id;
+
         let result = self.checkout(
             &item_barcode,
             &patron_barcode,
             fee_ack_op.is_some(),
-            false, // is renewal
+            renew_ok && same_patron, // is_renewal
             self.account().settings().checkout_override_all(),
         )?;
 
@@ -79,7 +82,6 @@ impl Session {
         patron: &Patron,
         result: &CheckoutResult,
     ) -> Result<sip2::Message, String> {
-
         // Will only be true if this item is already checked out to
         // the patron and the checkout was renewed.
         let renew_ok = false;

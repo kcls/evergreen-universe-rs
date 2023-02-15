@@ -19,6 +19,7 @@ pub struct Item {
     pub media_type: String,
     pub hold_pickup_date: Option<String>,
     pub hold_patron_barcode: Option<String>,
+    pub circ_patron_id: Option<i64>,
 }
 
 impl Session {
@@ -49,9 +50,13 @@ impl Session {
 
         let copy = &copies[0]; // should only be one
 
+        let mut circ_patron_id: Option<i64> = None;
         let mut due_date: Option<String> = None;
 
         if let Some(circ) = self.get_copy_circ(&copy)? {
+
+            circ_patron_id = Some(eg::util::json_int(&circ["usr"])?);
+
             if let Some(iso_date) = circ["due_date"].as_str() {
                 if self.account().settings().due_date_use_sip_date_format() {
                     let due_dt = eg::util::parse_pg_date(iso_date)?;
@@ -132,6 +137,7 @@ impl Session {
             media_type: media_type.to_string(),
             hold_pickup_date: hold_pickup_date_op,
             hold_patron_barcode: hold_patron_barcode_op,
+            circ_patron_id,
         }))
     }
 
@@ -322,18 +328,10 @@ impl Session {
             ]
         };
 
-        let flesh = json::object! {
-            flesh: 2,
-            flesh_fields: {
-                circ: ["usr"],
-                au: ["card"],
-            }
-        };
+        let circs = self.editor_mut().search("circ", search)?;
 
-        let circs = self.editor_mut().search_with_ops("circ", search, flesh)?;
-
-        if circs.len() > 0 {
-            Ok(Some(circs[0].to_owned()))
+        if let Some(c) = circs.get(0) {
+            Ok(Some(c.to_owned()))
         } else {
             Ok(None)
         }

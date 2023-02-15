@@ -160,8 +160,6 @@ impl Session {
             }
         };
 
-        let username = user["usrname"].as_str().unwrap(); // required
-
         let mut patron = Patron::new(barcode, self.format_user_name(&user));
 
         patron.id = eg::util::json_int(&user["id"])?;
@@ -188,8 +186,9 @@ impl Session {
         }
 
         // DoB is stored in the database as a YYYY-MM-DD value / no time.
+        // SIP wants YYYYMMDD instead.
         if let Some(dob) = user["dob"].as_str() {
-            let ymd = dob.replace("-", ""); // YYYY-MM-DD => YYYYMMDD
+            let ymd = dob.replace("-", "");
             patron.dob = Some(ymd);
         }
 
@@ -318,20 +317,14 @@ impl Session {
         }
 
         let mut line: String;
-        let title_str = match title.as_deref() {
-            Some(t) => t,
-            None => "",
-        };
-        let author_str = match author.as_deref() {
-            Some(t) => t,
-            None => "",
-        };
+        let title = title.as_deref().unwrap_or("");
+        let author = author.as_deref().unwrap_or("");
 
         match self.account().settings().av_format() {
             conf::AvFormat::Legacy => {
                 line = format!("{:.2} {}", balance_owed, last_btype);
                 if is_circ {
-                    line += &format!(" {} / {}", title_str, author_str);
+                    line += &format!(" {} / {}", title, author);
                 }
             }
 
@@ -339,7 +332,7 @@ impl Session {
                 line = format!("{} ${} \"{}\" ", xact_id, balance_owed, fee_type);
 
                 if is_circ {
-                    line += title_str;
+                    line += title;
                 } else {
                     line += last_btype;
                 }
@@ -352,7 +345,7 @@ impl Session {
                 );
 
                 if is_circ {
-                    line += &format!(", Title: {}", title_str);
+                    line += &format!(", Title: {}", title);
                 } else {
                     line += &format!(", Title: {}", last_btype);
                 }
@@ -849,11 +842,7 @@ impl Session {
         Ok(Some(user))
     }
 
-    fn check_password(
-        &mut self,
-        user_id: i64,
-        password_op: Option<&str>,
-    ) -> Result<bool, String> {
+    fn check_password(&mut self, user_id: i64, password_op: Option<&str>) -> Result<bool, String> {
         let password = match password_op {
             Some(p) => p,
             None => return Ok(false),

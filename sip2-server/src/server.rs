@@ -2,13 +2,13 @@ use super::conf::Config;
 use super::monitor::{Monitor, MonitorAction, MonitorEvent};
 use super::session::Session;
 use evergreen as eg;
+use std::collections::HashMap;
 use std::net;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
-use std::collections::HashMap;
 
 pub struct Server {
     ctx: eg::init::Context,
@@ -39,7 +39,6 @@ impl Server {
 
     /// Pre-cache data that's universally useful.
     fn precache(&mut self) -> Result<(), String> {
-
         let mut e = eg::Editor::new(self.ctx.client(), self.ctx.idl());
 
         let search = json::object! {
@@ -49,7 +48,8 @@ impl Server {
         let orgs = e.search("aou", search)?;
 
         for org in orgs {
-            self.org_cache.insert(eg::util::json_int(&org["id"])?, org.clone());
+            self.org_cache
+                .insert(eg::util::json_int(&org["id"])?, org.clone());
         }
 
         Ok(())
@@ -188,7 +188,8 @@ impl Server {
         let osrf_config = self.ctx.config().clone();
         let org_cache = self.org_cache.clone();
 
-        pool.execute(move ||
-            Session::run(conf, osrf_config, idl, stream, sesid, shutdown, org_cache));
+        pool.execute(move || {
+            Session::run(conf, osrf_config, idl, stream, sesid, shutdown, org_cache)
+        });
     }
 }

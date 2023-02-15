@@ -348,7 +348,11 @@ impl Config {
                 &mut grp.checkout_override_all,
             );
             set_bool(group, "checkin-override-all", &mut grp.checkin_override_all);
-            set_bool(group, "sc-status-library-info", &mut grp.sc_status_library_info);
+            set_bool(
+                group,
+                "sc-status-library-info",
+                &mut grp.sc_status_library_info,
+            );
 
             if let Some(s) = group["msg64-hold-datatype"].as_str() {
                 if s.to_lowercase().starts_with("t") {

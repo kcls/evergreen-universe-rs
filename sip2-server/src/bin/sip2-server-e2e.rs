@@ -125,20 +125,28 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
 
     test_sc_status(tester)?;
     test_invalid_item_info(tester)?;
-    test_item_info(tester)?;
+    test_item_info(tester, false)?;
     test_patron_status(tester)?;
-    test_patron_info(tester)?;
-
-    test_sc_status(tester)?;
-    test_invalid_item_info(tester)?;
-    test_item_info(tester)?;
-    test_patron_status(tester)?;
-    test_patron_info(tester)?;
+    test_patron_info(tester, false)?;
 
     test_checkout(tester)?;
+    test_item_info(tester, true)?;
+    test_patron_status(tester)?;
+    test_patron_info(tester, true)?;
+
+    // Checkout a second time to force a renewal.
+    test_checkout(tester)?;
+    test_item_info(tester, true)?;
     test_checkin(tester)?;
 
+    test_item_info(tester, false)?;
+    test_patron_status(tester)?;
+    test_patron_info(tester, false)?;
+
     test_checkout(tester)?;
+    test_item_info(tester, true)?;
+    test_patron_status(tester)?;
+    test_patron_info(tester, true)?;
     test_checkin(tester)?;
 
     Ok(())
@@ -284,7 +292,7 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
     Ok(())
 }
 
-fn test_item_info(tester: &mut Tester) -> Result<(), String> {
+fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let req = sip2::Message::from_values(
         &sip2::spec::M_ITEM_INFO,
         &[&sip2::util::sip_date_now()],
@@ -312,7 +320,12 @@ fn test_item_info(tester: &mut Tester) -> Result<(), String> {
 
     assert_eq!(barcode.unwrap(), tester.samples.acp_barcode);
     assert_ne!(title.unwrap(), "");
-    assert_eq!(circ_status, "03");
+    if charged {
+        assert_eq!(circ_status, "04");
+    } else {
+        // May be available or reshelving
+        assert!(circ_status.eq("03") || circ_status.eq("09"));
+    }
 
     if let Some(dest) = resp.get_field_value("CT") {
         assert_eq!(dest, tester.samples.aou_shortname);
@@ -379,16 +392,12 @@ fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
     Ok(())
 }
 
-fn test_patron_info(tester: &mut Tester) -> Result<(), String> {
+fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let summary = "          ";
 
     let req = sip2::Message::from_values(
         &sip2::spec::M_PATRON_INFO,
-        &[
-            "000",
-            &sip2::util::sip_date_now(),
-            summary,
-        ],
+        &["000", &sip2::util::sip_date_now(), summary],
         &[
             ("AA", &tester.samples.au_barcode),
             ("AD", &tester.samples.au_barcode),
@@ -415,7 +424,10 @@ fn test_patron_info(tester: &mut Tester) -> Result<(), String> {
         assert_eq!(fee, "0.00"); // fee amount
     }
 
-    assert_eq!(&resp.get_field_value("AQ").unwrap(), &tester.samples.aou_shortname);
+    assert_eq!(
+        &resp.get_field_value("AQ").unwrap(),
+        &tester.samples.aou_shortname
+    );
 
     let status = resp.fixed_fields()[0].value();
     assert_eq!(status.len(), 14);
@@ -426,14 +438,17 @@ fn test_patron_info(tester: &mut Tester) -> Result<(), String> {
         assert_eq!(&status[2..3], "Y");
     }
 
-
     // Summary counts.  Should all be zero since this is a new patron.
-    assert_eq!(resp.fixed_fields()[3].value(), "0000");
-    assert_eq!(resp.fixed_fields()[4].value(), "0000");
-    assert_eq!(resp.fixed_fields()[5].value(), "0000");
-    assert_eq!(resp.fixed_fields()[6].value(), "0000");
-    assert_eq!(resp.fixed_fields()[7].value(), "0000");
-    assert_eq!(resp.fixed_fields()[8].value(), "0000");
+    assert_eq!(resp.fixed_fields()[3].value(), "0000"); // holds
+    assert_eq!(resp.fixed_fields()[4].value(), "0000"); // overdue
+    if charged {
+        assert_eq!(resp.fixed_fields()[5].value(), "0001"); // charged
+    } else {
+        assert_eq!(resp.fixed_fields()[5].value(), "0000"); // charged
+    }
+    assert_eq!(resp.fixed_fields()[6].value(), "0000"); // fine count
+    assert_eq!(resp.fixed_fields()[7].value(), "0000"); // recall count
+    assert_eq!(resp.fixed_fields()[8].value(), "0000"); // unavail hold count
 
     Ok(())
 }
@@ -442,7 +457,7 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
         &sip2::spec::M_CHECKOUT,
         &[
-            "Y", // renewal policy
+            "Y", // renewal allowed if needed
             "N", // previously checked out offline / no block
             &sip2::util::sip_date_now(),
             "                  ", // no-block due date
@@ -465,8 +480,14 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkout ok.
     assert_eq!(resp.fixed_fields()[1].value(), "N"); // renewal ok.
 
-    assert_eq!(resp.get_field_value("AA").unwrap(), tester.samples.au_barcode);
-    assert_eq!(resp.get_field_value("AB").unwrap(), tester.samples.acp_barcode);
+    assert_eq!(
+        resp.get_field_value("AA").unwrap(),
+        tester.samples.au_barcode
+    );
+    assert_eq!(
+        resp.get_field_value("AB").unwrap(),
+        tester.samples.acp_barcode
+    );
     assert_ne!(resp.get_field_value("AJ").unwrap(), ""); // assume we have some kind of title
 
     if let Some(da) = resp.get_field_value("BV") {
@@ -503,9 +524,15 @@ fn test_checkin(tester: &mut Tester) -> Result<(), String> {
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
     assert_eq!(resp.fixed_fields()[1].value(), "Y"); // resensitize, i.e. not magnetic
 
-    assert_eq!(resp.get_field_value("AB").unwrap(), tester.samples.acp_barcode);
+    assert_eq!(
+        resp.get_field_value("AB").unwrap(),
+        tester.samples.acp_barcode
+    );
     assert_ne!(resp.get_field_value("AJ").unwrap(), ""); // assume we have some kind of title
-    assert_eq!(resp.get_field_value("AQ").unwrap(), tester.samples.aou_shortname);
+    assert_eq!(
+        resp.get_field_value("AQ").unwrap(),
+        tester.samples.aou_shortname
+    );
 
     if let Some(da) = resp.get_field_value("BV") {
         assert_eq!(da, "0.00");
@@ -513,5 +540,3 @@ fn test_checkin(tester: &mut Tester) -> Result<(), String> {
 
     Ok(())
 }
-
-
