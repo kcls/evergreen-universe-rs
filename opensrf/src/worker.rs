@@ -173,6 +173,9 @@ impl Worker {
                 sent_to = &local_addr;
                 timeout = keepalive;
             } else {
+                // If we are not within a stateful conversation, clear
+                // our bus data and message backlogs since any remaining
+                // is no longer relevant.
                 if let Err(e) = self.reset() {
                     log::error!("{selfstr} could not reset {e}.  Exiting");
                     break;
