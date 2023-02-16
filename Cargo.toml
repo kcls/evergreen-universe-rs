@@ -6,3 +6,8 @@ members = [
   "sip2",
   "sip2-server",
 ]
+default-members = [
+  "opensrf",
+  "marc",
+  "evergreen",
+]
