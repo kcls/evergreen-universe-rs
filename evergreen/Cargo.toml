@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 opensrf = { path = "../opensrf" }
 marc = { path = "../marc" }
-roxmltree = "0.14"
+roxmltree = "0.18"
 chrono = "0.4"
 yaml-rust = "0.4"
 log = "0.4"
@@ -30,7 +30,7 @@ rust_decimal = { version = "1.26", features = ["db-postgres"] }
 # for egsh
 # could be make optional
 # Issues with deriving Default for enums in v10.1.0
-rustyline = "=10.0.0"
+rustyline = "10.1"
 atty = "0.2"
 
 [[bin]]
