@@ -1,11 +1,10 @@
 use getopts;
-use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
+use opensrf::addr::{ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::init;
 use opensrf::logging::Logger;
 use opensrf::message;
-use signal_hook;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
@@ -13,13 +12,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+//use signal_hook;
 
 const MAX_ACTIVE_SESSIONS: usize = 1024;
 const MAX_MESSAGE_SIZE: usize = 10485760; // ~10M
 const MAX_THREAD_SIZE: usize = 256;
-const SHUTDOWN_POLL_INTERVAL: usize = 1;
-const MAX_GRACEFUL_SHUTDOWN_INTERVAL: usize = 120;
+//const SHUTDOWN_POLL_INTERVAL: usize = 1;
+//const MAX_GRACEFUL_SHUTDOWN_INTERVAL: usize = 120;
 const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
 
 struct Translator {
@@ -155,7 +154,7 @@ impl InboundThread {
             }
 
             if let Err(e) = self.check_session_events() {
-                Err(format!("Error reading session events. Exiting"))?
+                Err(format!("Error reading session events. Exiting. {e}"))?
             }
 
             let mut buffer = String::new();
@@ -178,7 +177,7 @@ impl InboundThread {
             }
 
             if let Err(e) = self.check_session_events() {
-                Err(format!("Error reading session events. Exiting"))?
+                Err(format!("Error reading session events. Exiting. {e}"))?
             }
 
             if let Err(e) = self.relay_stdin_to_osrf(&mut bus, &buffer) {
@@ -203,6 +202,13 @@ impl InboundThread {
             log::debug!("Inbound received session event: {event:?}");
 
             if event.add {
+
+                if self.sessions.len() >= MAX_ACTIVE_SESSIONS {
+                    // Caller reached the max stateful sessions limit.
+                    // Kick 'em.
+                    Err(format!("Caller exceeds stateful sessions limit"))?;
+                }
+
                 let address = event.address.unwrap().to_owned();
                 self.sessions.insert(thread, address);
             } else {
@@ -212,26 +218,23 @@ impl InboundThread {
     }
 
     fn relay_stdin_to_osrf(&mut self, bus: &mut Bus, msg: &str) -> Result<(), String> {
-        let wrapper = match json::parse(msg) {
+        let mut wrapper = match json::parse(msg) {
             Ok(w) => w,
             Err(e) => Err(format!("Cannot parse websocket message: {e} {msg}"))?,
         };
 
-        let osrf_msg = wrapper["osrf_msg"]
-            .as_str()
-            .ok_or(format!("WS message has no 'osrf_msg' key"))?;
+        let thread = wrapper["thread"].take();
+        let log_xid = wrapper["log_xid"].take();
+        let service = wrapper["service"].take();
+        let mut msg_list = wrapper["osrf_msg"].take();
 
-        let thread = wrapper["thread"]
-            .as_str()
-            .ok_or(format!("WS message has no 'thread' key"))?;
+        let thread = thread.as_str().ok_or(format!("WS message has no 'thread' key"))?;
 
         if thread.len() > MAX_THREAD_SIZE {
             Err(format!("Thread exceeds max thread size; dropping"))?;
         }
 
-        let log_xid_op = wrapper["log_xid"].as_str(); // TODO
-
-        let service = match wrapper["service"].as_str() {
+        let service = match service.as_str() {
             Some(s) => s,
             // 'service' should always be set by the caller, but in
             // the off chance it's not and we can still proceed, we
@@ -257,25 +260,20 @@ impl InboundThread {
 
         log::debug!("WS relaying message thread={thread} recipient={recipient}");
 
-        let mut message_list = match json::parse(msg) {
-            Ok(m) => m,
-            Err(e) => Err(format!("Error parsing websocket message: {e} {msg}"))?,
-        };
-
-        // message_list should be an array, but may be a single opensrf message.
-        if !message_list.is_array() {
+        // msg_list should be an array, but may be a single opensrf message.
+        if !msg_list.is_array() {
             let mut list = json::JsonValue::new_array();
 
-            if let Err(e) = list.push(message_list) {
+            if let Err(e) = list.push(msg_list) {
                 Err(format!("Error creating message list {e}"))?;
             }
 
-            message_list = list;
+            msg_list = list;
         }
 
         let mut body_vec: Vec<message::Message> = Vec::new();
 
-        for msg_json in message_list.members() {
+        for msg_json in msg_list.members() {
             let mut msg = match message::Message::from_json_value(msg_json) {
                 Some(m) => m,
                 None => Err(format!("Error creating message from {msg_json}"))?,
@@ -310,7 +308,7 @@ impl InboundThread {
             body_vec,
         );
 
-        if let Some(xid) = log_xid_op {
+        if let Some(xid) = log_xid.as_str() {
             tm.set_osrf_xid(xid);
         }
 
@@ -415,7 +413,6 @@ impl OutboundThread {
 
     fn relay_osrf_to_stdout(&mut self, tm: &message::TransportMessage) -> Result<(), String> {
         let msg_list = tm.body();
-        let sender = tm.from();
 
         let mut body = json::JsonValue::new_array();
         let mut transport_error = false;
@@ -499,7 +496,7 @@ fn main() {
 
     let initops = init::InitOptions { skip_logging: true };
 
-    let (config, params) = init::init_with_more_options(&mut ops, &initops).unwrap();
+    let (config, _) = init::init_with_more_options(&mut ops, &initops).unwrap();
 
     let config = config.into_shared();
 
