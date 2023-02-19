@@ -150,7 +150,7 @@ impl fmt::Display for MessageStatus {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     Method(Method),
     Result(Result),
@@ -169,7 +169,7 @@ impl Payload {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TransportMessage {
     to: String,
     from: String,
@@ -358,7 +358,7 @@ impl TransportMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Message {
     mtype: MessageType,
     thread_trace: usize,
@@ -543,7 +543,7 @@ impl Message {
 /// Delivers a single API response.
 ///
 /// Each Request will have zero or more associated Response messages.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Result {
     status: MessageStatus,
 
@@ -630,7 +630,7 @@ impl Result {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Status {
     status: MessageStatus,
     status_label: String,
@@ -707,7 +707,7 @@ impl fmt::Display for Status {
 }
 
 /// A single API request with method name and parameters.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Method {
     method: String,
     params: Vec<json::JsonValue>,

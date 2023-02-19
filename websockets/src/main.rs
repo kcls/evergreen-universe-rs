@@ -1,8 +1,11 @@
 use std::fmt;
 use std::net::{TcpStream, SocketAddr};
 use std::thread;
+use std::thread::JoinHandle;
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use threadpool::ThreadPool;
 use getopts;
 use opensrf as osrf;
@@ -18,7 +21,7 @@ use websocket::sender::Writer;
 use websocket::OwnedMessage;
 
 /*
- * Server spawns a sesion thread per connection via threadpool.
+ * Server spawns a session thread per connection.
  *
  * Each session has 3 threads of its own: Inbound, Main, and Outbound.
  *
@@ -33,39 +36,54 @@ use websocket::OwnedMessage;
 
 const MAX_CLIENTS: usize = 256; // TODO configurable
 
-#[derive(Debug)]
+/// How often to wake the OutboundThread to check for a shutdown signal.
+const SHUTDOWN_POLL_INTERVAL: i32 = 5;
+
+#[derive(Debug, PartialEq)]
 enum ChannelMessage {
     /// Websocket Request
     Inbound(OwnedMessage),
 
     /// OpenSRF Reply
     Outbound(TransportMessage),
+
+    /// Tell the main thread to wake up and assess, e.g. check for stopping flag.
+    Wakeup,
 }
 
 struct InboundThread {
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
+
+    /// Cleanup and exit if true.
+    stopping: Arc<AtomicBool>,
 }
 
 impl InboundThread {
+
     fn run(&mut self, mut receiver: Reader<TcpStream>) {
+        let mut shutdown = false;
+
         for message in receiver.incoming_messages() {
 
-            let message = match message {
-                Ok(m) => m,
+            let channel_msg = match message {
+                Ok(m) => ChannelMessage::Inbound(m),
                 Err(e) => {
                     log::error!("Fatal error unpacking websocket message: {e}");
-                    // TODO set shutdown
-                    return;
+                    self.stopping.store(true, Ordering::Relaxed);
+                    ChannelMessage::Wakeup
                 }
             };
 
-            let channel_msg = ChannelMessage::Inbound(message);
-
             if let Err(e) = self.to_main_tx.send(channel_msg) {
-                log::error!("Fatal error sedning websocket message to main thread: {e}");
-                // TODO set shutdown
+                // Likely the main thread has exited.
+                log::error!("Fatal error sending websocket message to main thread: {e}");
                 return;
+            }
+
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("Inbound thread received a stop signal.  Exiting");
+                break;
             }
         }
     }
@@ -77,30 +95,40 @@ struct OutboundThread {
 
     /// Pulls messages from the OpenSRF bus for delivery back to the
     /// websocket client.
-    osrf_outbound: Bus,
+    osrf_receiver: Bus,
+
+    /// Cleanup and exit if true.
+    stopping: Arc<AtomicBool>,
 }
 
 impl OutboundThread {
     fn run(&mut self) {
+        let mut shutdown = false;
 
         loop {
 
-            let tm = match self.osrf_outbound.recv(-1, None) {
+            // Wait for outbound OpenSRF messages, waking periodically
+            // to assess, e.g. check for 'stopping' flag.
+            let msg = match self.osrf_receiver.recv(SHUTDOWN_POLL_INTERVAL, None) {
                 Ok(op) => match op {
-                    Some(m) => m,
-                    None => continue,
+                    Some(tm) => ChannelMessage::Outbound(tm),
+                    None => continue, // timeout
                 }
                 Err(e) => {
                     log::error!("Fatal error reading OpenSRF message: {e}");
-                    // TODO shutdown
-                    return;
+                    self.stopping.store(true, Ordering::Relaxed);
+                    ChannelMessage::Wakeup
                 }
             };
 
-            let channel_msg = ChannelMessage::Outbound(tm);
+            if let Err(e) = self.to_main_tx.send(msg) {
+                // Likely the main thread has already exited.
+                log::error!("Fatal error relaying channel message to main thread: {e}");
+                return;
+            }
 
-            if let Err(e) = self.to_main_tx.send(channel_msg) {
-                log::error!("Fatal error relaying outbound message to main thread: {e}");
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("Outbound thread received a stop signal.  Exiting");
                 return;
             }
         }
@@ -115,11 +143,16 @@ struct Session {
     sender: Writer<TcpStream>,
 
     /// Relays request to the OpenSRF bus.
-    osrf_inbound: Bus,
+    osrf_sender: Bus,
 
     /// Websocket client address.
     client_ip: SocketAddr,
 
+    /// Cleanup and exit if true.
+    stopping: Arc<AtomicBool>,
+
+    /// Currently active (stateful) OpenSRF sessions.
+    osrf_sessions: HashMap<String, String>,
 }
 
 impl fmt::Display for Session {
@@ -150,7 +183,7 @@ impl Session {
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let mut osrf_inbound = match Bus::new(&conf) {
+        let mut osrf_sender = match Bus::new(&conf) {
             Ok(b) => b,
             Err(e) => {
                 log::error!("Error connecting to OpenSRF: {e}");
@@ -158,7 +191,7 @@ impl Session {
             }
         };
 
-        let mut osrf_outbound = match Bus::new(&conf) {
+        let mut osrf_receiver = match Bus::new(&conf) {
             Ok(b) => b,
             Err(e) => {
                 log::error!("Error connecting to OpenSRF: {e}");
@@ -167,29 +200,54 @@ impl Session {
         };
 
         // Outbound OpenSRF connection must share the same address
-        // as the inbound connection so it can receive replies.
-        osrf_outbound.set_address(osrf_inbound.address());
+        // as the inbound connection so it can receive replies to
+        // requests relayed by the inbound connection.
+        osrf_receiver.set_address(osrf_sender.address());
+
+        let stopping = Arc::new(AtomicBool::new(false));
 
         let mut inbound = InboundThread {
+            stopping: stopping.clone(),
             to_main_tx: to_main_tx.clone(),
         };
 
         let mut outbound = OutboundThread {
+            stopping: stopping.clone(),
             to_main_tx: to_main_tx.clone(),
-            osrf_outbound,
+            osrf_receiver,
         };
 
         let mut session = Session {
+            stopping,
             client_ip,
             to_main_rx,
             sender,
-            osrf_inbound,
+            osrf_sender,
+            osrf_sessions: HashMap::new(),
         };
 
         let in_thread = thread::spawn(move || inbound.run(receiver));
         let out_thread = thread::spawn(move || outbound.run());
 
         session.listen();
+        session.shutdown(in_thread, out_thread);
+    }
+
+    fn shutdown(&mut self, in_thread: JoinHandle<()>, out_thread: JoinHandle<()>) {
+        log::info!("{self} shutting down");
+
+        // It's possible we are shutting down due to an issue that
+        // occurred within this thread.  In that case, let the other
+        // threads know it's time to cleanup and go home.
+        self.stopping.store(true, Ordering::Relaxed);
+
+        // Send a Close message to the Websocket client.  This has the
+        // secondary benefit of forcing the InboundThread to exit its
+        // listen loop.  (The OutboundThread will periodically check
+        // for shutdown messages on its own).
+        if let Err(e) = self.sender.send_message(&OwnedMessage::Close(None)) {
+            log::error!("Main thread could not send a Close message");
+        }
 
         if let Err(e) = in_thread.join() {
             log::error!("Inbound thread exited with error: {e:?}");
@@ -206,6 +264,45 @@ impl Session {
 
     /// Main listen loop
     fn listen(&mut self) {
+        loop {
+
+            let channel_msg = match self.to_main_rx.recv() {
+                Ok(m) => m,
+                Err(e) => {
+                    log::error!("Error in main thread reading message channel: {e}");
+                    return;
+                }
+            };
+
+            log::trace!("Main thread read channel message: {channel_msg:?}");
+
+            if let ChannelMessage::Inbound(m) = channel_msg {
+                if let Err(e) = self.relay_to_osrf(m) {
+                    log::error!("Error relaying request to OpenSRF: {e}");
+                    return;
+                }
+
+            } else if let ChannelMessage::Outbound(tm) = channel_msg {
+                if let Err(e) = self.relay_to_websocket(tm) {
+                    log::error!("Error relaying response: {e}");
+                    return;
+                }
+            }
+
+            // Looks like we got a Wakeup message.  Assess.
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("Main thread received a stop signal.  Exiting");
+                return;
+            }
+        }
+    }
+
+    fn relay_to_osrf(&mut self, msg: OwnedMessage) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn relay_to_websocket(&mut self, msg: TransportMessage) -> Result<(), String> {
+        Ok(())
     }
 }
 
