@@ -5,6 +5,7 @@ members = [
   "evergreen",
   "sip2",
   "sip2-server",
+  "websockets",
 ]
 default-members = [
 ]

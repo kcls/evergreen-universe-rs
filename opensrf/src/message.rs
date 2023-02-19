@@ -169,6 +169,7 @@ impl Payload {
     }
 }
 
+#[derive(Debug)]
 pub struct TransportMessage {
     to: String,
     from: String,
