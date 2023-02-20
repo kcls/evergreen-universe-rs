@@ -11,3 +11,4 @@ websocket = "0.26"
 threadpool = "1.8"
 opensrf = { path = "../opensrf" }
 getopts = "0.2"
+json = "0.12"
