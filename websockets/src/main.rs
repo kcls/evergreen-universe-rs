@@ -14,7 +14,7 @@ use osrf::conf;
 use osrf::init;
 use osrf::message::TransportMessage;
 use osrf::logging::Logger;
-use osrf::addr::{ServiceAddress, RouterAddress, ClientAddress};
+use osrf::addr::{ServiceAddress, RouterAddress};
 use websocket::client::sync::Client;
 use websocket::receiver::Reader;
 use websocket::sender::Writer;
@@ -110,8 +110,6 @@ struct OutboundThread {
 
 impl OutboundThread {
     fn run(&mut self) {
-        let mut shutdown = false;
-
         loop {
 
             // Wait for outbound OpenSRF messages, waking periodically
@@ -193,7 +191,7 @@ impl Session {
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let mut osrf_sender = match Bus::new(&conf) {
+        let osrf_sender = match Bus::new(&conf) {
             Ok(b) => b,
             Err(e) => {
                 log::error!("Error connecting to OpenSRF: {e}");
@@ -258,7 +256,7 @@ impl Session {
         // TODO check for cases where a Close has already been sent.
         // see handle_inbound_message()
         if let Err(e) = self.sender.send_message(&OwnedMessage::Close(None)) {
-            log::error!("Main thread could not send a Close message");
+            log::error!("Main thread could not send a Close message: {e}");
         }
 
         if let Err(e) = in_thread.join() {
@@ -354,6 +352,8 @@ impl Session {
             None => "_",
         };
 
+        // recipient is the final destination, but me may put this
+        // message into the queue of the router as needed.
         let mut send_to_router: Option<String> = None;
 
         let recipient = match self.osrf_sessions.get(thread) {
@@ -434,8 +434,48 @@ impl Session {
         Ok(())
     }
 
-    fn relay_to_websocket(&mut self, msg: TransportMessage) -> Result<(), String> {
-        Ok(())
+    fn relay_to_websocket(&mut self, tm: TransportMessage) -> Result<(), String> {
+        let msg_list = tm.body();
+
+        let mut body = json::JsonValue::new_array();
+        let mut transport_error = false;
+
+        for msg in msg_list.iter() {
+            if let osrf::message::Payload::Status(s) = msg.payload() {
+                if s.status() == &osrf::message::MessageStatus::Ok {
+                    self.osrf_sessions.insert(tm.thread().to_string(), tm.from().to_string());
+                }
+
+                if *s.status() as isize >= osrf::message::MessageStatus::BadRequest as isize {
+                    transport_error = true;
+                    log::error!("Request returned unexpected status: {:?}", msg);
+                    self.osrf_sessions.remove(tm.thread());
+                }
+            }
+
+            if let Err(e) = body.push(msg.to_json_value()) {
+                Err(format!("Error building message response: {e}"))?;
+            }
+        }
+
+        let mut obj = json::object! {
+            // oxrf_xid: TODO
+            thread: tm.thread(),
+            osrf_msg: body
+        };
+
+        if transport_error {
+            obj["transport_error"] = json::from(true);
+        }
+
+        let msg_json = obj.dump();
+
+        log::trace!("{self} replying with message: {msg_json}");
+
+        let msg = OwnedMessage::Text(msg_json);
+
+        self.sender.send_message(&msg).or_else(
+            |e| Err(format!("Error sending response to websocket client: {e}")))
     }
 
     fn log_request(&self, service: &str, msg: &osrf::message::Message) -> Result<(), String> {
@@ -480,8 +520,31 @@ impl Server {
 
     fn run(&mut self) {
 
-        //let threads = pool.active_count() + pool.queued_count();
-        todo!()
+        let host = format!("{}:{}", self.address, self.port);
+
+        let server = websocket::sync::Server::bind(host)
+            .expect("Could not start websockets server");
+
+        let pool = ThreadPool::new(MAX_WS_CLIENTS);
+
+        for connection in server.filter_map(Result::ok) {
+
+            let tcount = pool.active_count() + pool.queued_count();
+
+            if tcount >= MAX_WS_CLIENTS {
+                log::warn!("Max websocket clients reached.  Ignoring new connection");
+                continue;
+            }
+
+            let conf = self.conf.clone();
+
+            pool.execute(move || {
+                match connection.accept() {
+                    Ok(client) => Session::run(conf, client),
+                    Err(e) => log::error!("Error accepting new connection: {}", e.1),
+                }
+            });
+        }
     }
 }
 
