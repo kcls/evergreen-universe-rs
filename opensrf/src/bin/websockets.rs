@@ -56,7 +56,7 @@ enum ChannelMessage {
     /// OpenSRF Reply
     Outbound(message::TransportMessage),
 
-    /// Tell the main thread to wake up and assess, e.g. check for stopping flag.
+    /// Tell the main thread to wake up and assess, e.g. check for shutdown_session flag.
     Wakeup,
 }
 
@@ -65,7 +65,7 @@ struct InboundThread {
     to_main_tx: mpsc::Sender<ChannelMessage>,
 
     /// Cleanup and exit if true.
-    stopping: Arc<AtomicBool>,
+    shutdown_session: Arc<AtomicBool>,
 
     /// Websocket client address.
     client_ip: SocketAddr,
@@ -85,7 +85,7 @@ impl InboundThread {
 
             // Check before processing in case the stop flag we set
             // while we were waiting on a new message.
-            if self.stopping.load(Ordering::Relaxed) {
+            if self.shutdown_session.load(Ordering::Relaxed) {
                 log::info!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
             }
@@ -97,7 +97,7 @@ impl InboundThread {
                 }
                 Err(e) => {
                     log::error!("{self} Fatal error unpacking websocket message: {e}");
-                    self.stopping.store(true, Ordering::Relaxed);
+                    self.shutdown_session.store(true, Ordering::Relaxed);
                     ChannelMessage::Wakeup
                 }
             };
@@ -109,7 +109,7 @@ impl InboundThread {
             }
 
             // Check before going back to wait for the next ws message.
-            if self.stopping.load(Ordering::Relaxed) {
+            if self.shutdown_session.load(Ordering::Relaxed) {
                 log::info!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
             }
@@ -126,7 +126,7 @@ struct OutboundThread {
     osrf_receiver: Bus,
 
     /// Cleanup and exit if true.
-    stopping: Arc<AtomicBool>,
+    shutdown_session: Arc<AtomicBool>,
 
     /// Websocket client address.
     client_ip: SocketAddr,
@@ -142,13 +142,13 @@ impl OutboundThread {
     fn run(&mut self) {
         loop {
 
-            if self.stopping.load(Ordering::Relaxed) {
+            if self.shutdown_session.load(Ordering::Relaxed) {
                 log::info!("{self} Outbound thread received a stop signal.  Exiting");
                 return;
             }
 
             // Wait for outbound OpenSRF messages, waking periodically
-            // to assess, e.g. check for 'stopping' flag.
+            // to assess, e.g. check for 'shutdown_session' flag.
             log::trace!("{self} waiting for opensrf response at {}", self.osrf_receiver.address());
 
             let msg = match self.osrf_receiver.recv(SHUTDOWN_POLL_INTERVAL, None) {
@@ -166,7 +166,7 @@ impl OutboundThread {
                 }
                 Err(e) => {
                     log::error!("{self} Fatal error reading OpenSRF message: {e}");
-                    self.stopping.store(true, Ordering::Relaxed);
+                    self.shutdown_session.store(true, Ordering::Relaxed);
                     ChannelMessage::Wakeup
                 }
             };
@@ -194,7 +194,7 @@ struct Session {
     client_ip: SocketAddr,
 
     /// Cleanup and exit if true.
-    stopping: Arc<AtomicBool>,
+    shutdown_session: Arc<AtomicBool>,
 
     /// Currently active (stateful) OpenSRF sessions.
     osrf_sessions: HashMap<String, String>,
@@ -249,23 +249,23 @@ impl Session {
         // requests relayed by the inbound connection.
         osrf_receiver.set_address(osrf_sender.address());
 
-        let stopping = Arc::new(AtomicBool::new(false));
+        let shutdown_session = Arc::new(AtomicBool::new(false));
 
         let mut inbound = InboundThread {
-            stopping: stopping.clone(),
+            shutdown_session: shutdown_session.clone(),
             to_main_tx: to_main_tx.clone(),
             client_ip: client_ip.clone(),
         };
 
         let mut outbound = OutboundThread {
-            stopping: stopping.clone(),
+            shutdown_session: shutdown_session.clone(),
             to_main_tx: to_main_tx.clone(),
             client_ip: client_ip.clone(),
             osrf_receiver,
         };
 
         let mut session = Session {
-            stopping,
+            shutdown_session,
             client_ip,
             to_main_rx,
             sender,
@@ -288,7 +288,7 @@ impl Session {
         // It's possible we are shutting down due to an issue that
         // occurred within this thread.  In that case, let the other
         // threads know it's time to cleanup and go home.
-        self.stopping.store(true, Ordering::Relaxed);
+        self.shutdown_session.store(true, Ordering::Relaxed);
 
         // Send a Close message to the Websocket client.  This has the
         // secondary benefit of forcing the InboundThread to exit its
@@ -339,10 +339,10 @@ impl Session {
                 }
             }
 
-            log::debug!("{self} received an Wakeup channel message");
-
-            // We got a Wakeup message.  Assess.
-            if self.stopping.load(Ordering::Relaxed) {
+            // We may be here as a result of a Wakeup message or because
+            // one of the above completed without error.  In either case,
+            // check the shutdown_session flag.
+            if self.shutdown_session.load(Ordering::Relaxed) {
                 log::info!("{self} Main thread received a stop signal.  Exiting");
                 return;
             }
@@ -364,9 +364,9 @@ impl Session {
                     .or_else(|e| Err(format!("{self} Error sending Pong to client: {e}")))
             }
             OwnedMessage::Close(_) => {
-                // Set the stopping flag which will result in us
+                // Set the shutdown_session flag which will result in us
                 // sending a Close back to the client.
-                self.stopping.store(true, Ordering::Relaxed);
+                self.shutdown_session.store(true, Ordering::Relaxed);
                 Ok(())
             }
             _ => {
