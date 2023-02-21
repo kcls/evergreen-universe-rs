@@ -83,6 +83,13 @@ impl InboundThread {
     fn run(&mut self, mut receiver: Reader<TcpStream>) {
         for message in receiver.incoming_messages() {
 
+            // Check before processing in case the stop flag we set
+            // while we were waiting on a new message.
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("{self} Inbound thread received a stop signal.  Exiting");
+                break;
+            }
+
             let channel_msg = match message {
                 Ok(m) => {
                     log::trace!("{self} InboundThread received message: {m:?}");
@@ -101,6 +108,7 @@ impl InboundThread {
                 return;
             }
 
+            // Check before goign back to wait for the next ws message.
             if self.stopping.load(Ordering::Relaxed) {
                 log::info!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
@@ -134,6 +142,11 @@ impl OutboundThread {
     fn run(&mut self) {
         loop {
 
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("{self} Outbound thread received a stop signal.  Exiting");
+                return;
+            }
+
             // Wait for outbound OpenSRF messages, waking periodically
             // to assess, e.g. check for 'stopping' flag.
             log::trace!("{self} waiting for opensrf response at {}", self.osrf_receiver.address());
@@ -161,11 +174,6 @@ impl OutboundThread {
             if let Err(e) = self.to_main_tx.send(msg) {
                 // Likely the main thread has already exited.
                 log::error!("{self} Fatal error relaying channel message to main thread: {e}");
-                return;
-            }
-
-            if self.stopping.load(Ordering::Relaxed) {
-                log::info!("{self} Outbound thread received a stop signal.  Exiting");
                 return;
             }
         }
@@ -317,17 +325,21 @@ impl Session {
             log::trace!("{self} read channel message: {channel_msg:?}");
 
             if let ChannelMessage::Inbound(m) = channel_msg {
+                log::debug!("{self} received an Inbound channel message");
                 if let Err(e) = self.handle_inbound_message(m) {
                     log::error!("{self} Error relaying request to OpenSRF: {e}");
                     return;
                 }
 
             } else if let ChannelMessage::Outbound(tm) = channel_msg {
+                log::debug!("{self} received an Outbound channel message");
                 if let Err(e) = self.relay_to_websocket(tm) {
                     log::error!("{self} Error relaying response: {e}");
                     return;
                 }
             }
+
+            log::debug!("{self} received an Wakeup channel message");
 
             // We got a Wakeup message.  Assess.
             if self.stopping.load(Ordering::Relaxed) {
@@ -546,14 +558,16 @@ struct Server {
     conf: conf::BusClient,
     port: u16,
     address: String,
+    max_clients: usize,
 }
 
 impl Server {
-    fn new(conf: conf::BusClient, address: String, port: u16) -> Self {
+    fn new(conf: conf::BusClient, address: String, port: u16, max_clients: usize) -> Self {
         Server {
             conf,
             port,
             address,
+            max_clients,
         }
     }
 
@@ -572,7 +586,10 @@ impl Server {
 
             let tcount = pool.active_count() + pool.queued_count();
 
-            if tcount >= MAX_WS_CLIENTS {
+            log::warn!("active = {}", pool.active_count());
+            log::warn!("queued = {}", pool.queued_count());
+
+            if tcount >= self.max_clients {
                 log::warn!("Max websocket clients reached.  Ignoring new connection");
                 continue;
             }
@@ -595,6 +612,7 @@ fn main() {
 
     ops.optopt("p", "port", "Port", "PORT");
     ops.optopt("a", "address", "Listen Address", "ADDRESS");
+    ops.optopt("", "max-clients", "Max Clients", "MAX_CLIENTS");
 
     let initops = init::InitOptions { skip_logging: true };
 
@@ -611,7 +629,12 @@ fn main() {
     let port = params.opt_get_default("p", "7682".to_string()).unwrap();
     let port = port.parse::<u16>().expect("Invalid port number");
 
-    let mut server = Server::new(gateway.clone(), address, port);
+    let max_clients = match params.opt_str("max-clients") {
+        Some(mc) => mc.parse::<usize>().expect("Invalid max-clients value"),
+        None => MAX_WS_CLIENTS,
+    };
+
+    let mut server = Server::new(gateway.clone(), address, port, max_clients);
     server.run();
 }
 
