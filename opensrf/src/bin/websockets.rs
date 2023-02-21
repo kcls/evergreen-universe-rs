@@ -1,20 +1,20 @@
-use std::fmt;
-use std::net::{TcpStream, SocketAddr};
-use std::thread;
-use std::thread::JoinHandle;
-use std::sync::Arc;
-use std::sync::mpsc;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use threadpool::ThreadPool;
 use getopts;
 use opensrf as osrf;
+use osrf::addr::{RouterAddress, ServiceAddress};
 use osrf::bus::Bus;
 use osrf::conf;
 use osrf::init;
-use osrf::message;
 use osrf::logging::Logger;
-use osrf::addr::{ServiceAddress, RouterAddress};
+use osrf::message;
+use std::collections::HashMap;
+use std::fmt;
+use std::net::{SocketAddr, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
+use std::thread::JoinHandle;
+use threadpool::ThreadPool;
 use websocket::client::sync::Client;
 use websocket::receiver::Reader;
 use websocket::sender::Writer;
@@ -69,7 +69,6 @@ struct InboundThread {
 
     /// Websocket client address.
     client_ip: SocketAddr,
-
 }
 
 impl fmt::Display for InboundThread {
@@ -79,10 +78,8 @@ impl fmt::Display for InboundThread {
 }
 
 impl InboundThread {
-
     fn run(&mut self, mut receiver: Reader<TcpStream>) {
         for message in receiver.incoming_messages() {
-
             // Check before processing in case the stop flag we set
             // while we were waiting on a new message.
             if self.shutdown_session.load(Ordering::Relaxed) {
@@ -141,7 +138,6 @@ impl fmt::Display for OutboundThread {
 impl OutboundThread {
     fn run(&mut self) {
         loop {
-
             if self.shutdown_session.load(Ordering::Relaxed) {
                 log::info!("{self} Outbound thread received a stop signal.  Exiting");
                 return;
@@ -149,21 +145,24 @@ impl OutboundThread {
 
             // Wait for outbound OpenSRF messages, waking periodically
             // to assess, e.g. check for 'shutdown_session' flag.
-            log::trace!("{self} waiting for opensrf response at {}", self.osrf_receiver.address());
+            log::trace!(
+                "{self} waiting for opensrf response at {}",
+                self.osrf_receiver.address()
+            );
 
             let msg = match self.osrf_receiver.recv(SHUTDOWN_POLL_INTERVAL, None) {
                 Ok(op) => match op {
                     Some(tm) => {
-                        log::debug!(
-                            "{self} OutboundThread received message from: {}", tm.from());
+                        log::debug!("{self} OutboundThread received message from: {}", tm.from());
                         ChannelMessage::Outbound(tm)
                     }
                     None => {
                         log::trace!(
-                            "{self} no response received within poll interval.  trying again");
+                            "{self} no response received within poll interval.  trying again"
+                        );
                         continue;
                     }
-                }
+                },
                 Err(e) => {
                     log::error!("{self} Fatal error reading OpenSRF message: {e}");
                     self.shutdown_session.store(true, Ordering::Relaxed);
@@ -181,6 +180,9 @@ impl OutboundThread {
 }
 
 struct Session {
+    /// OpenSRF config
+    conf: Arc<conf::Config>,
+
     /// All messages flow to the main thread via this channel.
     to_main_rx: mpsc::Receiver<ChannelMessage>,
 
@@ -207,9 +209,7 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-
-    fn run(conf: conf::BusClient, client: Client<TcpStream>) {
-
+    fn run(conf: Arc<conf::Config>, client: Client<TcpStream>) {
         let client_ip = match client.peer_addr() {
             Ok(ip) => ip,
             Err(e) => {
@@ -228,7 +228,9 @@ impl Session {
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let osrf_sender = match Bus::new(&conf) {
+        let busconf = conf.gateway().unwrap(); // previoiusly verified
+
+        let osrf_sender = match Bus::new(&busconf) {
             Ok(b) => b,
             Err(e) => {
                 log::error!("Error connecting to OpenSRF: {e}");
@@ -236,7 +238,7 @@ impl Session {
             }
         };
 
-        let mut osrf_receiver = match Bus::new(&conf) {
+        let mut osrf_receiver = match Bus::new(&busconf) {
             Ok(b) => b,
             Err(e) => {
                 log::error!("Error connecting to OpenSRF: {e}");
@@ -269,6 +271,7 @@ impl Session {
             client_ip,
             to_main_rx,
             sender,
+            conf,
             osrf_sender,
             osrf_sessions: HashMap::new(),
         };
@@ -330,7 +333,6 @@ impl Session {
                     log::error!("{self} Error relaying request to OpenSRF: {e}");
                     return;
                 }
-
             } else if let ChannelMessage::Outbound(tm) = channel_msg {
                 log::debug!("{self} received an Outbound channel message");
                 if let Err(e) = self.relay_to_websocket(tm) {
@@ -360,7 +362,8 @@ impl Session {
             }
             OwnedMessage::Ping(text) => {
                 let message = OwnedMessage::Pong(text);
-                self.sender.send_message(&message)
+                self.sender
+                    .send_message(&message)
                     .or_else(|e| Err(format!("{self} Error sending Pong to client: {e}")))
             }
             OwnedMessage::Close(_) => {
@@ -377,16 +380,20 @@ impl Session {
     }
 
     fn relay_to_osrf(&mut self, json_text: &str) -> Result<(), String> {
-
-        let mut wrapper = json::parse(json_text).or_else(|e|
-            Err(format!("{self} Cannot parse websocket message: {e} {json_text}")))?;
+        let mut wrapper = json::parse(json_text).or_else(|e| {
+            Err(format!(
+                "{self} Cannot parse websocket message: {e} {json_text}"
+            ))
+        })?;
 
         let thread = wrapper["thread"].take();
         let log_xid = wrapper["log_xid"].take();
         let service = wrapper["service"].take();
         let mut msg_list = wrapper["osrf_msg"].take();
 
-        let thread = thread.as_str().ok_or(format!("{self} websocket message has no 'thread' key"))?;
+        let thread = thread
+            .as_str()
+            .ok_or(format!("{self} websocket message has no 'thread' key"))?;
 
         if thread.len() > MAX_THREAD_SIZE {
             Err(format!("{self} Thread exceeds max thread size; dropping"))?;
@@ -473,7 +480,10 @@ impl Session {
             tm.set_osrf_xid(xid);
         }
 
-        log::trace!("{self} sending request to opensrf from {}", self.osrf_sender.address());
+        log::trace!(
+            "{self} sending request to opensrf from {}",
+            self.osrf_sender.address()
+        );
 
         if let Some(router) = send_to_router {
             self.osrf_sender.send_to(&tm, &router)?;
@@ -494,7 +504,8 @@ impl Session {
         for msg in msg_list.iter() {
             if let osrf::message::Payload::Status(s) = msg.payload() {
                 if s.status() == &message::MessageStatus::Ok {
-                    self.osrf_sessions.insert(tm.thread().to_string(), tm.from().to_string());
+                    self.osrf_sessions
+                        .insert(tm.thread().to_string(), tm.from().to_string());
                 }
 
                 if *s.status() as isize >= message::MessageStatus::BadRequest as isize {
@@ -525,8 +536,11 @@ impl Session {
 
         let msg = OwnedMessage::Text(msg_json);
 
-        self.sender.send_message(&msg).or_else(
-            |e| Err(format!("{self} Error sending response to websocket client: {e}")))
+        self.sender.send_message(&msg).or_else(|e| {
+            Err(format!(
+                "{self} Error sending response to websocket client: {e}"
+            ))
+        })
     }
 
     fn log_request(&self, service: &str, msg: &message::Message) -> Result<(), String> {
@@ -535,32 +549,46 @@ impl Session {
             _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
-        // Create a string from the method parameters
-        let logp = request
-            .params()
+        let log_params = match self
+            .conf
+            .log_protect()
             .iter()
-            .map(|p| p.dump())
-            .collect::<Vec<_>>()
-            .join(", ");
+            .filter(|m| request.method().starts_with(&m[..]))
+            .next()
+        {
+            Some(_) => "**PARAMS REDACTED**".to_string(),
+            None => request
+                .params()
+                .iter()
+                .map(|p| p.dump())
+                .collect::<Vec<_>>()
+                .join(", "),
+        };
 
-        // TODO REDACT
+        // TODO activity logging
 
         // Log the API call
-        log::info!("[{}] {} {} {}", self.client_ip, service, request.method(), logp);
+        log::info!(
+            "[{}] {} {} {}",
+            self.client_ip,
+            service,
+            request.method(),
+            log_params
+        );
 
         Ok(())
     }
 }
 
 struct Server {
-    conf: conf::BusClient,
+    conf: Arc<conf::Config>,
     port: u16,
     address: String,
     max_clients: usize,
 }
 
 impl Server {
-    fn new(conf: conf::BusClient, address: String, port: u16, max_clients: usize) -> Self {
+    fn new(conf: Arc<conf::Config>, address: String, port: u16, max_clients: usize) -> Self {
         Server {
             conf,
             port,
@@ -570,18 +598,16 @@ impl Server {
     }
 
     fn run(&mut self) {
-
         let host = format!("{}:{}", self.address, self.port);
 
         log::info!("Server listening for connections at {host}");
 
-        let server = websocket::sync::Server::bind(host)
-            .expect("Could not start websockets server");
+        let server =
+            websocket::sync::Server::bind(host).expect("Could not start websockets server");
 
         let pool = ThreadPool::new(MAX_WS_CLIENTS);
 
         for connection in server.filter_map(Result::ok) {
-
             let tcount = pool.active_count() + pool.queued_count();
 
             if tcount >= self.max_clients {
@@ -591,11 +617,9 @@ impl Server {
 
             let conf = self.conf.clone();
 
-            pool.execute(move || {
-                match connection.accept() {
-                    Ok(client) => Session::run(conf, client),
-                    Err(e) => log::error!("Error accepting new connection: {}", e.1),
-                }
+            pool.execute(move || match connection.accept() {
+                Ok(client) => Session::run(conf, client),
+                Err(e) => log::error!("Error accepting new connection: {}", e.1),
             });
         }
     }
@@ -619,7 +643,9 @@ fn main() {
     let logger = Logger::new(gateway.logging()).expect("Creating logger");
     logger.init().expect("Logger Init");
 
-    let address = params.opt_get_default("a", "127.0.0.1".to_string()).unwrap();
+    let address = params
+        .opt_get_default("a", "127.0.0.1".to_string())
+        .unwrap();
     let port = params.opt_get_default("p", "7682".to_string()).unwrap();
     let port = port.parse::<u16>().expect("Invalid port number");
 
@@ -628,8 +654,6 @@ fn main() {
         None => MAX_WS_CLIENTS,
     };
 
-    let mut server = Server::new(gateway.clone(), address, port, max_clients);
+    let mut server = Server::new(config, address, port, max_clients);
     server.run();
 }
-
-

@@ -54,7 +54,6 @@ impl Session {
         let mut due_date: Option<String> = None;
 
         if let Some(circ) = self.get_copy_circ(&copy)? {
-
             circ_patron_id = Some(eg::util::json_int(&circ["usr"])?);
 
             if let Some(iso_date) = circ["due_date"].as_str() {
