@@ -108,7 +108,7 @@ impl InboundThread {
                 return;
             }
 
-            // Check before goign back to wait for the next ws message.
+            // Check before going back to wait for the next ws message.
             if self.stopping.load(Ordering::Relaxed) {
                 log::info!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
@@ -544,14 +544,12 @@ impl Session {
             .join(", ");
 
         // TODO REDACT
-        // TODO log the client IP address
 
         // Log the API call
-        log::info!("{} {} {}", service, request.method(), logp);
+        log::info!("[{}] {} {} {}", self.client_ip, service, request.method(), logp);
 
         Ok(())
     }
-
 }
 
 struct Server {
@@ -586,9 +584,6 @@ impl Server {
 
             let tcount = pool.active_count() + pool.queued_count();
 
-            log::warn!("active = {}", pool.active_count());
-            log::warn!("queued = {}", pool.queued_count());
-
             if tcount >= self.max_clients {
                 log::warn!("Max websocket clients reached.  Ignoring new connection");
                 continue;
@@ -605,7 +600,6 @@ impl Server {
         }
     }
 }
-
 
 fn main() {
     let mut ops = getopts::Options::new();
