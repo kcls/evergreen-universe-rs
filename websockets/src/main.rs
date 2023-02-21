@@ -12,7 +12,7 @@ use opensrf as osrf;
 use osrf::bus::Bus;
 use osrf::conf;
 use osrf::init;
-use osrf::message::TransportMessage;
+use osrf::message;
 use osrf::logging::Logger;
 use osrf::addr::{ServiceAddress, RouterAddress};
 use websocket::client::sync::Client;
@@ -34,7 +34,7 @@ use websocket::OwnedMessage;
  * Main sesion thread does everything else.
  */
 
-/// How many websocket clients we allow before blocking new connections.
+/// How many websocket clients we allow before block new connections.
 const MAX_WS_CLIENTS: usize = 256;
 
 /// How often to wake the OutboundThread to check for a shutdown signal.
@@ -42,6 +42,9 @@ const SHUTDOWN_POLL_INTERVAL: i32 = 5;
 
 /// Prevent huge session threads
 const MAX_THREAD_SIZE: usize = 256;
+
+/// Largest allowed inbound websocket message
+const MAX_MESSAGE_SIZE: usize = 10485760; // ~10M
 
 const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
 
@@ -51,7 +54,7 @@ enum ChannelMessage {
     Inbound(OwnedMessage),
 
     /// OpenSRF Reply
-    Outbound(TransportMessage),
+    Outbound(message::TransportMessage),
 
     /// Tell the main thread to wake up and assess, e.g. check for stopping flag.
     Wakeup,
@@ -63,6 +66,16 @@ struct InboundThread {
 
     /// Cleanup and exit if true.
     stopping: Arc<AtomicBool>,
+
+    /// Websocket client address.
+    client_ip: SocketAddr,
+
+}
+
+impl fmt::Display for InboundThread {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "InboundThread ({})", self.client_ip)
+    }
 }
 
 impl InboundThread {
@@ -72,11 +85,11 @@ impl InboundThread {
 
             let channel_msg = match message {
                 Ok(m) => {
-                    log::trace!("InboundThread received message: {m:?}");
+                    log::trace!("{self} InboundThread received message: {m:?}");
                     ChannelMessage::Inbound(m)
                 }
                 Err(e) => {
-                    log::error!("Fatal error unpacking websocket message: {e}");
+                    log::error!("{self} Fatal error unpacking websocket message: {e}");
                     self.stopping.store(true, Ordering::Relaxed);
                     ChannelMessage::Wakeup
                 }
@@ -84,12 +97,12 @@ impl InboundThread {
 
             if let Err(e) = self.to_main_tx.send(channel_msg) {
                 // Likely the main thread has exited.
-                log::error!("Fatal error sending websocket message to main thread: {e}");
+                log::error!("{self} Fatal error sending websocket message to main thread: {e}");
                 return;
             }
 
             if self.stopping.load(Ordering::Relaxed) {
-                log::info!("Inbound thread received a stop signal.  Exiting");
+                log::info!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
             }
         }
@@ -106,6 +119,15 @@ struct OutboundThread {
 
     /// Cleanup and exit if true.
     stopping: Arc<AtomicBool>,
+
+    /// Websocket client address.
+    client_ip: SocketAddr,
+}
+
+impl fmt::Display for OutboundThread {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "OutboundThread ({})", self.client_ip)
+    }
 }
 
 impl OutboundThread {
@@ -114,16 +136,22 @@ impl OutboundThread {
 
             // Wait for outbound OpenSRF messages, waking periodically
             // to assess, e.g. check for 'stopping' flag.
+            log::debug!("{self} waiting for opensrf response at {}", self.osrf_receiver.address());
+
             let msg = match self.osrf_receiver.recv(SHUTDOWN_POLL_INTERVAL, None) {
                 Ok(op) => match op {
                     Some(tm) => {
-                        log::trace!("OutboundThread received message: {tm:?}");
+                        log::trace!("{self} OutboundThread received message: {tm:?}");
                         ChannelMessage::Outbound(tm)
                     }
-                    None => continue, // timeout
+                    None => {
+                        log::trace!(
+                            "{self} no response received within poll interval.  trying again");
+                        continue;
+                    }
                 }
                 Err(e) => {
-                    log::error!("Fatal error reading OpenSRF message: {e}");
+                    log::error!("{self} Fatal error reading OpenSRF message: {e}");
                     self.stopping.store(true, Ordering::Relaxed);
                     ChannelMessage::Wakeup
                 }
@@ -131,12 +159,12 @@ impl OutboundThread {
 
             if let Err(e) = self.to_main_tx.send(msg) {
                 // Likely the main thread has already exited.
-                log::error!("Fatal error relaying channel message to main thread: {e}");
+                log::error!("{self} Fatal error relaying channel message to main thread: {e}");
                 return;
             }
 
             if self.stopping.load(Ordering::Relaxed) {
-                log::info!("Outbound thread received a stop signal.  Exiting");
+                log::info!("{self} Outbound thread received a stop signal.  Exiting");
                 return;
             }
         }
@@ -144,10 +172,10 @@ impl OutboundThread {
 }
 
 struct Session {
-    /// All data flows to the main thread via this channel.
+    /// All messages flow to the main thread via this channel.
     to_main_rx: mpsc::Receiver<ChannelMessage>,
 
-    /// Posts messages to the outbound websocket stream.
+    /// For posting messages to the outbound websocket stream.
     sender: Writer<TcpStream>,
 
     /// Relays request to the OpenSRF bus.
@@ -217,11 +245,13 @@ impl Session {
         let mut inbound = InboundThread {
             stopping: stopping.clone(),
             to_main_tx: to_main_tx.clone(),
+            client_ip: client_ip.clone(),
         };
 
         let mut outbound = OutboundThread {
             stopping: stopping.clone(),
             to_main_tx: to_main_tx.clone(),
+            client_ip: client_ip.clone(),
             osrf_receiver,
         };
 
@@ -233,6 +263,8 @@ impl Session {
             osrf_sender,
             osrf_sessions: HashMap::new(),
         };
+
+        log::info!("{session} starting channel threads");
 
         let in_thread = thread::spawn(move || inbound.run(receiver));
         let out_thread = thread::spawn(move || outbound.run());
@@ -253,55 +285,52 @@ impl Session {
         // secondary benefit of forcing the InboundThread to exit its
         // listen loop.  (The OutboundThread will periodically check
         // for shutdown messages on its own).
-        // TODO check for cases where a Close has already been sent.
-        // see handle_inbound_message()
         if let Err(e) = self.sender.send_message(&OwnedMessage::Close(None)) {
-            log::error!("Main thread could not send a Close message: {e}");
+            log::error!("{self} Main thread could not send a Close message: {e}");
         }
 
         if let Err(e) = in_thread.join() {
-            log::error!("Inbound thread exited with error: {e:?}");
+            log::error!("{self} Inbound thread exited with error: {e:?}");
         } else {
-            log::debug!("Inbound thread exited gracefully");
+            log::debug!("{self} Inbound thread exited gracefully");
         }
 
         if let Err(e) = out_thread.join() {
-            log::error!("Out thread exited with error: {e:?}");
+            log::error!("{self} Out thread exited with error: {e:?}");
         } else {
-            log::debug!("Outbound thread exited gracefully");
+            log::debug!("{self} Outbound thread exited gracefully");
         }
     }
 
     /// Main Session listen loop
     fn listen(&mut self) {
         loop {
-
             let channel_msg = match self.to_main_rx.recv() {
                 Ok(m) => m,
                 Err(e) => {
-                    log::error!("Error in main thread reading message channel: {e}");
+                    log::error!("{self} Error in main thread reading message channel: {e}");
                     return;
                 }
             };
 
-            log::trace!("Main thread read channel message: {channel_msg:?}");
+            log::trace!("{self} read channel message: {channel_msg:?}");
 
             if let ChannelMessage::Inbound(m) = channel_msg {
                 if let Err(e) = self.handle_inbound_message(m) {
-                    log::error!("Error relaying request to OpenSRF: {e}");
+                    log::error!("{self} Error relaying request to OpenSRF: {e}");
                     return;
                 }
 
             } else if let ChannelMessage::Outbound(tm) = channel_msg {
                 if let Err(e) = self.relay_to_websocket(tm) {
-                    log::error!("Error relaying response: {e}");
+                    log::error!("{self} Error relaying response: {e}");
                     return;
                 }
             }
 
-            // Looks like we got a Wakeup message.  Assess.
+            // We got a Wakeup message.  Assess.
             if self.stopping.load(Ordering::Relaxed) {
-                log::info!("Main thread received a stop signal.  Exiting");
+                log::info!("{self} Main thread received a stop signal.  Exiting");
                 return;
             }
         }
@@ -309,11 +338,17 @@ impl Session {
 
     fn handle_inbound_message(&mut self, msg: OwnedMessage) -> Result<(), String> {
         match msg {
-            OwnedMessage::Text(text) => self.relay_to_osrf(&text),
+            OwnedMessage::Text(text) => {
+                if text.len() >= MAX_MESSAGE_SIZE {
+                    // Drop the message and exit
+                    return Err(format!("{self} Dropping huge websocket message"));
+                }
+                self.relay_to_osrf(&text)
+            }
             OwnedMessage::Ping(text) => {
                 let message = OwnedMessage::Pong(text);
                 self.sender.send_message(&message)
-                    .or_else(|e| Err(format!("Error sending Pong to client: {e}")))
+                    .or_else(|e| Err(format!("{self} Error sending Pong to client: {e}")))
             }
             OwnedMessage::Close(_) => {
                 // Set the stopping flag which will result in us
@@ -322,7 +357,7 @@ impl Session {
                 Ok(())
             }
             _ => {
-                log::warn!("Ignoring unexpected websocket message: {msg:?}");
+                log::warn!("{self} Ignoring unexpected websocket message: {msg:?}");
                 Ok(())
             }
         }
@@ -330,18 +365,18 @@ impl Session {
 
     fn relay_to_osrf(&mut self, json_text: &str) -> Result<(), String> {
 
-        let mut wrapper = json::parse(json_text)
-            .or_else(|e| Err(format!("Cannot parse websocket message: {e} {json_text}")))?;
+        let mut wrapper = json::parse(json_text).or_else(|e|
+            Err(format!("{self} Cannot parse websocket message: {e} {json_text}")))?;
 
         let thread = wrapper["thread"].take();
         let log_xid = wrapper["log_xid"].take();
         let service = wrapper["service"].take();
         let mut msg_list = wrapper["osrf_msg"].take();
 
-        let thread = thread.as_str().ok_or(format!("WS message has no 'thread' key"))?;
+        let thread = thread.as_str().ok_or(format!("{self} websocket message has no 'thread' key"))?;
 
         if thread.len() > MAX_THREAD_SIZE {
-            Err(format!("Thread exceeds max thread size; dropping"))?;
+            Err(format!("{self} Thread exceeds max thread size; dropping"))?;
         }
 
         let service = match service.as_str() {
@@ -358,54 +393,54 @@ impl Session {
 
         let recipient = match self.osrf_sessions.get(thread) {
             Some(a) => {
-                log::debug!("Found cached recipient for thread {thread} {a}");
+                log::debug!("{self} Found cached recipient for thread {thread} {a}");
                 a.clone()
             }
             None => {
                 if service.eq("_") {
-                    Err(format!("WS unable to determine recipient"))?
+                    Err(format!("{self} WS unable to determine recipient"))?
                 }
                 send_to_router = Some(RouterAddress::new(service).full().to_string());
                 ServiceAddress::new(service).full().to_string()
             }
         };
 
-        log::debug!("WS relaying message thread={thread} recipient={recipient}");
+        log::debug!("{self} WS relaying message thread={thread} recipient={recipient}");
 
         // msg_list should be an array, but may be a single opensrf message.
         if !msg_list.is_array() {
             let mut list = json::JsonValue::new_array();
 
             if let Err(e) = list.push(msg_list) {
-                Err(format!("Error creating message list {e}"))?;
+                Err(format!("{self} Error creating message list {e}"))?;
             }
 
             msg_list = list;
         }
 
-        let mut body_vec: Vec<osrf::message::Message> = Vec::new();
+        let mut body_vec: Vec<message::Message> = Vec::new();
 
         for msg_json in msg_list.members() {
-            let mut msg = match osrf::message::Message::from_json_value(msg_json) {
+            let mut msg = match message::Message::from_json_value(msg_json) {
                 Some(m) => m,
-                None => Err(format!("Error creating message from {msg_json}"))?,
+                None => Err(format!("{self} Error creating message from {msg_json}"))?,
             };
 
             msg.set_ingress(WEBSOCKET_INGRESS);
 
             match msg.mtype() {
-                osrf::message::MessageType::Connect => {
-                    log::debug!("WS received CONNECT request: {thread}");
+                message::MessageType::Connect => {
+                    log::debug!("{self} WS received CONNECT request: {thread}");
                 }
-                osrf::message::MessageType::Request => {
+                message::MessageType::Request => {
                     self.log_request(service, &msg)?;
                 }
-                osrf::message::MessageType::Disconnect => {
-                    log::debug!("WS removing session on DISCONNECT: {thread}");
+                message::MessageType::Disconnect => {
+                    log::debug!("{self} WS removing session on DISCONNECT: {thread}");
                     self.osrf_sessions.remove(thread);
                 }
                 _ => Err(format!(
-                    "WS received unexpected message type: {}",
+                    "{self} WS received unexpected message type: {}",
                     msg.mtype()
                 ))?,
             }
@@ -413,7 +448,7 @@ impl Session {
             body_vec.push(msg);
         }
 
-        let mut tm = TransportMessage::with_body_vec(
+        let mut tm = message::TransportMessage::with_body_vec(
             &recipient,
             self.osrf_sender.address().full(),
             thread,
@@ -423,6 +458,8 @@ impl Session {
         if let Some(xid) = log_xid.as_str() {
             tm.set_osrf_xid(xid);
         }
+
+        log::trace!("{self} sending request to opensrf from {}", self.osrf_sender.address());
 
         if let Some(router) = send_to_router {
             self.osrf_sender.send_to(&tm, &router)?;
@@ -434,7 +471,7 @@ impl Session {
         Ok(())
     }
 
-    fn relay_to_websocket(&mut self, tm: TransportMessage) -> Result<(), String> {
+    fn relay_to_websocket(&mut self, tm: message::TransportMessage) -> Result<(), String> {
         let msg_list = tm.body();
 
         let mut body = json::JsonValue::new_array();
@@ -442,19 +479,19 @@ impl Session {
 
         for msg in msg_list.iter() {
             if let osrf::message::Payload::Status(s) = msg.payload() {
-                if s.status() == &osrf::message::MessageStatus::Ok {
+                if s.status() == &message::MessageStatus::Ok {
                     self.osrf_sessions.insert(tm.thread().to_string(), tm.from().to_string());
                 }
 
-                if *s.status() as isize >= osrf::message::MessageStatus::BadRequest as isize {
+                if *s.status() as isize >= message::MessageStatus::BadRequest as isize {
                     transport_error = true;
-                    log::error!("Request returned unexpected status: {:?}", msg);
+                    log::error!("{self} Request returned unexpected status: {:?}", msg);
                     self.osrf_sessions.remove(tm.thread());
                 }
             }
 
             if let Err(e) = body.push(msg.to_json_value()) {
-                Err(format!("Error building message response: {e}"))?;
+                Err(format!("{self} Error building message response: {e}"))?;
             }
         }
 
@@ -475,13 +512,13 @@ impl Session {
         let msg = OwnedMessage::Text(msg_json);
 
         self.sender.send_message(&msg).or_else(
-            |e| Err(format!("Error sending response to websocket client: {e}")))
+            |e| Err(format!("{self} Error sending response to websocket client: {e}")))
     }
 
-    fn log_request(&self, service: &str, msg: &osrf::message::Message) -> Result<(), String> {
+    fn log_request(&self, service: &str, msg: &message::Message) -> Result<(), String> {
         let request = match msg.payload() {
             osrf::message::Payload::Method(m) => m,
-            _ => Err(format!("WS received Request with no payload"))?,
+            _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
         // Create a string from the method parameters
@@ -521,6 +558,8 @@ impl Server {
     fn run(&mut self) {
 
         let host = format!("{}:{}", self.address, self.port);
+
+        log::info!("Server listening for connections at {host}");
 
         let server = websocket::sync::Server::bind(host)
             .expect("Could not start websockets server");
