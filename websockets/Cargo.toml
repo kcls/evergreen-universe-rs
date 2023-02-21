@@ -12,3 +12,8 @@ threadpool = "1.8"
 opensrf = { path = "../opensrf" }
 getopts = "0.2"
 json = "0.12"
+
+[[bin]]
+name = "opensrf-websockets"
+path = "src/main.rs"
+

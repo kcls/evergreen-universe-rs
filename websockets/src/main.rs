@@ -136,12 +136,13 @@ impl OutboundThread {
 
             // Wait for outbound OpenSRF messages, waking periodically
             // to assess, e.g. check for 'stopping' flag.
-            log::debug!("{self} waiting for opensrf response at {}", self.osrf_receiver.address());
+            log::trace!("{self} waiting for opensrf response at {}", self.osrf_receiver.address());
 
             let msg = match self.osrf_receiver.recv(SHUTDOWN_POLL_INTERVAL, None) {
                 Ok(op) => match op {
                     Some(tm) => {
-                        log::trace!("{self} OutboundThread received message: {tm:?}");
+                        log::debug!(
+                            "{self} OutboundThread received message from: {}", tm.from());
                         ChannelMessage::Outbound(tm)
                     }
                     None => {
@@ -400,7 +401,8 @@ impl Session {
                 if service.eq("_") {
                     Err(format!("{self} WS unable to determine recipient"))?
                 }
-                send_to_router = Some(RouterAddress::new(service).full().to_string());
+                let domain = self.osrf_sender.address().domain();
+                send_to_router = Some(RouterAddress::new(domain).full().to_string());
                 ServiceAddress::new(service).full().to_string()
             }
         };
@@ -606,7 +608,7 @@ fn main() {
     logger.init().expect("Logger Init");
 
     let address = params.opt_get_default("a", "127.0.0.1".to_string()).unwrap();
-    let port = params.opt_get_default("p", "7692".to_string()).unwrap();
+    let port = params.opt_get_default("p", "7682".to_string()).unwrap();
     let port = port.parse::<u16>().expect("Invalid port number");
 
     let mut server = Server::new(gateway.clone(), address, port);
