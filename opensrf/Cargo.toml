@@ -14,26 +14,27 @@ roxmltree = "0.18"
 redis = "0.22.1"
 gethostname = "0.4"
 threadpool = "1.8.1"
+websocket = "0.26"
 signal-hook = "0.3.14"
 getopts = "0.2.21"
 
 [[bin]]
-name = "osrf-router"
+name = "opensrf-router"
 path = "src/bin/router.rs"
 
 [[bin]]
-name = "osrf-websocketd-translator"
-path = "src/bin/websocketd-translator.rs"
+name = "opensrf-websockets"
+path = "src/bin/websockets.rs"
 
 [[bin]]
-name = "osrf-buswatch"
+name = "opensrf-buswatch"
 path = "src/bin/buswatch.rs"
 
 [[example]]
-name = "osrf-client"
+name = "opensrf-client"
 path = "examples/client.rs"
 
 [[example]]
-name = "osrf-client-demo"
+name = "opensrf-client-demo"
 path = "examples/client-demo.rs"
 
