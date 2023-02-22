@@ -123,18 +123,14 @@ impl Logger {
         msg: &str,
     ) {
         // Keep the locally created writer in scope if needed.
-        let w: Option<UnixDatagram>;
+        let mut local_writer: Option<UnixDatagram> = None;
 
-        let mut mywriter = true;
         let writer = match writer {
-            Some(w) => {
-                mywriter = false;
-                w
-            }
+            Some(w) => w,
             None => match Logger::writer() {
                 Ok(s) => {
-                    w = Some(s);
-                    w.as_ref().unwrap()
+                    local_writer = Some(s);
+                    local_writer.as_ref().unwrap()
                 }
                 Err(e) => {
                     eprintln!("Cannot write to unix socket: {e}");
@@ -183,7 +179,7 @@ impl Logger {
         );
 
         if writer.send(message.as_bytes()).is_ok() {
-            if mywriter {
+            if local_writer.is_some() {
                 // If we're using a writer created within this function,
                 // shut it down when we're done.
                 writer.shutdown(Shutdown::Both).ok();
