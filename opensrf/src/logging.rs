@@ -5,6 +5,7 @@ use std::os::unix::net::UnixDatagram;
 use std::process;
 use syslog;
 use thread_id;
+use std::panic::Location;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
@@ -114,12 +115,10 @@ impl Logger {
     /// the needed data.  Optionally, allow the caller to maintain and
     /// provide their own UnixDatagram so a new connection is not required
     /// with every log message.
+    #[track_caller]
     pub fn activity(
         writer: Option<&UnixDatagram>,
         conf: &conf::BusClient,
-        app: &str,
-        file: &str,
-        line: u32,
         msg: &str,
     ) {
         // Keep the locally created writer in scope if needed.
@@ -138,6 +137,19 @@ impl Logger {
                 }
             },
         };
+
+        let app = Logger::find_app_name();
+        let caller = Location::caller();
+        let line = caller.line();
+
+        // Remove the path portion of the file name.
+        let file = caller.file();
+        let filename: String;
+        if let Some(n) = file.rsplit("/").next() {
+            filename = n.to_string();
+        } else {
+            filename = String::from(file);
+        }
 
         let facility = conf.logging().activity_log_facility().unwrap_or(
             conf.logging()
@@ -159,7 +171,7 @@ impl Logger {
             app,
             levelname,
             process::id(),
-            file,
+            filename,
             line,
             tid,
             msg,

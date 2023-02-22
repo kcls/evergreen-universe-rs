@@ -573,9 +573,6 @@ impl Session {
         Logger::activity(
             self.activity_socket.as_ref(),
             self.conf.gateway().unwrap(),
-            "websockets",
-            file!(),
-            line!(),
             &format!(
                 "[{}] {} {} {}",
                 self.client_ip,
