@@ -407,11 +407,10 @@ impl Worker {
         }
 
         if let Err(err) = (method.handler())(appworker, self.session_mut(), &request) {
-            // TODO reply internal server error
-            return Err(format!(
-                "{self} method {} failed with {err}",
-                request.method()
-            ));
+            let msg = format!("{self} method {} failed with {err}", request.method());
+            log::error!("{msg}");
+            self.reply_server_error(&msg)?;
+            Err(msg)?;
         }
 
         if !self.session().responded_complete() {
@@ -419,6 +418,31 @@ impl Worker {
         } else {
             Ok(())
         }
+    }
+
+    fn reply_server_error(&mut self, text: &str) -> Result<(), String> {
+        self.connected = false;
+
+        let tmsg = TransportMessage::with_body(
+            self.session().sender().full(),
+            self.client.address().full(),
+            self.session().thread(),
+            Message::new(
+                MessageType::Status,
+                self.session().last_thread_trace(),
+                Payload::Status(message::Status::new(
+                    MessageStatus::InternalServerError,
+                    &format!("Internal Server Error: {text}"),
+                    "osrfStatus",
+                )),
+            ),
+        );
+
+        self.client
+            .singleton()
+            .borrow_mut()
+            .get_domain_bus(self.session().sender().domain())?
+            .send(&tmsg)
     }
 
     fn reply_bad_request(&mut self, text: &str) -> Result<(), String> {
