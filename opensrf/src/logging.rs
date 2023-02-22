@@ -80,18 +80,7 @@ impl Logger {
     ///
     /// Attempts to connect to syslog unix socket if possible.
     pub fn init(mut self) -> Result<(), log::SetLoggerError> {
-        match UnixDatagram::unbound() {
-            Ok(socket) => match socket.connect(SYSLOG_UNIX_PATH) {
-                Ok(()) => self.writer = Some(socket),
-                Err(e) => {
-                    eprintln!("Cannot connext to unix socket: {e}");
-                }
-            },
-            Err(e) => {
-                eprintln!("Cannot connext to unix socket: {e}");
-            }
-        }
-
+        self.writer = Logger::writer().ok();
         log::set_max_level(self.loglevel);
         log::set_boxed_logger(Box::new(self))?;
 
@@ -103,6 +92,84 @@ impl Logger {
     /// Essentially copied from the syslog crate.
     fn encode_priority(&self, severity: syslog::Severity) -> syslog::Priority {
         return self.facility as u8 | severity as u8;
+    }
+
+    pub fn writer() -> Result<UnixDatagram, String> {
+        match UnixDatagram::unbound() {
+            Ok(socket) => match socket.connect(SYSLOG_UNIX_PATH) {
+                Ok(()) => Ok(socket),
+                Err(e) => Err(format!("Cannot connext to unix socket: {e}")),
+            },
+            Err(e) => Err(format!("Cannot connext to unix socket: {e}")),
+        }
+    }
+
+    /// Log activity.
+    ///
+    /// The stock log crate does not have an "activity" log option or other
+    /// option we could use for the purpose.  It's also not possible to
+    /// add log levels, short of maintaining a locally patched version.
+    ///
+    /// Provide an activity() call that requires the user to provide all
+    /// the needed data.  Optionally, allow the caller to maintain and
+    /// provide their own UnixDatagram so a new connection is not required
+    /// with every log message.
+    pub fn activity(
+        writer: Option<&UnixDatagram>,
+        conf: &conf::BusClient,
+        app: &str,
+        file: &str,
+        line: u32,
+        msg: &str,
+    ) {
+        // Keep the locally created writer in scope if needed.
+        let w: Option<UnixDatagram>;
+
+        let writer = match writer {
+            Some(w) => w,
+            None => match Logger::writer() {
+                Ok(s) => {
+                    w = Some(s);
+                    w.as_ref().unwrap()
+                }
+                Err(e) => {
+                    eprintln!("Cannot write to unix socket: {e}");
+                    return;
+                }
+            },
+        };
+
+        let facility = conf.logging().activity_log_facility().unwrap_or(
+            conf.logging()
+                .syslog_facility()
+                .unwrap_or(syslog::Facility::LOG_LOCAL1),
+        );
+
+        let severity = facility as u8 | syslog::Severity::LOG_INFO as u8;
+        let levelname = "ACT";
+
+        let mut tid: String = thread_id::get().to_string();
+        if tid.len() > TRIM_THREAD_ID {
+            tid = tid.chars().skip(tid.len() - TRIM_THREAD_ID).collect();
+        }
+
+        let message = format!(
+            "<{}>{} [{}:{}:{}:{}:{}] {}",
+            severity,
+            app,
+            levelname,
+            process::id(),
+            file,
+            line,
+            tid,
+            msg,
+        );
+
+        if writer.send(message.as_bytes()).is_ok() {
+            return;
+        }
+
+        println!("{message}");
     }
 }
 

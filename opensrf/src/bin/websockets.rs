@@ -9,6 +9,7 @@ use osrf::message;
 use std::collections::HashMap;
 use std::fmt;
 use std::net::{SocketAddr, TcpStream};
+use std::os::unix::net::UnixDatagram;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -200,6 +201,8 @@ struct Session {
 
     /// Currently active (stateful) OpenSRF sessions.
     osrf_sessions: HashMap<String, String>,
+
+    activity_socket: Option<UnixDatagram>,
 }
 
 impl fmt::Display for Session {
@@ -274,6 +277,7 @@ impl Session {
             conf,
             osrf_sender,
             osrf_sessions: HashMap::new(),
+            activity_socket: Logger::writer().ok(),
         };
 
         log::info!("{session} starting channel threads");
@@ -565,15 +569,20 @@ impl Session {
                 .join(", "),
         };
 
-        // TODO activity logging
-
         // Log the API call
-        log::info!(
-            "[{}] {} {} {}",
-            self.client_ip,
-            service,
-            request.method(),
-            log_params
+        Logger::activity(
+            self.activity_socket.as_ref(),
+            self.conf.gateway().unwrap(),
+            "websockets",
+            file!(),
+            line!(),
+            &format!(
+                "[{}] {} {} {}",
+                self.client_ip,
+                service,
+                request.method(),
+                log_params
+            ),
         );
 
         Ok(())
@@ -646,6 +655,7 @@ fn main() {
     let address = params
         .opt_get_default("a", "127.0.0.1".to_string())
         .unwrap();
+
     let port = params.opt_get_default("p", "7682".to_string()).unwrap();
     let port = port.parse::<u16>().expect("Invalid port number");
 
