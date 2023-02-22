@@ -66,7 +66,6 @@ setting-groups:
     checkout-override:
       - "COPY_ALERT_MESSAGE"
       - "COPY_NOT_AVAILABLE"
-      - "COPY_IN_TRANSIT"
       - "PATRON_EXCEEDS_FINES"
 
     # Optional set of sip fields to remove or have their values replaced
