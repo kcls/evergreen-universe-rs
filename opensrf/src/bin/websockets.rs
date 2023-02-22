@@ -202,6 +202,8 @@ struct Session {
     /// Currently active (stateful) OpenSRF sessions.
     osrf_sessions: HashMap<String, String>,
 
+    /// Maintain our own activity logging socket since we
+    /// frequently log activity.
     activity_socket: Option<UnixDatagram>,
 }
 

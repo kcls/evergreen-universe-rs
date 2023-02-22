@@ -6,6 +6,7 @@ use std::process;
 use syslog;
 use thread_id;
 use std::panic::Location;
+use std::net::Shutdown;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
@@ -124,8 +125,12 @@ impl Logger {
         // Keep the locally created writer in scope if needed.
         let w: Option<UnixDatagram>;
 
+        let mut mywriter = true;
         let writer = match writer {
-            Some(w) => w,
+            Some(w) => {
+                mywriter = false;
+                w
+            }
             None => match Logger::writer() {
                 Ok(s) => {
                     w = Some(s);
@@ -178,6 +183,11 @@ impl Logger {
         );
 
         if writer.send(message.as_bytes()).is_ok() {
+            if mywriter {
+                // If we're using a writer created within this function,
+                // shut it down when we're done.
+                writer.shutdown(Shutdown::Both).ok();
+            }
             return;
         }
 
