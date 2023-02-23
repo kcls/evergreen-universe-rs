@@ -1,12 +1,12 @@
 use super::conf;
 ///! OpenSRF Syslog
 use log;
+use std::net::Shutdown;
 use std::os::unix::net::UnixDatagram;
+use std::panic::Location;
 use std::process;
 use syslog;
 use thread_id;
-use std::panic::Location;
-use std::net::Shutdown;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
@@ -117,11 +117,7 @@ impl Logger {
     /// provide their own UnixDatagram so a new connection is not required
     /// with every log message.
     #[track_caller]
-    pub fn activity(
-        writer: Option<&UnixDatagram>,
-        conf: &conf::BusClient,
-        msg: &str,
-    ) {
+    pub fn activity(writer: Option<&UnixDatagram>, conf: &conf::BusClient, msg: &str) {
         // Keep the locally created writer in scope if needed.
         let mut local_writer: Option<UnixDatagram> = None;
 

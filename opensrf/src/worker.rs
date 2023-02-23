@@ -366,15 +366,24 @@ impl Worker {
             }
         };
 
-        let logp = request
-            .params()
+        let log_params = match self
+            .config
+            .log_protect()
             .iter()
-            .map(|p| p.dump())
-            .collect::<Vec<_>>()
-            .join(", ");
+            .filter(|m| request.method().starts_with(&m[..]))
+            .next()
+        {
+            Some(_) => "**PARAMS REDACTED**".to_string(),
+            None => request
+                .params()
+                .iter()
+                .map(|p| p.dump())
+                .collect::<Vec<_>>()
+                .join(", "),
+        };
 
         // Log the API call
-        log::debug!("CALL: {} {}", request.method(), logp);
+        log::info!("CALL: {} {}", request.method(), log_params);
 
         // Before we begin processing a service-level request, clear our
         // local message bus to avoid encountering any stale messages
@@ -423,24 +432,24 @@ impl Worker {
     fn reply_server_error(&mut self, text: &str) -> Result<(), String> {
         self.connected = false;
 
+        let msg = Message::new(
+            MessageType::Status,
+            self.session().last_thread_trace(),
+            Payload::Status(message::Status::new(
+                MessageStatus::InternalServerError,
+                &format!("Internal Server Error: {text}"),
+                "osrfStatus",
+            )),
+        );
+
         let tmsg = TransportMessage::with_body(
             self.session().sender().full(),
             self.client.address().full(),
             self.session().thread(),
-            Message::new(
-                MessageType::Status,
-                self.session().last_thread_trace(),
-                Payload::Status(message::Status::new(
-                    MessageStatus::InternalServerError,
-                    &format!("Internal Server Error: {text}"),
-                    "osrfStatus",
-                )),
-            ),
+            msg,
         );
 
-        self.client
-            .singleton()
-            .borrow_mut()
+        self.client_internal_mut()
             .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
@@ -448,24 +457,24 @@ impl Worker {
     fn reply_bad_request(&mut self, text: &str) -> Result<(), String> {
         self.connected = false;
 
+        let msg = Message::new(
+            MessageType::Status,
+            self.session().last_thread_trace(),
+            Payload::Status(message::Status::new(
+                MessageStatus::BadRequest,
+                &format!("Bad Request: {text}"),
+                "osrfStatus",
+            )),
+        );
+
         let tmsg = TransportMessage::with_body(
             self.session().sender().full(),
             self.client.address().full(),
             self.session().thread(),
-            Message::new(
-                MessageType::Status,
-                self.session().last_thread_trace(),
-                Payload::Status(message::Status::new(
-                    MessageStatus::BadRequest,
-                    &format!("Bad Request: {text}"),
-                    "osrfStatus",
-                )),
-            ),
+            msg,
         );
 
-        self.client
-            .singleton()
-            .borrow_mut()
+        self.client_internal_mut()
             .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
