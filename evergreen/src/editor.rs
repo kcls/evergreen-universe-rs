@@ -1,5 +1,6 @@
 use super::event::EgEvent;
 use super::idl;
+use super::util;
 use opensrf as osrf;
 use osrf::params::ApiParams;
 use std::sync::Arc;
@@ -75,6 +76,7 @@ impl Clone for Editor {
 }
 
 impl Editor {
+    /// Create a new minimal Editor
     pub fn new(client: &osrf::Client, idl: &Arc<idl::Parser>) -> Self {
         Editor {
             client: client.clone(),
@@ -91,12 +93,15 @@ impl Editor {
         }
     }
 
+    /// Create an editor with an existing authtoken
     pub fn with_auth(client: &osrf::Client, idl: &Arc<idl::Parser>, authtoken: &str) -> Self {
         let mut editor = Editor::new(client, idl);
         editor.authtoken = Some(authtoken.to_string());
         editor
     }
 
+    /// Create an editor with an existing authtoken, with the "transaction
+    /// wanted" flag set by default.
     pub fn with_auth_xact(client: &osrf::Client, idl: &Arc<idl::Parser>, authtoken: &str) -> Self {
         let mut editor = Editor::new(client, idl);
         editor.authtoken = Some(authtoken.to_string());
@@ -211,6 +216,9 @@ impl Editor {
         format!("{p}.{}", part)
     }
 
+    /// Rollback a database transaction.
+    ///
+    /// This variation does not send a DISCONNECT to the connected worker.
     pub fn xact_rollback(&mut self) -> Result<(), String> {
         if self.has_session() && self.has_xact_id() {
             self.request_np(&self.app_method("transaction.rollback"))?;
@@ -222,6 +230,7 @@ impl Editor {
         Ok(())
     }
 
+    /// Start a new transaction, connecting to a worker if necessary.
     pub fn xact_begin(&mut self) -> Result<(), String> {
         self.connect()?;
         if let Some(id) = self.request_np(&self.app_method("transaction.begin"))? {
@@ -233,6 +242,9 @@ impl Editor {
         Ok(())
     }
 
+    /// Commit a database transaction.
+    ///
+    /// This variation does not send a DISCONNECT to the connected worker.
     pub fn xact_commit(&mut self) -> Result<(), String> {
         if self.has_session() && self.has_xact_id() {
             let xact_id = self.xact_id.as_ref().unwrap().to_string();
@@ -246,6 +258,7 @@ impl Editor {
         Ok(())
     }
 
+    /// End the stateful conversation with the remote worker.
     pub fn disconnect(&mut self) -> Result<(), String> {
         self.xact_rollback()?;
 
@@ -256,6 +269,7 @@ impl Editor {
         Ok(())
     }
 
+    /// Start a stateful conversation with a worker.
     pub fn connect(&mut self) -> Result<(), String> {
         if let Some(ref ses) = self.session {
             if ses.connected() {
@@ -344,6 +358,7 @@ impl Editor {
         self.session.as_mut().unwrap()
     }
 
+    /// Get an IDL class by class name.
     fn get_class(&self, idlclass: &str) -> Result<&idl::Class, String> {
         match self.idl.classes().get(idlclass) {
             Some(c) => Ok(c),
@@ -507,5 +522,36 @@ impl Editor {
         } else {
             Err(format!("Create returned no response"))
         }
+    }
+
+    /// Returns Result of true if our authenticated requestor has the
+    /// specified permission.
+    pub fn allowed(&mut self, perm: &str, org_id_op: Option<i64>) -> Result<bool, String> {
+        let user_id = match self.requestor() {
+            Some(r) => util::json_int(&r["id"])?,
+            None => return Ok(false),
+        };
+
+        let org_id = match org_id_op {
+            Some(i) => json::from(i),
+            None => json::JsonValue::Null,
+        };
+
+        let query = json::object! {
+            select: {
+                au: [ {
+                    transform: "permission.usr_has_perm",
+                    alias: "has_perm",
+                    column: "id",
+                    params: [perm, org_id.to_owned()]
+                } ]
+            },
+            from: "au",
+            where: {id: user_id},
+        };
+
+        let resp = self.json_query(query)?;
+
+        Ok(util::json_bool(&resp[0]["has_perm"]))
     }
 }

@@ -6,7 +6,8 @@ fn main() -> Result<(), String> {
 
     println!("Logging in...");
 
-    let args = eg::auth::AuthLoginArgs::new("admin", "demo123", "temp", None);
+    //let args = eg::auth::AuthLoginArgs::new("admin", "demo123", "temp", None);
+    let args = eg::auth::AuthLoginArgs::new("br1mclark", "montyc1234", "temp", None);
     let auth_ses = match eg::auth::AuthSession::login(client, &args)? {
         Some(s) => s,
         None => panic!("Login failed"),
@@ -20,6 +21,12 @@ fn main() -> Result<(), String> {
 
     if editor.checkauth()? {
         println!("Auth Check OK: {}", editor.requestor().unwrap()["usrname"]);
+    }
+
+    if editor.allowed("EVERYTHING", None)? {
+        println!("Requestor is allowed");
+    } else {
+        println!("Requestor is NOT allowed");
     }
 
     if let Some(org) = editor.retrieve("aou", 4)? {
