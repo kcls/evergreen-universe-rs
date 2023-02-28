@@ -15,7 +15,7 @@ Evergreen bindings for IDL parsing, event handling, cstore editor, and more.
 
 ### MARC
 
-MARC Binary, XML, and Breaker parsing and creationg library.
+Library for reading/writing MARC Binary, MARC XML, and MARC Breaker.
 
 ### SIP2
 
