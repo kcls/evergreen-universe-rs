@@ -1,5 +1,4 @@
 use super::message::Message;
-use super::message::MessageType;
 use super::message::Payload;
 use super::message::TransportMessage;
 use json;
