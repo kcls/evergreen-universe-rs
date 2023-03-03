@@ -57,15 +57,11 @@ pub fn init_with_more_options(
     opts.optopt("", "bus-username", "Bus Login Username", "BUS_USERNAME");
     opts.optopt("", "bus-password", "Bus Login Password", "BUS_PASSWORD");
 
-    let params = match opts.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => Err(format!("Error parsing options: {e}"))?,
-    };
+    let params = opts.parse(&args[1..])
+        .or_else(|e| Err(format!("Error parsing options: {e}")))?;
 
-    let filename = match params.opt_get_default("osrf-config", DEFAULT_OSRF_CONFIG.to_string()) {
-        Ok(f) => f,
-        Err(e) => Err(format!("Error reading osrf-config option: {e}"))?,
-    };
+    let filename = params.opt_get_default("osrf-config", DEFAULT_OSRF_CONFIG.to_string())
+        .or_else(|e| Err(format!("Error reading osrf-config option: {e}")))?;
 
     let mut config = conf::ConfigBuilder::from_file(&filename)?.build()?;
 
@@ -88,9 +84,8 @@ pub fn init_with_more_options(
     }
 
     if !options.skip_logging {
-        if let Err(e) = logging::Logger::new(config.client().logging())?.init() {
-            return Err(format!("Error initializing logger: {e}"));
-        }
+        logging::Logger::new(config.client().logging())?.init()
+            .or_else(|e| Err(format!("Error initializing logger: {e}")))?;
     }
 
     Ok((config, params))
