@@ -238,9 +238,7 @@ impl Session {
         if evt.textcode().eq("OPEN_CIRCULATION_EXISTS") {
             result.screen_msg = Some("This item is already checked out");
         } else {
-            result.screen_msg = Some(
-                "Patron is not allowed to checkout the selected item",
-            );
+            result.screen_msg = Some("Patron is not allowed to checkout the selected item");
         }
 
         Ok(result)

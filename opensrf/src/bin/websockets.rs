@@ -233,7 +233,9 @@ impl Session {
             }
         };
 
-        log::info!("Starting new session for {client_ip} with max requests set to {MAX_ACTIVE_REQUESTS}");
+        log::info!(
+            "Starting new session for {client_ip} with max requests set to {MAX_ACTIVE_REQUESTS}"
+        );
 
         let (receiver, sender) = match client.split() {
             Ok((r, s)) => (r, s),
@@ -380,10 +382,8 @@ impl Session {
     /// Here we pop them off the queue and relay them to OpenSRF,
     /// taking the MAX_ACTIVE_REQUESTS limit into consideration.
     fn process_message_queue(&mut self) -> Result<(), String> {
-
         while self.reqs_in_flight < self.max_parallel {
             if let Some(text) = self.request_queue.pop_front() {
-
                 // This increments self.reqs_in_flight as needed.
                 self.relay_to_osrf(&text)?;
             } else {
@@ -562,7 +562,8 @@ impl Session {
             if let osrf::message::Payload::Status(s) = msg.payload() {
                 match *s.status() {
                     message::MessageStatus::Ok => {
-                        if self.reqs_in_flight > 0 { // avoid underflow
+                        if self.reqs_in_flight > 0 {
+                            // avoid underflow
                             self.reqs_in_flight -= 1;
                         };
                         self.osrf_sessions
@@ -661,7 +662,7 @@ impl Server {
         address: String,
         port: u16,
         max_clients: usize,
-        max_parallel: usize
+        max_parallel: usize,
     ) -> Self {
         Server {
             conf,
@@ -707,7 +708,12 @@ fn main() {
     ops.optopt("p", "port", "Port", "PORT");
     ops.optopt("a", "address", "Listen Address", "ADDRESS");
     ops.optopt("", "max-clients", "Max Clients", "MAX_CLIENTS");
-    ops.optopt("", "max-parallel-requests", "Max Parallel Requests", "MAX_PARALLEL");
+    ops.optopt(
+        "",
+        "max-parallel-requests",
+        "Max Parallel Requests",
+        "MAX_PARALLEL",
+    );
 
     let initops = init::InitOptions { skip_logging: true };
 
@@ -733,7 +739,9 @@ fn main() {
     };
 
     let max_parallel = match params.opt_str("max-parallel-requests") {
-        Some(mp) => mp.parse::<usize>().expect("Invalid max-parallel-requests value"),
+        Some(mp) => mp
+            .parse::<usize>()
+            .expect("Invalid max-parallel-requests value"),
         None => MAX_ACTIVE_REQUESTS,
     };
 

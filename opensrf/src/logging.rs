@@ -43,7 +43,8 @@ impl Logger {
             None => syslog::Facility::LOG_LOCAL0,
         };
 
-        let act_facility = options.activity_log_facility()
+        let act_facility = options
+            .activity_log_facility()
             .unwrap_or(syslog::Facility::LOG_LOCAL1);
 
         Ok(Logger {
@@ -138,9 +139,7 @@ impl log::Log for Logger {
             levelname = String::from("ACT");
             let facility = self.activity_facility;
             facility as u8 | syslog::Severity::LOG_INFO as u8
-
         } else {
-
             self.encode_priority(match levelname.as_str() {
                 "DEBUG" | "TRACE" => syslog::Severity::LOG_DEBUG,
                 "INFO" => syslog::Severity::LOG_INFO,

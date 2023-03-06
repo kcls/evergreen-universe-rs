@@ -338,6 +338,13 @@ impl Editor {
         );
 
         if method.contains("create") || method.contains("update") || method.contains("delete") {
+            if !self.has_xact_id() {
+                self.disconnect()?;
+                return Err(format!(
+                    "Attempt to update DB while not in a transaction : {method}"
+                ));
+            }
+
             // Write calls also get logged to the activity log
             log::info!(
                 "ACT:{} request {} {}",
@@ -347,8 +354,10 @@ impl Editor {
             );
         }
 
-        let mut req = self.session().request(method, params)
-            .or_else(|e| { self.rollback()?; Err(e) })?;
+        let mut req = self.session().request(method, params).or_else(|e| {
+            self.rollback()?;
+            Err(e)
+        })?;
 
         req.recv(self.timeout)
     }
