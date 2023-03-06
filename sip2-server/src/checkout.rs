@@ -2,7 +2,6 @@ use super::item::Item;
 use super::patron::Patron;
 use super::session::Session;
 use evergreen as eg;
-use gettextrs::*;
 
 const RENEW_METHOD: &str = "open-ils.circ.renew";
 const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
@@ -14,7 +13,7 @@ pub struct CheckoutResult {
     circ_id: Option<i64>,
     due_date: Option<String>,
     renewal_remaining: i64,
-    screen_msg: Option<String>,
+    screen_msg: Option<&'static str>,
 }
 
 impl CheckoutResult {
@@ -233,12 +232,15 @@ impl Session {
             }
         }
 
+        // TODO gettext() can be used for these string literals below, but
+        // it's a massive dependency for just a couple of sentances.
+        // There's likely a better approach.
         if evt.textcode().eq("OPEN_CIRCULATION_EXISTS") {
-            result.screen_msg = Some(gettext("This item is already checked out"));
+            result.screen_msg = Some("This item is already checked out");
         } else {
-            result.screen_msg = Some(gettext(
+            result.screen_msg = Some(
                 "Patron is not allowed to checkout the selected item",
-            ));
+            );
         }
 
         Ok(result)

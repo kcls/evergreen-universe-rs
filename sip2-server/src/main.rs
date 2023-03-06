@@ -1,6 +1,5 @@
 use evergreen as eg;
 use getopts;
-use gettextrs::*;
 
 mod checkin;
 mod checkout;
@@ -12,8 +11,6 @@ mod payment;
 mod server;
 mod session;
 mod util;
-
-const TEXT_DOMAIN: &str = "evergreen:sip";
 
 const HELP_TEXT: &str = r#"
 
@@ -46,9 +43,5 @@ fn main() {
     };
 
     sip_conf.read_yaml(&config_file);
-
-    textdomain(TEXT_DOMAIN).expect("Apply gettext text domain");
-    bind_textdomain_codeset(TEXT_DOMAIN, "UTF-8").expect("Apply gettext codeset");
-
     server::Server::new(sip_conf, ctx).serve();
 }

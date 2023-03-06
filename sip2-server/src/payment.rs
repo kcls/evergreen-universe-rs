@@ -1,7 +1,6 @@
 use super::patron::Patron;
 use super::session::Session;
 use evergreen as eg;
-use gettextrs::*;
 
 pub struct PaymentResult {
     success: bool,
@@ -147,7 +146,7 @@ impl Session {
         }
 
         if pay_amount > eg::util::json_float(&sum["balance_owed"])? {
-            result.screen_msg = Some(gettext("Overpayment not allowed"));
+            result.screen_msg = Some("Overpayment not allowed".to_string());
             return Ok(Vec::new());
         }
 
@@ -169,7 +168,7 @@ impl Session {
         let xacts = self.get_patron_xacts(&patron, None)?; // see patron mod
 
         if xacts.len() == 0 {
-            result.screen_msg = Some(gettext("No transactions to pay"));
+            result.screen_msg = Some("No transactions to pay".to_string());
             return Ok(payments);
         }
 
@@ -213,7 +212,7 @@ impl Session {
         }
 
         if amount_remaining > 0.0 {
-            result.screen_msg = Some(gettext("Overpayment not allowed"));
+            result.screen_msg = Some("Overpayment not allowed".to_string());
             return Ok(payments);
         }
 
@@ -247,9 +246,9 @@ impl Session {
                 p0.unwrap()
             };
 
-            gettext!("Via SIP2: Register login '{}'", login)
+            format!("Via SIP2: Register login '{}'", login)
         } else {
-            gettext("VIA SIP2")
+            String::from("VIA SIP2")
         };
 
         let mut pay_array = json::array![];
@@ -270,7 +269,7 @@ impl Session {
 
                 args["cc_args"]["terminal_xact"] = match terminal_xact_op {
                     Some(tx) => json::from(tx.as_str()),
-                    None => json::from(gettext("Not provided by SIP client")),
+                    None => json::from("Not provided by SIP client"),
                 };
 
                 args["payment_type"] = json::from("credit_card_payment");
@@ -281,7 +280,7 @@ impl Session {
                 args["payment_type"] = json::from("check_payment");
                 args["check_number"] = match check_number_op {
                     Some(s) => json::from(s.as_str()),
-                    None => json::from(gettext("Not provided by SIP client")),
+                    None => json::from("Not provided by SIP client"),
                 };
             }
             _ => {
