@@ -9,7 +9,6 @@ use osrf::message;
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::net::{SocketAddr, TcpStream};
-use std::os::unix::net::UnixDatagram;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -205,16 +204,17 @@ struct Session {
     /// Currently active (stateful) OpenSRF sessions.
     osrf_sessions: HashMap<String, String>,
 
-    /// Maintain our own activity logging socket since we
-    /// frequently log activity.
-    activity_socket: Option<UnixDatagram>,
-
     /// Number of inbound connects/requests that are currently
     /// awaiting a final response.
     reqs_in_flight: usize,
 
     /// Backlog of messages yet to be delivered to OpenSRF.
     request_queue: VecDeque<String>,
+
+    /// Maximum number of active/parallel websocket requests to
+    /// relay to OpenSRF at a time.  Once exceeded, new messages
+    /// are queued for delivery and relayed as soon as possible.
+    max_parallel: usize,
 }
 
 impl fmt::Display for Session {
@@ -224,7 +224,7 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn run(conf: Arc<conf::Config>, client: Client<TcpStream>) {
+    fn run(conf: Arc<conf::Config>, client: Client<TcpStream>, max_parallel: usize) {
         let client_ip = match client.peer_addr() {
             Ok(ip) => ip,
             Err(e) => {
@@ -290,10 +290,10 @@ impl Session {
             sender,
             conf,
             osrf_sender,
+            max_parallel,
             reqs_in_flight: 0,
             osrf_sessions: HashMap::new(),
             request_queue: VecDeque::new(),
-            activity_socket: Logger::writer().ok(),
         };
 
         log::info!("{session} starting channel threads");
@@ -381,7 +381,7 @@ impl Session {
     /// taking the MAX_ACTIVE_REQUESTS limit into consideration.
     fn process_message_queue(&mut self) -> Result<(), String> {
 
-        while self.reqs_in_flight < MAX_ACTIVE_REQUESTS {
+        while self.reqs_in_flight < self.max_parallel {
             if let Some(text) = self.request_queue.pop_front() {
 
                 // This increments self.reqs_in_flight as needed.
@@ -635,17 +635,12 @@ impl Session {
                 .join(", "),
         };
 
-        // Log the API call
-        Logger::activity(
-            self.activity_socket.as_ref(),
-            self.conf.gateway().unwrap(),
-            &format!(
-                "[{}] {} {} {}",
-                self.client_ip,
-                service,
-                request.method(),
-                log_params
-            ),
+        log::info!(
+            "ACT:[{}] {} {} {}",
+            self.client_ip,
+            service,
+            request.method(),
+            log_params
         );
 
         Ok(())
@@ -657,15 +652,23 @@ struct Server {
     port: u16,
     address: String,
     max_clients: usize,
+    max_parallel: usize,
 }
 
 impl Server {
-    fn new(conf: Arc<conf::Config>, address: String, port: u16, max_clients: usize) -> Self {
+    fn new(
+        conf: Arc<conf::Config>,
+        address: String,
+        port: u16,
+        max_clients: usize,
+        max_parallel: usize
+    ) -> Self {
         Server {
             conf,
             port,
             address,
             max_clients,
+            max_parallel,
         }
     }
 
@@ -688,9 +691,10 @@ impl Server {
             }
 
             let conf = self.conf.clone();
+            let max_parallel = self.max_parallel;
 
             pool.execute(move || match connection.accept() {
-                Ok(client) => Session::run(conf, client),
+                Ok(client) => Session::run(conf, client, max_parallel),
                 Err(e) => log::error!("Error accepting new connection: {}", e.1),
             });
         }
@@ -703,6 +707,7 @@ fn main() {
     ops.optopt("p", "port", "Port", "PORT");
     ops.optopt("a", "address", "Listen Address", "ADDRESS");
     ops.optopt("", "max-clients", "Max Clients", "MAX_CLIENTS");
+    ops.optopt("", "max-parallel-requests", "Max Parallel Requests", "MAX_PARALLEL");
 
     let initops = init::InitOptions { skip_logging: true };
 
@@ -727,6 +732,11 @@ fn main() {
         None => MAX_WS_CLIENTS,
     };
 
-    let mut server = Server::new(config, address, port, max_clients);
+    let max_parallel = match params.opt_str("max-parallel-requests") {
+        Some(mp) => mp.parse::<usize>().expect("Invalid max-parallel-requests value"),
+        None => MAX_ACTIVE_REQUESTS,
+    };
+
+    let mut server = Server::new(config, address, port, max_clients, max_parallel);
     server.run();
 }

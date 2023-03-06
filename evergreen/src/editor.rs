@@ -337,14 +337,18 @@ impl Editor {
             self.args_to_string(&params)?
         );
 
-        let mut req = match self.session().request(method, params) {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("Request failed: {e}. Performing rollback/disconnect as needed");
-                self.rollback()?;
-                Err(e)?
-            }
-        };
+        if method.contains("create") || method.contains("update") || method.contains("delete") {
+            // Write calls also get logged to the activity log
+            log::info!(
+                "ACT:{} request {} {}",
+                self.logtag(),
+                method,
+                self.args_to_string(&params)?
+            );
+        }
+
+        let mut req = self.session().request(method, params)
+            .or_else(|e| { self.rollback()?; Err(e) })?;
 
         req.recv(self.timeout)
     }

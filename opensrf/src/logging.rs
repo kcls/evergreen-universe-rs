@@ -1,9 +1,7 @@
-use super::conf;
 ///! OpenSRF Syslog
+use super::conf;
 use log;
-use std::net::Shutdown;
 use std::os::unix::net::UnixDatagram;
-use std::panic::Location;
 use std::process;
 use syslog;
 use thread_id;
@@ -23,6 +21,7 @@ pub struct Logger {
     _logfile: conf::LogFile,
     loglevel: log::LevelFilter,
     facility: syslog::Facility,
+    activity_facility: syslog::Facility,
     writer: Option<UnixDatagram>,
     application: String,
 }
@@ -44,10 +43,14 @@ impl Logger {
             None => syslog::Facility::LOG_LOCAL0,
         };
 
+        let act_facility = options.activity_log_facility()
+            .unwrap_or(syslog::Facility::LOG_LOCAL1);
+
         Ok(Logger {
             _logfile: file.clone(),
             loglevel: level.clone(),
             facility: facility.clone(),
+            activity_facility: act_facility.clone(),
             writer: None,
             application: Logger::find_app_name(),
         })
@@ -105,86 +108,6 @@ impl Logger {
             Err(e) => Err(format!("Cannot connext to unix socket: {e}")),
         }
     }
-
-    /// Log activity.
-    ///
-    /// The stock log crate does not have an "activity" log option or other
-    /// option we could use for the purpose.  It's also not possible to
-    /// add log levels, short of maintaining a locally patched version.
-    ///
-    /// Provide an activity() call that requires the user to provide all
-    /// the needed data.  Optionally, allow the caller to maintain and
-    /// provide their own UnixDatagram so a new connection is not required
-    /// with every log message.
-    #[track_caller]
-    pub fn activity(writer: Option<&UnixDatagram>, conf: &conf::BusClient, msg: &str) {
-        // Keep the locally created writer in scope if needed.
-        let mut local_writer: Option<UnixDatagram> = None;
-
-        let writer = match writer {
-            Some(w) => w,
-            None => match Logger::writer() {
-                Ok(s) => {
-                    local_writer = Some(s);
-                    local_writer.as_ref().unwrap()
-                }
-                Err(e) => {
-                    eprintln!("Cannot write to unix socket: {e}");
-                    return;
-                }
-            },
-        };
-
-        let app = Logger::find_app_name();
-        let caller = Location::caller();
-        let line = caller.line();
-
-        // Remove the path portion of the file name.
-        let file = caller.file();
-        let filename: String;
-        if let Some(n) = file.rsplit("/").next() {
-            filename = n.to_string();
-        } else {
-            filename = String::from(file);
-        }
-
-        let facility = conf.logging().activity_log_facility().unwrap_or(
-            conf.logging()
-                .syslog_facility()
-                .unwrap_or(syslog::Facility::LOG_LOCAL1),
-        );
-
-        let severity = facility as u8 | syslog::Severity::LOG_INFO as u8;
-        let levelname = "ACT";
-
-        let mut tid: String = thread_id::get().to_string();
-        if tid.len() > TRIM_THREAD_ID {
-            tid = tid.chars().skip(tid.len() - TRIM_THREAD_ID).collect();
-        }
-
-        let message = format!(
-            "<{}>{} [{}:{}:{}:{}:{}] {}",
-            severity,
-            app,
-            levelname,
-            process::id(),
-            filename,
-            line,
-            tid,
-            msg,
-        );
-
-        if writer.send(message.as_bytes()).is_ok() {
-            if local_writer.is_some() {
-                // If we're using a writer created within this function,
-                // shut it down when we're done.
-                writer.shutdown(Shutdown::Both).ok();
-            }
-            return;
-        }
-
-        println!("{message}");
-    }
 }
 
 impl log::Log for Logger {
@@ -197,19 +120,34 @@ impl log::Log for Logger {
             return;
         }
 
-        let levelname = record.level().to_string();
+        let mut levelname = record.level().to_string();
         let target = if !record.target().is_empty() {
             record.target()
         } else {
             record.module_path().unwrap_or_default()
         };
 
-        let severity = self.encode_priority(match levelname.to_lowercase().as_str() {
-            "debug" | "trace" => syslog::Severity::LOG_DEBUG,
-            "info" => syslog::Severity::LOG_INFO,
-            "warn" => syslog::Severity::LOG_WARNING,
-            _ => syslog::Severity::LOG_ERR,
-        });
+        let mut logmsg = format!("{}", record.args());
+
+        // This is a hack to support ACTIVITY logging via the existing
+        // log::* macros.
+        let severity = if format!("{}", record.args()).starts_with("ACT:") {
+            // Remove the ACT: tag since it will also be present in the
+            // syslog level.
+            logmsg = logmsg[4..].to_string();
+            levelname = String::from("ACT");
+            let facility = self.activity_facility;
+            facility as u8 | syslog::Severity::LOG_INFO as u8
+
+        } else {
+
+            self.encode_priority(match levelname.as_str() {
+                "DEBUG" | "TRACE" => syslog::Severity::LOG_DEBUG,
+                "INFO" => syslog::Severity::LOG_INFO,
+                "WARN" => syslog::Severity::LOG_WARNING,
+                _ => syslog::Severity::LOG_ERR,
+            })
+        };
 
         let mut tid: String = thread_id::get().to_string();
         if tid.len() > TRIM_THREAD_ID {
@@ -228,7 +166,7 @@ impl log::Log for Logger {
                 _ => 0,
             },
             tid,
-            record.args()
+            logmsg
         );
 
         if let Some(ref w) = self.writer {
