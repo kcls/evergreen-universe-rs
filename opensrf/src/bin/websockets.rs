@@ -215,6 +215,8 @@ struct Session {
     /// relay to OpenSRF at a time.  Once exceeded, new messages
     /// are queued for delivery and relayed as soon as possible.
     max_parallel: usize,
+
+    log_trace: Option<String>,
 }
 
 impl fmt::Display for Session {
@@ -294,6 +296,7 @@ impl Session {
             osrf_sender,
             max_parallel,
             reqs_in_flight: 0,
+            log_trace: None,
             osrf_sessions: HashMap::new(),
             request_queue: VecDeque::new(),
         };
@@ -446,6 +449,12 @@ impl Session {
         let service = wrapper["service"].take();
         let mut msg_list = wrapper["osrf_msg"].take();
 
+        if let Some(xid) = log_xid.as_str() {
+            self.log_trace = Some(xid.to_string());
+        } else {
+            self.log_trace = Some(Logger::mk_log_trace());
+        };
+
         let thread = thread
             .as_str()
             .ok_or(format!("{self} websocket message has no 'thread' key"))?;
@@ -533,7 +542,7 @@ impl Session {
             body_vec,
         );
 
-        if let Some(xid) = log_xid.as_str() {
+        if let Some(xid) = self.log_trace.as_ref() {
             tm.set_osrf_xid(xid);
         }
 
@@ -547,7 +556,8 @@ impl Session {
         } else {
             self.osrf_sender.send(&tm)?;
         }
-        // TODO clear local log XID
+
+        self.log_trace = None;
 
         Ok(())
     }
@@ -592,7 +602,7 @@ impl Session {
         }
 
         let mut obj = json::object! {
-            // oxrf_xid: TODO
+            oxrf_xid: tm.osrf_xid(),
             thread: tm.thread(),
             osrf_msg: body
         };
@@ -636,9 +646,12 @@ impl Session {
                 .join(", "),
         };
 
+        let xid = self.log_trace.as_deref().unwrap_or("");
+
         log::info!(
-            "ACT:[{}] {} {} {}",
+            "ACT:[{}:{}] {} {} {}",
             self.client_ip,
+            xid,
             service,
             request.method(),
             log_params

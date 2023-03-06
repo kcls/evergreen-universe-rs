@@ -336,9 +336,10 @@ impl TransportMessage {
         }
 
         let mut obj = json::object! {
-            to: json::from(self.to.clone()),
-            from: json::from(self.from.clone()),
-            thread: json::from(self.thread.clone()),
+            to: json::from(self.to()),
+            from: json::from(self.from()),
+            thread: json::from(self.thread()),
+            osrf_xid: json::from(self.osrf_xid()),
             body: body_arr,
         };
 
@@ -524,10 +525,10 @@ impl Message {
         let mut obj = json::object! {
             threadTrace: json::from(self.thread_trace),
             type: json::from(mtype),
-            locale: json::from(self.locale.clone()),
-            timezone: json::from(self.timezone.clone()),
-            api_level: json::from(self.api_level),
-            ingress: json::from(self.ingress.clone()),
+            locale: json::from(self.locale()),
+            timezone: json::from(self.timezone()),
+            api_level: json::from(self.api_level()),
+            ingress: json::from(self.ingress()),
         };
 
         match self.payload {
@@ -586,9 +587,7 @@ impl Result {
         let msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(sm) => sm,
-                None => {
-                    return None;
-                }
+                None => return None,
             };
 
         let msg_class = msg_wrapper.class();
@@ -615,13 +614,13 @@ impl Result {
             stat,
             stat_str,
             msg_class,
-            msg_hash["content"].clone(),
+            msg_hash["content"].to_owned(),
         ))
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
         let obj = json::object! {
-            status: json::from(self.status_label.clone()),
+            status: json::from(self.status_label()),
             statusCode: json::from(self.status as isize),
             content: self.content.clone(),
         };

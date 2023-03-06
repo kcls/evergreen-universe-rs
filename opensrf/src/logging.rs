@@ -5,6 +5,7 @@ use std::os::unix::net::UnixDatagram;
 use std::process;
 use syslog;
 use thread_id;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
@@ -104,10 +105,22 @@ impl Logger {
         match UnixDatagram::unbound() {
             Ok(socket) => match socket.connect(SYSLOG_UNIX_PATH) {
                 Ok(()) => Ok(socket),
-                Err(e) => Err(format!("Cannot connext to unix socket: {e}")),
+                Err(e) => Err(format!("Cannot connect to unix socket: {e}")),
             },
-            Err(e) => Err(format!("Cannot connext to unix socket: {e}")),
+            Err(e) => Err(format!("Cannot connect to unix socket: {e}")),
         }
+    }
+
+    /// Generate a log trace string from the epoch time and thread id.
+    pub fn mk_log_trace() -> String {
+        let mut tid: String = thread_id::get().to_string();
+        if tid.len() > TRIM_THREAD_ID {
+            tid = tid.chars().skip(tid.len() - TRIM_THREAD_ID).collect();
+        }
+        let t = SystemTime::now().duration_since(UNIX_EPOCH)
+            .expect("SystemTime before UNIX EPOCH!");
+
+        format!("{}{}", t.as_millis(), tid)
     }
 }
 
@@ -128,7 +141,7 @@ impl log::Log for Logger {
             record.module_path().unwrap_or_default()
         };
 
-        let mut logmsg = format!("{}", record.args());
+        let mut logmsg = record.args().to_string();
 
         // This is a hack to support ACTIVITY logging via the existing
         // log::* macros.
