@@ -6,7 +6,7 @@ use osrf::conf;
 use osrf::init;
 use osrf::logging::Logger;
 use osrf::message;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::net::{SocketAddr, TcpStream};
 use std::os::unix::net::UnixDatagram;
@@ -48,6 +48,9 @@ const MAX_THREAD_SIZE: usize = 256;
 const MAX_MESSAGE_SIZE: usize = 10485760; // ~10M
 
 const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
+
+/// Max active requests
+const MAX_ACTIVE_REQUESTS: usize = 8;
 
 #[derive(Debug, PartialEq)]
 enum ChannelMessage {
@@ -205,6 +208,13 @@ struct Session {
     /// Maintain our own activity logging socket since we
     /// frequently log activity.
     activity_socket: Option<UnixDatagram>,
+
+    /// Number of inbound connects/requests that are currently
+    /// awaiting a final response.
+    reqs_in_flight: usize,
+
+    /// Backlog of messages yet to be delivered to OpenSRF.
+    request_queue: VecDeque<String>,
 }
 
 impl fmt::Display for Session {
@@ -222,6 +232,8 @@ impl Session {
                 return;
             }
         };
+
+        log::info!("Starting new session for {client_ip} with max requests set to {MAX_ACTIVE_REQUESTS}");
 
         let (receiver, sender) = match client.split() {
             Ok((r, s)) => (r, s),
@@ -278,7 +290,9 @@ impl Session {
             sender,
             conf,
             osrf_sender,
+            reqs_in_flight: 0,
             osrf_sessions: HashMap::new(),
+            request_queue: VecDeque::new(),
             activity_socket: Logger::writer().ok(),
         };
 
@@ -347,6 +361,11 @@ impl Session {
                 }
             }
 
+            if let Err(e) = self.process_message_queue() {
+                log::error!("{self} Error processing inbound message: {e}");
+                return;
+            }
+
             // We may be here as a result of a Wakeup message or because
             // one of the above completed without error.  In either case,
             // check the shutdown_session flag.
@@ -357,6 +376,33 @@ impl Session {
         }
     }
 
+    /// handle_inbound_message tosses inbound messages onto a queue.
+    /// Here we pop them off the queue and relay them to OpenSRF,
+    /// taking the MAX_ACTIVE_REQUESTS limit into consideration.
+    fn process_message_queue(&mut self) -> Result<(), String> {
+
+        while self.reqs_in_flight < MAX_ACTIVE_REQUESTS {
+            if let Some(text) = self.request_queue.pop_front() {
+
+                // This increments self.reqs_in_flight as needed.
+                self.relay_to_osrf(&text)?;
+            } else {
+                // Backlog is empty
+                log::trace!("{self} message queue is empty");
+                return Ok(());
+            }
+        }
+
+        if self.request_queue.len() > 0 {
+            log::warn!(
+                "{self} MAX_ACTIVE_REQUESTS reached.  {} messages queued",
+                self.request_queue.len()
+            );
+        }
+
+        Ok(())
+    }
+
     fn handle_inbound_message(&mut self, msg: OwnedMessage) -> Result<(), String> {
         match msg {
             OwnedMessage::Text(text) => {
@@ -364,7 +410,10 @@ impl Session {
                     // Drop the message and exit
                     return Err(format!("{self} Dropping huge websocket message"));
                 }
-                self.relay_to_osrf(&text)
+
+                self.request_queue.push_back(text);
+
+                Ok(())
             }
             OwnedMessage::Ping(text) => {
                 let message = OwnedMessage::Pong(text);
@@ -457,9 +506,11 @@ impl Session {
 
             match msg.mtype() {
                 message::MessageType::Connect => {
+                    self.reqs_in_flight += 1;
                     log::debug!("{self} WS received CONNECT request: {thread}");
                 }
                 message::MessageType::Request => {
+                    self.reqs_in_flight += 1;
                     self.log_request(service, &msg)?;
                 }
                 message::MessageType::Disconnect => {
@@ -509,15 +560,28 @@ impl Session {
 
         for msg in msg_list.iter() {
             if let osrf::message::Payload::Status(s) = msg.payload() {
-                if s.status() == &message::MessageStatus::Ok {
-                    self.osrf_sessions
-                        .insert(tm.thread().to_string(), tm.from().to_string());
-                }
-
-                if *s.status() as isize >= message::MessageStatus::BadRequest as isize {
-                    transport_error = true;
-                    log::error!("{self} Request returned unexpected status: {:?}", msg);
-                    self.osrf_sessions.remove(tm.thread());
+                match *s.status() {
+                    message::MessageStatus::Ok => {
+                        if self.reqs_in_flight > 0 { // avoid underflow
+                            self.reqs_in_flight -= 1;
+                        };
+                        self.osrf_sessions
+                            .insert(tm.thread().to_string(), tm.from().to_string());
+                    }
+                    message::MessageStatus::Complete => {
+                        if self.reqs_in_flight > 0 {
+                            self.reqs_in_flight -= 1;
+                        };
+                    }
+                    s if s as usize >= message::MessageStatus::BadRequest as usize => {
+                        if self.reqs_in_flight > 0 {
+                            self.reqs_in_flight -= 1;
+                        };
+                        transport_error = true;
+                        log::error!("{self} Request returned unexpected status: {:?}", msg);
+                        self.osrf_sessions.remove(tm.thread());
+                    }
+                    _ => {}
                 }
             }
 
