@@ -30,7 +30,7 @@ const TRANSPORT_MSG_JSON: &str = r#"{
 #[test]
 fn parse_transport_message() {
     let json_value = json::parse(TRANSPORT_MSG_JSON).unwrap();
-    let tm = TransportMessage::from_json_value(&json_value).unwrap();
+    let tm = TransportMessage::from_json_value(json_value).unwrap();
 
     assert_eq!(tm.thread(), "my-thread");
 
