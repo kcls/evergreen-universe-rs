@@ -63,7 +63,10 @@ impl Session {
 
         // KCLS only
         // cancel == un-fulfill hold this copy currently fulfills
-        let cancel_op = msg.get_field_value("BI");
+        let undo_hold_fulfillment = match msg.get_field_value("BI") {
+            Some(v) => v.eq("Y"),
+            None => false,
+        };
 
         log::info!("{self} Checking in item {barcode}");
 
@@ -78,7 +81,7 @@ impl Session {
             &item,
             &current_loc_op,
             return_date.value(),
-            cancel_op.is_some(),
+            undo_hold_fulfillment,
             self.account().settings().checkin_override_all(),
         )?;
 
