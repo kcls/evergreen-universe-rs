@@ -267,26 +267,20 @@ impl TransportMessage {
         self.router_reply = Some(reply.to_string());
     }
 
-    pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
+    pub fn from_json_value(mut json_obj: json::JsonValue) -> Option<Self> {
         let to = match json_obj["to"].as_str() {
             Some(i) => i,
-            None => {
-                return None;
-            }
+            None => return None
         };
 
         let from = match json_obj["from"].as_str() {
             Some(i) => i,
-            None => {
-                return None;
-            }
+            None => return None,
         };
 
         let thread = match json_obj["thread"].as_str() {
             Some(i) => i,
-            None => {
-                return None;
-            }
+            None => return None,
         };
 
         let mut tmsg = TransportMessage::new(&to, &from, &thread);
@@ -307,21 +301,20 @@ impl TransportMessage {
             tmsg.set_router_reply(rc);
         }
 
-        match json_obj["body"] {
-            json::JsonValue::Array(ref arr) => {
-                for body in arr {
-                    if let Some(b) = Message::from_json_value(&body) {
-                        tmsg.body_as_mut().push(b);
-                    }
-                }
-            }
-            _ => {
-                // Message body is typically an array, but may be a single
-                // body entry.
-                let body = &json_obj["body"];
+        let body = json_obj["body"].take();
+
+        if let json::JsonValue::Array(arr) = body {
+            for body in arr {
                 if let Some(b) = Message::from_json_value(body) {
                     tmsg.body_as_mut().push(b);
                 }
+            }
+        } else {
+            // Message body is typically an array, but may be a single
+            // body entry.
+
+            if let Some(b) = Message::from_json_value(body) {
+                tmsg.body_as_mut().push(b);
             }
         }
 
@@ -432,8 +425,8 @@ impl Message {
     /// Creates a Message from a JSON value.
     ///
     /// Returns None if the JSON value cannot be coerced into a Message.
-    pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
-        let msg_wrapper: super::classified::ClassifiedJson =
+    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
+        let mut msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(sm) => sm,
                 None => {
@@ -448,7 +441,7 @@ impl Message {
             return None;
         }
 
-        let msg_hash = msg_wrapper.json();
+        let mut msg_hash = msg_wrapper.take_json();
 
         let thread_trace = match util::json_usize(&msg_hash["threadTrace"]) {
             Some(tt) => tt,
@@ -460,18 +453,15 @@ impl Message {
 
         let mtype_str = match msg_hash["type"].as_str() {
             Some(s) => s,
-            None => {
-                return None;
-            }
+            None => return None,
         };
 
         let mtype: MessageType = mtype_str.into();
+        let payload = msg_hash["payload"].take();
 
-        let payload = match Message::payload_from_json_value(mtype, &msg_hash["payload"]) {
+        let payload = match Message::payload_from_json_value(mtype, payload) {
             Some(p) => p,
-            None => {
-                return None;
-            }
+            None => return None,
         };
 
         let mut msg = Message::new(mtype, thread_trace, payload);
@@ -497,7 +487,7 @@ impl Message {
 
     fn payload_from_json_value(
         mtype: MessageType,
-        payload_obj: &json::JsonValue,
+        payload_obj: json::JsonValue,
     ) -> Option<Payload> {
         match mtype {
             MessageType::Request => match Method::from_json_value(payload_obj) {
@@ -537,7 +527,7 @@ impl Message {
             _ => obj["payload"] = self.payload.to_json_value(),
         }
 
-        super::classified::ClassifiedJson::classify(&obj, &self.msg_class)
+        super::classified::ClassifiedJson::classify(obj, &self.msg_class)
     }
 }
 
@@ -583,7 +573,7 @@ impl Result {
         &self.status_label
     }
 
-    pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
+    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
         let msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(sm) => sm,
@@ -596,7 +586,7 @@ impl Result {
         let code = match util::json_isize(&msg_hash["statusCode"]) {
             Some(tt) => tt,
             None => {
-                warn!("Result has invalid status code {}", json_obj.dump());
+                warn!("Result has invalid status code {}", msg_hash.dump());
                 return None;
             }
         };
@@ -625,7 +615,7 @@ impl Result {
             content: self.content.clone(),
         };
 
-        super::classified::ClassifiedJson::classify(&obj, &self.msg_class)
+        super::classified::ClassifiedJson::classify(obj, &self.msg_class)
     }
 }
 
@@ -653,13 +643,11 @@ impl Status {
         &self.status_label
     }
 
-    pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
+    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
         let msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(sm) => sm,
-                None => {
-                    return None;
-                }
+                None => return None,
             };
 
         let msg_class = msg_wrapper.class();
@@ -668,7 +656,7 @@ impl Status {
         let code = match util::json_isize(&msg_hash["statusCode"]) {
             Some(tt) => tt,
             None => {
-                warn!("Status has invalid status code {}", json_obj.dump());
+                warn!("Status has invalid status code {}", msg_hash.dump());
                 return None;
             }
         };
@@ -687,11 +675,11 @@ impl Status {
 
     pub fn to_json_value(&self) -> json::JsonValue {
         let obj = json::object! {
-            status: json::from(self.status_label.clone()),
+            status: json::from(self.status_label()),
             statusCode: json::from(self.status as isize),
         };
 
-        super::classified::ClassifiedJson::classify(&obj, &self.msg_class)
+        super::classified::ClassifiedJson::classify(obj, &self.msg_class)
     }
 }
 
@@ -723,7 +711,7 @@ impl Method {
     }
 
     /// Create a Method from a JsonValue.
-    pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
+    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
         let msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(mw) => mw,
@@ -765,14 +753,12 @@ impl Method {
 
     /// Create a JsonValue from a Method
     pub fn to_json_value(&self) -> json::JsonValue {
-        // Clone the params so the new json object can absorb them.
-        let params: Vec<json::JsonValue> = self.params.iter().map(|v| v.clone()).collect();
 
         let obj = json::object! {
             method: json::from(self.method()),
-            params: json::from(params),
+            params: json::from(self.params().to_vec()),
         };
 
-        super::classified::ClassifiedJson::classify(&obj, &self.msg_class)
+        super::classified::ClassifiedJson::classify(obj, &self.msg_class)
     }
 }

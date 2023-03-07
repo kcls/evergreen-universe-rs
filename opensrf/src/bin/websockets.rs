@@ -505,10 +505,16 @@ impl Session {
 
         let mut body_vec: Vec<message::Message> = Vec::new();
 
-        for msg_json in msg_list.members() {
+        loop {
+            let msg_json = msg_list.array_remove(0);
+
+            if msg_json.is_null() {
+                break;
+            }
+
             let mut msg = match message::Message::from_json_value(msg_json) {
                 Some(m) => m,
-                None => Err(format!("{self} Error creating message from {msg_json}"))?,
+                None => Err(format!("{self} could not create message from JSON"))?,
             };
 
             msg.set_ingress(WEBSOCKET_INGRESS);

@@ -14,19 +14,40 @@ pub struct ApiParams {
 }
 
 impl ApiParams {
-    pub fn serialize(&self, client: &Client) -> Option<Vec<JsonValue>> {
+    /// Consumes the stored parameters
+    pub fn serialize(&mut self, client: &Client) -> Vec<JsonValue> {
+
         if let Some(s) = client.singleton().borrow().serializer() {
-            Some(self.params.iter().map(|v| s.pack(&v)).collect())
+            let mut arr: Vec<JsonValue> = Vec::new();
+
+            loop {
+                if self.params.len() == 0 {
+                    break;
+                }
+                let param = self.params.remove(0);
+                arr.push(s.pack(param))
+            }
+            arr
         } else {
-            None
+            std::mem::replace(&mut self.params, Vec::new())
         }
     }
 
-    pub fn deserialize(&self, client: &Client) -> Option<Vec<JsonValue>> {
+    /// Consumes the stored parameters
+    pub fn deserialize(&mut self, client: &Client) -> Vec<JsonValue> {
         if let Some(s) = client.singleton().borrow().serializer() {
-            Some(self.params.iter().map(|v| s.unpack(&v)).collect())
+            let mut arr: Vec<JsonValue> = Vec::new();
+
+            loop {
+                if self.params.len() == 0 {
+                    break;
+                }
+                let param = self.params.remove(0);
+                arr.push(s.unpack(param))
+            }
+            arr
         } else {
-            None
+            std::mem::replace(&mut self.params, Vec::new())
         }
     }
 

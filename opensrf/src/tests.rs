@@ -47,9 +47,9 @@ fn parse_transport_message() {
 
 #[test]
 fn parse_opensrf_message() {
-    let json_value = json::parse(TRANSPORT_MSG_JSON).unwrap();
-    let body = &json_value["body"][0];
-    let msg_op = Message::from_json_value(&body);
+    let mut json_value = json::parse(TRANSPORT_MSG_JSON).unwrap();
+    let body = json_value["body"][0].take();
+    let msg_op = Message::from_json_value(body);
     assert!(msg_op.is_some());
     let msg = msg_op.unwrap();
     assert_eq!(msg.ingress(), "opensrf");

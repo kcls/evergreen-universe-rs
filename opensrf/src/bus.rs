@@ -221,10 +221,10 @@ impl Bus {
         recipient: Option<&str>,
     ) -> Result<Option<TransportMessage>, String> {
         let json_op = self.recv_json_value(timeout, recipient)?;
-
-        match json_op {
-            Some(ref jv) => Ok(TransportMessage::from_json_value(jv)),
-            None => Ok(None),
+        if let Some(jv) = json_op {
+            Ok(TransportMessage::from_json_value(jv))
+        } else {
+            Ok(None)
         }
     }
 

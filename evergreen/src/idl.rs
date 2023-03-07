@@ -617,36 +617,43 @@ impl Parser {
 impl DataSerializer for Parser {
     /// Creates a clone of the provided JsonValue, replacing any
     /// IDL-classed arrays with classed hashes.
-    fn unpack(&self, value: &json::JsonValue) -> json::JsonValue {
+    fn unpack(&self, value: json::JsonValue) -> json::JsonValue {
         if !value.is_array() && !value.is_object() {
-            return value.clone();
+            return value;
         }
 
-        let obj: json::JsonValue;
+        let mut obj: json::JsonValue;
 
-        if let Some(unpacked) = classified::ClassifiedJson::declassify(value) {
+        if classified::ClassifiedJson::can_declassify(&value) {
+            let unpacked = classified::ClassifiedJson::declassify(value).unwrap();
             if unpacked.json().is_array() {
                 obj = self.array_to_hash(unpacked.class(), unpacked.json());
             } else {
                 panic!("IDL-encoded objects should be arrays");
             }
         } else {
-            obj = value.clone();
+            obj = value;
         }
 
         if obj.is_array() {
             let mut arr = json::JsonValue::new_array();
 
-            for child in obj.members() {
-                arr.push(self.unpack(&child)).ok();
+            loop {
+                if obj.len() == 0 {
+                    break;
+                }
+                arr.push(self.unpack(obj.array_remove(0))).ok();
             }
 
             return arr;
         } else if obj.is_object() {
             let mut hash = json::JsonValue::new_object();
-
-            for (key, val) in obj.entries() {
-                hash.insert(key, self.unpack(&val)).ok();
+            loop {
+                let key = match obj.entries().next() {
+                    Some((k, _)) => k.to_owned(),
+                    None => break,
+                };
+                hash.insert(&key, self.unpack(obj.remove(&key))).ok();
             }
 
             return hash;
@@ -657,37 +664,45 @@ impl DataSerializer for Parser {
 
     /// Creates a clone of the provided JsonValue, replacing any
     /// IDL-classed hashes with IDL-classed arrays.
-    fn pack(&self, value: &json::JsonValue) -> json::JsonValue {
+    fn pack(&self, mut value: json::JsonValue) -> json::JsonValue {
         if !value.is_array() && !value.is_object() {
-            return value.clone();
+            return value;
         }
 
         if value.is_object() && value.has_key(CLASSNAME_KEY) {
             let class = value[CLASSNAME_KEY].as_str().unwrap();
-            let array = self.hash_to_array(&class, &value);
+            let mut array = self.hash_to_array(&class, &value);
 
             let mut new_arr = json::JsonValue::new_array();
-
-            for child in array.members() {
-                new_arr.push(self.pack(&child)).ok();
+            loop {
+                if array.len() == 0 {
+                    break;
+                }
+                new_arr.push(self.pack(array.array_remove(0))).ok();
             }
 
-            return classified::ClassifiedJson::classify(&new_arr, &class);
+            return classified::ClassifiedJson::classify(new_arr, &class);
         }
 
         if value.is_array() {
             let mut arr = json::JsonValue::new_array();
-
-            for child in value.members() {
-                arr.push(self.pack(&child)).ok();
+            loop {
+                if value.len() == 0 {
+                    break;
+                }
+                arr.push(self.pack(value.array_remove(0))).ok();
             }
 
             arr
         } else if value.is_object() {
             let mut hash = json::JsonValue::new_object();
 
-            for (key, val) in value.entries() {
-                hash.insert(key, self.pack(&val)).ok();
+            loop {
+                let key = match value.entries().next() {
+                    Some((k, _)) => k.to_owned(),
+                    None => break,
+                };
+                hash.insert(&key, self.pack(value.remove(&key))).ok();
             }
 
             hash

@@ -18,8 +18,8 @@ use std::sync::Arc;
 const DEFAULT_ROUTER_COMMAND_TIMEOUT: i32 = 10;
 
 pub trait DataSerializer {
-    fn pack(&self, value: &JsonValue) -> JsonValue;
-    fn unpack(&self, value: &JsonValue) -> JsonValue;
+    fn pack(&self, value: JsonValue) -> JsonValue;
+    fn unpack(&self, value: JsonValue) -> JsonValue;
 }
 
 /// Generally speaking, we only need 1 ClientSingleton per thread (hence

@@ -243,7 +243,7 @@ impl Session {
             // .to_owned() because this message is about to get dropped.
             let mut value = resp.content().to_owned();
             if let Some(s) = self.client.singleton().borrow().serializer() {
-                value = s.unpack(&value);
+                value = s.unpack(value);
             }
 
             return Ok(Some(Response {
@@ -321,12 +321,9 @@ impl Session {
         let trace = self.incr_thread_trace();
 
         // Turn params into a ApiParams object.
-        let params = params.into();
+        let mut params = params.into();
 
-        let params = match params.serialize(&self.client) {
-            Some(p) => p,
-            None => params.params().to_owned(),
-        };
+        let params = params.serialize(&self.client);
 
         if !self.connected() {
             // Discard any knowledge about previous communication
@@ -418,11 +415,11 @@ impl Session {
             return Ok(());
         }
 
-        let dest_addr = self.worker_addr().unwrap().clone(); // borrows
+        let trace = self.incr_thread_trace();
+
+        let dest_addr = self.worker_addr().unwrap(); // verified above
 
         debug!("{self} sending DISCONNECT");
-
-        let trace = self.incr_thread_trace();
 
         let tmsg = TransportMessage::with_body(
             dest_addr.full(),
@@ -431,9 +428,7 @@ impl Session {
             Message::new(MessageType::Disconnect, trace, Payload::NoPayload),
         );
 
-        self.client
-            .singleton()
-            .borrow_mut()
+        self.client_internal_mut()
             .get_domain_bus(dest_addr.domain())?
             .send(&tmsg)?;
 
@@ -616,7 +611,7 @@ impl ServerSession {
     {
         let mut value = json::from(value);
         if let Some(s) = self.client.singleton().borrow().serializer() {
-            value = s.unpack(&value);
+            value = s.unpack(value);
         }
 
         let msg = Message::new(

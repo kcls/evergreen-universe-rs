@@ -13,6 +13,10 @@ impl ClassifiedJson {
         &self.json
     }
 
+    pub fn take_json(&mut self) -> json::JsonValue {
+        std::mem::replace(&mut self.json, json::JsonValue::Null)
+    }
+
     pub fn class(&self) -> &str {
         &self.class
     }
@@ -20,27 +24,30 @@ impl ClassifiedJson {
     /// Wraps a json value in class and payload keys.
     ///
     /// Non-recursive.
-    pub fn classify(json: &json::JsonValue, class: &str) -> json::JsonValue {
+    pub fn classify(json: json::JsonValue, class: &str) -> json::JsonValue {
         let mut hash = json::JsonValue::new_object();
         hash.insert(JSON_CLASS_KEY, class).ok();
-        hash.insert(JSON_PAYLOAD_KEY, json.clone()).ok();
+        hash.insert(JSON_PAYLOAD_KEY, json).ok();
 
         hash
+    }
+
+    pub fn can_declassify(obj: &json::JsonValue) -> bool {
+        obj.is_object()
+            && obj.has_key(JSON_CLASS_KEY)
+            && obj.has_key(JSON_PAYLOAD_KEY)
+            && obj[JSON_CLASS_KEY].is_string()
     }
 
     /// Turns a json value into a ClassifiedJson if it's a hash
     /// with the needed class and payload keys.
     ///
     /// Non-recursive.
-    pub fn declassify(json: &json::JsonValue) -> Option<ClassifiedJson> {
-        if json.is_object()
-            && json.has_key(JSON_CLASS_KEY)
-            && json.has_key(JSON_PAYLOAD_KEY)
-            && json[JSON_CLASS_KEY].is_string()
-        {
+    pub fn declassify(mut obj: json::JsonValue) -> Option<ClassifiedJson> {
+        if ClassifiedJson::can_declassify(&obj) {
             Some(ClassifiedJson {
-                class: json[JSON_CLASS_KEY].as_str().unwrap().to_string(),
-                json: json[JSON_PAYLOAD_KEY].clone(),
+                class: obj[JSON_CLASS_KEY].as_str().unwrap().to_string(),
+                json: obj[JSON_PAYLOAD_KEY].take(),
             })
         } else {
             None
