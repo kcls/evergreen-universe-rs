@@ -489,13 +489,6 @@ impl SessionHandle {
     pub fn connected(&self) -> bool {
         self.session.borrow().connected()
     }
-
-    /// Returns the current thread as a String.
-    ///
-    /// Cannot return &str since it's a ref to a locally borrowed value.
-    pub fn thread(&self) -> String {
-        self.session.borrow().thread().to_string()
-    }
 }
 
 /// Iterates over a series of replies to an API request.

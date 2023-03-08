@@ -18,9 +18,6 @@ pub struct BusAddress {
     /// Full raw address string
     full: String,
 
-    /// Address prefix, eg. "opensrf"
-    namespace: String,
-
     /// A top-level service address has no domain.
     domain: Option<String>,
 
@@ -57,13 +54,11 @@ impl BusAddress {
             return Err(format!("BusAddress bad format: {}", full));
         }
 
-        let namespace = parts[0].to_string();
         let purpose = parts[1];
-        let sod = parts[2].to_string(); // service name or domain
+        let sod = parts[2].to_owned(); // service name or domain
 
         let mut addr = BusAddress {
             full: full.to_string(),
-            namespace,
             domain: None,
             service: None,
             is_client: false,
@@ -92,9 +87,6 @@ impl BusAddress {
     /// Full address string
     pub fn full(&self) -> &str {
         &self.full
-    }
-    pub fn namespace(&self) -> &str {
-        &self.namespace
     }
     pub fn domain(&self) -> Option<&str> {
         self.domain.as_deref()
@@ -154,7 +146,6 @@ impl ClientAddress {
         ClientAddress {
             addr: BusAddress {
                 full,
-                namespace: BUS_ADDR_NAMESPACE.to_string(),
                 domain: Some(domain.to_string()),
                 service: None,
                 is_client: true,
@@ -223,7 +214,6 @@ impl ServiceAddress {
         ServiceAddress {
             addr: BusAddress {
                 full,
-                namespace: BUS_ADDR_NAMESPACE.to_string(),
                 domain: None,
                 service: Some(service.to_string()),
                 is_client: false,
@@ -298,7 +288,6 @@ impl RouterAddress {
         RouterAddress {
             addr: BusAddress {
                 full,
-                namespace: BUS_ADDR_NAMESPACE.to_string(),
                 service: None,
                 domain: Some(domain.to_string()),
                 is_client: false,

@@ -3,9 +3,9 @@ use super::conf;
 use log;
 use std::os::unix::net::UnixDatagram;
 use std::process;
+use std::time::{SystemTime, UNIX_EPOCH};
 use syslog;
 use thread_id;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
@@ -117,7 +117,8 @@ impl Logger {
         if tid.len() > TRIM_THREAD_ID {
             tid = tid.chars().skip(tid.len() - TRIM_THREAD_ID).collect();
         }
-        let t = SystemTime::now().duration_since(UNIX_EPOCH)
+        let t = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .expect("SystemTime before UNIX EPOCH!");
 
         format!("{}{}", t.as_millis(), tid)

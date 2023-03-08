@@ -60,7 +60,7 @@ fn main() -> Result<(), String> {
         json::object! {"just fantastic": json::array!["a", "b"]},
     ];
 
-    for resp in client.sendrecv(SERVICE, "opensrf.system.echo", &params)? {
+    for resp in client.sendrecv(SERVICE, "opensrf.system.echo", params)? {
         println!("SYSTEM ECHO: {}", resp.dump());
     }
 

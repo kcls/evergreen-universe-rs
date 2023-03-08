@@ -446,7 +446,6 @@ impl Session {
 
         let thread = wrapper["thread"].take();
         let log_xid = wrapper["log_xid"].take();
-        let service = wrapper["service"].take();
         let mut msg_list = wrapper["osrf_msg"].take();
 
         if let Some(xid) = log_xid.as_str() {
@@ -463,13 +462,9 @@ impl Session {
             Err(format!("{self} Thread exceeds max thread size; dropping"))?;
         }
 
-        let service = match service.as_str() {
-            Some(s) => s,
-            // 'service' should always be set by the caller, but in
-            // the off chance it's not and we can still proceed, we
-            // need something to log.
-            None => "_",
-        };
+        let service = wrapper["service"]
+            .as_str()
+            .ok_or(format!("{self} service name is required"))?;
 
         // recipient is the final destination, but me may put this
         // message into the queue of the router as needed.
@@ -481,9 +476,6 @@ impl Session {
                 a.clone()
             }
             None => {
-                if service.eq("_") {
-                    Err(format!("{self} WS unable to determine recipient"))?
-                }
                 let domain = self.osrf_sender.address().domain();
                 send_to_router = Some(RouterAddress::new(domain).full().to_string());
                 ServiceAddress::new(service).full().to_string()
@@ -636,22 +628,27 @@ impl Session {
             _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
-        let log_params = match self
+        let mut log_params: Option<String> = None;
+
+        if self
             .conf
             .log_protect()
             .iter()
             .filter(|m| request.method().starts_with(&m[..]))
             .next()
+            .is_none()
         {
-            Some(_) => "**PARAMS REDACTED**".to_string(),
-            None => request
-                .params()
-                .iter()
-                .map(|p| p.dump())
-                .collect::<Vec<_>>()
-                .join(", "),
+            log_params = Some(
+                request
+                    .params()
+                    .iter()
+                    .map(|p| p.dump())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
         };
 
+        let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
         let xid = self.log_trace.as_deref().unwrap_or("");
 
         log::info!(

@@ -34,7 +34,7 @@ fn main() -> Result<(), String> {
 
     for _ in 0..9 {
         // Iterator example
-        for user in ses.sendrecv(method, &params)? {
+        for user in ses.sendrecv(method, params.clone())? {
             println!(
                 "{} {} home_ou={}",
                 user["id"], user["usrname"], user["home_ou"]["name"]
@@ -43,7 +43,7 @@ fn main() -> Result<(), String> {
     }
 
     // Manual request management example
-    let mut req = ses.request(method, &params)?;
+    let mut req = ses.request(method, params)?;
 
     while let Some(user) = req.recv(10)? {
         println!(

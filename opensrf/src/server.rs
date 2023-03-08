@@ -220,7 +220,7 @@ impl Server {
         for router in self.config().client().routers() {
             match router.services() {
                 Some(services) => {
-                    if services.contains(&self.service().to_string()) {
+                    if services.iter().any(|s| s.eq(self.service())) {
                         domains.push(router.domain().to_string());
                     }
                 }

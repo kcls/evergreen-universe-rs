@@ -362,7 +362,7 @@ impl Shell {
         let params = vec![json::from(vec![setarg]), authtoken, org_id];
 
         let mut ses = self.ctx().client().session("open-ils.actor");
-        let mut req = ses.request("open-ils.actor.settings.retrieve", &params)?;
+        let mut req = ses.request("open-ils.actor.settings.retrieve", params)?;
 
         while let Some(resp) = req.recv(DEFAULT_REQUEST_TIMEOUT)? {
             self.check_for_event(&resp)?;
@@ -504,7 +504,7 @@ impl Shell {
         }
 
         let mut ses = self.ctx().client().session(args[0]);
-        let mut req = ses.request(args[1], &params)?;
+        let mut req = ses.request(args[1], params)?;
 
         while let Some(resp) = req.recv(DEFAULT_REQUEST_TIMEOUT)? {
             self.print_json_record(&resp)?;

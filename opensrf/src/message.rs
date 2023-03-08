@@ -1,5 +1,4 @@
 use super::util;
-use log::warn;
 use std::fmt;
 
 const DEFAULT_LOCALE: &str = "en-US";
@@ -63,7 +62,7 @@ impl fmt::Display for MessageType {
     }
 }
 
-// Derive is needed to do things like: let i = self.mtype as isize;
+/// OpenSRF messages have HTTP-like status codes.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MessageStatus {
     Continue = 100,
@@ -150,6 +149,7 @@ impl fmt::Display for MessageStatus {
     }
 }
 
+/// The message payload is the core of the message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     Method(Method),
@@ -169,6 +169,8 @@ impl Payload {
     }
 }
 
+/// Envelope which contains routing information, other metadata, and
+/// contains one or more Messages.
 #[derive(Debug, PartialEq)]
 pub struct TransportMessage {
     to: String,
@@ -267,10 +269,11 @@ impl TransportMessage {
         self.router_reply = Some(reply.to_string());
     }
 
+    /// Create a TransportMessage from a JSON object, consuming the JSON value.
     pub fn from_json_value(mut json_obj: json::JsonValue) -> Option<Self> {
         let to = match json_obj["to"].as_str() {
             Some(i) => i,
-            None => return None
+            None => return None,
         };
 
         let from = match json_obj["from"].as_str() {
@@ -322,18 +325,14 @@ impl TransportMessage {
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
-        let mut body_arr = json::JsonValue::new_array();
-
-        for body in self.body() {
-            body_arr.push(body.to_json_value()).ok();
-        }
+        let body: Vec<json::JsonValue> = self.body().iter().map(|b| b.to_json_value()).collect();
 
         let mut obj = json::object! {
             to: json::from(self.to()),
             from: json::from(self.from()),
             thread: json::from(self.thread()),
             osrf_xid: json::from(self.osrf_xid()),
-            body: body_arr,
+            body: body,
         };
 
         if let Some(rc) = self.router_command() {
@@ -422,22 +421,20 @@ impl Message {
         self.ingress = ingress.to_string()
     }
 
-    /// Creates a Message from a JSON value.
+    /// Creates a Message from a JSON value, consuming the JSON value.
     ///
     /// Returns None if the JSON value cannot be coerced into a Message.
     pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
         let mut msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(sm) => sm,
-                None => {
-                    return None;
-                }
+                None => return None,
             };
 
         let msg_class = msg_wrapper.class();
 
         if msg_class != "osrfMessage" {
-            warn!("Message::from_json_value() unkonown class {}", msg_class);
+            log::warn!("Message::from_json_value() unkonown class {}", msg_class);
             return None;
         }
 
@@ -446,7 +443,7 @@ impl Message {
         let thread_trace = match util::json_usize(&msg_hash["threadTrace"]) {
             Some(tt) => tt,
             None => {
-                warn!("Message contains invalid threadTrace: {}", msg_hash.dump());
+                log::warn!("Message contains invalid threadTrace: {}", msg_hash.dump());
                 return None;
             }
         };
@@ -509,6 +506,7 @@ impl Message {
         }
     }
 
+    /// Create a JSON value from a Message.
     pub fn to_json_value(&self) -> json::JsonValue {
         let mtype: &str = self.mtype.into();
 
@@ -586,7 +584,7 @@ impl Result {
         let code = match util::json_isize(&msg_hash["statusCode"]) {
             Some(tt) => tt,
             None => {
-                warn!("Result has invalid status code {}", msg_hash.dump());
+                log::warn!("Result has invalid status code {}", msg_hash.dump());
                 return None;
             }
         };
@@ -595,10 +593,7 @@ impl Result {
 
         // If the message contains a status label, use it, otherwise
         // use the label associated locally with the status code
-        let stat_str: &str = match msg_hash["status"].as_str() {
-            Some(s) => &s,
-            None => stat.into(),
-        };
+        let stat_str: &str = msg_hash["status"].as_str().unwrap_or(stat.into());
 
         Some(Result::new(
             stat,
@@ -656,7 +651,7 @@ impl Status {
         let code = match util::json_isize(&msg_hash["statusCode"]) {
             Some(tt) => tt,
             None => {
-                warn!("Status has invalid status code {}", msg_hash.dump());
+                log::warn!("Status has invalid status code {}", msg_hash.dump());
                 return None;
             }
         };
@@ -665,10 +660,7 @@ impl Status {
 
         // If the message contains a status label, use it, otherwise
         // use the label associated locally with the status code
-        let stat_str: &str = match msg_hash["status"].as_str() {
-            Some(s) => &s,
-            None => stat.into(),
-        };
+        let stat_str: &str = msg_hash["status"].as_str().unwrap_or(stat.into());
 
         Some(Status::new(stat, stat_str, msg_class))
     }
@@ -712,34 +704,28 @@ impl Method {
 
     /// Create a Method from a JsonValue.
     pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
-        let msg_wrapper: super::classified::ClassifiedJson =
+        let mut msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(mw) => mw,
-                None => {
-                    return None;
-                }
+                None => return None,
             };
 
-        let msg_class = msg_wrapper.class();
-        let msg_hash = msg_wrapper.json();
+        let mut msg_hash = msg_wrapper.take_json();
 
         let method = match msg_hash["method"].as_str() {
             Some(m) => m.to_string(),
-            None => {
-                return None;
-            }
+            None => return None,
         };
 
         let mut params = Vec::new();
-
-        if let json::JsonValue::Array(arr) = &msg_hash["params"] {
-            params = arr.iter().map(|p| p.clone()).collect();
+        if let json::JsonValue::Array(vec) = msg_hash["params"].take() {
+            params = vec;
         }
 
         Some(Method {
             method,
             params,
-            msg_class: msg_class.to_string(),
+            msg_class: msg_wrapper.class().to_string(),
         })
     }
 
@@ -753,7 +739,6 @@ impl Method {
 
     /// Create a JsonValue from a Method
     pub fn to_json_value(&self) -> json::JsonValue {
-
         let obj = json::object! {
             method: json::from(self.method()),
             params: json::from(self.params().to_vec()),

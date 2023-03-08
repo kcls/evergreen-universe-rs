@@ -583,11 +583,11 @@ impl Router {
             "opensrf.router.info.class.list" => {
                 // Caller wants a list of service names
 
-                let names: Vec<String> = self
+                let names: Vec<&str> = self
                     .primary_domain
                     .services()
                     .iter()
-                    .map(|s| s.name().to_string())
+                    .map(|s| s.name())
                     .collect();
 
                 Ok(json::from(names))

@@ -16,7 +16,6 @@ pub struct ApiParams {
 impl ApiParams {
     /// Consumes the stored parameters
     pub fn serialize(&mut self, client: &Client) -> Vec<JsonValue> {
-
         if let Some(s) = client.singleton().borrow().serializer() {
             let mut arr: Vec<JsonValue> = Vec::new();
 
@@ -61,6 +60,8 @@ impl ApiParams {
     }
 }
 
+/*
+// Works, but encourages unnecessary JsonValue cloning.
 impl From<&Vec<JsonValue>> for ApiParams {
     fn from(v: &Vec<JsonValue>) -> ApiParams {
         ApiParams {
@@ -68,6 +69,7 @@ impl From<&Vec<JsonValue>> for ApiParams {
         }
     }
 }
+*/
 
 impl From<Vec<JsonValue>> for ApiParams {
     fn from(v: Vec<JsonValue>) -> ApiParams {
@@ -134,7 +136,7 @@ impl From<Vec<u64>> for ApiParams {
 impl From<&Vec<String>> for ApiParams {
     fn from(v: &Vec<String>) -> ApiParams {
         ApiParams {
-            params: v.iter().map(|s| json::from(s.to_string())).collect(),
+            params: v.iter().map(|s| json::from(s.as_str())).collect(),
         }
     }
 }
@@ -224,6 +226,8 @@ impl From<Option<JsonValue>> for ApiParams {
     }
 }
 
+/*
+// Works, but encourages unnecessary JsonValue cloning.
 impl From<Option<&JsonValue>> for ApiParams {
     fn from(v: Option<&JsonValue>) -> ApiParams {
         ApiParams {
@@ -234,3 +238,4 @@ impl From<Option<&JsonValue>> for ApiParams {
         }
     }
 }
+*/
