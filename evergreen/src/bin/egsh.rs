@@ -415,7 +415,7 @@ impl Shell {
         let pref = args[1];
 
         let value = match pref {
-            "json_print_depth" => self.json_print_depth.to_string(),
+            "json_print_depth" => self.json_print_depth,
             _ => return Err(format!("No such pref: {pref}")),
         };
 

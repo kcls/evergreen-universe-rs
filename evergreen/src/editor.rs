@@ -247,9 +247,12 @@ impl Editor {
     /// This variation does not send a DISCONNECT to the connected worker.
     pub fn xact_commit(&mut self) -> Result<(), String> {
         if self.has_session() && self.has_xact_id() {
-            let xact_id = self.xact_id.as_ref().unwrap().to_string();
+            // We can take() the xact_id here because we're clearing
+            // it below anyway.  This avoids a .to_string() as a way
+            // to get around the mutable borrow from self.request().
+            let xact_id = self.xact_id.take().unwrap();
             let method = self.app_method("transaction.commit");
-            self.request(&method, xact_id.as_str())?;
+            self.request(&method, xact_id)?;
         }
 
         self.xact_id = None;
@@ -290,8 +293,11 @@ impl Editor {
 
     fn logtag(&self) -> String {
         let requestor = match self.requestor() {
-            Some(req) => format!("{}", req["id"]),
-            None => "0".to_string(),
+            Some(req) => match util::json_int(&req["id"]) {
+                Ok(n) => n,
+                _ => 0,
+            },
+            _ => 0,
         };
 
         format!(

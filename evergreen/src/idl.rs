@@ -449,11 +449,11 @@ impl Parser {
 
         let field = Field {
             name: node.attribute("name").unwrap().to_string(),
-            label: label,
-            datatype: datatype,
-            i18n: i18n,
+            label,
+            datatype,
+            i18n,
             array_pos: pos,
-            is_virtual: is_virtual,
+            is_virtual,
         };
 
         class.fields.insert(field.name.to_string(), field);
@@ -497,35 +497,37 @@ impl Parser {
         let link = Link {
             field,
             key,
-            map: map,
+            map,
+            reltype,
             class: lclass,
-            reltype: reltype,
         };
 
         class.links.insert(link.field.to_string(), link);
     }
 
     /// Converts an IDL-classed array into a hash whose keys match
-    /// the values defined in the IDL for this class.
+    /// the values defined in the IDL for this class, consuming the
+    /// array as it goes.
     ///
     /// Includes a _classname key with the IDL class.
-    fn array_to_hash(&self, class: &str, value: &json::JsonValue) -> json::JsonValue {
+    fn array_to_hash(&self, class: &str, mut value: json::JsonValue) -> json::JsonValue {
         let fields = &self.classes.get(class).unwrap().fields;
 
         let mut hash = json::JsonValue::new_object();
 
-        hash.insert(CLASSNAME_KEY, json::from(class)).ok();
+        hash.insert(CLASSNAME_KEY, json::from(class)).unwrap();
 
         for (name, field) in fields {
-            hash.insert(name, value[field.array_pos].clone()).ok();
+            hash.insert(name, value[field.array_pos].take()).unwrap();
         }
 
         hash
     }
 
     /// Converts and IDL-classed hash into an IDL-classed array, whose
-    /// array positions match the IDL field positions.
-    fn hash_to_array(&self, class: &str, hash: &json::JsonValue) -> json::JsonValue {
+    /// array positions match the IDL field position, consuming the
+    /// hash as it goes.
+    fn hash_to_array(&self, class: &str, mut hash: json::JsonValue) -> json::JsonValue {
         let fields = &self.classes.get(class).unwrap().fields;
 
         // Translate the fields hash into a sorted array
@@ -535,7 +537,7 @@ impl Parser {
         let mut array = json::JsonValue::new_array();
 
         for field in sorted {
-            array.push(hash[&field.name].clone()).ok();
+            array.push(hash[&field.name].take()).unwrap();
         }
 
         array
@@ -625,9 +627,10 @@ impl DataSerializer for Parser {
         let mut obj: json::JsonValue;
 
         if classified::ClassifiedJson::can_declassify(&value) {
-            let unpacked = classified::ClassifiedJson::declassify(value).unwrap();
-            if unpacked.json().is_array() {
-                obj = self.array_to_hash(unpacked.class(), unpacked.json());
+            let mut unpacked = classified::ClassifiedJson::declassify(value).unwrap();
+            let json_arr = unpacked.take_json();
+            if json_arr.is_array() {
+                obj = self.array_to_hash(unpacked.class(), json_arr);
             } else {
                 panic!("IDL-encoded objects should be arrays");
             }
@@ -670,8 +673,12 @@ impl DataSerializer for Parser {
         }
 
         if value.is_object() && value.has_key(CLASSNAME_KEY) {
-            let class = value[CLASSNAME_KEY].as_str().unwrap();
-            let mut array = self.hash_to_array(&class, &value);
+            // Extract the class -- hash_to_array does not need the
+            // translated object to have the class key (hence the
+            // 'class' param requirement).
+            let class_json = value[CLASSNAME_KEY].take();
+            let class = class_json.as_str().unwrap();
+            let mut array = self.hash_to_array(&class, value);
 
             let mut new_arr = json::JsonValue::new_array();
             loop {
@@ -707,7 +714,7 @@ impl DataSerializer for Parser {
 
             hash
         } else {
-            value.clone() // should not get here
+            value // should not get here
         }
     }
 }

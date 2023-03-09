@@ -162,9 +162,7 @@ impl AuthSession {
 
         let json_val = match req.recv(LOGIN_TIMEOUT)? {
             Some(v) => v,
-            None => {
-                return Err("Login Timed Out".to_string());
-            }
+            None => Err(format!("Login Timed Out"))?,
         };
 
         AuthSession::handle_auth_response(&args.workstation, &json_val)
@@ -183,9 +181,7 @@ impl AuthSession {
 
         let json_val = match req.recv(LOGIN_TIMEOUT)? {
             Some(v) => v,
-            None => {
-                return Err("Login Timed Out".to_string());
-            }
+            None => Err(format!("Login Timed Out"))?,
         };
 
         AuthSession::handle_auth_response(&args.workstation, &json_val)

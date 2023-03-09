@@ -398,7 +398,7 @@ impl Translator {
             *param_index += 1;
             Ok(s)
         } else {
-            Ok(format!("{opstr}{}", obj.to_string()))
+            Ok(format!("{opstr}{}", obj))
         }
     }
 
