@@ -19,14 +19,11 @@ impl ApiParams {
         if let Some(s) = client.singleton().borrow().serializer() {
             let mut arr: Vec<JsonValue> = Vec::new();
 
-            loop {
-                if self.params.len() == 0 {
-                    break;
-                }
-                let param = self.params.remove(0);
-                arr.push(s.pack(param))
+            while self.params.len() > 0 {
+                arr.push(s.pack(self.params.remove(0)));
             }
             arr
+
         } else {
             std::mem::replace(&mut self.params, Vec::new())
         }
@@ -37,14 +34,11 @@ impl ApiParams {
         if let Some(s) = client.singleton().borrow().serializer() {
             let mut arr: Vec<JsonValue> = Vec::new();
 
-            loop {
-                if self.params.len() == 0 {
-                    break;
-                }
-                let param = self.params.remove(0);
-                arr.push(s.unpack(param))
+            while self.params.len() > 0 {
+                arr.push(s.unpack(self.params.remove(0)));
             }
             arr
+
         } else {
             std::mem::replace(&mut self.params, Vec::new())
         }

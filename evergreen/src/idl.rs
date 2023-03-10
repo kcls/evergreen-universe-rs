@@ -640,15 +640,12 @@ impl DataSerializer for Parser {
 
         if obj.is_array() {
             let mut arr = json::JsonValue::new_array();
-
-            loop {
-                if obj.len() == 0 {
-                    break;
-                }
-                arr.push(self.unpack(obj.array_remove(0))).ok();
+            while obj.len() > 0 {
+                arr.push(self.unpack(obj.array_remove(0))).unwrap();
             }
 
             return arr;
+
         } else if obj.is_object() {
             let mut hash = json::JsonValue::new_object();
             loop {
@@ -681,10 +678,7 @@ impl DataSerializer for Parser {
             let mut array = self.hash_to_array(&class, value);
 
             let mut new_arr = json::JsonValue::new_array();
-            loop {
-                if array.len() == 0 {
-                    break;
-                }
+            while array.len() > 0 {
                 new_arr.push(self.pack(array.array_remove(0))).ok();
             }
 
@@ -693,10 +687,7 @@ impl DataSerializer for Parser {
 
         if value.is_array() {
             let mut arr = json::JsonValue::new_array();
-            loop {
-                if value.len() == 0 {
-                    break;
-                }
+            while value.len() > 0 {
                 arr.push(self.pack(value.array_remove(0))).ok();
             }
 
