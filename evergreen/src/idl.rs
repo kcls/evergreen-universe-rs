@@ -524,7 +524,7 @@ impl Parser {
         hash
     }
 
-    /// Converts and IDL-classed hash into an IDL-classed array, whose
+    /// Converts an IDL-classed hash into an IDL-classed array, whose
     /// array positions match the IDL field position, consuming the
     /// hash as it goes.
     fn hash_to_array(&self, class: &str, mut hash: json::JsonValue) -> json::JsonValue {
@@ -669,7 +669,7 @@ impl DataSerializer for Parser {
             return value;
         }
 
-        if value.is_object() && value.has_key(CLASSNAME_KEY) {
+        if self.is_idl_object(&value) {
             // Extract the class -- hash_to_array does not need the
             // translated object to have the class key (hence the
             // 'class' param requirement).

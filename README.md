@@ -9,6 +9,8 @@ Rust bindings, libs, and binaries for Evergreen and related projects.
 OpenSRF bindings for communicating with OpenSRF services and creating
 new OpenSRF services.
 
+[README](./opensrf/README.md)
+
 ### Evergreen
 
 Evergreen bindings for IDL parsing, event handling, cstore editor, and more.

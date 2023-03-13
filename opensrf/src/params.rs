@@ -40,6 +40,8 @@ impl ApiParams {
             arr
 
         } else {
+            // Replace our params with an empty array and return the
+            // original params to the caller.
             std::mem::replace(&mut self.params, Vec::new())
         }
     }
