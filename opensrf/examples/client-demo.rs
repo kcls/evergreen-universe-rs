@@ -1,5 +1,4 @@
 use opensrf::Client;
-use std::collections::HashMap;
 
 fn main() -> Result<(), String> {
     let conf = opensrf::init::init()?;
@@ -22,20 +21,26 @@ fn main() -> Result<(), String> {
 
     ses.disconnect()?; // Only required if connected
 
-
     // Variety of param creation options.
     let params = vec![
         json::parse("{\"stuff\":[3, 123, null]}").unwrap(),
-        json::from(HashMap::from([("more stuff", "yep")])),
+        json::from(std::collections::HashMap::from([("more stuff", "yep")])),
         json::JsonValue::Null,
         json::from(vec![1.1, 2.0, 3.0]),
         json::object! {"just fantastic": json::array!["a", "b"]},
     ];
 
     // ONE-OFF WITH ITERATOR --------------------------
-    for resp in client.sendrecv("opensrf.settings", "opensrf.system.echo", params.clone())? {
+    for resp in client.send_recv("opensrf.settings", "opensrf.system.echo", params.clone())? {
         println!("Response: {}", resp.dump());
     }
+
+    // Give me a single response ----------------------
+    let json_str = client
+        .send_recv_one("opensrf.settings", "opensrf.system.echo", "Hello, World")?
+        .expect("echo response");
+
+    println!("GOT A: {}", json_str);
 
     Ok(())
 }

@@ -302,7 +302,7 @@ impl Client {
     /// the responses to the method.
     ///
     /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
-    pub fn sendrecv<T>(
+    pub fn send_recv<T>(
         &self,
         service: &str,
         method: &str,
@@ -320,7 +320,7 @@ impl Client {
         self.singleton().borrow().config.clone()
     }
 
-    pub fn sendrecvone<T>(
+    pub fn send_recv_one<T>(
         &self,
         service: &str,
         method: &str,

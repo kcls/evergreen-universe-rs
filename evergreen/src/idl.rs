@@ -645,7 +645,6 @@ impl DataSerializer for Parser {
             }
 
             return arr;
-
         } else if obj.is_object() {
             let mut hash = json::JsonValue::new_object();
             loop {

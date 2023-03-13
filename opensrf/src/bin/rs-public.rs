@@ -164,7 +164,7 @@ fn relay(
     for resp in
         worker
             .client_mut()
-            .sendrecv("opensrf.rs-private", &api_name, method.params().clone())?
+            .send_recv("opensrf.rs-private", &api_name, method.params().clone())?
     {
         session.respond(resp.clone())?;
         session.respond(json::from(format!("Relay count: {}", worker.relay_count)))?

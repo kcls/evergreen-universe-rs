@@ -23,7 +23,6 @@ impl ApiParams {
                 arr.push(s.pack(self.params.remove(0)));
             }
             arr
-
         } else {
             std::mem::replace(&mut self.params, Vec::new())
         }
@@ -38,7 +37,6 @@ impl ApiParams {
                 arr.push(s.unpack(self.params.remove(0)));
             }
             arr
-
         } else {
             // Replace our params with an empty array and return the
             // original params to the caller.

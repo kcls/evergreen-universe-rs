@@ -291,7 +291,7 @@ impl Session {
         let authtoken = json::from(self.authtoken()?);
         let last_xact_id = user["last_xact_id"].as_str().unwrap(); // required
 
-        let resp = self.osrf_client_mut().sendrecvone(
+        let resp = self.osrf_client_mut().send_recv_one(
             "open-ils.circ",
             "open-ils.circ.money.payment",
             vec![authtoken, args, json::from(last_xact_id)],

@@ -196,7 +196,7 @@ impl Session {
 
         let resp = match self
             .osrf_client_mut()
-            .sendrecvone("open-ils.circ", method, params)?
+            .send_recv_one("open-ils.circ", method, params)?
         {
             Some(r) => r,
             None => Err(format!("API call {method} failed to return a response"))?,

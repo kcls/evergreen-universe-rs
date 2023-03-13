@@ -471,7 +471,7 @@ impl SessionHandle {
     /// the responses to the method.
     ///
     /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
-    pub fn sendrecv<T>(&mut self, method: &str, params: T) -> Result<ResponseIterator, String>
+    pub fn send_recv<T>(&mut self, method: &str, params: T) -> Result<ResponseIterator, String>
     where
         T: Into<ApiParams>,
     {
