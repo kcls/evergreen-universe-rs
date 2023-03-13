@@ -34,7 +34,7 @@ fn main() -> Result<(), String> {
 
     for _ in 0..9 {
         // Iterator example
-        for user in ses.sendrecv(method, params.clone())? {
+        for user in ses.send_recv(method, params.clone())? {
             println!(
                 "{} {} home_ou={}",
                 user["id"], user["usrname"], user["home_ou"]["name"]
