@@ -31,10 +31,6 @@ name = "opensrf-buswatch"
 path = "src/bin/buswatch.rs"
 
 [[example]]
-name = "opensrf-client"
-path = "examples/client.rs"
-
-[[example]]
-name = "opensrf-client-demo"
+name = "client-demo"
 path = "examples/client-demo.rs"
 
