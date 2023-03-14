@@ -14,7 +14,7 @@ use std::time::Duration;
 /// A service controller.
 ///
 /// This is what we traditionally call a "Listener" in OpenSRF.
-/// A service can have multiple controllers on a single domain.
+/// It's a single endpoint for receiving top-level API calls.
 #[derive(Debug, Clone)]
 struct ServiceInstance {
     address: ClientAddress,
@@ -41,10 +41,12 @@ impl ServiceInstance {
 /// An API-producing service.
 ///
 /// E.g. "opensrf.settings"
+/// Models a service, which may have one or more registered ServiceInstance's.
 #[derive(Debug, Clone)]
 struct ServiceEntry {
     name: String,
     controllers: Vec<ServiceInstance>,
+    route_count: usize,
 }
 
 impl ServiceEntry {
@@ -80,6 +82,7 @@ impl ServiceEntry {
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
             name: json::from(self.name()),
+            route_count: json::from(self.route_count),
             controllers: json::from(
                 self.controllers().iter()
                     .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
@@ -90,7 +93,8 @@ impl ServiceEntry {
 
 /// One domain entry.
 ///
-/// A domain will typically host multiple services.
+/// Every service, including all of its ServicEntry's, are linked to a
+/// specific routable domain.
 /// E.g. "public.localhost"
 struct Routerdomain {
     // e.g. public.localhost
@@ -145,8 +149,8 @@ impl Routerdomain {
         &self.services
     }
 
-    fn has_service(&self, name: &str) -> bool {
-        return self.services.iter().filter(|s| s.name().eq(name)).count() > 0;
+    fn get_service_mut(&mut self, name: &str) -> Option<&mut ServiceEntry> {
+        self.services.iter_mut().filter(|s| s.name().eq(name)).next()
     }
 
     fn remove_service(&mut self, service: &str, address: &ClientAddress) {
@@ -213,6 +217,7 @@ impl Routerdomain {
     }
 }
 
+/// Routes API requests from clients to services.
 struct Router {
     /// Primary domain for this router instance.
     primary_domain: Routerdomain,
@@ -234,8 +239,7 @@ impl Router {
             None => panic!("No router config for domain {}", domain),
         };
 
-        let domain = busconf.domain().name().to_string();
-        let addr = RouterAddress::new(&domain);
+        let addr = RouterAddress::new(busconf.domain().name());
         let primary_domain = Routerdomain::new(&busconf);
 
         Router {
@@ -385,6 +389,7 @@ impl Router {
 
         r_domain.services.push(ServiceEntry {
             name: service.to_string(),
+            route_count: 0,
             controllers: vec![ServiceInstance {
                 address: address,
                 register_time: Local::now(),
@@ -469,20 +474,24 @@ impl Router {
             return self.handle_router_api_request(tm);
         }
 
-        if self.primary_domain.has_service(service) {
+
+        if let Some(svc) = self.primary_domain.get_service_mut(service) {
+            svc.route_count += 1;
             self.primary_domain.route_count += 1;
             return self.primary_domain.send_to_domain(tm);
         }
 
         for r_domain in &mut self.remote_domains {
-            if r_domain.has_service(service) {
+            if let Some(svc) = r_domain.get_service_mut(service) {
+                svc.route_count += 1;
+                r_domain.route_count += 1;
+
                 if r_domain.bus.is_none() {
                     // We only connect to remote domains when it's
                     // time to send them a message.
                     r_domain.connect()?;
                 }
 
-                r_domain.route_count += 1;
                 return r_domain.send_to_domain(tm);
             }
         }
@@ -681,8 +690,6 @@ impl Router {
         }
     }
 }
-
-// TODO notify connected service coordinators when we shut down?
 
 fn main() {
     let mut ops = getopts::Options::new();
