@@ -71,7 +71,7 @@ impl ClientSingleton {
 
     /// Full bus address as a string
     fn address(&self) -> &str {
-        self.bus.address().full()
+        self.bus.address().as_str()
     }
 
     /// Our primary bus domain
@@ -167,8 +167,8 @@ impl ClientSingleton {
 
         // Always use the address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
-            addr.full(),
-            self.bus.address().full(),
+            addr.as_str(),
+            self.bus.address().as_str(),
             &util::random_number(16),
         );
 

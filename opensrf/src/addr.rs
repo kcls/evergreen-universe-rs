@@ -85,7 +85,7 @@ impl BusAddress {
 
 impl BusAddress {
     /// Full address string
-    pub fn full(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.full
     }
     pub fn domain(&self) -> Option<&str> {
@@ -129,8 +129,8 @@ impl ClientAddress {
         Ok(ClientAddress { addr })
     }
 
-    pub fn full(&self) -> &str {
-        self.addr.full()
+    pub fn as_str(&self) -> &str {
+        self.addr.as_str()
     }
 
     pub fn new(domain: &str) -> Self {
@@ -176,7 +176,7 @@ impl ClientAddress {
 
 impl fmt::Display for ClientAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ClientAddress={}", self.full())
+        write!(f, "ClientAddress={}", self.as_str())
     }
 }
 
@@ -204,8 +204,8 @@ impl ServiceAddress {
         Ok(ServiceAddress { addr })
     }
 
-    pub fn full(&self) -> &str {
-        self.addr.full()
+    pub fn as_str(&self) -> &str {
+        self.addr.as_str()
     }
 
     pub fn new(service: &str) -> Self {
@@ -234,7 +234,7 @@ impl ServiceAddress {
 
 impl fmt::Display for ServiceAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ServiceAddress={}", self.full())
+        write!(f, "ServiceAddress={}", self.as_str())
     }
 }
 
@@ -272,15 +272,15 @@ impl RouterAddress {
         Ok(RouterAddress { addr })
     }
 
-    pub fn full(&self) -> &str {
-        self.addr.full()
+    pub fn as_str(&self) -> &str {
+        self.addr.as_str()
     }
 
     /// Create a new router address from a domain.
     ///
     /// ```
     /// let addr = opensrf::addr::RouterAddress::new("localhost");
-    /// assert_eq!(addr.full(), "opensrf:router:localhost");
+    /// assert_eq!(addr.as_str(), "opensrf:router:localhost");
     /// ```
     pub fn new(domain: &str) -> Self {
         let full = format!("{}:router:{}", BUS_ADDR_NAMESPACE, &domain);
@@ -308,6 +308,6 @@ impl RouterAddress {
 
 impl fmt::Display for RouterAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "RouterAddress={}", self.full())
+        write!(f, "RouterAddress={}", self.as_str())
     }
 }

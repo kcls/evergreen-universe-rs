@@ -158,8 +158,8 @@ impl Worker {
             .unwrap_or(5);
 
         let mut requests: u32 = 0;
-        let service_addr = ServiceAddress::new(&self.service).full().to_string();
-        let local_addr = self.client.address().full().to_string();
+        let service_addr = ServiceAddress::new(&self.service).as_str().to_string();
+        let local_addr = self.client.address().as_str().to_string();
 
         while requests < max_requests {
             let timeout: i32;
@@ -339,8 +339,8 @@ impl Worker {
 
     fn reply_with_status(&mut self, stat: MessageStatus, stat_text: &str) -> Result<(), String> {
         let tmsg = TransportMessage::with_body(
-            self.session().sender().full(),
-            self.client.address().full(),
+            self.session().sender().as_str(),
+            self.client.address().as_str(),
             self.session().thread(),
             Message::new(
                 MessageType::Status,
@@ -443,8 +443,8 @@ impl Worker {
         );
 
         let tmsg = TransportMessage::with_body(
-            self.session().sender().full(),
-            self.client.address().full(),
+            self.session().sender().as_str(),
+            self.client.address().as_str(),
             self.session().thread(),
             msg,
         );
@@ -468,8 +468,8 @@ impl Worker {
         );
 
         let tmsg = TransportMessage::with_body(
-            self.session().sender().full(),
-            self.client.address().full(),
+            self.session().sender().as_str(),
+            self.client.address().as_str(),
             self.session().thread(),
             msg,
         );

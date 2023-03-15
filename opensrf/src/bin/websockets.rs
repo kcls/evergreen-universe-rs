@@ -477,8 +477,8 @@ impl Session {
             }
             None => {
                 let domain = self.osrf_sender.address().domain();
-                send_to_router = Some(RouterAddress::new(domain).full().to_string());
-                ServiceAddress::new(service).full().to_string()
+                send_to_router = Some(RouterAddress::new(domain).as_str().to_string());
+                ServiceAddress::new(service).as_str().to_string()
             }
         };
 
@@ -535,7 +535,7 @@ impl Session {
 
         let mut tm = message::TransportMessage::with_body_vec(
             &recipient,
-            self.osrf_sender.address().full(),
+            self.osrf_sender.address().as_str(),
             thread,
             body_vec,
         );

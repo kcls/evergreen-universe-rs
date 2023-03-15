@@ -332,8 +332,8 @@ impl Session {
         }
 
         let tmsg = TransportMessage::with_body(
-            self.destination_addr().full(),
-            self.client.address().full(),
+            self.destination_addr().as_str(),
+            self.client.address().as_str(),
             self.thread(),
             Message::new(
                 MessageType::Request,
@@ -349,7 +349,7 @@ impl Session {
             let router_addr = RouterAddress::new(self.client.domain());
             self.client_internal_mut()
                 .bus_mut()
-                .send_to(&tmsg, router_addr.full())?;
+                .send_to(&tmsg, router_addr.as_str())?;
         } else {
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
@@ -382,8 +382,8 @@ impl Session {
         let trace = self.incr_thread_trace();
 
         let tm = TransportMessage::with_body(
-            self.destination_addr().full(),
-            self.client.address().full(),
+            self.destination_addr().as_str(),
+            self.client.address().as_str(),
             self.thread(),
             Message::new(MessageType::Connect, trace, Payload::NoPayload),
         );
@@ -393,7 +393,7 @@ impl Session {
             .singleton()
             .borrow_mut()
             .bus_mut()
-            .send_to(&tm, self.router_addr().full())?;
+            .send_to(&tm, self.router_addr().as_str())?;
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 
@@ -422,8 +422,8 @@ impl Session {
         debug!("{self} sending DISCONNECT");
 
         let tmsg = TransportMessage::with_body(
-            dest_addr.full(),
-            self.client.address().full(),
+            dest_addr.as_str(),
+            self.client.address().as_str(),
             self.thread(),
             Message::new(MessageType::Disconnect, trace, Payload::NoPayload),
         );
@@ -619,8 +619,8 @@ impl ServerSession {
         );
 
         let tmsg = TransportMessage::with_body(
-            self.sender.full(),
-            self.client.address().full(),
+            self.sender.as_str(),
+            self.client.address().as_str(),
             self.thread(),
             msg,
         );
@@ -666,8 +666,8 @@ impl ServerSession {
         );
 
         let tmsg = TransportMessage::with_body(
-            self.sender.full(),
-            self.client.address().full(),
+            self.sender.as_str(),
+            self.client.address().as_str(),
             self.thread(),
             msg,
         );

@@ -92,7 +92,7 @@ impl Bus {
     ) -> Result<Option<String>, String> {
         let recipient = match recipient {
             Some(s) => s.to_string(),
-            None => self.address().full().to_string(),
+            None => self.address().as_str().to_string(),
         };
 
         let value: String;
@@ -251,7 +251,7 @@ impl Bus {
 
     /// Remove all pending data from the recipient queue.
     pub fn clear_bus(&mut self) -> Result<(), String> {
-        let sname = self.address().full().to_string();
+        let sname = self.address().as_str().to_string();
         self.clear_named_queue(&sname)
     }
 

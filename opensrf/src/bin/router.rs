@@ -32,7 +32,7 @@ impl ServiceInstance {
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            address: json::from(self.address().full()),
+            address: json::from(self.address().as_str()),
             register_time: json::from(self.register_time().to_rfc3339()),
         }
     }
@@ -62,7 +62,7 @@ impl ServiceEntry {
         if let Some(pos) = self
             .controllers
             .iter()
-            .position(|c| c.address().full().eq(address.full()))
+            .position(|c| c.address().as_str().eq(address.as_str()))
         {
             log::debug!(
                 "Removing controller for service={} address={}",
@@ -265,7 +265,7 @@ impl Router {
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            listen_address: json::from(self.listen_address.full()),
+            listen_address: json::from(self.listen_address.as_str()),
             primary_domain: self.primary_domain().to_json_value(),
             remote_domains: json::from(self.remote_domains().iter()
                 .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
@@ -352,7 +352,7 @@ impl Router {
 
             if svc.name.eq(service) {
                 for controller in &mut svc.controllers {
-                    if controller.address.full().eq(address.full()) {
+                    if controller.address.as_str().eq(address.as_str()) {
                         log::warn!(
                             "Controller with address {} already registered for service {} and domain {}",
                             address, service, domain
@@ -516,8 +516,8 @@ impl Router {
         }
 
         let from = match self.primary_domain.bus() {
-            Some(b) => b.address().full(),
-            None => self.listen_address.full(),
+            Some(b) => b.address().as_str(),
+            None => self.listen_address.as_str(),
         };
 
         let tm = TransportMessage::with_body(
@@ -566,7 +566,7 @@ impl Router {
                 None => return Err(format!("Primary domain has no bus!")),
             };
 
-            let mut tmsg = TransportMessage::with_body(from, myaddr.full(), tm.thread(), reply);
+            let mut tmsg = TransportMessage::with_body(from, myaddr.as_str(), tm.thread(), reply);
 
             tmsg.body_as_mut().push(Message::new(
                 MessageType::Status,
@@ -664,8 +664,8 @@ impl Router {
         // Bounce the message back to the caller with the requested data.
         // Should our FROM address be our unique bus address or the router
         // address? Does it matter?
-        tm.set_from(self.primary_domain.bus().unwrap().address().full());
-        tm.set_to(from_addr.full());
+        tm.set_from(self.primary_domain.bus().unwrap().address().as_str());
+        tm.set_to(from_addr.as_str());
 
         let r_domain = self.find_or_create_domain(from_addr.domain())?;
 
@@ -684,7 +684,7 @@ impl Router {
 
         loop {
             // Break periodically
-            if let Some(tm) = bus.recv(10, Some(self.listen_address.full()))? {
+            if let Some(tm) = bus.recv(10, Some(self.listen_address.as_str()))? {
                 return Ok(tm);
             }
         }
