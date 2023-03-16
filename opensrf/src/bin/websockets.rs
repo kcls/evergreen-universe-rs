@@ -51,6 +51,9 @@ const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
 /// Max active requests
 const MAX_ACTIVE_REQUESTS: usize = 8;
 
+/// Max size of the backlog queue
+const MAX_BACKLOG_SIZE: usize = 1000;
+
 #[derive(Debug, PartialEq)]
 enum ChannelMessage {
     /// Websocket Request
@@ -387,7 +390,7 @@ impl Session {
     fn process_message_queue(&mut self) -> Result<(), String> {
         while self.reqs_in_flight < self.max_parallel {
             if let Some(text) = self.request_queue.pop_front() {
-                // This increments self.reqs_in_flight as needed.
+                // relay_to_osrf() increments self.reqs_in_flight as needed.
                 self.relay_to_osrf(&text)?;
             } else {
                 // Backlog is empty
@@ -409,12 +412,17 @@ impl Session {
     fn handle_inbound_message(&mut self, msg: OwnedMessage) -> Result<(), String> {
         match msg {
             OwnedMessage::Text(text) => {
-                if text.len() >= MAX_MESSAGE_SIZE {
-                    // Drop the message and exit
-                    return Err(format!("{self} Dropping huge websocket message"));
-                }
 
-                self.request_queue.push_back(text);
+                if text.len() >= MAX_MESSAGE_SIZE {
+                    log::error!("{self} Dropping huge websocket message");
+
+                } else if self.request_queue.len() >= MAX_BACKLOG_SIZE {
+                    log::error!("Backlog exceeds max size={}; dropping", MAX_BACKLOG_SIZE);
+
+                } else {
+                    log::trace!("{self} Queueing inbound message for processing");
+                    self.request_queue.push_back(text);
+                }
 
                 Ok(())
             }
