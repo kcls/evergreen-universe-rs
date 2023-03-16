@@ -215,6 +215,18 @@ impl Bus {
         Ok(None)
     }
 
+    /// Returns at most one TransportMessage.
+    ///
+    /// Keeps trying until a value is returned or the timeout is exceeded.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - Time in seconds to wait for a response.
+    ///     A negative value means to block indefinitely.
+    ///     0 means do not block.
+    /// * `recipient` - Optionally specify the name of the destination
+    ///     queue/stream.  This overrides using the bus-specific
+    ///     bus address as the recipient.
     pub fn recv(
         &mut self,
         timeout: i32,
@@ -251,7 +263,7 @@ impl Bus {
 
     /// Remove all pending data from the recipient queue.
     pub fn clear_bus(&mut self) -> Result<(), String> {
-        let sname = self.address().as_str().to_string();
+        let sname = self.address().as_str().to_string(); // mut borrow
         self.clear_named_queue(&sname)
     }
 
@@ -275,7 +287,7 @@ impl Bus {
         self.clear_bus()
     }
 
-    // See Redis KEYS command.
+    /// Returns a list of keys that match the provided pattern.
     pub fn keys(&mut self, pattern: &str) -> Result<Vec<String>, String> {
         let res: Result<Vec<String>, _> = self.connection().keys(pattern);
 
@@ -286,6 +298,7 @@ impl Bus {
         Ok(res.unwrap())
     }
 
+    /// Returns the length of the array specified by 'key'.
     pub fn llen(&mut self, key: &str) -> Result<i32, String> {
         let res: Result<i32, _> = self.connection().llen(key);
 
@@ -296,6 +309,9 @@ impl Bus {
         Ok(res.unwrap())
     }
 
+    /// Returns the time-to-live (in seconds) of the specified key.
+    ///
+    /// Return -1 if no expire time is set, -2 if no such key exists.
     pub fn ttl(&mut self, key: &str) -> Result<i32, String> {
         let res: Result<i32, _> = self.connection().ttl(key);
 
@@ -306,6 +322,7 @@ impl Bus {
         Ok(res.unwrap())
     }
 
+    /// Returns an array slice as a Vec of Strings.
     pub fn lrange(&mut self, key: &str, start: isize, stop: isize) -> Result<Vec<String>, String> {
         let res: Result<Vec<String>, _> = self.connection().lrange(key, start, stop);
 

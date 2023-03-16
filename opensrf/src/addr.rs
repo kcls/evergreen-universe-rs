@@ -133,6 +133,14 @@ impl ClientAddress {
         self.addr.as_str()
     }
 
+    /// Create a new ClientAddress for a domain.
+    ///
+    /// ```
+    /// let domain = "private.localhost";
+    /// let addr = opensrf::addr::ClientAddress::new(domain);
+    /// assert_eq!(addr.domain(), domain);
+    /// assert!(addr.addr().is_client());
+    /// ```
     pub fn new(domain: &str) -> Self {
         let full = format!(
             "{}:client:{}:{}:{}:{}",
@@ -156,6 +164,17 @@ impl ClientAddress {
     }
 
     /// Allow the caller to provide the address content after the domain.
+    ///
+    /// ```
+    /// let domain = "private.localhost";
+    /// let mut addr = opensrf::addr::ClientAddress::new(domain);
+    /// assert_eq!(addr.domain(), domain);
+    ///
+    /// let remainder = "HELLO123";
+    /// addr.set_remainder(remainder);
+    /// assert!(addr.addr().is_client());
+    /// assert!(addr.as_str().ends_with(remainder));
+    /// ```
     pub fn set_remainder(&mut self, remainder: &str) {
         self.addr.full = format!(
             "{}:client:{}:{}",
@@ -208,6 +227,17 @@ impl ServiceAddress {
         self.addr.as_str()
     }
 
+    /// Create a service address.
+    ///
+    /// Service address are non domain-specific and refer generically
+    /// to a service.
+    ///
+    /// ```
+    /// let service = "opensrf.settings";
+    /// let mut addr = opensrf::addr::ServiceAddress::new(service);
+    /// assert_eq!(addr.service(), service);
+    /// assert!(addr.addr().is_service());
+    /// ```
     pub fn new(service: &str) -> Self {
         let full = format!("{}:service:{}", BUS_ADDR_NAMESPACE, &service);
 

@@ -18,6 +18,12 @@ const TRIM_THREAD_ID: usize = 5;
 ///
 /// NOTE this logs directly to the syslog UNIX path instead of going through
 /// the syslog crate.  This approach gives us much more control.
+///
+/// TODO: As it stands, there's no way to apply a log trace value to the
+/// logger, since the global logger isn't generally writable or accessible
+/// to individual threads.  Log traces currently have to be passed
+/// by the log::* caller within the log message.  Consider alternatives.
+///
 pub struct Logger {
     _logfile: conf::LogFile,
     loglevel: log::LevelFilter,

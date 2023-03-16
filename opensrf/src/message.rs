@@ -120,7 +120,7 @@ impl From<isize> for MessageStatus {
     }
 }
 
-/// Translate a MessageStatus into its serialized display label
+/// Translate a MessageStatus into its display label
 ///
 /// ```
 /// let s: &str = opensrf::message::MessageStatus::Continue.into();
@@ -169,8 +169,8 @@ impl Payload {
     }
 }
 
-/// Envelope which contains routing information, other metadata, and
-/// contains one or more Messages.
+/// Message envelope containing one or more Messages, routing
+/// details, and other metadata.
 #[derive(Debug, PartialEq)]
 pub struct TransportMessage {
     to: String,
@@ -270,6 +270,8 @@ impl TransportMessage {
     }
 
     /// Create a TransportMessage from a JSON object, consuming the JSON value.
+    ///
+    /// Returns None if the JSON value cannot be coerced into a TransportMessage.
     pub fn from_json_value(mut json_obj: json::JsonValue) -> Option<Self> {
         let to = match json_obj["to"].as_str() {
             Some(i) => i,
