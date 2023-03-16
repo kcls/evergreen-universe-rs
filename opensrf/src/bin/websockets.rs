@@ -43,7 +43,10 @@ const SHUTDOWN_POLL_INTERVAL: i32 = 5;
 /// Prevent huge session threads
 const MAX_THREAD_SIZE: usize = 256;
 
-/// Largest allowed inbound websocket message
+/// Largest allowed inbound websocket message.
+///
+/// Message size is typically limited by the the HTTP proxy,
+/// e.g. nginx, so this is more of a backstop.
 const MAX_MESSAGE_SIZE: usize = 10485760; // ~10M
 
 const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
@@ -413,8 +416,10 @@ impl Session {
         match msg {
             OwnedMessage::Text(text) => {
 
-                if text.len() >= MAX_MESSAGE_SIZE {
-                    log::error!("{self} Dropping huge websocket message");
+                let tlen = text.len();
+
+                if tlen >= MAX_MESSAGE_SIZE {
+                    log::error!("{self} Dropping huge websocket message size={tlen}");
 
                 } else if self.request_queue.len() >= MAX_BACKLOG_SIZE {
                     log::error!("Backlog exceeds max size={}; dropping", MAX_BACKLOG_SIZE);
@@ -712,6 +717,7 @@ impl Server {
 
             if tcount >= self.max_clients {
                 log::warn!("Max websocket clients reached.  Ignoring new connection");
+                connection.reject().ok();
                 continue;
             }
 
