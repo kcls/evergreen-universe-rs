@@ -51,10 +51,15 @@ const MAX_MESSAGE_SIZE: usize = 10485760; // ~10M
 
 const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
 
-/// Max active requests
+/// Max active parallel requests
 const MAX_ACTIVE_REQUESTS: usize = 8;
 
 /// Max size of the backlog queue
+///
+/// If we reach MAX_ACTIVE_REQUESTS, we start leaving new requests in
+/// the backlog.  If the size of the baclkog exceeds this amount,
+/// reject future requests until the backlog gets back below this amount.
+/// NOTE: should we kick the client off at this point?
 const MAX_BACKLOG_SIZE: usize = 1000;
 
 #[derive(Debug, PartialEq)]
