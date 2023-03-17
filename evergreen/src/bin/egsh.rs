@@ -12,6 +12,9 @@ use eg::event;
 use eg::idl;
 use eg::idldb;
 use eg::init;
+use eg::editor;
+use eg::settings;
+use eg::util;
 use evergreen as eg;
 
 //const PROMPT: &str = "egsh# ";
@@ -343,33 +346,31 @@ impl Shell {
     }
 
     fn get_setting(&mut self, args: &[&str]) -> Result<(), String> {
-        let authtoken = match &self.auth_session {
-            Some(s) => json::from(s.token()),
-            None => json::JsonValue::Null,
-        };
+        let mut editor = editor::Editor::new(self.ctx().client(), self.ctx().idl());
+        let mut sc = settings::SettingsCache::new(&editor);
 
-        let setting = args[1];
-        let setarg = json::from(setting);
+        // If the caller requested settings for a specific org unit,
+        // use that as the context.  Otherwise, pull what we can
+        // from our editor / auth info.
+        if args.len() > 2 {
+            let org_id = args[2].parse::<i64>()
+                .or_else(|_| Err(format!("Invalid org unit ID: {}", args[2])))?;
 
-        let org_id = if args.len() > 2 {
-            let org_str = args[2];
-            json::parse(org_str)
-                .or_else(|e| Err(format!("Cannot parse parameter: {org_str} {e}")))?
+            sc.set_org_id(org_id);
+
+        } else if let Some(authses) = &self.auth_session {
+
+            editor.set_authtoken(authses.token());
+            editor.checkauth()?;
+            sc.set_editor(&editor);
+
         } else {
-            json::JsonValue::Null
-        };
-
-        let params = vec![json::from(vec![setarg]), authtoken, org_id];
-
-        let mut ses = self.ctx().client().session("open-ils.actor");
-        let mut req = ses.request("open-ils.actor.settings.retrieve", params)?;
-
-        while let Some(resp) = req.recv(DEFAULT_REQUEST_TIMEOUT)? {
-            self.check_for_event(&resp)?;
-            println!("");
-            println!("{setting} => {}", resp["value"]);
+            Err(format!("Org unit or authtoken required to check settings"))?;
         }
-        println!("");
+
+        let name = &args[1];
+        let value = sc.get_value(name)?;
+        println!("\n{name} => {value}\n");
 
         Ok(())
     }
