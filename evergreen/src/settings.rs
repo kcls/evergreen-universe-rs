@@ -1,10 +1,12 @@
 /// General purpose org / workstation / user setting fetcher and cache.
 use std::collections::HashMap;
 use json::JsonValue;
+use regex::Regex;
 use super::util;
 use super::editor::Editor;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
+const SETTING_NAME_REGEX: &str = "[^a-zA-Z0-9_\\.]";
 
 #[derive(Debug, Clone)]
 pub struct SettingType {
@@ -81,6 +83,8 @@ impl SettingsCache {
     }
 
     /// Returns a setting value using the default context info.
+    ///
+    /// Returns JSON null if no setting exists.
     pub fn get_value(&mut self, name: &str) -> Result<&JsonValue, String> {
         if !self.cache.contains_key(name) {
             self.fetch_values(&[name])?;
@@ -90,30 +94,33 @@ impl SettingsCache {
 
     /// Batch setting value fetch.
     pub fn fetch_values(&mut self, names: &[&str]) -> Result<(), String> {
-
-
         let user_id = match self.user_id {
             Some(id) => json::from(id),
-            None => JsonValue::Null,
+            None => JSON_NULL,
         };
 
         let org_id = match self.org_id {
             Some(id) => json::from(id),
-            None => JsonValue::Null,
+            None => JSON_NULL,
         };
 
         let workstation_id = match self.workstation_id {
             Some(id) => json::from(id),
-            None => JsonValue::Null,
+            None => JSON_NULL,
         };
 
         if user_id.is_null() && org_id.is_null() {
             Err(format!("Cannot retrieve settings without user_id or org_id"))?;
         }
 
-        // TODO verify names only contain letters, numbers, unders, and dots.
-        // let reg = Regex::new(r#"[\x{2018}\x{2019}\x{201B}\x{FF07}\x{201A}]"#).unwrap();
+        let reg = Regex::new(SETTING_NAME_REGEX).unwrap();
+        for name in names {
+            if reg.is_match(name) {
+                Err(format!("Invalid setting name: {name}"))?;
+            }
+        }
 
+        // First param is an SQL TEXT[].
         let names = format!("{{{}}}", names.join(","));
 
         let query = json::object! {

@@ -14,7 +14,6 @@ use eg::idldb;
 use eg::init;
 use eg::editor;
 use eg::settings;
-use eg::util;
 use evergreen as eg;
 
 //const PROMPT: &str = "egsh# ";
@@ -335,7 +334,7 @@ impl Shell {
         }
     }
 
-    fn check_for_event(&mut self, v: &json::JsonValue) -> Result<(), String> {
+    fn _check_for_event(&mut self, v: &json::JsonValue) -> Result<(), String> {
         if let Some(evt) = event::EgEvent::parse(v) {
             if !evt.success() {
                 return Err(format!("Non-SUCCESS event returned: {evt}"));
