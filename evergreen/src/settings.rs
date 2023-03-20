@@ -6,6 +6,10 @@ use super::util;
 use super::editor::Editor;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
+
+// Setting names consist only of letters, numbers, unders, and dots.
+// This is crucial since the names are encoded as an SQL TEXT[] parameter
+// during lookuping.
 const SETTING_NAME_REGEX: &str = "[^a-zA-Z0-9_\\.]";
 
 #[derive(Debug, Clone)]
@@ -16,11 +20,27 @@ pub struct SettingType {
     has_workstation_setting: bool,
 }
 
+impl SettingType {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn has_org_setting(&self) -> bool {
+        self.has_org_setting
+    }
+    pub fn has_user_setting(&self) -> bool {
+        self.has_user_setting
+    }
+    pub fn has_workstation_setting(&self) -> bool {
+        self.has_workstation_setting
+    }
+}
+
 pub struct SettingsCache {
     editor: Editor,
     org_id: Option<i64>,
     user_id: Option<i64>,
     workstation_id: Option<i64>,
+    name_regex: Option<Regex>,
     cache: HashMap<String, JsonValue>,
     types: HashMap<String, SettingType>,
 }
@@ -32,6 +52,7 @@ impl SettingsCache {
             org_id: None,
             user_id: None,
             workstation_id: None,
+            name_regex: None,
             editor: editor.clone(),
             cache: HashMap::new(),
             types: HashMap::new(),
@@ -93,6 +114,8 @@ impl SettingsCache {
     }
 
     /// Batch setting value fetch.
+    ///
+    /// Returns String Err on load failure or invalid setting name.
     pub fn fetch_values(&mut self, names: &[&str]) -> Result<(), String> {
         let user_id = match self.user_id {
             Some(id) => json::from(id),
@@ -113,7 +136,13 @@ impl SettingsCache {
             Err(format!("Cannot retrieve settings without user_id or org_id"))?;
         }
 
-        let reg = Regex::new(SETTING_NAME_REGEX).unwrap();
+        if self.name_regex.is_none() {
+            // Avoid recompiling the same regex -- it's not cheap.
+            self.name_regex = Some(Regex::new(SETTING_NAME_REGEX).unwrap());
+        }
+
+        let reg = self.name_regex.as_ref().unwrap();
+
         for name in names {
             if reg.is_match(name) {
                 Err(format!("Invalid setting name: {name}"))?;

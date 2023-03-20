@@ -22,6 +22,7 @@ const HISTORY_FILE: &str = ".egsh_history";
 const SEPARATOR: &str = "---------------------------------------------------";
 const DEFAULT_REQUEST_TIMEOUT: i32 = 120;
 const DEFAULT_JSON_PRINT_DEPTH: u16 = 2;
+const DEFAULT_LOGIN_TYPE: &str = "temp";
 
 const HELP_TEXT: &str = r#"
 Options
@@ -369,9 +370,8 @@ impl Shell {
 
         let name = &args[1];
         let value = sc.get_value(name)?;
-        println!("\n{name} => {value}\n");
 
-        Ok(())
+        Ok(println!("\n{name} => {value}\n"))
     }
 
     fn handle_prefs(&mut self, args: &[&str]) -> Result<(), String> {
@@ -442,7 +442,7 @@ impl Shell {
 
         let username = args[0];
         let password = args[1];
-        let login_type = args.get(2).unwrap_or(&"temp");
+        let login_type = args.get(2).unwrap_or(&DEFAULT_LOGIN_TYPE);
         let workstation = if args.len() > 3 { Some(args[3]) } else { None };
 
         let args = eg::auth::AuthLoginArgs::new(username, password, *login_type, workstation);
