@@ -8,11 +8,11 @@ use rustyline;
 
 use eg::auth::AuthSession;
 use eg::db::DatabaseConnection;
+use eg::editor;
 use eg::event;
 use eg::idl;
 use eg::idldb;
 use eg::init;
-use eg::editor;
 use eg::settings;
 use evergreen as eg;
 
@@ -353,17 +353,15 @@ impl Shell {
         // use that as the context.  Otherwise, pull what we can
         // from our editor / auth info.
         if args.len() > 2 {
-            let org_id = args[2].parse::<i64>()
+            let org_id = args[2]
+                .parse::<i64>()
                 .or_else(|_| Err(format!("Invalid org unit ID: {}", args[2])))?;
 
             sc.set_org_id(org_id);
-
         } else if let Some(authses) = &self.auth_session {
-
             editor.set_authtoken(authses.token());
             editor.checkauth()?;
             sc.set_editor(&editor);
-
         } else {
             Err(format!("Org unit or authtoken required to check settings"))?;
         }

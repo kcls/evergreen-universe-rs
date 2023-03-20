@@ -57,8 +57,18 @@ pub fn init_with_more_options(
     opts.optopt("", "osrf-log-level", "Log Level Number (0-5)", "LOG_LEVEL");
 
     // Override configured bus credentials.
-    opts.optopt("", "osrf-bus-username", "Bus Login Username", "BUS_USERNAME");
-    opts.optopt("", "osrf-bus-password", "Bus Login Password", "BUS_PASSWORD");
+    opts.optopt(
+        "",
+        "osrf-bus-username",
+        "Bus Login Username",
+        "BUS_USERNAME",
+    );
+    opts.optopt(
+        "",
+        "osrf-bus-password",
+        "Bus Login Password",
+        "BUS_PASSWORD",
+    );
 
     let params = opts
         .parse(&args[1..])

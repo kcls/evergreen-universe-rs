@@ -1,9 +1,9 @@
-/// General purpose org / workstation / user setting fetcher and cache.
-use std::collections::HashMap;
+use super::editor::Editor;
+use super::util;
 use json::JsonValue;
 use regex::Regex;
-use super::util;
-use super::editor::Editor;
+/// General purpose org / workstation / user setting fetcher and cache.
+use std::collections::HashMap;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
@@ -47,7 +47,6 @@ pub struct SettingsCache {
 
 impl SettingsCache {
     pub fn new(editor: &Editor) -> SettingsCache {
-
         let mut sc = SettingsCache {
             org_id: None,
             user_id: None,
@@ -70,7 +69,6 @@ impl SettingsCache {
 
     /// Apply context values pulled from the Editor.
     pub fn apply_editor(&mut self, e: &Editor) {
-
         // See if we can pull context data from our editor.
         if let Some(reqr) = e.requestor() {
             if let Ok(id) = util::json_int(&reqr["id"]) {
@@ -133,7 +131,9 @@ impl SettingsCache {
         };
 
         if user_id.is_null() && org_id.is_null() {
-            Err(format!("Cannot retrieve settings without user_id or org_id"))?;
+            Err(format!(
+                "Cannot retrieve settings without user_id or org_id"
+            ))?;
         }
 
         if self.name_regex.is_none() {
@@ -169,7 +169,6 @@ impl SettingsCache {
     }
 
     fn add_setting_value(&mut self, setting: &JsonValue) -> Result<(), String> {
-
         let value = match setting["value"].as_str() {
             Some(v) => match json::parse(v) {
                 Ok(vv) => vv,
@@ -178,7 +177,9 @@ impl SettingsCache {
             None => JsonValue::Null,
         };
 
-        let name = setting["name"].as_str().ok_or(format!("Setting has no name"))?;
+        let name = setting["name"]
+            .as_str()
+            .ok_or(format!("Setting has no name"))?;
         let has_org_setting = util::json_bool(&setting["has_org_setting"]);
         let has_user_setting = util::json_bool(&setting["has_user_setting"]);
         let has_workstation_setting = util::json_bool(&setting["has_workstation_setting"]);
@@ -196,4 +197,3 @@ impl SettingsCache {
         Ok(())
     }
 }
-

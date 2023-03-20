@@ -150,7 +150,10 @@ impl Routerdomain {
     }
 
     fn get_service_mut(&mut self, name: &str) -> Option<&mut ServiceEntry> {
-        self.services.iter_mut().filter(|s| s.name().eq(name)).next()
+        self.services
+            .iter_mut()
+            .filter(|s| s.name().eq(name))
+            .next()
     }
 
     fn remove_service(&mut self, service: &str, address: &ClientAddress) {
@@ -473,7 +476,6 @@ impl Router {
         if service.eq("router") {
             return self.handle_router_api_request(tm);
         }
-
 
         if let Some(svc) = self.primary_domain.get_service_mut(service) {
             svc.route_count += 1;

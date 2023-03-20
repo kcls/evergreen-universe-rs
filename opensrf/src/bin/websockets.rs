@@ -420,15 +420,12 @@ impl Session {
     fn handle_inbound_message(&mut self, msg: OwnedMessage) -> Result<(), String> {
         match msg {
             OwnedMessage::Text(text) => {
-
                 let tlen = text.len();
 
                 if tlen >= MAX_MESSAGE_SIZE {
                     log::error!("{self} Dropping huge websocket message size={tlen}");
-
                 } else if self.request_queue.len() >= MAX_BACKLOG_SIZE {
                     log::error!("Backlog exceeds max size={}; dropping", MAX_BACKLOG_SIZE);
-
                 } else {
                     log::trace!("{self} Queueing inbound message for processing");
                     self.request_queue.push_back(text);
