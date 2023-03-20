@@ -18,6 +18,8 @@ const SETTING_NAME_REGEX: &str = "[^a-zA-Z0-9_\\.]";
 /// sticking around too long in long-running processes.
 const DEFAULT_SETTING_ENTRY_TIMEOUT: u64 = 600; // seconds
 
+/// SettingType may come in handy later when we need to know
+/// more about the types.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SettingType {
     name: String,
@@ -93,15 +95,11 @@ impl SettingContext {
 /// it's stored in.
 #[derive(Debug)]
 pub struct SettingEntry {
-    setting_type: SettingType,
     value: JsonValue,
     lookup_time: Instant,
 }
 
 impl SettingEntry {
-    pub fn setting_type(&self) -> &SettingType {
-        &self.setting_type
-    }
     pub fn value(&self) -> &JsonValue {
         &self.value
     }
@@ -278,22 +276,9 @@ impl Settings {
             None => JsonValue::Null,
         };
 
-        let name = setting["name"]
-            .as_str()
-            .ok_or(format!("Setting has no name"))?;
-        let has_org_setting = util::json_bool(&setting["has_org_setting"]);
-        let has_user_setting = util::json_bool(&setting["has_user_setting"]);
-        let has_workstation_setting = util::json_bool(&setting["has_workstation_setting"]);
-
-        let setting_type = SettingType {
-            name: name.to_string(),
-            has_org_setting,
-            has_user_setting,
-            has_workstation_setting,
-        };
+        let name = setting["name"].as_str().ok_or(format!("Setting has no name"))?;
 
         let entry = SettingEntry {
-            setting_type,
             value: value,
             lookup_time: Instant::now(),
         };
