@@ -26,6 +26,7 @@ struct IngestOptions {
 
 /// Read command line options and setup our database connection.
 fn init() -> Option<(IngestOptions, DatabaseConnection)> {
+    let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
 
     opts.optopt("", "sql-file", "SQL Query File", "QUERY_FILE");
@@ -58,7 +59,12 @@ fn init() -> Option<(IngestOptions, DatabaseConnection)> {
     DatabaseConnection::append_options(&mut opts);
 
     // We don't need a Client or IDL, so use the OpenSRF init directly.
-    let (_, params) = opensrf::init::init_with_options(&mut opts).unwrap();
+    opensrf::init::init().unwrap();
+
+    let params = match opts.parse(&args[1..]) {
+        Ok(p) => p,
+        Err(e) => panic!("Error parsing options: {}", e),
+    };
 
     if params.opt_present("help") {
         println!("{}", opts.usage("Usage: "));

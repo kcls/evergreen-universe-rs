@@ -8,14 +8,23 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const HELP_TEXT: &str = r#"
-Commands entered here affect the running instance only, not the config files.
-
 Commands:
   help
+
   shutdown
+    * Issue a graceful shutdown request.
+
   list-accounts
+    * Lists accounts that were known at server start time.  Does not include
+      in-memory only accounts.
+
   add-account <setting-group> <sip-user> <sip-pass> <ils-user> [<workstation>]
+    * This adds an in-memory account only.  Modify the server config file to
+      persist changes.
+
   disable-account <sip-user>
+    * This disables the account in-memory only. Modify the server config
+      file to persist changes.
 "#;
 
 // Wake up occaisonally to see if we need to shutdown, which can
@@ -86,6 +95,11 @@ impl Monitor {
     }
 
     fn handle_client(&mut self, mut stream: TcpStream) {
+        if let Err(e) = stream.write("\nWelcome.  Type 'help' for options.\n\n".as_bytes()) {
+            log::error!("Err writing to monitor stream: {e}");
+            return;
+        }
+
         loop {
             let command = match self.read_stream(&mut stream) {
                 Some(c) => c,
@@ -143,12 +157,6 @@ impl Monitor {
                         acct.sip_username()
                     );
                 }
-
-                // As a separate thread, we operator on a cloned version
-                // of the SIP config.  To include manually added
-                // (in-memory only) accounts, we'd have to request
-                // an updated list of accounts from the main server process.
-                response += "\n* Does not include live changes *\n";
             }
             "add-account" => {
                 self.add_account(commands)?;

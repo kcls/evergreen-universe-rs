@@ -41,6 +41,7 @@ const HELP_TEXT: &str = r#"
 "#;
 
 fn main() -> Result<(), String> {
+    let args: Vec<String> = std::env::args().collect();
     let mut opts = getopts::Options::new();
 
     opts.optflag("h", "help", "");
@@ -50,22 +51,25 @@ fn main() -> Result<(), String> {
     opts.optopt("", "sip-pass", "", "");
     opts.optopt("", "institution", "", "");
 
+    let params = match opts.parse(&args[1..]) {
+        Ok(p) => p,
+        Err(e) => panic!("Error parsing options: {}", e),
+    };
+
     // OpenSRF connect, get host settings, parse IDL, etc.
     let t = Timer::new();
-    let ctx = eg::init::init_with_options(&mut opts).expect("Evergreen Init");
+    let ctx = eg::init::init().expect("Evergreen Init");
     t.done("EG Init");
 
-    let options = ctx.params();
-
-    if options.opt_present("help") {
+    if params.opt_present("help") {
         println!("{}", HELP_TEXT);
         return Ok(());
     }
 
-    let host = options
+    let host = params
         .opt_get_default("sip-host", "127.0.0.1".to_string())
         .unwrap();
-    let port = options
+    let port = params
         .opt_get_default("sip-port", "6001".to_string())
         .unwrap();
     let sip_host = format!("{host}:{port}");
@@ -80,13 +84,13 @@ fn main() -> Result<(), String> {
         sipcon,
         editor,
         samples: SampleData::new(),
-        sip_user: options
+        sip_user: params
             .opt_get_default("sip-user", "sip-user".to_string())
             .unwrap(),
-        sip_pass: options
+        sip_pass: params
             .opt_get_default("sip-pass", "sip-pass".to_string())
             .unwrap(),
-        institution: options
+        institution: params
             .opt_get_default("institution", "example".to_string())
             .unwrap(),
     };

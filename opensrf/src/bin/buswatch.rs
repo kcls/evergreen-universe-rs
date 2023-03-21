@@ -2,6 +2,7 @@ use chrono::{DateTime, Local};
 use getopts;
 use opensrf::bus;
 use opensrf::conf;
+use std::env;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -129,12 +130,18 @@ impl BusWatch {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
     let mut ops = getopts::Options::new();
 
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
     ops.optopt("", "ttl", "Time to Live", "TTL");
 
-    let (config, params) = opensrf::init::init_with_options(&mut ops).unwrap();
+    let params = match ops.parse(&args[1..]) {
+        Ok(p) => p,
+        Err(e) => panic!("Error parsing options: {}", e),
+    };
+
+    let config = opensrf::init::init().unwrap();
     let config = config.into_shared();
 
     let mut domains = params.opt_strs("domain");

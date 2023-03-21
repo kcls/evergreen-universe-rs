@@ -7,6 +7,7 @@ use osrf::init;
 use osrf::logging::Logger;
 use osrf::message;
 use std::collections::{HashMap, VecDeque};
+use std::env;
 use std::fmt;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -735,6 +736,7 @@ impl Server {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
     let mut ops = getopts::Options::new();
 
     ops.optopt("p", "port", "Port", "PORT");
@@ -747,9 +749,14 @@ fn main() {
         "MAX_PARALLEL",
     );
 
-    let initops = init::InitOptions { skip_logging: true };
+    let params = match ops.parse(&args[1..]) {
+        Ok(p) => p,
+        Err(e) => panic!("Error parsing options: {}", e),
+    };
 
-    let (config, params) = init::init_with_more_options(&mut ops, &initops).unwrap();
+    let init_ops = init::InitOptions { skip_logging: true };
+
+    let config = init::init_with_options(&init_ops).unwrap();
 
     let config = config.into_shared();
 

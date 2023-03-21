@@ -2,9 +2,9 @@ use super::editor::Editor;
 use super::util;
 use json::JsonValue;
 use regex::Regex;
-use std::time::Instant;
 /// General purpose org / workstation / user setting fetcher and cache.
 use std::collections::HashMap;
+use std::time::Instant;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
@@ -42,7 +42,6 @@ impl SettingType {
         self.has_workstation_setting
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SettingContext {
@@ -178,7 +177,11 @@ impl Settings {
         self.get_context_value(&self.default_context.clone(), name)
     }
 
-    pub fn get_context_value(&mut self, context: &SettingContext, name: &str) -> Result<&JsonValue, String> {
+    pub fn get_context_value(
+        &mut self,
+        context: &SettingContext,
+        name: &str,
+    ) -> Result<&JsonValue, String> {
         let hash = match self.cache.get(context) {
             Some(h) => h,
             None => {
@@ -201,7 +204,6 @@ impl Settings {
     }
 
     pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&JsonValue> {
-
         let hash = match self.cache.get_mut(context) {
             Some(h) => h,
             None => return None,
@@ -267,7 +269,11 @@ impl Settings {
         Ok(())
     }
 
-    fn add_setting_value(&mut self, context: &SettingContext, setting: &JsonValue) -> Result<(), String> {
+    fn add_setting_value(
+        &mut self,
+        context: &SettingContext,
+        setting: &JsonValue,
+    ) -> Result<(), String> {
         let value = match setting["value"].as_str() {
             Some(v) => match json::parse(v) {
                 Ok(vv) => vv,
@@ -276,7 +282,9 @@ impl Settings {
             None => JsonValue::Null,
         };
 
-        let name = setting["name"].as_str().ok_or(format!("Setting has no name"))?;
+        let name = setting["name"]
+            .as_str()
+            .ok_or(format!("Setting has no name"))?;
 
         let entry = SettingEntry {
             value: value,

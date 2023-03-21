@@ -104,6 +104,7 @@ struct Shell {
 impl Shell {
     /// Handle command line options, OpenSRF init, build the Shell struct.
     fn setup() -> Shell {
+        let args: Vec<String> = std::env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("", "with-database", "Open Direct Database Connection");
 
@@ -112,7 +113,12 @@ impl Shell {
         // in case we need them.
         DatabaseConnection::append_options(&mut opts);
 
-        let context = match eg::init::init_with_options(&mut opts) {
+        let params = match opts.parse(&args[1..]) {
+            Ok(p) => p,
+            Err(e) => panic!("Error parsing options: {}", e),
+        };
+
+        let context = match eg::init::init() {
             Ok(c) => c,
             Err(e) => panic!("Cannot init to OpenSRF: {}", e),
         };
@@ -128,8 +134,8 @@ impl Shell {
             json_print_depth: DEFAULT_JSON_PRINT_DEPTH,
         };
 
-        if shell.ctx().params().opt_present("with-database") {
-            shell.setup_db();
+        if params.opt_present("with-database") {
+            shell.setup_db(&params);
         }
 
         shell
@@ -140,8 +146,7 @@ impl Shell {
     }
 
     /// Connect directly to the specified database.
-    fn setup_db(&mut self) {
-        let params = self.ctx().params();
+    fn setup_db(&mut self, params: &getopts::Matches) {
         let mut db = DatabaseConnection::new_from_options(params);
 
         if let Err(e) = db.connect() {

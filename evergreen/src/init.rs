@@ -1,5 +1,4 @@
 use super::idl;
-use getopts;
 use opensrf as osrf;
 use std::env;
 use std::sync::Arc;
@@ -11,7 +10,6 @@ pub struct Context {
     client: osrf::client::Client,
     config: Arc<osrf::conf::Config>,
     idl: Arc<idl::Parser>,
-    params: getopts::Matches,
     host_settings: Option<Arc<osrf::sclient::HostSettings>>,
 }
 
@@ -24,9 +22,6 @@ impl Context {
     }
     pub fn idl(&self) -> &Arc<idl::Parser> {
         &self.idl
-    }
-    pub fn params(&self) -> &getopts::Matches {
-        &self.params
     }
     pub fn host_settings(&self) -> Option<&Arc<osrf::sclient::HostSettings>> {
         self.host_settings.as_ref()
@@ -50,28 +45,12 @@ impl InitOptions {
 /// Read common command line parameters, parse the core config, apply
 /// the primary connection type, and setup logging.
 pub fn init() -> Result<Context, String> {
-    init_with_options(&mut getopts::Options::new())
+    init_with_options(&InitOptions::new())
 }
 
-pub fn init_with_options(opts: &mut getopts::Options) -> Result<Context, String> {
-    init_with_more_options(opts, &InitOptions::new())
-}
-
-/// Same as init(), but allows the caller to pass in a prepopulated set
-/// of getopts::Options, which are then augmented with the standard
-/// OpenSRF command line options.
-pub fn init_with_more_options(
-    opts: &mut getopts::Options,
-    options: &InitOptions,
-) -> Result<Context, String> {
-    opts.optopt("", "idl-file", "Path to IDL file", "IDL_PATH");
-    opts.optflag("", "skip-host-settings", "Skip Host Settings");
-
-    let (config, _) = osrf::init::init_with_more_options(opts, &options.osrf_ops)?;
+pub fn init_with_options(options: &InitOptions) -> Result<Context, String> {
+    let config = osrf::init::init_with_options(&options.osrf_ops)?;
     let config = config.into_shared();
-
-    let args: Vec<String> = env::args().collect();
-    let params = opts.parse(&args[1..]).unwrap();
 
     let client = osrf::Client::connect(config.clone())
         .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
@@ -83,7 +62,7 @@ pub fn init_with_more_options(
     let mut idl_file = DEFAULT_IDL_PATH.to_string();
     let mut host_settings: Option<Arc<osrf::sclient::HostSettings>> = None;
 
-    if !params.opt_present("skip-host-settings") {
+    if !options.skip_host_settings {
         if let Ok(s) = osrf::sclient::SettingsClient::get_host_settings(&client, false) {
             if let Some(fname) = s.value("/IDL").as_str() {
                 idl_file = fname.to_string();
@@ -92,9 +71,9 @@ pub fn init_with_more_options(
         }
     }
 
-    // Always honor the command line option if present.
-    if params.opt_present("idl-file") {
-        idl_file = params.opt_str("idl-file").unwrap();
+    // Always honor the environment variable if present.
+    if let Ok(v) = env::var("EG_IDL_FILE") {
+        idl_file = v;
     }
 
     let idl = idl::Parser::parse_file(&idl_file)
@@ -104,7 +83,6 @@ pub fn init_with_more_options(
 
     Ok(Context {
         client,
-        params,
         config,
         idl,
         host_settings,

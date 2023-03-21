@@ -41,11 +41,11 @@ impl LogOptions {
     /// Defaults to Info
     pub fn log_level_from_str(level: &str) -> log::LevelFilter {
         match level {
-            "1" => log::LevelFilter::Error,
-            "2" => log::LevelFilter::Warn,
-            "3" => log::LevelFilter::Info,
-            "4" => log::LevelFilter::Debug,
-            "5" => log::LevelFilter::Trace,
+            "1" | "error" => log::LevelFilter::Error,
+            "2" | "warn" => log::LevelFilter::Warn,
+            "3" | "info" => log::LevelFilter::Info,
+            "4" | "debug" => log::LevelFilter::Debug,
+            "5" | "trace" => log::LevelFilter::Trace,
             _ => log::LevelFilter::Info,
         }
     }

@@ -60,12 +60,16 @@ struct BibLinker {
 
 impl BibLinker {
     fn new(opts: &mut getopts::Options) -> Result<Self, String> {
-        let ctx = init::init_with_options(opts)?;
+        let ctx = init::init()?;
         let editor = eg::Editor::new(ctx.client(), ctx.idl());
 
-        let params = ctx.params();
+        let args: Vec<String> = std::env::args().collect();
+        let params = match opts.parse(&args[1..]) {
+            Ok(p) => p,
+            Err(e) => panic!("Error parsing options: {}", e),
+        };
 
-        let mut db = DatabaseConnection::new_from_options(params);
+        let mut db = DatabaseConnection::new_from_options(&params);
         db.connect()?;
 
         let db = db.into_shared();

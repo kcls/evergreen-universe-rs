@@ -2,14 +2,21 @@ use eg::db::DatabaseConnection;
 use eg::idldb::{IdlClassSearch, OrderBy, OrderByDir, Pager, Translator};
 use evergreen as eg;
 use getopts;
+use std::env;
 
 fn main() -> Result<(), String> {
+    let args: Vec<String> = env::args().collect();
     let mut opts = getopts::Options::new();
     DatabaseConnection::append_options(&mut opts);
 
-    let ctx = eg::init::init_with_options(&mut opts)?;
+    let params = match opts.parse(&args[1..]) {
+        Ok(p) => p,
+        Err(e) => panic!("Error parsing options: {}", e),
+    };
 
-    let mut db = DatabaseConnection::new_from_options(ctx.params());
+    let ctx = eg::init::init()?;
+
+    let mut db = DatabaseConnection::new_from_options(&params);
     db.connect()?;
     let db = db.into_shared();
 
