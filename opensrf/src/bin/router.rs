@@ -1,5 +1,4 @@
 use chrono::prelude::{DateTime, Local};
-use getopts;
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
@@ -695,23 +694,16 @@ impl Router {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut ops = getopts::Options::new();
-
-    ops.optmulti("d", "domain", "Domain", "DOMAIN");
-
-    let params = match ops.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => panic!("Error parsing options: {}", e),
-    };
-
     let init_ops = init::InitOptions { skip_logging: true };
 
     let config = init::init_with_options(&init_ops).unwrap();
 
     let config = config.into_shared();
 
-    let mut domains = params.opt_strs("domain");
+    let mut domains = match env::var("OSRF_ROUTER_DOMAIN") {
+        Ok(v) => v.split(",").map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
 
     if domains.len() == 0 {
         domains = config

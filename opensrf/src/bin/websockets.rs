@@ -1,4 +1,3 @@
-use getopts;
 use opensrf as osrf;
 use osrf::addr::{RouterAddress, ServiceAddress};
 use osrf::bus::Bus;
@@ -34,6 +33,8 @@ use websocket::OwnedMessage;
  *
  * Main sesion thread does everything else.
  */
+
+const DEFAULT_PORT: u16 = 7682;
 
 /// How many websocket clients we allow before block new connections.
 const MAX_WS_CLIENTS: usize = 256;
@@ -736,24 +737,6 @@ impl Server {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut ops = getopts::Options::new();
-
-    ops.optopt("p", "port", "Port", "PORT");
-    ops.optopt("a", "address", "Listen Address", "ADDRESS");
-    ops.optopt("", "max-clients", "Max Clients", "MAX_CLIENTS");
-    ops.optopt(
-        "",
-        "max-parallel-requests",
-        "Max Parallel Requests",
-        "MAX_PARALLEL",
-    );
-
-    let params = match ops.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => panic!("Error parsing options: {}", e),
-    };
-
     let init_ops = init::InitOptions { skip_logging: true };
 
     let config = init::init_with_options(&init_ops).unwrap();
@@ -765,23 +748,24 @@ fn main() {
     let logger = Logger::new(gateway.logging()).expect("Creating logger");
     logger.init().expect("Logger Init");
 
-    let address = params
-        .opt_get_default("a", "127.0.0.1".to_string())
-        .unwrap();
-
-    let port = params.opt_get_default("p", "7682".to_string()).unwrap();
-    let port = port.parse::<u16>().expect("Invalid port number");
-
-    let max_clients = match params.opt_str("max-clients") {
-        Some(mc) => mc.parse::<usize>().expect("Invalid max-clients value"),
-        None => MAX_WS_CLIENTS,
+    let address = match env::var("OSRF_WS_ADDRESS") {
+        Ok(v) => v,
+        _ => "127.0.0.1".to_string(),
     };
 
-    let max_parallel = match params.opt_str("max-parallel-requests") {
-        Some(mp) => mp
-            .parse::<usize>()
-            .expect("Invalid max-parallel-requests value"),
-        None => MAX_ACTIVE_REQUESTS,
+    let port = match env::var("OSRF_WS_PORT") {
+        Ok(v) => v.parse::<u16>().expect("Invalid port number"),
+        _ => DEFAULT_PORT,
+    };
+
+    let max_clients = match env::var("OSRF_WS_MAX_CLIENTS") {
+        Ok(v) => v.parse::<usize>().expect("Invalid max-clients value"),
+        _ => MAX_WS_CLIENTS,
+    };
+
+    let max_parallel = match env::var("OSRF_WS_MAX_PARALLEL") {
+        Ok(v) => v.parse::<usize>().expect("Invalid max-parallel value"),
+        _ => MAX_ACTIVE_REQUESTS,
     };
 
     let mut server = Server::new(config, address, port, max_clients, max_parallel);
