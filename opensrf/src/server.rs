@@ -60,7 +60,7 @@ impl Server {
             Err(e) => panic!("Server cannot connect to bus: {}", e),
         };
 
-        let host_settings = match SettingsClient::get_host_settings(&mut client, true) {
+        let host_settings = match SettingsClient::get_host_settings(&mut client, false) {
             Ok(s) => s,
             Err(e) => panic!("Cannot fetch host setttings: {}", e),
         };
