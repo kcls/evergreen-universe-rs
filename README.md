@@ -43,9 +43,12 @@ The workspace has no default members.  Individual packages must be
 specified at build time or they can all be built with the --all option.
 
 ```sh
-# Install rust tools in home directory.  (No sudo required).
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-source "$HOME/.cargo/env"
+# Install rust tools 
+sudo apt install rust-all git
+
+# Checkout the repo
+git clone github.com:kcls/evergreen-universe-rs
+cd evergreen-universe-rs
 
 # Build all packages
 cargo build --all
