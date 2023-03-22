@@ -1,0 +1,8 @@
+[Unit]
+Description=OpenSRF Websockets
+
+[Service]
+Type=simple
+User=opensrf
+Group=opensrf
+ExecStart=/usr/local/bin/opensrf-websockets

@@ -1,5 +1,6 @@
 use evergreen as eg;
-use getopts;
+use std::env;
+use std::path::Path;
 
 mod checkin;
 mod checkout;
@@ -12,41 +13,35 @@ mod server;
 mod session;
 mod util;
 
-const HELP_TEXT: &str = r#"
-
-Options:
-
-    --config-file <conf/sip2-server.yml>
-        SIP server configuration file.
-
-"#;
+const DEFAULT_CONFIG_1: &str = "/usr/local/etc/eg-sip2-server.yml";
+const DEFAULT_CONFIG_2: &str = "/usr/local/etc/eg-sip2-server.example.yml";
+const DEFAULT_CONFIG_3: &str = "./sip2-server/conf/eg-sip2-server.yml";
+const DEFAULT_CONFIG_4: &str = "./sip2-server/conf/eg-sip2-server.example.yml";
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let mut opts = getopts::Options::new();
 
-    opts.optopt("", "config-file", "", "");
-    opts.optflag("h", "help", "");
+    let file_op = env::var("EG_SIP2_SERVER_CONFIG");
+
+    let config_file = if let Ok(ref file) = file_op {
+        file
+    } else if Path::new(DEFAULT_CONFIG_1).exists() {
+        DEFAULT_CONFIG_1
+    } else if Path::new(DEFAULT_CONFIG_2).exists() {
+        DEFAULT_CONFIG_2
+    } else if Path::new(DEFAULT_CONFIG_3).exists() {
+        DEFAULT_CONFIG_3
+    } else if Path::new(DEFAULT_CONFIG_4).exists() {
+        DEFAULT_CONFIG_4
+    } else {
+        panic!("No viable SIP2 Server Configuration Found");
+    };
+
+    let mut sip_conf = conf::Config::new();
+    sip_conf.read_yaml(&config_file);
 
     let ctx = eg::init::init().expect("Evergreen Init");
 
-    let params = match opts.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => panic!("Error parsing options: {}", e),
-    };
+    log::info!("SIP2 Server starting with config {config_file}");
 
-    if params.opt_present("help") {
-        println!("{}", HELP_TEXT);
-        std::process::exit(0);
-    }
-
-    let mut sip_conf = conf::Config::new();
-
-    let config_file = match params.opt_str("config-file") {
-        Some(f) => f,
-        None => "sip2-server/conf/sip2-server.yml".to_string(),
-    };
-
-    sip_conf.read_yaml(&config_file);
     server::Server::new(sip_conf, ctx).serve();
 }
