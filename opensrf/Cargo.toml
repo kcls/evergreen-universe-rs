@@ -16,7 +16,6 @@ gethostname = "0.4"
 threadpool = "1.8.1"
 websocket = "0.26"
 signal-hook = "0.3.14"
-getopts = "0.2.21"
 
 [[bin]]
 name = "opensrf-router"

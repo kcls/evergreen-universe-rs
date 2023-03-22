@@ -1,5 +1,4 @@
 use chrono::{DateTime, Local};
-use getopts;
 use opensrf::bus;
 use opensrf::conf;
 use std::env;
@@ -130,21 +129,13 @@ impl BusWatch {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut ops = getopts::Options::new();
-
-    ops.optmulti("d", "domain", "Domain", "DOMAIN");
-    ops.optopt("", "ttl", "Time to Live", "TTL");
-
-    let params = match ops.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => panic!("Error parsing options: {}", e),
-    };
-
     let config = opensrf::init::init().unwrap();
     let config = config.into_shared();
 
-    let mut domains = params.opt_strs("domain");
+    let mut domains = match env::var("OSRF_BUSWATCH_DOMAIN") {
+        Ok(v) => v.split(",").map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
 
     if domains.len() == 0 {
         // Watch all routed domains by default.
@@ -160,12 +151,15 @@ fn main() {
 
     println!("Starting buswatch for domains: {domains:?}");
 
-    let ttl = match params.opt_str("ttl") {
-        Some(t) => match t.parse::<u64>() {
-            Ok(t2) => Some(t2),
-            Err(e) => panic!("Invalid --ttl value: {}", e),
+    let ttl = match env::var("OSRF_BUSWATCH_TTL") {
+        Ok(v) => match v.parse::<u64>() {
+            Ok(v2) => Some(v2),
+            Err(e) => {
+                eprintln!("Invalid TTL value: {v} {e}");
+                None
+            },
         },
-        None => None,
+        _ => None
     };
 
     // A watcher for each domain runs within its own thread.
