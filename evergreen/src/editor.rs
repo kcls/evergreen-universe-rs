@@ -322,9 +322,11 @@ impl Editor {
             } else {
                 buf.push_str(&p.dump());
             }
+
+            buf.push_str(" ");
         }
 
-        Ok(buf)
+        Ok(buf.trim().to_string())
     }
 
     /// Send an API request to our service/worker with parameters.
