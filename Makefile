@@ -38,6 +38,7 @@ install-opensrf-release: install-opensrf-config
 install-opensrf-config:
 	cp ./systemd/opensrf-router.service ${SYSTEMD_DIR}/
 	cp ./systemd/opensrf-websockets.service ${SYSTEMD_DIR}/
+	cp ./systemd/opensrf-buswatch.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
 # --- SIP2 Server ---

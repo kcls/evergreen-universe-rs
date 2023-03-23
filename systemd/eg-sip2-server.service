@@ -1,5 +1,9 @@
 [Unit]
 Description=Evergreen SIP2 Server
+Requires=redis-server.service
+After=redis-server.service
+Wants=opensrf-router.service
+After=opensrf-router.service
 
 [Service]
 Type=simple

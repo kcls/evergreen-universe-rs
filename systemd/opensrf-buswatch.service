@@ -7,4 +7,4 @@ After=redis-server.service
 Type=simple
 User=opensrf
 Group=opensrf
-ExecStart=/usr/local/bin/opensrf-router
+ExecStart=/usr/local/bin/opensrf-buswatch

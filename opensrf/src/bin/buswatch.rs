@@ -1,12 +1,13 @@
 use chrono::{DateTime, Local};
 use opensrf::bus;
 use opensrf::conf;
+use std::fmt;
 use std::env;
 use std::thread;
 use std::sync::Arc;
 use std::time::Duration;
 
-const DEFAULT_WAIT_TIME_MILLIS: u64 = 5000;
+const DEFAULT_WAIT_TIME: u64 = 60; // 1 minute
 
 // Redis lists are deleted every time the last value in the list is
 // popped.  If a list key persists for many minutes, it means the list
@@ -19,8 +20,15 @@ const DEFAULT_KEY_EXPIRE_SECS: u64 = 1800; // 30 minutes
 struct BusWatch {
     bus: bus::Bus,
     wait_time: u64,
+    config: Arc<conf::Config>,
     ttl: u64,
     _start_time: DateTime<Local>,
+}
+
+impl fmt::Display for BusWatch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Buswatch {}", self.config.client().domain())
+    }
 }
 
 impl BusWatch {
@@ -30,10 +38,11 @@ impl BusWatch {
             Err(e) => panic!("Cannot connect bus: {}", e),
         };
 
-        let wait_time = DEFAULT_WAIT_TIME_MILLIS;
+        let wait_time = DEFAULT_WAIT_TIME;
 
         BusWatch {
             bus,
+            config,
             wait_time,
             ttl: DEFAULT_KEY_EXPIRE_SECS,
             _start_time: Local::now(),
@@ -47,7 +56,7 @@ impl BusWatch {
         let mut obj = json::object! {};
 
         loop {
-            thread::sleep(Duration::from_millis(self.wait_time));
+            thread::sleep(Duration::from_secs(self.wait_time));
 
             // Check all opensrf keys.
             let keys = match self.bus.keys("opensrf:*") {
@@ -106,7 +115,7 @@ impl BusWatch {
 
             obj["time"] = json::from(format!("{}", Local::now().format("%FT%T%z")));
 
-            println!("{}", obj.dump());
+            log::info!("{}", obj.dump());
         }
     }
 }
@@ -114,7 +123,7 @@ impl BusWatch {
 fn main() {
     let conf = opensrf::init::init().unwrap();
 
-    println!("Starting buswatch at {}", conf.client().domain());
+    log::info!("Starting buswatch at {}", conf.client().domain());
 
     let mut watcher = BusWatch::new(conf.into_shared());
 
@@ -132,5 +141,5 @@ fn main() {
         }
     }
 
-    println!("Watcher exiting");
+    log::info!("Watcher exiting");
 }
