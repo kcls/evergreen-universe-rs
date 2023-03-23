@@ -1,6 +1,7 @@
 use gethostname::gethostname;
 use roxmltree;
 use std::fs;
+use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 use syslog;
@@ -64,6 +65,12 @@ impl BusDomain {
     }
     pub fn port(&self) -> u16 {
         self.port
+    }
+}
+
+impl fmt::Display for BusDomain {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.name, self.port)
     }
 }
 

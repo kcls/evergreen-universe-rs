@@ -2,8 +2,8 @@ use chrono::{DateTime, Local};
 use opensrf::bus;
 use opensrf::conf;
 use std::env;
-use std::sync::Arc;
 use std::thread;
+use std::sync::Arc;
 use std::time::Duration;
 
 const DEFAULT_WAIT_TIME_MILLIS: u64 = 5000;
@@ -17,7 +17,6 @@ const DEFAULT_WAIT_TIME_MILLIS: u64 = 5000;
 const DEFAULT_KEY_EXPIRE_SECS: u64 = 1800; // 30 minutes
 
 struct BusWatch {
-    domain: String,
     bus: bus::Bus,
     wait_time: u64,
     ttl: u64,
@@ -25,21 +24,8 @@ struct BusWatch {
 }
 
 impl BusWatch {
-    pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
-        let mut busconf = match config.get_router_conf(domain) {
-            Some(rc) => rc.client().clone(),
-            None => panic!("No router config for domain {}", domain),
-        };
-
-        // We connect using info on our routers, but we want to login
-        // with our own credentials from the main config.client()
-        // object, which are subject to command-line username/ password
-        // overrides.
-
-        busconf.set_username(config.client().username());
-        busconf.set_password(config.client().password());
-
-        let bus = match bus::Bus::new(&busconf) {
+    pub fn new(config: Arc<conf::Config>) -> Self {
+        let bus = match bus::Bus::new(config.client()) {
             Ok(b) => b,
             Err(e) => panic!("Cannot connect bus: {}", e),
         };
@@ -51,7 +37,6 @@ impl BusWatch {
             wait_time,
             ttl: DEFAULT_KEY_EXPIRE_SECS,
             _start_time: Local::now(),
-            domain: domain.to_string(),
         }
     }
 
@@ -59,9 +44,7 @@ impl BusWatch {
     /// buswatcher to recover from a potentially temporary bus
     /// connection error.  False if this is a clean shutdown.
     pub fn watch(&mut self) -> bool {
-        let mut obj = json::object! {
-            "domain": json::from(self.domain.as_str()),
-        };
+        let mut obj = json::object! {};
 
         loop {
             thread::sleep(Duration::from_millis(self.wait_time));
@@ -129,61 +112,25 @@ impl BusWatch {
 }
 
 fn main() {
-    let config = opensrf::init::init().unwrap();
-    let config = config.into_shared();
+    let conf = opensrf::init::init().unwrap();
 
-    let mut domains = match env::var("OSRF_BUSWATCH_DOMAIN") {
-        Ok(v) => v.split(",").map(str::to_string).collect(),
-        _ => Vec::new(),
-    };
+    println!("Starting buswatch at {}", conf.client().domain());
 
-    if domains.len() == 0 {
-        // Watch all routed domains by default.
-        domains = config
-            .routers()
-            .iter()
-            .map(|r| r.client().domain().name().to_string())
-            .collect();
-        if domains.len() == 0 {
-            panic!("Watcher requires at least on domain");
+    let mut watcher = BusWatch::new(conf.into_shared());
+
+    if let Ok(v) = env::var("OSRF_BUSWATCH_TTL") {
+        if let Ok(v2) = v.parse::<u64>() {
+            watcher.ttl = v2;
         }
     }
 
-    println!("Starting buswatch for domains: {domains:?}");
-
-    let ttl = match env::var("OSRF_BUSWATCH_TTL") {
-        Ok(v) => match v.parse::<u64>() {
-            Ok(v2) => Some(v2),
-            Err(e) => {
-                eprintln!("Invalid TTL value: {v} {e}");
-                None
-            },
-        },
-        _ => None
-    };
-
-    // A watcher for each domain runs within its own thread.
-    let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
-
-    for domain in domains.iter() {
-        let conf = config.clone();
-        let domain = domain.clone();
-
-        threads.push(thread::spawn(move || loop {
-            let mut watcher = BusWatch::new(conf.clone(), &domain);
-            if let Some(t) = ttl {
-                watcher.ttl = t;
-            }
-            if watcher.watch() {
-                log::error!("Restarting watcher after exit-on-error");
-            } else {
-                break;
-            }
-        }));
+    loop {
+        if watcher.watch() {
+            log::error!("Restarting watcher after fatal error");
+        } else {
+            break;
+        }
     }
 
-    // Wait for threads to complete.
-    for thread in threads {
-        thread.join().ok();
-    }
+    println!("Watcher exiting");
 }
