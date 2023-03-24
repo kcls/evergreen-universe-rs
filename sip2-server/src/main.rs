@@ -19,7 +19,6 @@ const DEFAULT_CONFIG_3: &str = "./sip2-server/conf/eg-sip2-server.yml";
 const DEFAULT_CONFIG_4: &str = "./sip2-server/conf/eg-sip2-server.example.yml";
 
 fn main() {
-
     let file_op = env::var("EG_SIP2_SERVER_CONFIG");
 
     let config_file = if let Ok(ref file) = file_op {

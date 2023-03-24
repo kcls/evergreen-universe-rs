@@ -123,8 +123,8 @@ impl Connection {
                 Ok(num) => num,
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
-                        log::trace!("SIP tcp read timed out.  trying again");
-                        continue;
+                        log::trace!("SIP tcp read timed out.  Returning None");
+                        return Ok(None);
                     }
                     _ => {
                         log::error!("recv() failed: {e}");

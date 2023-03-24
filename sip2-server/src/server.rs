@@ -1,13 +1,16 @@
+use super::conf;
 use super::conf::Config;
 use super::monitor::{Monitor, MonitorAction, MonitorEvent};
 use super::session::Session;
 use evergreen as eg;
+use signal_hook;
+use socket2::{Domain, Socket, Type};
 use std::collections::HashMap;
 use std::net;
-use std::net::TcpListener;
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
+use std::time::Duration;
 use threadpool::ThreadPool;
 
 pub struct Server {
@@ -55,8 +58,24 @@ impl Server {
         Ok(())
     }
 
+    fn setup_signal_handlers(&self) -> Result<(), String> {
+        // If any of these signals occur, our self.stopping flag will be set to true
+        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
+            if let Err(e) = signal_hook::flag::register(sig, self.shutdown.clone()) {
+                return Err(format!("Cannot register signal handler: {e}"));
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn serve(&mut self) {
         log::info!("SIP2Meditor server staring up");
+
+        if let Err(e) = self.setup_signal_handlers() {
+            log::error!("Error setting signal handler: {e}");
+            return;
+        }
 
         if let Err(e) = self.precache() {
             log::error!("Error pre-caching SIP data: {e}");
@@ -83,32 +102,91 @@ impl Server {
             self.sip_config.sip_port()
         );
 
-        let listener = TcpListener::bind(bind).expect("Error starting SIP server");
+        let socket = match Socket::new(Domain::IPV4, Type::STREAM, None) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Socket::new() failed with {e}");
+                return;
+            }
+        };
 
-        for stream in listener.incoming() {
+        // When we stop/start the service, the address may briefly linger
+        // from open (idle) client connections.
+        if let Err(e) = socket.set_reuse_address(true) {
+            log::error!("Error setting reuse address: {e}");
+            return;
+        }
+
+        let address: SocketAddr = match bind.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                log::error!("Error parsing listen address: {bind}: {e}");
+                return;
+            }
+        };
+
+        if let Err(e) = socket.bind(&address.into()) {
+            log::error!("Error binding to address: {bind}: {e}");
+            return;
+        }
+
+        if let Err(e) = socket.listen(128) {
+            // 128 == backlog
+            log::error!("Error listending on socket {bind}: {e}");
+            return;
+        }
+
+        // We need a read timeout so we can wake periodically to check
+        // for shutdown signals.
+        if let Err(e) =
+            socket.set_read_timeout(Some(Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL)))
+        {
+            log::error!("Error setting socket read_timeout: {e}");
+            return;
+        }
+
+        let listener: TcpListener = socket.into();
+
+        loop {
+            // This can happen while we are waiting for a TCP connect.
+            if self.shutdown.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let client_socket = match listener.accept() {
+                Ok((s, _)) => s,
+                Err(e) => {
+                    match e.kind() {
+                        std::io::ErrorKind::WouldBlock => {
+                            log::trace!("Accept timed out.  Trying again");
+                            continue;
+                        }
+                        _ => {
+                            log::error!("SIPServer accept() failed: {e}");
+                            continue; // break?
+                        }
+                    }
+                }
+            };
+
             // This can happen while we are waiting for a TCP connect.
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
 
             let sesid = self.next_sesid();
-
-            match stream {
-                Ok(s) => self.dispatch(&pool, s, sesid, self.shutdown.clone()),
-                Err(e) => log::error!("Error accepting TCP connection {}", e),
-            }
+            self.dispatch(&pool, client_socket.into(), sesid, self.shutdown.clone());
 
             self.process_monitor_events();
-
-            // This can happen while we are launching a new thread.
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
         }
+
+        self.ctx.client().clear().ok();
 
         log::info!("Server shutting down; waiting for threads to complete");
 
         pool.join();
+
+        log::info!("All threads complete.  Shutting down");
     }
 
     /// Check for messages from the monitor thread.

@@ -1,6 +1,7 @@
 use super::conf;
+use socket2::{Domain, Socket, Type};
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::str;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -26,10 +27,6 @@ Commands:
     * This disables the account in-memory only. Modify the server config
       file to persist changes.
 "#;
-
-// Wake up occaisonally to see if we need to shutdown, which can
-// be initiated via external actions.
-const POLL_TIMEOUT: u64 = 5;
 
 // Read data from the socket in chunks this size.
 const READ_BUFSIZE: usize = 512;
@@ -79,18 +76,74 @@ impl Monitor {
             self.sip_config.monitor_port().unwrap_or(6001),
         );
 
-        let listener = TcpListener::bind(bind).expect("Error starting SIP monitor");
-
-        for stream in listener.incoming() {
-            match stream {
-                Ok(s) => self.handle_client(s),
-                Err(e) => log::error!("Error accepting TCP connection {}", e),
+        let socket = match Socket::new(Domain::IPV4, Type::STREAM, None) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Socket::new() failed with {e}");
+                return;
             }
+        };
 
+        // When we stop/start the service, the address may briefly linger
+        // from open (idle) client connections.
+        if let Err(e) = socket.set_reuse_address(true) {
+            log::error!("Error setting reuse address: {e}");
+            return;
+        }
+
+        let address: SocketAddr = match bind.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                log::error!("Error parsing listen address: {bind}: {e}");
+                return;
+            }
+        };
+
+        if let Err(e) = socket.bind(&address.into()) {
+            log::error!("Error binding to address: {bind}: {e}");
+            return;
+        }
+
+        if let Err(e) = socket.listen(128) {
+            // 128 == backlog
+            log::error!("Error listending on socket {bind}: {e}");
+            return;
+        }
+
+        // We need a read timeout so we can wake periodically to check
+        // for shutdown signals.
+        if let Err(e) =
+            socket.set_read_timeout(Some(Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL)))
+        {
+            log::error!("Error setting socket read_timeout: {e}");
+            return;
+        }
+
+        let listener: TcpListener = socket.into();
+
+        loop {
             if self.shutdown.load(Ordering::Relaxed) {
                 log::info!("Monitor thread exiting on shutdown command");
                 return;
             };
+
+            let client_socket = match listener.accept() {
+                Ok((s, _)) => s,
+                Err(e) => {
+                    match e.kind() {
+                        std::io::ErrorKind::WouldBlock => {
+                            log::trace!("Accept timed out.  Trying again");
+                            continue;
+                        }
+                        _ => {
+                            log::error!("SIPServer accept() failed: {e}");
+                            continue; // break?
+                        }
+                    }
+                }
+            };
+
+            self.handle_client(client_socket.into());
         }
     }
 
@@ -195,7 +248,7 @@ impl Monitor {
     }
 
     fn read_stream(&self, stream: &mut TcpStream) -> Option<String> {
-        let timeout = Duration::from_secs(POLL_TIMEOUT);
+        let timeout = Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL);
 
         // Wake up periodically to see if another thread
         // has set the shutdown flag.

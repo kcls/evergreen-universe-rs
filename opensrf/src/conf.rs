@@ -1,7 +1,7 @@
 use gethostname::gethostname;
 use roxmltree;
-use std::fs;
 use std::fmt;
+use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
 use syslog;

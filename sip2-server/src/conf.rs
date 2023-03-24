@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::fs;
 use yaml_rust::YamlLoader;
 
+/// How often each of the sockets wake up and check for a shutdown
+/// (or other) signal.
+pub const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 5;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Msg64HoldDatatype {
     Barcode,

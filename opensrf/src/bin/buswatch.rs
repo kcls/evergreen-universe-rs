@@ -1,10 +1,10 @@
 use chrono::{DateTime, Local};
 use opensrf::bus;
 use opensrf::conf;
-use std::fmt;
 use std::env;
-use std::thread;
+use std::fmt;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 const DEFAULT_WAIT_TIME: u64 = 60; // 1 minute

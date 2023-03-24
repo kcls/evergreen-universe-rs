@@ -80,6 +80,8 @@ fn main() -> Result<(), String> {
     let sipcon = sip2::Connection::new(&sip_host).expect("Error creating SIP connection");
     t.done("SIP Connect");
 
+    //std::thread::sleep(std::time::Duration::from_secs(15));
+
     let mut tester = Tester {
         sipcon,
         editor,

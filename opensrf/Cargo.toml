@@ -15,7 +15,7 @@ redis = "0.22.1"
 gethostname = "0.4"
 threadpool = "1.8.1"
 websocket = "0.26"
-signal-hook = "0.3.14"
+signal-hook = "0.3"
 
 [[bin]]
 name = "opensrf-router"

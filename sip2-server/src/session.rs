@@ -10,10 +10,6 @@ use std::net;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-// Block this many seconds before waking to see if we need
-// to perform any maintenance / shutdown.
-const SIP_RECV_TIMEOUT: u64 = 5;
-
 /* --------------------------------------------------------- */
 // By order of appearance in the INSTITUTION_SUPPORTS string:
 // patron status request
@@ -238,11 +234,17 @@ impl Session {
                 break;
             }
 
-            // Blocks waiting for a SIP request to arrive
             let sip_req_op = self
                 .sip_connection
-                .recv_with_timeout(SIP_RECV_TIMEOUT)
+                .recv_with_timeout(conf::SIP_SHUTDOWN_POLL_INTERVAL)
                 .or_else(|e| Err(format!("{self} SIP recv() failed: {e}")))?;
+
+            // May have received a shutdown signal while waiting for
+            // the next SIP message to arrive.
+            if self.shutdown.load(Ordering::Relaxed) {
+                log::debug!("{self} Shutdown notice received, exiting listen loop");
+                break;
+            }
 
             let sip_req = match sip_req_op {
                 Some(r) => r,
@@ -274,6 +276,8 @@ impl Session {
         if self.authtoken().is_ok() {
             AuthSession::logout(&self.osrf_client, self.authtoken()?).ok();
         }
+
+        self.osrf_client.clear()?;
 
         Ok(())
     }
