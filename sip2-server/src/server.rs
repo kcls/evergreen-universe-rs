@@ -1,6 +1,5 @@
 use super::conf;
 use super::conf::Config;
-use super::monitor::{Monitor, MonitorAction, MonitorEvent};
 use super::session::Session;
 use evergreen as eg;
 use signal_hook;
@@ -9,7 +8,7 @@ use std::collections::HashMap;
 use std::net;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use std::time::Duration;
 use threadpool::ThreadPool;
 
@@ -21,25 +20,19 @@ pub struct Server {
     /// If this ever contains a true, we shut down.
     shutdown: Arc<AtomicBool>,
     reload: Arc<AtomicBool>,
-    from_monitor_tx: mpsc::Sender<MonitorEvent>,
-    from_monitor_rx: mpsc::Receiver<MonitorEvent>,
     /// Cache of org unit shortnames and IDs.
     org_cache: HashMap<i64, json::JsonValue>,
 }
 
 impl Server {
     pub fn new(sip_config_file: &str, ctx: eg::init::Context) -> Server {
-        let (tx, rx): (mpsc::Sender<MonitorEvent>, mpsc::Receiver<MonitorEvent>) = mpsc::channel();
-
         let sip_config = Server::load_config(sip_config_file).expect("Error reading config");
 
         Server {
             ctx,
+            sesid: 0,
             sip_config,
             sip_config_file: sip_config_file.to_string(),
-            sesid: 0,
-            from_monitor_tx: tx,
-            from_monitor_rx: rx,
             org_cache: HashMap::new(),
             reload: Arc::new(AtomicBool::new(false)),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -80,7 +73,6 @@ impl Server {
     }
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
-
         // TERM and INT result in a graceful shutdown
         for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
             if let Err(e) = signal_hook::flag::register(sig, self.shutdown.clone()) {
@@ -89,8 +81,9 @@ impl Server {
         }
 
         // HUP causes us to reload our configuration.
-        if let Err(e) = signal_hook::flag::register(
-            signal_hook::consts::SIGHUP, self.reload.clone()) {
+        if let Err(e) =
+            signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone())
+        {
             Err(format!("Cannot register HUP signal: {e}"))?;
         }
 
@@ -104,22 +97,6 @@ impl Server {
         self.precache()?;
 
         let pool = ThreadPool::new(self.sip_config.max_clients());
-
-        if self.sip_config.monitor_enabled() {
-            log::info!("Starting monitor thread");
-
-            let mut monitor = Monitor::new(
-                self.sip_config.clone(),
-                self.from_monitor_tx.clone(),
-                self.shutdown.clone(),
-            );
-
-            pool.execute(move || {
-                if let Err(e) = monitor.run() {
-                    log::error!("Monitor thread exiting on error: {e}");
-                }
-            });
-        }
 
         let bind = format!(
             "{}:{}",
@@ -210,8 +187,6 @@ impl Server {
 
             let sesid = self.next_sesid();
             self.dispatch(&pool, client_socket.into(), sesid, self.shutdown.clone());
-
-            self.process_monitor_events();
         }
 
         self.ctx.client().clear().ok();
@@ -223,40 +198,6 @@ impl Server {
         log::info!("All threads complete.  Shutting down");
 
         Ok(())
-    }
-
-    /// Check for messages from the monitor thread.
-    fn process_monitor_events(&mut self) {
-        loop {
-            let event = match self.from_monitor_rx.try_recv() {
-                Ok(e) => e,
-                Err(e) => match e {
-                    // No more events to process
-                    mpsc::TryRecvError::Empty => return,
-
-                    // Monitor thread exited.
-                    mpsc::TryRecvError::Disconnected => {
-                        log::error!("Monitor thread exited.  Shutting down.");
-                        self.shutdown.store(true, Ordering::Relaxed);
-                        return;
-                    }
-                },
-            };
-
-            log::debug!("Server received monito event: {event:?}");
-
-            match event.action() {
-                MonitorAction::AddAccount(account) => {
-                    log::info!("Adding new account {}", account.sip_username());
-                    self.sip_config.add_account(account);
-                }
-
-                MonitorAction::DisableAccount(username) => {
-                    log::info!("Disabling account {username}");
-                    self.sip_config.remove_account(username);
-                }
-            }
-        }
     }
 
     fn next_sesid(&mut self) -> usize {
@@ -279,7 +220,7 @@ impl Server {
         );
 
         let threads = pool.active_count() + pool.queued_count();
-        let maxcon = self.sip_config.max_clients() + 1; // +1 monitor thread
+        let maxcon = self.sip_config.max_clients();
 
         log::debug!("Working thread count = {threads}");
 

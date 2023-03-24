@@ -56,7 +56,6 @@ impl FieldFilter {
 /// Named collection of SIP session settings.
 #[derive(Debug, Clone)]
 pub struct SipSettings {
-    name: String,
     institution: String,
     due_date_use_sip_date_format: bool,
     patron_status_permit_all: bool,
@@ -75,9 +74,8 @@ pub struct SipSettings {
 }
 
 impl SipSettings {
-    pub fn new(name: &str, institution: &str) -> Self {
+    pub fn new(institution: &str) -> Self {
         SipSettings {
-            name: name.to_string(),
             institution: institution.to_string(),
             due_date_use_sip_date_format: true,
             patron_status_permit_all: false,
@@ -94,9 +92,6 @@ impl SipSettings {
             checkin_override: Vec::new(),
             field_filters: Vec::new(),
         }
-    }
-    pub fn name(&self) -> &str {
-        &self.name
     }
     pub fn institution(&self) -> &str {
         &self.institution
@@ -198,9 +193,6 @@ impl SipAccount {
     pub fn ils_user_id(&self) -> Option<i64> {
         self.ils_user_id
     }
-    pub fn set_workstation(&mut self, workstation: Option<&str>) {
-        self.workstation = workstation.map(|s| s.to_string());
-    }
     pub fn set_ils_user_id(&mut self, id: i64) {
         self.ils_user_id = Some(id)
     }
@@ -224,9 +216,6 @@ pub struct Config {
     sc_status_before_login: bool,
     currency: String,
     source: Option<yaml_rust::Yaml>,
-    monitor_enabled: bool,
-    monitor_address: Option<String>,
-    monitor_port: Option<u16>,
 }
 
 impl Config {
@@ -241,9 +230,6 @@ impl Config {
             currency: "USD".to_string(),
             sc_status_before_login: false,
             source: None,
-            monitor_enabled: false,
-            monitor_address: None,
-            monitor_port: None,
         }
     }
 
@@ -277,20 +263,6 @@ impl Config {
             self.sc_status_before_login = v;
         }
 
-        if let Some(v) = root["monitor-enabled"].as_bool() {
-            self.monitor_enabled = v;
-        }
-
-        if let Some(v) = root["monitor-address"].as_str() {
-            self.monitor_address = Some(v.to_string());
-        };
-
-        if let Some(v) = root["monitor-port"].as_i64() {
-            if let Ok(port) = v.try_into() {
-                self.monitor_port = Some(port);
-            }
-        };
-
         self.add_setting_groups(root);
         self.add_accounts(root)?;
 
@@ -311,7 +283,7 @@ impl Config {
                 .as_str()
                 .expect("Setting group institution required");
 
-            let mut grp = SipSettings::new(name, inst);
+            let mut grp = SipSettings::new(inst);
 
             // Local shorthand for pulling a bool value from the yaml
             // node and applying to a setting value.
@@ -442,20 +414,6 @@ impl Config {
         Ok(())
     }
 
-    /// Add a SIP account, replacing any existing account with the same sip_username
-    pub fn add_account(&mut self, account: &SipAccount) {
-        self.accounts
-            .insert(account.sip_username().to_string(), account.clone());
-    }
-    pub fn remove_account(&mut self, sip_username: &str) -> Option<SipAccount> {
-        self.accounts.remove(sip_username)
-    }
-    pub fn accounts(&self) -> Vec<&SipAccount> {
-        self.accounts.values().collect()
-    }
-    pub fn get_settings(&self, name: &str) -> Option<&SipSettings> {
-        self.setting_groups.get(name)
-    }
     pub fn get_account(&self, username: &str) -> Option<&SipAccount> {
         self.accounts.get(username)
     }
@@ -476,14 +434,5 @@ impl Config {
     }
     pub fn sc_status_before_login(&self) -> bool {
         self.sc_status_before_login
-    }
-    pub fn monitor_enabled(&self) -> bool {
-        self.monitor_enabled
-    }
-    pub fn monitor_address(&self) -> Option<&str> {
-        self.monitor_address.as_deref()
-    }
-    pub fn monitor_port(&self) -> Option<u16> {
-        self.monitor_port
     }
 }
