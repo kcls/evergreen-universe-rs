@@ -4,7 +4,7 @@ use yaml_rust::YamlLoader;
 
 /// How often each of the sockets wake up and check for a shutdown
 /// (or other) signal.
-pub const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 5;
+pub const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Msg64HoldDatatype {
@@ -33,7 +33,7 @@ impl From<&str> for AvFormat {
             "swyer_a" => Self::SwyerA,
             "swyer_b" => Self::SwyerB,
             "3m" => Self::ThreeM,
-            _ => panic!("Invalid AV Format: {}", s),
+            _ => Self::Legacy,
         }
     }
 }
@@ -248,14 +248,12 @@ impl Config {
     }
 
     /// Parse a YAML configuration file.
-    ///
-    /// Panics if the file is not formatted correctly
-    pub fn read_yaml(&mut self, filename: &str) {
-        let yaml_text =
-            fs::read_to_string(filename).expect("Read YAML configuration file to string");
+    pub fn read_yaml(&mut self, filename: &str) -> Result<(), String> {
+        let yaml_text = fs::read_to_string(filename)
+            .or_else(|e| Err(format!("Error reading YAML configuration file: {e}")))?;
 
-        let yaml_docs =
-            YamlLoader::load_from_str(&yaml_text).expect("Parsing configuration file as YAML");
+        let yaml_docs = YamlLoader::load_from_str(&yaml_text)
+            .or_else(|e| Err(format!("Error parsing configuration file as YAML: {e}")))?;
 
         let root = &yaml_docs[0];
 
@@ -294,9 +292,11 @@ impl Config {
         };
 
         self.add_setting_groups(root);
-        self.add_accounts(root);
+        self.add_accounts(root)?;
 
         self.source = Some(root.to_owned());
+
+        Ok(())
     }
 
     fn add_setting_groups(&mut self, root: &yaml_rust::Yaml) {
@@ -410,13 +410,13 @@ impl Config {
         }
     }
 
-    fn add_accounts(&mut self, root: &yaml_rust::Yaml) {
+    fn add_accounts(&mut self, root: &yaml_rust::Yaml) -> Result<(), String> {
         if root["accounts"].is_array() {
             for account in root["accounts"].as_vec().unwrap() {
                 let group_name = account["settings"].as_str().unwrap();
                 let sgroup = match self.setting_groups.get(group_name) {
                     Some(s) => s,
-                    None => panic!("No such settings group: '{}'", group_name),
+                    None => Err(format!("No such settings group: '{}'", group_name))?,
                 };
 
                 let username = account["sip-username"].as_str().unwrap();
@@ -438,6 +438,8 @@ impl Config {
                 self.accounts.insert(username.to_string(), acct);
             }
         };
+
+        Ok(())
     }
 
     /// Add a SIP account, replacing any existing account with the same sip_username

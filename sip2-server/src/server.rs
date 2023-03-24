@@ -16,9 +16,11 @@ use threadpool::ThreadPool;
 pub struct Server {
     ctx: eg::init::Context,
     sip_config: Config,
+    sip_config_file: String,
     sesid: usize,
     /// If this ever contains a true, we shut down.
     shutdown: Arc<AtomicBool>,
+    reload: Arc<AtomicBool>,
     from_monitor_tx: mpsc::Sender<MonitorEvent>,
     from_monitor_rx: mpsc::Receiver<MonitorEvent>,
     /// Cache of org unit shortnames and IDs.
@@ -26,18 +28,37 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(sip_config: Config, ctx: eg::init::Context) -> Server {
+    pub fn new(sip_config_file: &str, ctx: eg::init::Context) -> Server {
         let (tx, rx): (mpsc::Sender<MonitorEvent>, mpsc::Receiver<MonitorEvent>) = mpsc::channel();
+
+        let sip_config = Server::load_config(sip_config_file).expect("Error reading config");
 
         Server {
             ctx,
             sip_config,
+            sip_config_file: sip_config_file.to_string(),
             sesid: 0,
             from_monitor_tx: tx,
             from_monitor_rx: rx,
             org_cache: HashMap::new(),
+            reload: Arc::new(AtomicBool::new(false)),
             shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    fn load_config(filename: &str) -> Result<Config, String> {
+        let mut sip_conf = conf::Config::new();
+        sip_conf.read_yaml(filename)?;
+        Ok(sip_conf)
+    }
+
+    fn sighup(&mut self) {
+        log::info!("SIGHUP received.  Reloading config");
+        match Server::load_config(&self.sip_config_file) {
+            Ok(c) => self.sip_config = c,
+            Err(e) => log::error!("Error reloading config.  Using old config. {e}"),
+        }
+        self.reload.store(false, Ordering::Relaxed);
     }
 
     /// Pre-cache data that's universally useful.
@@ -59,11 +80,18 @@ impl Server {
     }
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
-        // If any of these signals occur, our self.stopping flag will be set to true
+
+        // TERM and INT result in a graceful shutdown
         for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
             if let Err(e) = signal_hook::flag::register(sig, self.shutdown.clone()) {
-                return Err(format!("Cannot register signal handler: {e}"));
+                Err(format!("Cannot register signal handler: {e}"))?;
             }
+        }
+
+        // HUP causes us to reload our configuration.
+        if let Err(e) = signal_hook::flag::register(
+            signal_hook::consts::SIGHUP, self.reload.clone()) {
+            Err(format!("Cannot register HUP signal: {e}"))?;
         }
 
         Ok(())
@@ -132,20 +160,29 @@ impl Server {
         let listener: TcpListener = socket.into();
 
         let mut error_count = 0;
+
         loop {
+            // Check flags after every block on accept(), which may result
+            // in a 'continue', bypassing the mid-loop checks.
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
+            }
+
+            if self.reload.load(Ordering::Relaxed) {
+                self.sighup();
             }
 
             let client_socket = match listener.accept() {
                 Ok((s, _)) => s,
                 Err(e) => {
                     match e.kind() {
-                        // Read poll timeout.  Keep going.
-                        std::io::ErrorKind::WouldBlock => {}
+                        std::io::ErrorKind::WouldBlock => {
+                            // Poll timeout -- circle back and try again.
+                            continue;
+                        }
                         _ => {
-                            error_count += 1;
                             log::error!("SIPServer accept() failed: error_count={error_count} {e}");
+                            error_count += 1;
                             if error_count > 100 {
                                 // Net IO errors can happen for all kinds of reasons.
                                 // https://doc.rust-lang.org/stable/std/io/enum.ErrorKind.html
@@ -155,14 +192,20 @@ impl Server {
                                 log::error!("SIPServer exited on too many connect errors");
                                 break;
                             }
+                            // Error, but not too many yet.
+                            continue;
                         }
                     }
-                    continue;
                 }
             };
 
+            // And check flags before processing messages
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
+            }
+
+            if self.reload.load(Ordering::Relaxed) {
+                self.sighup();
             }
 
             let sesid = self.next_sesid();

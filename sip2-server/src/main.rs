@@ -35,14 +35,11 @@ fn main() {
         panic!("No viable SIP2 Server Configuration Found");
     };
 
-    let mut sip_conf = conf::Config::new();
-    sip_conf.read_yaml(&config_file);
-
     let ctx = eg::init::init().expect("Evergreen Init");
 
     log::info!("SIP2 Server starting with config {config_file}");
 
-    if let Err(e) = server::Server::new(sip_conf, ctx).serve() {
+    if let Err(e) = server::Server::new(config_file, ctx).serve() {
         log::error!("SIP Server exited with error: {e}");
     }
 }
