@@ -10,3 +10,5 @@ Type=simple
 User=opensrf
 Group=opensrf
 ExecStart=/usr/local/bin/eg-sip2-server
+ExecReload=/bin/kill -HUP $MAINPID
+
