@@ -69,62 +69,48 @@ impl Monitor {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<(), String> {
         let bind = format!(
             "{}:{}",
             self.sip_config.monitor_address().unwrap_or("127.0.0.1"),
-            self.sip_config.monitor_port().unwrap_or(6001),
+            self.sip_config.monitor_port().unwrap_or(6002),
         );
 
-        let socket = match Socket::new(Domain::IPV4, Type::STREAM, None) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Socket::new() failed with {e}");
-                return;
-            }
-        };
+        let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
+            .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
 
         // When we stop/start the service, the address may briefly linger
         // from open (idle) client connections.
-        if let Err(e) = socket.set_reuse_address(true) {
-            log::error!("Error setting reuse address: {e}");
-            return;
-        }
+        socket
+            .set_reuse_address(true)
+            .or_else(|e| Err(format!("Error setting reuse address: {e}")))?;
 
-        let address: SocketAddr = match bind.parse() {
-            Ok(a) => a,
-            Err(e) => {
-                log::error!("Error parsing listen address: {bind}: {e}");
-                return;
-            }
-        };
+        let address: SocketAddr = bind
+            .parse()
+            .or_else(|e| Err(format!("Error parsing listen address: {bind}: {e}")))?;
 
-        if let Err(e) = socket.bind(&address.into()) {
-            log::error!("Error binding to address: {bind}: {e}");
-            return;
-        }
+        socket
+            .bind(&address.into())
+            .or_else(|e| Err(format!("Error binding to address: {bind}: {e}")))?;
 
-        if let Err(e) = socket.listen(128) {
-            // 128 == backlog
-            log::error!("Error listending on socket {bind}: {e}");
-            return;
-        }
+        socket
+            .listen(2) // 2 == backlog
+            .or_else(|e| Err(format!("Error listending on socket {bind}: {e}")))?;
 
         // We need a read timeout so we can wake periodically to check
         // for shutdown signals.
-        if let Err(e) =
-            socket.set_read_timeout(Some(Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL)))
-        {
-            log::error!("Error setting socket read_timeout: {e}");
-            return;
-        }
+        let polltime = Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL);
+
+        socket
+            .set_read_timeout(Some(polltime))
+            .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
 
         let listener: TcpListener = socket.into();
 
         loop {
             if self.shutdown.load(Ordering::Relaxed) {
                 log::info!("Monitor thread exiting on shutdown command");
-                return;
+                return Ok(());
             };
 
             let client_socket = match listener.accept() {

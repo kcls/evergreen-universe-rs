@@ -42,5 +42,7 @@ fn main() {
 
     log::info!("SIP2 Server starting with config {config_file}");
 
-    server::Server::new(sip_conf, ctx).serve();
+    if let Err(e) = server::Server::new(sip_conf, ctx).serve() {
+        log::error!("SIP Server exited with error: {e}");
+    }
 }

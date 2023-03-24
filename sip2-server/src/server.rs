@@ -69,18 +69,11 @@ impl Server {
         Ok(())
     }
 
-    pub fn serve(&mut self) {
-        log::info!("SIP2Meditor server staring up");
+    pub fn serve(&mut self) -> Result<(), String> {
+        log::info!("SIP2Meditor server starting");
 
-        if let Err(e) = self.setup_signal_handlers() {
-            log::error!("Error setting signal handler: {e}");
-            return;
-        }
-
-        if let Err(e) = self.precache() {
-            log::error!("Error pre-caching SIP data: {e}");
-            return;
-        }
+        self.setup_signal_handlers()?;
+        self.precache()?;
 
         let pool = ThreadPool::new(self.sip_config.max_clients());
 
@@ -93,7 +86,11 @@ impl Server {
                 self.shutdown.clone(),
             );
 
-            pool.execute(move || monitor.run());
+            pool.execute(move || {
+                if let Err(e) = monitor.run() {
+                    log::error!("Monitor thread exiting on error: {e}");
+                }
+            });
         }
 
         let bind = format!(
@@ -102,53 +99,40 @@ impl Server {
             self.sip_config.sip_port()
         );
 
-        let socket = match Socket::new(Domain::IPV4, Type::STREAM, None) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Socket::new() failed with {e}");
-                return;
-            }
-        };
+        let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
+            .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
 
         // When we stop/start the service, the address may briefly linger
         // from open (idle) client connections.
-        if let Err(e) = socket.set_reuse_address(true) {
-            log::error!("Error setting reuse address: {e}");
-            return;
-        }
+        socket
+            .set_reuse_address(true)
+            .or_else(|e| Err(format!("Error setting reuse address: {e}")))?;
 
-        let address: SocketAddr = match bind.parse() {
-            Ok(a) => a,
-            Err(e) => {
-                log::error!("Error parsing listen address: {bind}: {e}");
-                return;
-            }
-        };
+        let address: SocketAddr = bind
+            .parse()
+            .or_else(|e| Err(format!("Error parsing listen address: {bind}: {e}")))?;
 
-        if let Err(e) = socket.bind(&address.into()) {
-            log::error!("Error binding to address: {bind}: {e}");
-            return;
-        }
+        socket
+            .bind(&address.into())
+            .or_else(|e| Err(format!("Error binding to address: {bind}: {e}")))?;
 
-        if let Err(e) = socket.listen(128) {
-            // 128 == backlog
-            log::error!("Error listending on socket {bind}: {e}");
-            return;
-        }
+        // 128 == backlog
+        socket
+            .listen(128)
+            .or_else(|e| Err(format!("Error listending on socket {bind}: {e}")))?;
 
         // We need a read timeout so we can wake periodically to check
         // for shutdown signals.
-        if let Err(e) =
-            socket.set_read_timeout(Some(Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL)))
-        {
-            log::error!("Error setting socket read_timeout: {e}");
-            return;
-        }
+        let polltime = Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL);
+
+        socket
+            .set_read_timeout(Some(polltime))
+            .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
 
         let listener: TcpListener = socket.into();
 
+        let mut error_count = 0;
         loop {
-            // This can happen while we are waiting for a TCP connect.
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
@@ -157,19 +141,26 @@ impl Server {
                 Ok((s, _)) => s,
                 Err(e) => {
                     match e.kind() {
-                        std::io::ErrorKind::WouldBlock => {
-                            log::trace!("Accept timed out.  Trying again");
-                            continue;
-                        }
+                        // Read poll timeout.  Keep going.
+                        std::io::ErrorKind::WouldBlock => {}
                         _ => {
-                            log::error!("SIPServer accept() failed: {e}");
-                            continue; // break?
+                            error_count += 1;
+                            log::error!("SIPServer accept() failed: error_count={error_count} {e}");
+                            if error_count > 100 {
+                                // Net IO errors can happen for all kinds of reasons.
+                                // https://doc.rust-lang.org/stable/std/io/enum.ErrorKind.html
+                                // Concern is some of these errors could put
+                                // us into an infinite loop of "stuff is broken".
+                                // Break out of the loop if we've hit too many.
+                                log::error!("SIPServer exited on too many connect errors");
+                                break;
+                            }
                         }
                     }
+                    continue;
                 }
             };
 
-            // This can happen while we are waiting for a TCP connect.
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
@@ -182,11 +173,13 @@ impl Server {
 
         self.ctx.client().clear().ok();
 
-        log::info!("Server shutting down; waiting for threads to complete");
+        log::debug!("Server shutting down; waiting for threads to complete");
 
         pool.join();
 
         log::info!("All threads complete.  Shutting down");
+
+        Ok(())
     }
 
     /// Check for messages from the monitor thread.
