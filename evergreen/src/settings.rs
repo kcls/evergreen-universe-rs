@@ -1,8 +1,9 @@
+//! General purpose org / workstation / user setting fetcher and cache.
+//! Primarily uses the 'actor.get_cascade_setting()' DB function.
 use super::editor::Editor;
 use super::util;
 use json::JsonValue;
 use regex::Regex;
-/// General purpose org / workstation / user setting fetcher and cache.
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -43,6 +44,7 @@ impl SettingType {
     }
 }
 
+/// Defines the context under which a setting is retrieved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SettingContext {
     org_id: Option<i64>,
@@ -67,7 +69,6 @@ impl SettingContext {
     pub fn workstation_id(&self) -> &Option<i64> {
         &self.workstation_id
     }
-
     pub fn org_id_json(&self) -> JsonValue {
         self.org_id.map(json::from).unwrap_or(JSON_NULL)
     }
@@ -168,7 +169,7 @@ impl Settings {
         self.cache.clear();
     }
 
-    /// Returns a setting value using the default context info.
+    /// Returns a setting value using the default context.
     ///
     /// Returns JSON null if no setting exists.
     pub fn get_value(&mut self, name: &str) -> Result<&JsonValue, String> {
@@ -177,6 +178,7 @@ impl Settings {
         self.get_context_value(&self.default_context.clone(), name)
     }
 
+    /// Returns a setting value for the provided context.
     pub fn get_context_value(
         &mut self,
         context: &SettingContext,
@@ -225,6 +227,8 @@ impl Settings {
     /// Batch setting value fetch.
     ///
     /// Returns String Err on load failure or invalid setting name.
+    /// On success, values are stored in the local cache for this
+    /// Setting instance.
     pub fn fetch_values(&mut self, context: &SettingContext, names: &[&str]) -> Result<(), String> {
         if !context.is_viable() {
             Err(format!(
@@ -263,13 +267,13 @@ impl Settings {
         let settings = self.editor.json_query(query)?;
 
         for set in settings {
-            self.add_setting_value(context, &set)?;
+            self.store_setting_value(context, &set)?;
         }
 
         Ok(())
     }
 
-    fn add_setting_value(
+    fn store_setting_value(
         &mut self,
         context: &SettingContext,
         setting: &JsonValue,

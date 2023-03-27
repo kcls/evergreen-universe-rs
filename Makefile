@@ -6,16 +6,16 @@
 TARGET = /usr/local
 SYSTEMD_DIR = /lib/systemd/system
 
-build: build-opensrf build-sip2server
+build: build-opensrf build-evergreen build-sip2server
 
-build-release: build-opensrf-release build-sip2server-release
+build-release: build-opensrf-release build-evergreen-release build-sip2server-release
 
 test:
 	cargo test --all
 
-install: install-opensrf install-sip2server
+install: install-opensrf install-evergreen install-sip2server
 
-install-release: install-opensrf-release install-sip2server-release
+install-release: install-opensrf-release install-evergreen-release install-sip2server-release
 
 # --- OpenSRF ---
 
@@ -40,6 +40,23 @@ install-opensrf-config:
 	cp ./systemd/opensrf-websockets.service ${SYSTEMD_DIR}/
 	cp ./systemd/opensrf-buswatch.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
+
+# --- Evergreen ---
+
+build-evergreen:
+	cargo build --package evergreen
+
+build-evergreen-release:
+	cargo build --package evergreen --release
+
+install-evergreen: install-evergreen-config
+	cp ./target/debug/egsh ${TARGET}/bin
+
+install-evergreen-release: install-evergreen-config
+	cp ./target/release/egsh ${TARGET}/bin
+
+install-evergreen-config:
+	# Nothing to do yet.
 
 # --- SIP2 Server ---
 
