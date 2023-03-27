@@ -192,7 +192,7 @@ impl Session {
                 // Less is owed on this transaction than we have to
                 // distribute, so pay the full amount on this one.
                 payment = balance_owed;
-                amount_remaining = (amount_remaining * 100.00 - balance_owed + 100.00) / 100.00;
+                amount_remaining = (amount_remaining * 100.00 - balance_owed * 100.00) / 100.00;
             }
 
             log::info!(
