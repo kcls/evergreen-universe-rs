@@ -26,6 +26,8 @@ struct Response {
     value: Option<JsonValue>,
     /// True if the Request we are a response to is complete.
     complete: bool,
+    /// True if this is a partial response
+    partial: bool,
 }
 
 /// Models a single API call through which the caller can receive responses.
@@ -63,16 +65,22 @@ impl Request {
             return Ok(None);
         }
 
-        let response = self.session.borrow_mut().recv(self.thread_trace, timeout)?;
+        loop {
+            let response = self.session.borrow_mut().recv(self.thread_trace, timeout)?;
 
-        if let Some(r) = response {
-            if r.complete {
-                self.complete = true;
+            if let Some(r) = response {
+                if r.partial {
+                    // Keep calling receive until our partial message is complete.
+                    continue;
+                }
+                if r.complete {
+                    self.complete = true;
+                }
+                return Ok(r.value);
+            } else {
+                return Ok(None);
             }
-            return Ok(r.value);
         }
-
-        Ok(None)
     }
 }
 
@@ -111,6 +119,9 @@ struct Session {
     /// Replies to this thread which have not yet been pulled by
     /// any requests.
     backlog: Vec<Message>,
+
+    /// Staging ground for "partial" messages arriving in chunks.
+    partial_buffer: Option<String>,
 }
 
 impl fmt::Display for Session {
@@ -130,6 +141,7 @@ impl Session {
             service_addr: ServiceAddress::new(&service),
             connected: false,
             last_thread_trace: 0,
+            partial_buffer: None,
             backlog: Vec::new(),
             thread: util::random_number(16),
         }
@@ -240,8 +252,51 @@ impl Session {
         msg: Message,
     ) -> Result<Option<Response>, String> {
         if let Payload::Result(resp) = msg.payload() {
+            log::trace!("unpack_reply() status={}", resp.status());
+
             // .to_owned() because this message is about to get dropped.
             let mut value = resp.content().to_owned();
+
+            if resp.status() == &MessageStatus::Partial {
+                let buf = match self.partial_buffer.as_mut() {
+                    Some(b) => b,
+                    None => {
+                        self.partial_buffer = Some(String::new());
+                        self.partial_buffer.as_mut().unwrap()
+                    }
+                };
+
+                // The content of a partial message is a raw JSON string,
+                // representing a subset of the JSON value response as a whole.
+                if let Some(chunk) = value.as_str() {
+                    buf.push_str(chunk);
+                }
+
+                return Ok(Some(Response {
+                    value: None,
+                    complete: false,
+                    partial: true,
+                }));
+            } else if resp.status() == &MessageStatus::PartialComplete {
+                // Take + clear the partial buffer.
+                let mut buf = match self.partial_buffer.take() {
+                    Some(b) => b,
+                    None => String::new(),
+                };
+
+                // Append any trailing content if available.
+                if let Some(chunk) = value.as_str() {
+                    buf.push_str(chunk);
+                }
+
+                // Compile the collected JSON chunks into a single value,
+                // which is the final response value.
+                value = json::parse(&buf)
+                    .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
+
+                log::trace!("Partial message is now complete");
+            }
+
             if let Some(s) = self.client.singleton().borrow().serializer() {
                 value = s.unpack(value);
             }
@@ -249,6 +304,7 @@ impl Session {
             return Ok(Some(Response {
                 value: Some(value),
                 complete: false,
+                partial: false,
             }));
         }
 
@@ -294,10 +350,8 @@ impl Session {
                 Ok(Some(Response {
                     value: None,
                     complete: true,
+                    partial: false,
                 }))
-            }
-            MessageStatus::Partial | MessageStatus::PartialComplete => {
-                Err(format!("{self} message chunking not currently supported"))
             }
             _ => {
                 self.reset();
