@@ -11,11 +11,11 @@ use super::message::TransportMessage;
 use super::params::ApiParams;
 use super::util;
 use json::JsonValue;
-use log::{debug, error, trace, warn};
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::fmt;
 use std::rc::Rc;
+use std::collections::VecDeque;
 
 const CONNECT_TIMEOUT: i32 = 10;
 pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
@@ -70,7 +70,12 @@ impl Request {
 
             if let Some(r) = response {
                 if r.partial {
-                    // Keep calling receive until our partial message is complete.
+                    // Keep calling receive until our partial message is
+                    // complete.  This effectively resets the receive
+                    // timeout on the assumption that once we start
+                    // receiving data we want to keep at it until we
+                    // receive all of it, regardless of the origianl
+                    // timeout value.
                     continue;
                 }
                 if r.complete {
@@ -117,8 +122,9 @@ struct Session {
     last_thread_trace: usize,
 
     /// Replies to this thread which have not yet been pulled by
-    /// any requests.
-    backlog: Vec<Message>,
+    /// any requests.  Using VecDeque since it's optimized for
+    /// queue-like behavior (push back / pop front).
+    backlog: VecDeque<Message>,
 
     /// Staging ground for "partial" messages arriving in chunks.
     partial_buffer: Option<String>,
@@ -142,7 +148,7 @@ impl Session {
             connected: false,
             last_thread_trace: 0,
             partial_buffer: None,
-            backlog: Vec::new(),
+            backlog: VecDeque::new(),
             thread: util::random_number(16),
         }
     }
@@ -160,7 +166,7 @@ impl Session {
     }
 
     fn reset(&mut self) {
-        trace!("{self} resetting...");
+        log::trace!("{self} resetting...");
         self.worker_addr = None;
         self.connected = false;
         self.backlog.clear();
@@ -199,9 +205,9 @@ impl Session {
             .iter()
             .position(|m| m.thread_trace() == thread_trace)
         {
-            trace!("{self} found a reply in the backlog for request {thread_trace}");
+            log::trace!("{self} found a reply in the backlog for request {thread_trace}");
 
-            Some(self.backlog.remove(index))
+            self.backlog.remove(index)
         } else {
             None
         }
@@ -211,7 +217,7 @@ impl Session {
         let mut timer = util::Timer::new(timeout);
 
         loop {
-            trace!(
+            log::trace!(
                 "{self} in recv() for trace {thread_trace} with {} remaining",
                 timer.remaining()
             );
@@ -233,12 +239,12 @@ impl Session {
                 None => continue, // timeout, etc.
             };
 
-            // Who's talking to us now?
+            // Look Who's Talking (Too?).
             self.worker_addr = Some(ClientAddress::from_string(tmsg.from())?);
 
             // Toss the messages onto our backlog as we receive them.
             for msg in tmsg.body() {
-                self.backlog.push(msg.to_owned());
+                self.backlog.push_back(msg.to_owned());
             }
 
             // Loop back around and see if we can pull the message
@@ -337,7 +343,7 @@ impl Session {
 
         match stat {
             MessageStatus::Ok => {
-                trace!("{self} Marking self as connected");
+                log::trace!("{self} Marking self as connected");
                 self.connected = true;
                 Ok(None)
             }
@@ -346,7 +352,7 @@ impl Session {
                 Ok(None)
             }
             MessageStatus::Complete => {
-                trace!("{self} request {trace} complete");
+                log::trace!("{self} request {trace} complete");
                 Ok(Some(Response {
                     value: None,
                     complete: true,
@@ -370,7 +376,7 @@ impl Session {
     where
         T: Into<ApiParams>,
     {
-        debug!("{self} sending request {method}");
+        log::debug!("{self} sending request {method}");
 
         let trace = self.incr_thread_trace();
 
@@ -423,7 +429,7 @@ impl Session {
     /// Establish a connected session with a remote worker.
     fn connect(&mut self) -> Result<(), String> {
         if self.connected() {
-            warn!("{self} is already connected");
+            log::warn!("{self} is already connected");
             return Ok(());
         }
 
@@ -431,7 +437,7 @@ impl Session {
         // with a specific worker since we are not connected.
         self.worker_addr = None;
 
-        debug!("{self} sending CONNECT");
+        log::debug!("{self} sending CONNECT");
 
         let trace = self.incr_thread_trace();
 
@@ -473,7 +479,7 @@ impl Session {
 
         let dest_addr = self.worker_addr().unwrap(); // verified above
 
-        debug!("{self} sending DISCONNECT");
+        log::debug!("{self} sending DISCONNECT");
 
         let tmsg = TransportMessage::with_body(
             dest_addr.as_str(),
@@ -501,7 +507,7 @@ impl SessionHandle {
     pub fn new(client: Client, service: &str) -> SessionHandle {
         let ses = Session::new(client, service);
 
-        trace!("Created new session {ses}");
+        log::trace!("Created new session {ses}");
 
         SessionHandle {
             session: Rc::new(RefCell::new(ses)),
@@ -557,7 +563,7 @@ impl Iterator for ResponseIterator {
         match self.request.recv(DEFAULT_REQUEST_TIMEOUT) {
             Ok(op) => op,
             Err(e) => {
-                error!("ResponseIterator failed with {e}");
+                log::error!("ResponseIterator failed with {e}");
                 None
             }
         }
