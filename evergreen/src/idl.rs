@@ -283,6 +283,11 @@ pub struct Parser {
     classes: HashMap<String, Class>,
 }
 
+impl fmt::Debug for Parser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "IDLParser") // TODO more stuff?
+    }
+}
 impl Parser {
     /// Create a ref to a DataSerializer suitable for OpenSRF
     /// data packing and unpacking.

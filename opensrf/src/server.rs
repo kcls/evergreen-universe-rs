@@ -66,12 +66,12 @@ impl Server {
         };
 
         let min_workers = host_settings
-            .value(&format!("apps/{service}/unix_config/min_workers"))
+            .value(&format!("apps/{service}/unix_config/min_children"))
             .as_usize()
             .unwrap_or(1);
 
         let max_workers = host_settings
-            .value(&format!("apps/{service}/unix_config/max_workers"))
+            .value(&format!("apps/{service}/unix_config/max_children"))
             .as_usize()
             .unwrap_or(20);
 
@@ -128,11 +128,8 @@ impl Server {
     }
 
     fn spawn_threads(&mut self) {
-        let mut worker_count = self.workers.len();
-
-        while worker_count < self.min_workers {
+        while self.workers.len() < self.min_workers {
             self.spawn_one_thread();
-            worker_count = self.workers.len();
         }
     }
 

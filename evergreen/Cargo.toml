@@ -45,5 +45,8 @@ name = "eg-bib-to-auth-linker"
 [[bin]]
 name = "eg-marc-export"
 
+[[bin]]
+name = "eg-svc-rspub"
+
 [[example]]
 name = "basic-requests"
