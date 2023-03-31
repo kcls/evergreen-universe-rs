@@ -1,6 +1,7 @@
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client::Client;
 use opensrf::conf;
+use opensrf::client;
 use opensrf::message;
 use opensrf::method;
 use opensrf::method::ParamCount;
@@ -9,26 +10,28 @@ use opensrf::server::Server;
 use opensrf::session::ServerSession;
 use std::any::Any;
 use std::sync::Arc;
-use evergreen::editor::Editor;
-use evergreen::idl;
+use evergreen as eg;
+use eg::editor::Editor;
+use eg::idl;
 
 const APPNAME: &str = "open-ils.rspub";
 
 /// Clone is needed here to support our implementation of downcast();
 #[derive(Debug, Clone)]
 struct RsPubEnv {
-    idl: Option<Arc<idl::Parser>>,
+    /// Global / shared IDL ref
+    idl: Arc<idl::Parser>,
 }
 
 impl RsPubEnv {
-    pub fn new() -> Self {
+    pub fn new(idl: &Arc<idl::Parser>) -> Self {
         RsPubEnv {
-            idl: None,
+            idl: idl.clone(),
         }
     }
 
     pub fn idl(&self) -> &Arc<idl::Parser> {
-        self.idl.as_ref().unwrap()
+        &self.idl
     }
 }
 
@@ -38,11 +41,21 @@ impl ApplicationEnv for RsPubEnv {
     }
 }
 
-struct RsPubApplication;
+struct RsPubApplication {
+    /// We load the IDL during service init.
+    idl: Option<Arc<idl::Parser>>,
+}
 
 impl RsPubApplication {
     pub fn new() -> Self {
-        RsPubApplication {}
+        RsPubApplication {
+            idl: None,
+        }
+    }
+
+    /// Panics if the IDL is not yet set.
+    fn idl(&self) -> &Arc<idl::Parser> {
+        self.idl.as_ref().unwrap()
     }
 }
 
@@ -52,7 +65,25 @@ impl Application for RsPubApplication {
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsPubEnv::new())
+        Box::new(RsPubEnv::new(self.idl()))
+    }
+
+    /// Load the IDL
+    fn init(
+        &mut self,
+        _client: client::Client,
+        _config: Arc<conf::Config>,
+        host_settings: Arc<HostSettings>,
+    ) -> Result<(), String> {
+        let idl_file = host_settings.value("IDL")
+            .as_str().ok_or(format!("No IDL path!"))?;
+
+        let idl = idl::Parser::parse_file(&idl_file)
+            .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
+
+        self.idl = Some(idl);
+
+        Ok(())
     }
 
     fn register_methods(
@@ -73,6 +104,7 @@ impl Application for RsPubApplication {
     }
 }
 
+/// Per-thread worker instance.
 struct RsPubWorker {
     env: Option<RsPubEnv>,
     client: Option<Client>,
@@ -90,11 +122,16 @@ impl RsPubWorker {
         }
     }
 
-    /// We must have a value here since absorb_env() is invoked on the worker.
+    /// This will only ever be called after absorb_env(), so we are
+    /// guarenteed to have an env.
     pub fn env(&self) -> &RsPubEnv {
         self.env.as_ref().unwrap()
     }
 
+    /// Cast a generic ApplicationWorker into our RsPubWorker.
+    ///
+    /// This is necessary to access methods/fields on our RsPubWorker that
+    /// are not part of the ApplicationWorker trait.
     pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut RsPubWorker, String> {
         match w.as_any_mut().downcast_mut::<RsPubWorker>() {
             Some(eref) => Ok(eref),
@@ -102,14 +139,30 @@ impl RsPubWorker {
         }
     }
 
+    /// Ref to our OpenSRF client.
     ///
-    /// self.client is guaranteed to set after absorb_env()
+    /// Set during absorb_env()
     fn client(&self) -> &Client {
         self.client.as_ref().unwrap()
     }
 
-    fn client_mut(&mut self) -> &mut Client {
+    /// Mutable ref to our OpenSRF client.
+    ///
+    /// Set during absorb_env()
+    fn _client_mut(&mut self) -> &mut Client {
         self.client.as_mut().unwrap()
+    }
+
+    /// Handy method for extracting an authtoken from a set of params.
+    ///
+    /// Assumes the authtoken is the first parameter.
+    fn authtoken(&self, method: &message::Method) -> Result<String, String> {
+        if let Some(v) = method.params().get(0) {
+            if let Some(token) = v.as_str() {
+                return Ok(token.to_string());
+            }
+        }
+        Err(format!("Could not unpack authtoken from params: {:?}", method.params()))
     }
 }
 
@@ -118,6 +171,8 @@ impl ApplicationWorker for RsPubWorker {
         self
     }
 
+    /// Absorb our thread-global data.
+    ///
     /// Panics if we cannot downcast the env provided to the expected type.
     fn absorb_env(
         &mut self,
@@ -130,19 +185,11 @@ impl ApplicationWorker for RsPubWorker {
         let worker_env = env.as_any().downcast_ref::<RsPubEnv>()
             .ok_or(format!("Unexpected environment type in absorb_env()"))?;
 
-        let mut worker_env = worker_env.clone();
+        // Each worker gets its own client, so we have to tell our
+        // client how to pack/unpack network data.
+        client.set_serializer(idl::Parser::as_serializer(worker_env.idl()));
 
-        let idl_file = host_settings.value("IDL")
-            .as_str().ok_or(format!("No IDL path!"))?;
-
-        let idl = idl::Parser::parse_file(&idl_file)
-            .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
-
-        client.set_serializer(idl::Parser::as_serializer(&idl));
-
-        worker_env.idl = Some(idl);
-        self.env = Some(worker_env);
-
+        self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.config = Some(config);
         self.host_settings = Some(host_settings);
@@ -150,11 +197,14 @@ impl ApplicationWorker for RsPubWorker {
         Ok(())
     }
 
+    /// Called before the worker goes into its listen state.
     fn worker_start(&mut self) -> Result<(), String> {
         log::debug!("Thread starting");
         Ok(())
     }
 
+    /// Called after all requets are handled and the worker is
+    /// about to go away.
     fn worker_end(&mut self) -> Result<(), String> {
         log::debug!("Thread ending");
         Ok(())
@@ -174,17 +224,66 @@ fn get_barcodes(
     session: &mut ServerSession,
     method: &message::Method,
 ) -> Result<(), String> {
-    let mut worker = RsPubWorker::downcast(worker)?;
+    let worker = RsPubWorker::downcast(worker)?;
 
-    let authtoken = method.params()[0].as_str().ok_or(format!("Invalid authtoken"))?;
-    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), authtoken);
+    let authtoken = worker.authtoken(&method)?;
 
-    let org_id = &method.params()[1];
-    let context = &method.params()[2];
-    let barcode = &method.params()[3];
+    let org_id = eg::util::json_int(method.params().get(1).unwrap())?;
 
-    session.respond(barcode.clone())?;
-    session.respond(editor.retrieve("aou", 1)?)?;
+    let context = method.params().get(2).unwrap().as_str()
+        .ok_or(format!("Context parameter must be a string"))?;
 
-    Ok(())
+    let barcode = method.params().get(3).unwrap().as_str()
+        .ok_or(format!("Barcode parameter must be a string"))?;
+
+    let mut editor =
+        Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.last_event().unwrap().to_json_value());
+    }
+
+    if !editor.allowed("STAFF_LOGIN", Some(org_id))? {
+        return session.respond(editor.last_event().unwrap().to_json_value());
+    }
+
+    let query = json::object! {
+        from: [
+            "evergreen.get_barcodes",
+            org_id, context, barcode
+        ]
+    };
+
+    let result = editor.json_query(query)?;
+
+    if context.ne("actor") {
+        return session.respond(result);
+    }
+
+    let requestor_id = editor.requestor_id();
+    let mut response: Vec<json::JsonValue> = Vec::new();
+
+    for user_row in result {
+        let user_id = eg::util::json_int(&user_row["id"])?;
+
+        if user_id == requestor_id {
+            // We're allowed to know about ourselves.
+            response.push(user_row);
+            continue;
+        }
+
+        // If the found user account is not "me", verify we
+        // have permission to view said account.
+        let u = editor.retrieve("au", user_id)?.unwrap();
+        let home_ou = eg::util::json_int(&u["home_ou"])?;
+
+        if editor.allowed("VIEW_USER", Some(home_ou))? {
+            response.push(user_row);
+        } else {
+            response.push(editor.last_event().unwrap().into());
+        }
+    }
+
+    session.respond(response)
 }
+

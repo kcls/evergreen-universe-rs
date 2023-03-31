@@ -45,6 +45,15 @@ impl Application for RsPublicApplication {
         Box::new(RsPublicEnv::new())
     }
 
+    fn init(
+        &mut self,
+        client: client::Client,
+        config: Arc<conf::Config>,
+        host_settings: Arc<sclient::HostSettings>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
     fn register_methods(
         &self,
         _client: Client,

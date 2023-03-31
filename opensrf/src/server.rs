@@ -264,6 +264,13 @@ impl Server {
         Ok(())
     }
 
+    fn service_init(&mut self) -> Result<(), String> {
+        let client = self.client.clone();
+        let config = self.config().clone();
+        let host_settings = self.host_settings().clone();
+        self.app_mut().init(client, config, host_settings)
+    }
+
     fn register_methods(&mut self) -> Result<(), String> {
         let client = self.client.clone();
         let config = self.config().clone();
@@ -289,6 +296,7 @@ impl Server {
     }
 
     pub fn listen(&mut self) -> Result<(), String> {
+        self.service_init()?;
         self.register_methods()?;
         self.register_routers()?;
         self.spawn_threads();

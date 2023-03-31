@@ -11,7 +11,7 @@ pub struct EgEvent {
     note: Option<String>,
     servertime: Option<String>,
     ilsperm: Option<String>,
-    ilspermloc: isize,
+    ilspermloc: i64,
     success: bool,
     org: Option<i64>,
 }
@@ -36,6 +36,24 @@ impl fmt::Display for EgEvent {
     }
 }
 
+impl From<&EgEvent> for json::JsonValue {
+    fn from(evt: &EgEvent) -> Self {
+        json::object! {
+            code: 0,
+            textcode: evt.textcode(),
+            payload: evt.payload().clone(),
+            desc: evt.desc(),
+            debug: evt.debug(),
+            note: evt.note(),
+            org: *evt.org(),
+            servertime: evt.servertime(),
+            ilsperm: evt.ilsperm(),
+            ilspermloc: evt.ilspermloc(),
+            success: evt.success()
+        }
+    }
+}
+
 impl EgEvent {
     pub fn new(textcode: &str) -> Self {
         EgEvent {
@@ -51,6 +69,18 @@ impl EgEvent {
             ilspermloc: 0,
             success: textcode.eq("SUCCESS"),
         }
+    }
+
+    pub fn to_json_value(&self) -> json::JsonValue {
+        self.into()
+    }
+
+    pub fn set_ils_perm(&mut self, p: &str) {
+        self.ilsperm = Some(p.to_string());
+    }
+
+    pub fn set_ils_perm_loc(&mut self, loc: i64) {
+        self.ilspermloc = loc;
     }
 
     pub fn code(&self) -> isize {
@@ -85,7 +115,7 @@ impl EgEvent {
         self.ilsperm.as_deref()
     }
 
-    pub fn ilspermloc(&self) -> isize {
+    pub fn ilspermloc(&self) -> i64 {
         self.ilspermloc
     }
 
@@ -156,7 +186,7 @@ impl EgEvent {
             evt.code = code;
         };
 
-        if let Some(permloc) = jv["ilspermloc"].as_isize() {
+        if let Some(permloc) = jv["ilspermloc"].as_i64() {
             evt.ilspermloc = permloc;
         }
 

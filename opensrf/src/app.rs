@@ -38,9 +38,17 @@ pub trait Application {
     /// Application service name, e.g. opensrf.settings
     fn name(&self) -> &str;
 
+    /// Called when a service first starts, just after connecting to OpenSRF.
+    fn init(
+        &mut self,
+        client: client::Client,
+        config: Arc<conf::Config>,
+        host_settings: Arc<sclient::HostSettings>,
+    ) -> Result<(), String>;
+
     /// Tell the server what methods this application implements.
     ///
-    /// Called before workers are spawned.
+    /// Called after self.init(), but before workers are spawned.
     fn register_methods(
         &self,
         client: client::Client,

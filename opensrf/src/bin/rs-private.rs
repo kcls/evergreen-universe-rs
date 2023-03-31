@@ -50,6 +50,15 @@ impl Application for RsPrivateApplication {
         Box::new(RsPrivateEnv::new(Arc::new(String::from("FOO"))))
     }
 
+    fn init(
+        &mut self,
+        client: client::Client,
+        config: Arc<conf::Config>,
+        host_settings: Arc<sclient::HostSettings>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
     fn register_methods(
         &self,
         _client: client::Client,

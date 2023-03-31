@@ -175,6 +175,15 @@ impl Editor {
         self.xact_id.is_some()
     }
 
+    /// ID of the requestor
+    ///
+    /// Panics if the requestor value is unset, i.e. checkauth() has
+    /// not successfully run, or for some reason the requestor ID is
+    /// non-numeric.
+    pub fn requestor_id(&self) -> i64 {
+        util::json_int(&self.requestor().unwrap()["id"]).unwrap()
+    }
+
     pub fn requestor(&self) -> Option<&json::JsonValue> {
         self.requestor.as_ref()
     }
@@ -572,7 +581,17 @@ impl Editor {
         };
 
         let resp = self.json_query(query)?;
+        let has_perm = util::json_bool(&resp[0]["has_perm"]);
 
-        Ok(util::json_bool(&resp[0]["has_perm"]))
+        if !has_perm {
+            let mut evt = EgEvent::new("PERM_FAILURE");
+            evt.set_ils_perm(perm);
+            if let Some(org_id) = org_id_op {
+                evt.set_ils_perm_loc(org_id);
+            }
+            self.set_last_event(evt);
+        }
+
+        Ok(has_perm)
     }
 }
