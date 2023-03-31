@@ -1,7 +1,10 @@
+use eg::editor::Editor;
+use eg::idl;
+use evergreen as eg;
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
+use opensrf::client;
 use opensrf::client::Client;
 use opensrf::conf;
-use opensrf::client;
 use opensrf::message;
 use opensrf::method;
 use opensrf::method::ParamCount;
@@ -10,9 +13,6 @@ use opensrf::server::Server;
 use opensrf::session::ServerSession;
 use std::any::Any;
 use std::sync::Arc;
-use evergreen as eg;
-use eg::editor::Editor;
-use eg::idl;
 
 const APPNAME: &str = "open-ils.rspub";
 
@@ -25,9 +25,7 @@ struct RsPubEnv {
 
 impl RsPubEnv {
     pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        RsPubEnv {
-            idl: idl.clone(),
-        }
+        RsPubEnv { idl: idl.clone() }
     }
 
     pub fn idl(&self) -> &Arc<idl::Parser> {
@@ -48,9 +46,7 @@ struct RsPubApplication {
 
 impl RsPubApplication {
     pub fn new() -> Self {
-        RsPubApplication {
-            idl: None,
-        }
+        RsPubApplication { idl: None }
     }
 
     /// Panics if the IDL is not yet set.
@@ -75,8 +71,10 @@ impl Application for RsPubApplication {
         _config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
     ) -> Result<(), String> {
-        let idl_file = host_settings.value("IDL")
-            .as_str().ok_or(format!("No IDL path!"))?;
+        let idl_file = host_settings
+            .value("IDL")
+            .as_str()
+            .ok_or(format!("No IDL path!"))?;
 
         let idl = idl::Parser::parse_file(&idl_file)
             .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
@@ -94,9 +92,11 @@ impl Application for RsPubApplication {
     ) -> Result<Vec<method::Method>, String> {
         let namer = |n| format!("{APPNAME}.{n}");
 
-        Ok(vec![
-            method::Method::new(&namer("get_barcodes"), ParamCount::Exactly(4), get_barcodes),
-        ])
+        Ok(vec![method::Method::new(
+            &namer("get_barcodes"),
+            ParamCount::Exactly(4),
+            get_barcodes,
+        )])
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
@@ -162,7 +162,10 @@ impl RsPubWorker {
                 return Ok(token.to_string());
             }
         }
-        Err(format!("Could not unpack authtoken from params: {:?}", method.params()))
+        Err(format!(
+            "Could not unpack authtoken from params: {:?}",
+            method.params()
+        ))
     }
 }
 
@@ -181,8 +184,9 @@ impl ApplicationWorker for RsPubWorker {
         host_settings: Arc<HostSettings>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
-
-        let worker_env = env.as_any().downcast_ref::<RsPubEnv>()
+        let worker_env = env
+            .as_any()
+            .downcast_ref::<RsPubEnv>()
             .ok_or(format!("Unexpected environment type in absorb_env()"))?;
 
         // Each worker gets its own client, so we have to tell our
@@ -230,14 +234,21 @@ fn get_barcodes(
 
     let org_id = eg::util::json_int(method.params().get(1).unwrap())?;
 
-    let context = method.params().get(2).unwrap().as_str()
+    let context = method
+        .params()
+        .get(2)
+        .unwrap()
+        .as_str()
         .ok_or(format!("Context parameter must be a string"))?;
 
-    let barcode = method.params().get(3).unwrap().as_str()
+    let barcode = method
+        .params()
+        .get(3)
+        .unwrap()
+        .as_str()
         .ok_or(format!("Barcode parameter must be a string"))?;
 
-    let mut editor =
-        Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
     if !editor.checkauth()? {
         return session.respond(editor.last_event().unwrap().to_json_value());
@@ -286,4 +297,3 @@ fn get_barcodes(
 
     session.respond(response)
 }
-

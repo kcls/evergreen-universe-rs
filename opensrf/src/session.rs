@@ -13,9 +13,9 @@ use super::util;
 use json::JsonValue;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
-use std::collections::VecDeque;
 
 const CONNECT_TIMEOUT: i32 = 10;
 pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
