@@ -52,9 +52,9 @@ impl Application for RsPrivateApplication {
 
     fn init(
         &mut self,
-        client: client::Client,
-        config: Arc<conf::Config>,
-        host_settings: Arc<sclient::HostSettings>,
+        _client: client::Client,
+        _config: Arc<conf::Config>,
+        _host_settings: Arc<HostSettings>,
     ) -> Result<(), String> {
         Ok(())
     }
