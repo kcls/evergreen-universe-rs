@@ -90,11 +90,18 @@ impl Application for RsPubApplication {
     ) -> Result<Vec<method::Method>, String> {
         let namer = |n| format!("{APPNAME}.{n}");
 
-        Ok(vec![method::Method::new(
-            &namer("get_barcodes"),
-            ParamCount::Exactly(4),
-            methods::get_barcodes,
-        )])
+        Ok(vec![
+            method::Method::new(
+                &namer("get_barcodes"),
+                ParamCount::Exactly(4),
+                methods::get_barcodes,
+            ),
+            method::Method::new(
+                &namer("user_has_work_perm_at"),
+                ParamCount::Range(2, 3),
+                methods::user_has_work_perm_at,
+            )
+        ])
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {

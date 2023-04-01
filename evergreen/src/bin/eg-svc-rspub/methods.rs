@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use eg::editor::Editor;
 use evergreen as eg;
+use eg::apputil;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
 use opensrf::session::ServerSession;
@@ -15,17 +17,20 @@ pub fn get_barcodes(
     // Cast our worker instance into something we know how to use.
     let worker = app::RsPubWorker::downcast(worker)?;
 
-    // Pull the authtoken string from the first parameter.
-    let authtoken = eg::util::json_string(method.param_at(0))?;
-    let org_id = eg::util::json_int(method.param_at(1))?;
-    let context = eg::util::json_string(method.param_at(2))?;
-    let barcode = eg::util::json_string(method.param_at(3))?;
+    let authtoken = eg::util::json_string(method.param(0))?;
+    let org_id = eg::util::json_int(method.param(1))?;
+    let context = eg::util::json_string(method.param(2))?;
+    let barcode = eg::util::json_string(method.param(3))?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
-    let _ = editor.checkauth()? || return session.respond(editor.event());
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
 
-    let _ = editor.allowed("STAFF_LOGIN", Some(org_id))? || return session.respond(editor.event());
+    if !editor.allowed("STAFF_LOGIN", Some(org_id))? {
+        return session.respond(editor.event());
+    }
 
     let query = json::object! {
         from: [
@@ -53,8 +58,7 @@ pub fn get_barcodes(
             continue;
         }
 
-        // If the found user account is not "me", verify we
-        // have permission to view said account.
+        // Do we have permission to view info about this user?
         let u = editor.retrieve("au", user_id)?.unwrap();
         let home_ou = eg::util::json_int(&u["home_ou"])?;
 
@@ -67,3 +71,42 @@ pub fn get_barcodes(
 
     session.respond(response)
 }
+
+/// Returns a map of permission name to a list of org units where the
+/// provided user (or the caller, if no user is specified) has each
+/// of the provided permissions.
+pub fn user_has_work_perm_at(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    // Cast our worker instance into something we know how to use.
+    let worker = app::RsPubWorker::downcast(worker)?;
+
+    let authtoken = eg::util::json_string(method.param(0))?;
+
+    let perms = match method.param(1) {
+        json::JsonValue::Array(v) => v,
+        _ => Err(format!("Invalid value for 'perms' parameter"))?,
+    };
+
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    // user_id parameter is optional
+    let user_id = match method.params().get(2) {
+        Some(id) => eg::util::json_int(id)?,
+        None => editor.requestor_id(),
+    };
+
+    let mut map: HashMap<String, Vec<i64>> = HashMap::new();
+    for perm in perms.iter() {
+        let perm = eg::util::json_string(perm)?;
+        map.insert(
+            perm.to_string(),
+            apputil::user_has_work_perm_at(&mut editor, user_id, &perm)?
+        );
+    }
+
+    session.respond(map)
+}
+

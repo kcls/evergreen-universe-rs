@@ -72,3 +72,25 @@ pub fn verify_user_password(
         Err(format!("actor.verify_passwd failed to return a response"))
     }
 }
+
+/// Returns a list of all org unit IDs where the provided user has
+/// the provided work permission.
+pub fn user_has_work_perm_at(
+    e: &mut Editor,
+    user_id: i64,
+    perm: &str
+) -> Result<Vec<i64>, String> {
+    let dbfunc = "permission.usr_has_perm_at_all";
+
+    let query = json::object! { from: [dbfunc, user_id, perm] };
+
+    let values = e.json_query(query)?;
+
+    let mut orgs: Vec<i64> = Vec::new();
+    for value in values.iter() {
+        let org = util::json_int(&value[dbfunc])?;
+        orgs.push(org);
+    }
+
+    Ok(orgs)
+}

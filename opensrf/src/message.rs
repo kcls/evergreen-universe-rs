@@ -743,7 +743,7 @@ impl Method {
     /// Return a ref to the param at the specififed index.
     ///
     /// Returns NULL if the param is not set.
-    pub fn param_at(&self, index: usize) -> &json::JsonValue {
+    pub fn param(&self, index: usize) -> &json::JsonValue {
         self.params.get(index).unwrap_or(&JSON_NULL)
     }
 
