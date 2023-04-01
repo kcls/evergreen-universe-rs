@@ -2,9 +2,9 @@ use eg::idl;
 use evergreen as eg;
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client::Client;
-use opensrf::method::ParamCount;
 use opensrf::sclient::HostSettings;
-use opensrf::{conf, method};
+use opensrf::conf;
+use opensrf::method::Method;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -87,21 +87,24 @@ impl Application for RsPubApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
-    ) -> Result<Vec<method::Method>, String> {
-        let namer = |n| format!("{APPNAME}.{n}");
+    ) -> Result<Vec<Method>, String> {
+        let mut methods: Vec<Method> = Vec::new();
 
-        Ok(vec![
-            method::Method::new(
-                &namer("get_barcodes"),
-                ParamCount::Exactly(4),
-                methods::get_barcodes,
-            ),
-            method::Method::new(
-                &namer("user_has_work_perm_at"),
-                ParamCount::Range(2, 3),
-                methods::user_has_work_perm_at,
-            )
-        ])
+        // Create Method objects from our static method definitions.
+        for def in methods::STATIC_METHODS.iter() {
+            methods.push(
+                Method::new(
+                    &format!("open-ils.rspub.{}", def.name()),
+                    def.param_count().clone(),
+                    def.handler
+                )
+            );
+        }
+
+        // NOTE here is where additional, dynamically created methods
+        // could be appended.
+
+        Ok(methods)
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {

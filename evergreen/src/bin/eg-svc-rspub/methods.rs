@@ -4,10 +4,27 @@ use evergreen as eg;
 use eg::apputil;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
+use opensrf::method::{MethodDef, ParamCount};
 use opensrf::session::ServerSession;
 
 // Import our local app module
 use crate::app;
+
+/// List of method definitions we know at compile time.
+///
+/// These will form the basis (and possibly all) of our published methods.
+pub static STATIC_METHODS: &[MethodDef] = &[
+    MethodDef {
+        name: "get_barcodes",
+        param_count: ParamCount::Exactly(4),
+        handler: get_barcodes,
+    },
+    MethodDef {
+        name: "user_has_work_perm_at",
+        param_count: ParamCount::Range(2, 3),
+        handler: user_has_work_perm_at,
+    },
+];
 
 pub fn get_barcodes(
     worker: &mut Box<dyn ApplicationWorker>,

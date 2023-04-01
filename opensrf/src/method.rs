@@ -63,6 +63,26 @@ impl fmt::Display for ParamCount {
     }
 }
 
+/// A variation of a Method that can be used when creating static
+/// method definitions.
+pub struct MethodDef {
+    pub name: &'static str,
+    pub param_count: ParamCount,
+    pub handler: MethodHandler,
+}
+
+impl MethodDef {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn param_count(&self) -> &ParamCount {
+        &self.param_count
+    }
+    pub fn handler(&self) -> &MethodHandler {
+        &self.handler
+    }
+}
+
 pub struct Method {
     pub name: String,
     pub param_count: ParamCount,
