@@ -196,6 +196,15 @@ impl Editor {
         self.last_event.as_ref()
     }
 
+    /// Returns our last event as JSON or JsonValue::Null if we have
+    /// no last event.
+    pub fn event(&self) -> json::JsonValue {
+        match self.last_event() {
+            Some(e) => e.to_json_value(),
+            None => json::JsonValue::Null,
+        }
+    }
+
     fn set_last_event(&mut self, evt: EgEvent) {
         self.last_event = Some(evt);
     }

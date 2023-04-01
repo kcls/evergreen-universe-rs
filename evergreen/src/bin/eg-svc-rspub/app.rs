@@ -1,22 +1,22 @@
-use evergreen as eg;
 use eg::idl;
+use evergreen as eg;
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
-use opensrf::client;
 use opensrf::client::Client;
-use opensrf::conf;
-use opensrf::message;
-use opensrf::method;
 use opensrf::method::ParamCount;
 use opensrf::sclient::HostSettings;
+use opensrf::{conf, method};
 use std::any::Any;
 use std::sync::Arc;
 
-// Import our methods module.
+// Import our local methods module.
 use crate::methods;
 
 const APPNAME: &str = "open-ils.rspub";
 
-/// Clone is needed here to support our implementation of downcast();
+/// Environment shared by all service workers.
+///
+/// The environment is only mutable up until the point our
+/// Server starts spawning threads.
 #[derive(Debug, Clone)]
 pub struct RsPubEnv {
     /// Global / shared IDL ref
@@ -33,12 +33,14 @@ impl RsPubEnv {
     }
 }
 
+/// Implement the needed Env trait
 impl ApplicationEnv for RsPubEnv {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
+/// Our main application class.
 pub struct RsPubApplication {
     /// We load the IDL during service init.
     idl: Option<Arc<idl::Parser>>,
@@ -48,11 +50,6 @@ impl RsPubApplication {
     pub fn new() -> Self {
         RsPubApplication { idl: None }
     }
-
-    /// Panics if the IDL is not yet set.
-    fn idl(&self) -> &Arc<idl::Parser> {
-        self.idl.as_ref().unwrap()
-    }
 }
 
 impl Application for RsPubApplication {
@@ -61,13 +58,13 @@ impl Application for RsPubApplication {
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsPubEnv::new(self.idl()))
+        Box::new(RsPubEnv::new(self.idl.as_ref().unwrap()))
     }
 
-    /// Load the IDL
+    /// Load the IDL and perform any other needed global startup work.
     fn init(
         &mut self,
-        _client: client::Client,
+        _client: Client,
         _config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
     ) -> Result<(), String> {
@@ -84,6 +81,7 @@ impl Application for RsPubApplication {
         Ok(())
     }
 
+    /// Tell the Server what methods we want to publish.
     fn register_methods(
         &self,
         _client: Client,
@@ -152,21 +150,6 @@ impl RsPubWorker {
     pub fn _client_mut(&mut self) -> &mut Client {
         self.client.as_mut().unwrap()
     }
-
-    /// Handy method for extracting an authtoken from a set of params.
-    ///
-    /// Assumes the authtoken is the first parameter.
-    pub fn authtoken(&self, method: &message::Method) -> Result<String, String> {
-        if let Some(v) = method.params().get(0) {
-            if let Some(token) = v.as_str() {
-                return Ok(token.to_string());
-            }
-        }
-        Err(format!(
-            "Could not unpack authtoken from params: {:?}",
-            method.params()
-        ))
-    }
 }
 
 impl ApplicationWorker for RsPubWorker {
@@ -174,7 +157,7 @@ impl ApplicationWorker for RsPubWorker {
         self
     }
 
-    /// Absorb our thread-global data.
+    /// Absorb our global dataset.
     ///
     /// Panics if we cannot downcast the env provided to the expected type.
     fn absorb_env(
@@ -207,8 +190,8 @@ impl ApplicationWorker for RsPubWorker {
         Ok(())
     }
 
-    /// Called after all requets are handled and the worker is
-    /// about to go away.
+    /// Called after all requests are handled and the worker is
+    /// shutting down.
     fn worker_end(&mut self) -> Result<(), String> {
         log::debug!("Thread ending");
         Ok(())

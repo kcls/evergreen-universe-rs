@@ -1,10 +1,10 @@
-use evergreen as eg;
 use eg::editor::Editor;
-use opensrf::app::{ApplicationWorker};
+use evergreen as eg;
+use opensrf::app::ApplicationWorker;
 use opensrf::message;
 use opensrf::session::ServerSession;
 
-// Import our app module
+// Import our local app module
 use crate::app;
 
 pub fn get_barcodes(
@@ -12,46 +12,32 @@ pub fn get_barcodes(
     session: &mut ServerSession,
     method: &message::Method,
 ) -> Result<(), String> {
+    // Cast our worker instance into something we know how to use.
     let worker = app::RsPubWorker::downcast(worker)?;
 
-    let authtoken = worker.authtoken(&method)?;
-
-    let org_id = eg::util::json_int(method.params().get(1).unwrap())?;
-
-    let context = method
-        .params()
-        .get(2)
-        .unwrap()
-        .as_str()
-        .ok_or(format!("Context parameter must be a string"))?;
-
-    let barcode = method
-        .params()
-        .get(3)
-        .unwrap()
-        .as_str()
-        .ok_or(format!("Barcode parameter must be a string"))?;
+    // Pull the authtoken string from the first parameter.
+    let authtoken = eg::util::json_string(method.param_at(0))?;
+    let org_id = eg::util::json_int(method.param_at(1))?;
+    let context = eg::util::json_string(method.param_at(2))?;
+    let barcode = eg::util::json_string(method.param_at(3))?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
-    if !editor.checkauth()? {
-        return session.respond(editor.last_event().unwrap().to_json_value());
-    }
+    let _ = editor.checkauth()? || return session.respond(editor.event());
 
-    if !editor.allowed("STAFF_LOGIN", Some(org_id))? {
-        return session.respond(editor.last_event().unwrap().to_json_value());
-    }
+    let _ = editor.allowed("STAFF_LOGIN", Some(org_id))? || return session.respond(editor.event());
 
     let query = json::object! {
         from: [
             "evergreen.get_barcodes",
-            org_id, context, barcode
+            org_id, context.as_str(), barcode.as_str()
         ]
     };
 
     let result = editor.json_query(query)?;
 
     if context.ne("actor") {
+        // Perm checks not needed for asset/serial/booking items.
         return session.respond(result);
     }
 
@@ -75,7 +61,7 @@ pub fn get_barcodes(
         if editor.allowed("VIEW_USER", Some(home_ou))? {
             response.push(user_row);
         } else {
-            response.push(editor.last_event().unwrap().into());
+            response.push(editor.event());
         }
     }
 

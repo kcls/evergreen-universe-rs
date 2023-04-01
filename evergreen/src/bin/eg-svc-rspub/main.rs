@@ -9,4 +9,3 @@ fn main() {
         log::info!("Server exited normally");
     }
 }
-

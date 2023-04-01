@@ -265,9 +265,11 @@ impl Worker {
         }
 
         if let Err(e) = appworker.worker_end() {
-            log::error!("{selfstr} worker_start failed {e}.  Exiting");
-            return;
+            log::error!("{selfstr} worker_end failed {e}");
         }
+
+        // Clear our worker-specific bus address of any lingering data.
+        self.reset().ok();
     }
 
     fn handle_transport_message(
@@ -277,6 +279,7 @@ impl Worker {
     ) -> Result<(), String> {
         if self.session.is_none() || self.session().thread().ne(tmsg.thread()) {
             log::trace!("server: creating new server session for {}", tmsg.thread());
+
             self.session = Some(ServerSession::new(
                 self.client.clone(),
                 &self.service,
@@ -287,7 +290,7 @@ impl Worker {
         }
 
         for msg in tmsg.body().iter() {
-            self.handle_message(&msg, appworker)?;
+            self.handle_message(msg, appworker)?;
         }
 
         Ok(())
@@ -366,21 +369,27 @@ impl Worker {
             }
         };
 
-        let log_params = match self
+        let mut log_params: Option<String> = None;
+
+        if self
             .config
             .log_protect()
             .iter()
             .filter(|m| request.method().starts_with(&m[..]))
             .next()
+            .is_none()
         {
-            Some(_) => "**PARAMS REDACTED**".to_string(),
-            None => request
-                .params()
-                .iter()
-                .map(|p| p.dump())
-                .collect::<Vec<_>>()
-                .join(", "),
+            log_params = Some(
+                request
+                    .params()
+                    .iter()
+                    .map(|p| p.dump())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
         };
+
+        let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
 
         // Log the API call
         log::info!("CALL: {} {}", request.method(), log_params);

@@ -5,6 +5,7 @@ const DEFAULT_LOCALE: &str = "en-US";
 const DEFAULT_TIMEZONE: &str = "America/New_York";
 const DEFAULT_API_LEVEL: u8 = 1;
 const DEFAULT_INGRESS: &str = "opensrf";
+const JSON_NULL: json::JsonValue = json::JsonValue::Null;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MessageType {
@@ -737,6 +738,13 @@ impl Method {
 
     pub fn params(&self) -> &Vec<json::JsonValue> {
         &self.params
+    }
+
+    /// Return a ref to the param at the specififed index.
+    ///
+    /// Returns NULL if the param is not set.
+    pub fn param_at(&self, index: usize) -> &json::JsonValue {
+        self.params.get(index).unwrap_or(&JSON_NULL)
     }
 
     /// Create a JsonValue from a Method

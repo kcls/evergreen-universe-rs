@@ -75,6 +75,20 @@ pub fn json_int(value: &JsonValue) -> Result<i64, String> {
     Err(format!("Invalid int value: {}", value))
 }
 
+/// Translate a json value into a String.
+///
+/// Will coerce numeric values into strings.  Return Err if the
+/// value is not a string or number.
+pub fn json_string(value: &JsonValue) -> Result<String, String> {
+    if let Some(s) = value.as_str() {
+        Ok(s.to_string())
+    } else if value.is_number() {
+        Ok(format!("{value}"))
+    } else {
+        Err(format!("Cannot extract value as a string: {value}"))
+    }
+}
+
 /// Create a DateTime from a Postgres date string.
 ///
 /// chrono has a parse_from_rfc3339() function, but it does
