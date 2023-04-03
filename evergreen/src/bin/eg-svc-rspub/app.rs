@@ -92,7 +92,7 @@ impl Application for RsPubApplication {
         let mut methods: Vec<Method> = Vec::new();
 
         // Create Method objects from our static method definitions.
-        for def in methods::STATIC_METHODS.iter() {
+        for def in methods::METHODS.iter() {
             methods.push(def.into_method("open-ils.rspub"));
         }
 

@@ -288,15 +288,25 @@ impl Server {
 
     fn add_system_methods(&self, hash: &mut HashMap<String, method::Method>) {
         let name = "opensrf.system.echo";
-        hash.insert(
-            name.to_string(),
-            method::Method::new(name, method::ParamCount::Any, system_method_echo),
-        );
+        let mut method = method::Method::new(name, method::ParamCount::Any, system_method_echo);
+        method.set_desc("Echo back any values sent");
+        hash.insert(name.to_string(), method);
+
         let name = "opensrf.system.method.all";
-        hash.insert(
-            name.to_string(),
-            method::Method::new(name, method::ParamCount::Zero, introspect),
+        let mut method = method::Method::new(
+            name,
+            method::ParamCount::Range(0, 1),
+            system_method_introspect,
         );
+        method.set_desc("List published API definitions");
+        method.add_param(method::Param {
+            required: false,
+            name: String::from("Prefix"),
+            datatype: method::ParamDataType::String,
+            desc: Some(String::from("API name prefix filter")),
+        });
+
+        hash.insert(name.to_string(), method);
     }
 
     pub fn listen(&mut self) -> Result<(), String> {
@@ -427,13 +437,29 @@ fn system_method_echo(
     Ok(())
 }
 
-fn introspect(
+fn system_method_introspect(
     worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    _method: &message::Method,
+    method: &message::Method,
 ) -> Result<(), String> {
+    // If a prefix string is provided, only return methods whose name
+    // starts with the provided prefix.
+    if let Some(prefix) = method.params().get(0) {
+        if let Some(prefix) = prefix.as_str() {
+            for meth in worker
+                .methods()
+                .values()
+                .filter(|m| m.name().starts_with(prefix))
+            {
+                session.respond(meth.to_json_value())?;
+            }
+            return Ok(());
+        }
+    }
+
     for meth in worker.methods().values() {
         session.respond(meth.to_json_value())?;
     }
+
     Ok(())
 }

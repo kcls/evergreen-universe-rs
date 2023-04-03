@@ -211,6 +211,20 @@ impl Method {
     pub fn desc(&self) -> Option<&str> {
         self.desc.as_deref()
     }
+    pub fn set_desc(&mut self, desc: &str) {
+        self.desc = Some(desc.to_string());
+    }
+    pub fn add_param(&mut self, param: Param) {
+        let params = match self.params.as_mut() {
+            Some(p) => p,
+            None => {
+                self.params = Some(Vec::new());
+                self.params.as_mut().unwrap()
+            }
+        };
+
+        params.push(param);
+    }
 
     pub fn to_json_value(&self) -> json::JsonValue {
         let mut pa = json::JsonValue::new_array();

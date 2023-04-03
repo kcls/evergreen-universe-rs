@@ -1,5 +1,6 @@
 use eg::apputil;
 use eg::editor::Editor;
+use eg::settings::Settings;
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
@@ -13,19 +14,44 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static STATIC_METHODS: &[StaticMethod] = &[
+pub static METHODS: &[StaticMethod] = &[
     StaticMethod {
         name: "get_barcodes",
         desc: "Find matching barcodes by type",
         param_count: ParamCount::Exactly(4),
         handler: get_barcodes,
-        params: &[],
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "Org Unit ID",
+                datatype: ParamDataType::Number,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "Context",
+                datatype: ParamDataType::String,
+                desc: "Options: actor, asset, serial, or booking",
+            },
+            StaticParam {
+                required: true,
+                name: "Barcode",
+                datatype: ParamDataType::String,
+                desc: "Whole barcode or a partial 'completable' barcode",
+            },
+        ],
     },
     StaticMethod {
-        name: "user_has_work_perm_at",
+        name: "user_has_work_perm_at.batch",
         desc: "Find org units where the provided user has the requested permissions",
         param_count: ParamCount::Range(2, 3),
-        handler: user_has_work_perm_at,
+        handler: user_has_work_perm_at_batch,
         params: &[
             StaticParam {
                 required: true,
@@ -42,8 +68,34 @@ pub static STATIC_METHODS: &[StaticMethod] = &[
             StaticParam {
                 required: false,
                 name: "User ID",
-                datatype: ParamDataType::Array,
+                datatype: ParamDataType::Number,
                 desc: "User ID to check permissions for; defaults to the API requestor",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "ou_setting.ancestor_default.batch",
+        desc: "Get org unit setting values",
+        param_count: ParamCount::Range(2, 3),
+        handler: ou_setting_ancestor_default_batch,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Org Unit ID",
+                datatype: ParamDataType::Number,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "Settings",
+                datatype: ParamDataType::Array,
+                desc: "List of setting names",
+            },
+            StaticParam {
+                required: false,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authtoken.  Required for perm-protected settings",
             },
         ],
     },
@@ -115,7 +167,7 @@ pub fn get_barcodes(
 /// Returns a map of permission name to a list of org units where the
 /// provided user (or the caller, if no user is specified) has each
 /// of the provided permissions.
-pub fn user_has_work_perm_at(
+pub fn user_has_work_perm_at_batch(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::Method,
@@ -131,6 +183,10 @@ pub fn user_has_work_perm_at(
     };
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
 
     // user_id parameter is optional
     let user_id = match method.params().get(2) {
@@ -148,4 +204,48 @@ pub fn user_has_work_perm_at(
     }
 
     session.respond(map)
+}
+
+pub fn ou_setting_ancestor_default_batch(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsPubWorker::downcast(worker)?;
+    let org_id = eg::util::json_int(method.param(0))?;
+
+    let perms = match method.param(1) {
+        json::JsonValue::Array(v) => v,
+        _ => Err(format!("Invalid value for 'perms' parameter"))?,
+    };
+
+    let mut editor = Editor::new(worker.client(), worker.env().idl());
+
+    if let Some(token) = method.param(2).as_str() {
+        // Authtoken is only required for perm-lmited org settings.
+        // If it's provided, though, we gotta check it.
+        editor.set_authtoken(token);
+        if !editor.checkauth()? {
+            return session.respond(editor.event());
+        }
+    }
+
+    let mut settings = Settings::new(&editor);
+
+    // Since this API specifically wants org unit settings and the user
+    // provides some of the required context data, clear the workstation
+    // ID in case we picked on up from the authtoken / editor and apply
+    // the requested org id.
+    settings.set_workstation_id(0);
+    settings.set_org_id(org_id);
+
+    for perm in perms.iter() {
+        if let Some(name) = perm.as_str() {
+            let mut obj = json::JsonValue::new_object();
+            obj[name] = settings.get_value(name)?.clone();
+            session.respond(obj)?;
+        }
+    }
+
+    Ok(())
 }

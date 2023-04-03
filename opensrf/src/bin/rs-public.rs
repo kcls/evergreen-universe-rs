@@ -8,8 +8,8 @@ use opensrf::sclient::HostSettings;
 use opensrf::server::Server;
 use opensrf::session::ServerSession;
 use std::any::Any;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 const APPNAME: &str = "opensrf.rs-public";
 
