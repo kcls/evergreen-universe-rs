@@ -75,11 +75,7 @@ pub fn verify_user_password(
 
 /// Returns a list of all org unit IDs where the provided user has
 /// the provided work permission.
-pub fn user_has_work_perm_at(
-    e: &mut Editor,
-    user_id: i64,
-    perm: &str
-) -> Result<Vec<i64>, String> {
+pub fn user_has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> Result<Vec<i64>, String> {
     let dbfunc = "permission.usr_has_perm_at_all";
 
     let query = json::object! { from: [dbfunc, user_id, perm] };

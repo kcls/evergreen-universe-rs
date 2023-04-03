@@ -132,6 +132,7 @@ impl Worker {
             self.client.clone(),
             self.config.clone(),
             self.host_settings.clone(),
+            self.methods.clone(),
             env,
         )?;
         Ok(app_worker)

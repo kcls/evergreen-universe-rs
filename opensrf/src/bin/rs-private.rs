@@ -10,6 +10,7 @@ use std::any::Any;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
 
 const APPNAME: &str = "opensrf.rs-private";
 
@@ -92,6 +93,7 @@ struct RsPrivateWorker {
     client: Option<client::Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
+    methods: Option<Arc<HashMap<String, method::Method>>>,
     count: usize,
 }
 
@@ -101,6 +103,7 @@ impl RsPrivateWorker {
             env: None,
             client: None,
             config: None,
+            methods: None,
             host_settings: None,
             // A value that increases with each call to counter method
             // to demostrate thread-level state maintenance.
@@ -126,17 +129,23 @@ impl ApplicationWorker for RsPrivateWorker {
         self
     }
 
+    fn methods(&self) -> &Arc<HashMap<String, method::Method>> {
+        &self.methods.as_ref().unwrap()
+    }
+
     /// Panics if we cannot downcast the env provided to the expected type.
     fn absorb_env(
         &mut self,
         client: client::Client,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
+        methods: Arc<HashMap<String, method::Method>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         self.client = Some(client);
         self.config = Some(config);
         self.host_settings = Some(host_settings);
+        self.methods = Some(methods);
 
         match env.as_any().downcast_ref::<RsPrivateEnv>() {
             Some(eref) => self.env = Some(eref.clone()),

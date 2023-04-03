@@ -3,6 +3,7 @@ use super::conf;
 use super::method;
 use super::sclient;
 use std::any::Any;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Function that generates ApplicationWorker implementers.
@@ -22,8 +23,11 @@ pub trait ApplicationWorker: Any {
         client: client::Client,
         config: Arc<conf::Config>,
         host_settings: Arc<sclient::HostSettings>,
+        methods: Arc<HashMap<String, method::Method>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String>;
+
+    fn methods(&self) -> &Arc<HashMap<String, method::Method>>;
 
     /// Called after absorb_env, but before any work occurs.
     fn worker_start(&mut self) -> Result<(), String>;

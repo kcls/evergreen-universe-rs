@@ -9,6 +9,7 @@ use opensrf::server::Server;
 use opensrf::session::ServerSession;
 use std::any::Any;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 const APPNAME: &str = "opensrf.rs-public";
 
@@ -78,6 +79,7 @@ struct RsPublicWorker {
     env: Option<RsPublicEnv>,
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
+    methods: Option<Arc<HashMap<String, method::Method>>>,
     host_settings: Option<Arc<HostSettings>>,
     // Worker/thread-specific value that persists for the life of the worker.
     relay_count: usize,
@@ -89,6 +91,7 @@ impl RsPublicWorker {
             env: None,
             client: None,
             config: None,
+            methods: None,
             host_settings: None,
             // A value that increases with each call relayed.
             relay_count: 0,
@@ -123,17 +126,23 @@ impl ApplicationWorker for RsPublicWorker {
         self
     }
 
+    fn methods(&self) -> &Arc<HashMap<String, method::Method>> {
+        &self.methods.as_ref().unwrap()
+    }
+
     /// Panics if we cannot downcast the env provided to the expected type.
     fn absorb_env(
         &mut self,
         client: Client,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
+        methods: Arc<HashMap<String, method::Method>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         self.client = Some(client);
         self.config = Some(config);
         self.host_settings = Some(host_settings);
+        self.methods = Some(methods);
 
         match env.as_any().downcast_ref::<RsPublicEnv>() {
             Some(eref) => self.env = Some(eref.clone()),

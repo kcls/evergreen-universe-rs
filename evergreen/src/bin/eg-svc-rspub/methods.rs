@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use eg::apputil;
 use eg::editor::Editor;
 use evergreen as eg;
-use eg::apputil;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
-use opensrf::method::{MethodDef, ParamCount};
+use opensrf::method::{ParamCount, ParamDataType, StaticMethod, StaticParam};
 use opensrf::session::ServerSession;
+use std::collections::HashMap;
 
 // Import our local app module
 use crate::app;
@@ -13,16 +13,39 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static STATIC_METHODS: &[MethodDef] = &[
-    MethodDef {
+pub static STATIC_METHODS: &[StaticMethod] = &[
+    StaticMethod {
         name: "get_barcodes",
+        desc: "Find matching barcodes by type",
         param_count: ParamCount::Exactly(4),
         handler: get_barcodes,
+        params: &[],
     },
-    MethodDef {
+    StaticMethod {
         name: "user_has_work_perm_at",
+        desc: "Find org units where the provided user has the requested permissions",
         param_count: ParamCount::Range(2, 3),
         handler: user_has_work_perm_at,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authtoken",
+            },
+            StaticParam {
+                required: true,
+                name: "Permissions",
+                datatype: ParamDataType::Array,
+                desc: "List of permission codes",
+            },
+            StaticParam {
+                required: false,
+                name: "User ID",
+                datatype: ParamDataType::Array,
+                desc: "User ID to check permissions for; defaults to the API requestor",
+            },
+        ],
     },
 ];
 
@@ -120,10 +143,9 @@ pub fn user_has_work_perm_at(
         let perm = eg::util::json_string(perm)?;
         map.insert(
             perm.to_string(),
-            apputil::user_has_work_perm_at(&mut editor, user_id, &perm)?
+            apputil::user_has_work_perm_at(&mut editor, user_id, &perm)?,
         );
     }
 
     session.respond(map)
 }
-

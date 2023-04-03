@@ -38,7 +38,6 @@ pub struct Server {
     to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
     stopping: Arc<AtomicBool>,
     host_settings: Arc<HostSettings>,
-    // TODO min/max idle
     min_workers: usize,
     max_workers: usize,
 }
@@ -293,6 +292,11 @@ impl Server {
             name.to_string(),
             method::Method::new(name, method::ParamCount::Any, system_method_echo),
         );
+        let name = "opensrf.system.method.all";
+        hash.insert(
+            name.to_string(),
+            method::Method::new(name, method::ParamCount::Zero, introspect),
+        );
     }
 
     pub fn listen(&mut self) -> Result<(), String> {
@@ -380,7 +384,6 @@ impl Server {
         log::trace!("server: workers idle={idle} active={active}");
 
         if idle == 0 {
-            // TODO min idle, etc.
             if active < self.max_workers {
                 self.spawn_one_thread();
             } else {
@@ -420,6 +423,17 @@ fn system_method_echo(
 ) -> Result<(), String> {
     for p in method.params() {
         session.respond(p.clone())?;
+    }
+    Ok(())
+}
+
+fn introspect(
+    worker: &mut Box<dyn app::ApplicationWorker>,
+    session: &mut session::ServerSession,
+    _method: &message::Method,
+) -> Result<(), String> {
+    for meth in worker.methods().values() {
+        session.respond(meth.to_json_value())?;
     }
     Ok(())
 }

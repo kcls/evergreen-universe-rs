@@ -2,10 +2,11 @@ use eg::idl;
 use evergreen as eg;
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client::Client;
-use opensrf::sclient::HostSettings;
 use opensrf::conf;
 use opensrf::method::Method;
+use opensrf::sclient::HostSettings;
 use std::any::Any;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 // Import our local methods module.
@@ -92,13 +93,7 @@ impl Application for RsPubApplication {
 
         // Create Method objects from our static method definitions.
         for def in methods::STATIC_METHODS.iter() {
-            methods.push(
-                Method::new(
-                    &format!("open-ils.rspub.{}", def.name()),
-                    def.param_count().clone(),
-                    def.handler
-                )
-            );
+            methods.push(def.into_method("open-ils.rspub"));
         }
 
         // NOTE here is where additional, dynamically created methods
@@ -118,6 +113,7 @@ pub struct RsPubWorker {
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
+    methods: Option<Arc<HashMap<String, Method>>>,
 }
 
 impl RsPubWorker {
@@ -126,6 +122,7 @@ impl RsPubWorker {
             env: None,
             client: None,
             config: None,
+            methods: None,
             host_settings: None,
         }
     }
@@ -167,6 +164,10 @@ impl ApplicationWorker for RsPubWorker {
         self
     }
 
+    fn methods(&self) -> &Arc<HashMap<String, Method>> {
+        &self.methods.as_ref().unwrap()
+    }
+
     /// Absorb our global dataset.
     ///
     /// Panics if we cannot downcast the env provided to the expected type.
@@ -175,6 +176,7 @@ impl ApplicationWorker for RsPubWorker {
         client: Client,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
+        methods: Arc<HashMap<String, Method>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         let worker_env = env
@@ -189,6 +191,7 @@ impl ApplicationWorker for RsPubWorker {
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.config = Some(config);
+        self.methods = Some(methods);
         self.host_settings = Some(host_settings);
 
         Ok(())
