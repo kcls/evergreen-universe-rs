@@ -232,10 +232,9 @@ pub fn ou_setting_ancestor_default_batch(
 
     let mut settings = Settings::new(&editor);
 
-    // Since this API specifically wants org unit settings and the user
-    // provides some of the required context data, clear the workstation
-    // ID in case we picked on up from the authtoken / editor and apply
-    // the requested org id.
+    // Since this API specifically wants org unit settings, clear
+    // any workstation info we might have picked up from the
+    // authtoken/editor, and apply the requested org id.
     settings.set_workstation_id(0);
     settings.set_org_id(org_id);
 

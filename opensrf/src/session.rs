@@ -598,6 +598,9 @@ pub struct ServerSession {
     /// Each new Request within a Session gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
     last_thread_trace: usize,
+
+    /// Responses collected to be packaed into an "atomic" response array.
+    atomic_resp_queue: Option<Vec<JsonValue>>,
 }
 
 impl fmt::Display for ServerSession {
@@ -621,6 +624,7 @@ impl ServerSession {
             service: service.to_string(),
             responded_complete: false,
             thread: thread.to_string(),
+            atomic_resp_queue: None,
         }
     }
 
@@ -648,6 +652,11 @@ impl ServerSession {
         &self.sender
     }
 
+    pub fn new_atomic_resp_queue(&mut self) {
+        log::debug!("{self} starting new atomic queue...");
+        self.atomic_resp_queue = Some(Vec::new());
+    }
+
     /// Mutable Ref to our under-the-covers client singleton.
     fn client_internal_mut(&self) -> RefMut<ClientSingleton> {
         self.client.singleton().borrow_mut()
@@ -657,14 +666,18 @@ impl ServerSession {
         self.responded_complete
     }
 
-    // TODO a T for Respone similar to ApiParams?
-    pub fn respond<T>(&self, value: T) -> Result<(), String>
+    pub fn respond<T>(&mut self, value: T) -> Result<(), String>
     where
         T: Into<JsonValue>,
     {
         let mut value = json::from(value);
         if let Some(s) = self.client.singleton().borrow().serializer() {
-            value = s.unpack(value);
+            value = s.pack(value);
+        }
+
+        if let Some(queue) = &mut self.atomic_resp_queue {
+            queue.push(value);
+            return Ok(());
         }
 
         let msg = Message::new(
@@ -714,6 +727,13 @@ impl ServerSession {
     /// This is the same as respond_complete() without a response value.
     pub fn send_complete(&mut self) -> Result<(), String> {
         self.responded_complete = true;
+
+        if let Some(queue) = self.atomic_resp_queue.take() {
+            log::debug!("{self} respding with contents of atomic queue");
+            // Clear the resposne queue and send the whole list
+            // back to the caller.
+            self.respond(queue)?;
+        }
 
         let msg = Message::new(
             MessageType::Status,

@@ -282,8 +282,24 @@ impl Server {
             hash.insert(m.name().to_string(), m);
         }
         self.add_system_methods(&mut hash);
+        self.add_atomic_methods(&mut hash);
         self.methods = Some(Arc::new(hash));
         Ok(())
+    }
+
+    fn add_atomic_methods(&self, hash: &mut HashMap<String, method::Method>) {
+        let mut atomic_hash: HashMap<String, method::Method> = HashMap::new();
+
+        for method in hash.values() {
+            let mut atomic_method = method.clone();
+            let name = method.name();
+            let atomic_name = format!("{name}.atomic");
+            atomic_method.set_atomic(true);
+            atomic_method.set_name(&atomic_name);
+            atomic_hash.insert(atomic_name, atomic_method);
+        }
+
+        hash.extend(atomic_hash);
     }
 
     fn add_system_methods(&self, hash: &mut HashMap<String, method::Method>) {

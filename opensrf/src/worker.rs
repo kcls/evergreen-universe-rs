@@ -365,9 +365,7 @@ impl Worker {
     ) -> Result<(), String> {
         let request = match msg.payload() {
             message::Payload::Method(m) => m,
-            _ => {
-                return self.reply_bad_request("Request sent without payload");
-            }
+            _ => return self.reply_bad_request("Request sent without payload"),
         };
 
         let mut log_params: Option<String> = None;
@@ -403,7 +401,12 @@ impl Worker {
         }
 
         let method = match self.methods.get(request.method()) {
-            Some(m) => m,
+            Some(m) => {
+                // Clone the method since we have mutable borrows below.
+                // Note this is the method definition, not the request,
+                // which may have non-clone-friendly bulky parameters.
+                m.clone()
+            }
             None => {
                 return self.reply_with_status(
                     MessageStatus::MethodNotFound,
@@ -412,7 +415,11 @@ impl Worker {
             }
         };
 
-        let pcount = method.param_count().clone();
+        if method.atomic() {
+            self.session_mut().new_atomic_resp_queue();
+        }
+
+        let pcount = method.param_count();
 
         // Make sure the number of params sent by the caller matches the
         // parameter count for the method.
