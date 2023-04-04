@@ -6,6 +6,7 @@ use json::JsonValue;
 use regex::Regex;
 use std::collections::HashMap;
 use std::time::Instant;
+use std::fmt;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
@@ -52,6 +53,17 @@ pub struct SettingContext {
     workstation_id: Option<i64>,
 }
 
+impl fmt::Display for SettingContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f,
+            "SettingContext org={:?} user={:?} workstation={:?}",
+            self.org_id,
+            self.user_id,
+            self.workstation_id
+        )
+    }
+}
+
 impl SettingContext {
     pub fn new() -> SettingContext {
         SettingContext {
@@ -59,6 +71,15 @@ impl SettingContext {
             user_id: None,
             workstation_id: None,
         }
+    }
+    pub fn set_org_id(&mut self, org_id: i64) {
+        self.org_id = Some(org_id);
+    }
+    pub fn set_user_id(&mut self, user_id: i64) {
+        self.user_id = Some(user_id);
+    }
+    pub fn set_workstation_id(&mut self, workstation_id: i64) {
+        self.workstation_id = Some(workstation_id);
     }
     pub fn org_id(&self) -> &Option<i64> {
         &self.org_id
@@ -193,7 +214,7 @@ impl Settings {
         };
 
         if !hash.contains_key(name) {
-            self.fetch_values(context, &[name])?;
+            self.fetch_context_values(context, &[name])?;
         }
 
         if let Some(v) = self.get_cached_value(context, name) {
@@ -229,7 +250,16 @@ impl Settings {
     /// Returns String Err on load failure or invalid setting name.
     /// On success, values are stored in the local cache for this
     /// Setting instance.
-    pub fn fetch_values(&mut self, context: &SettingContext, names: &[&str]) -> Result<(), String> {
+    pub fn fetch_values(&mut self, names: &[&str]) -> Result<(), String> {
+        self.fetch_context_values(&self.default_context.clone(), names)
+    }
+
+    /// Batch setting value fetch.
+    ///
+    /// Returns String Err on load failure or invalid setting name.
+    /// On success, values are stored in the local cache for this
+    /// Setting instance.
+    pub fn fetch_context_values(&mut self, context: &SettingContext, names: &[&str]) -> Result<(), String> {
         if !context.is_viable() {
             Err(format!(
                 "Cannot retrieve settings without user_id or org_id"

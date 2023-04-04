@@ -214,12 +214,15 @@ pub fn ou_setting_ancestor_default_batch(
     let worker = app::RsPubWorker::downcast(worker)?;
     let org_id = eg::util::json_int(method.param(0))?;
 
-    let perms = match method.param(1) {
-        json::JsonValue::Array(v) => v,
-        _ => Err(format!("Invalid value for 'perms' parameter"))?,
-    };
+    let perms: Vec<&str> = method.param(1)
+        .members() // iterate json array
+        .filter(|v| v.is_string())
+        .map(|v| v.as_str().unwrap())
+        .collect();
 
     let mut editor = Editor::new(worker.client(), worker.env().idl());
+    let mut settings = Settings::new(&editor);
+    settings.set_org_id(org_id);
 
     if let Some(token) = method.param(2).as_str() {
         // Authtoken is only required for perm-lmited org settings.
@@ -228,22 +231,17 @@ pub fn ou_setting_ancestor_default_batch(
         if !editor.checkauth()? {
             return session.respond(editor.event());
         }
+        settings.set_user_id(editor.requestor_id());
     }
 
-    let mut settings = Settings::new(&editor);
+    // Pre-cache the settings en masse, then pull each from the settings
+    // cache and return to the caller.
+    settings.fetch_values(perms.as_slice())?;
 
-    // Since this API specifically wants org unit settings, clear
-    // any workstation info we might have picked up from the
-    // authtoken/editor, and apply the requested org id.
-    settings.set_workstation_id(0);
-    settings.set_org_id(org_id);
-
-    for perm in perms.iter() {
-        if let Some(name) = perm.as_str() {
-            let mut obj = json::JsonValue::new_object();
-            obj[name] = settings.get_value(name)?.clone();
-            session.respond(obj)?;
-        }
+    for name in perms {
+        let mut obj = json::JsonValue::new_object();
+        obj[name] = settings.get_value(name)?.clone();
+        session.respond(obj)?;
     }
 
     Ok(())
