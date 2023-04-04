@@ -214,7 +214,8 @@ pub fn ou_setting_ancestor_default_batch(
     let worker = app::RsPubWorker::downcast(worker)?;
     let org_id = eg::util::json_int(method.param(0))?;
 
-    let perms: Vec<&str> = method.param(1)
+    let perms: Vec<&str> = method
+        .param(1)
         .members() // iterate json array
         .filter(|v| v.is_string())
         .map(|v| v.as_str().unwrap())

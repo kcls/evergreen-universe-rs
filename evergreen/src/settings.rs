@@ -5,8 +5,8 @@ use super::util;
 use json::JsonValue;
 use regex::Regex;
 use std::collections::HashMap;
-use std::time::Instant;
 use std::fmt;
+use std::time::Instant;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
@@ -55,11 +55,10 @@ pub struct SettingContext {
 
 impl fmt::Display for SettingContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f,
+        write!(
+            f,
             "SettingContext org={:?} user={:?} workstation={:?}",
-            self.org_id,
-            self.user_id,
-            self.workstation_id
+            self.org_id, self.user_id, self.workstation_id
         )
     }
 }
@@ -259,7 +258,11 @@ impl Settings {
     /// Returns String Err on load failure or invalid setting name.
     /// On success, values are stored in the local cache for this
     /// Setting instance.
-    pub fn fetch_context_values(&mut self, context: &SettingContext, names: &[&str]) -> Result<(), String> {
+    pub fn fetch_context_values(
+        &mut self,
+        context: &SettingContext,
+        names: &[&str],
+    ) -> Result<(), String> {
         if !context.is_viable() {
             Err(format!(
                 "Cannot retrieve settings without user_id or org_id"
