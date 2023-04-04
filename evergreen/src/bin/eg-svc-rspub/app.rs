@@ -154,7 +154,7 @@ impl RsPubWorker {
     /// Mutable ref to our OpenSRF client.
     ///
     /// Set during absorb_env()
-    pub fn _client_mut(&mut self) -> &mut Client {
+    pub fn client_mut(&mut self) -> &mut Client {
         self.client.as_mut().unwrap()
     }
 }

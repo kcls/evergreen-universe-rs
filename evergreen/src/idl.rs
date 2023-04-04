@@ -295,6 +295,11 @@ impl Parser {
         idlref.clone()
     }
 
+    /// Remove the class designation, resulting in a vanilla hash.
+    pub fn unbless(hash: &mut json::JsonValue) {
+        hash.remove(CLASSNAME_KEY);
+    }
+
     pub fn classes(&self) -> &HashMap<String, Class> {
         &self.classes
     }

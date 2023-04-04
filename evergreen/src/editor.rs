@@ -460,7 +460,14 @@ impl Editor {
         let mut params: ApiParams = id.into();
         params.add(ops);
 
-        self.request(&method, params)
+        let resp_op = self.request(&method, params)?;
+
+        if resp_op.is_none() {
+            let key = fmapper.replace(".", "_").to_uppercase();
+            self.set_last_event(EgEvent::new(&format!("{key}_NOT_FOUND")));
+        }
+
+        Ok(resp_op)
     }
 
     pub fn search(

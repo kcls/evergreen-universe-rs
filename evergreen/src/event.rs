@@ -38,19 +38,34 @@ impl fmt::Display for EgEvent {
 
 impl From<&EgEvent> for json::JsonValue {
     fn from(evt: &EgEvent) -> Self {
-        json::object! {
-            code: 0,
+        let mut obj = json::object! {
+            code: evt.code(),
+            success: evt.success(),
             textcode: evt.textcode(),
             payload: evt.payload().clone(),
-            desc: evt.desc(),
-            debug: evt.debug(),
-            note: evt.note(),
-            org: *evt.org(),
-            servertime: evt.servertime(),
-            ilsperm: evt.ilsperm(),
             ilspermloc: evt.ilspermloc(),
-            success: evt.success()
+        };
+
+        if let Some(v) = evt.desc() {
+            obj["desc"] = json::from(v);
         }
+        if let Some(v) = evt.debug() {
+            obj["debug"] = json::from(v);
+        }
+        if let Some(v) = evt.note() {
+            obj["note"] = json::from(v);
+        }
+        if let Some(v) = evt.org() {
+            obj["org"] = json::from(*v);
+        }
+        if let Some(v) = evt.servertime() {
+            obj["servertime"] = json::from(v);
+        }
+        if let Some(v) = evt.ilsperm() {
+            obj["ilsperm"] = json::from(v);
+        }
+
+        obj
     }
 }
 

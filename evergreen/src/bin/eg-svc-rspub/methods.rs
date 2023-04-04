@@ -1,5 +1,6 @@
 use eg::apputil;
 use eg::editor::Editor;
+use eg::event;
 use eg::settings::Settings;
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
@@ -96,6 +97,26 @@ pub static METHODS: &[StaticMethod] = &[
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authtoken.  Required for perm-protected settings",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "user.opac.vital_stats",
+        desc: "Key patron counts and info",
+        param_count: ParamCount::Range(1, 2),
+        handler: user_opac_vital_stats,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: false,
+                name: "User ID",
+                datatype: ParamDataType::Number,
+                desc: "User ID whose stats to load; defaults to requestor",
             },
         ],
     },
@@ -246,4 +267,69 @@ pub fn ou_setting_ancestor_default_batch(
     }
 
     Ok(())
+}
+
+pub fn user_opac_vital_stats(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsPubWorker::downcast(worker)?;
+    let authtoken = eg::util::json_string(method.param(0))?;
+
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    let user_id = method.param(1).as_i64().unwrap_or(editor.requestor_id());
+    let user = match editor.retrieve("au", user_id)? {
+        Some(u) => u,
+        None => return session.respond(editor.event()),
+    };
+
+    if user_id != editor.requestor_id() {
+        let home_ou = eg::util::json_int(&user["home_ou"])?;
+        if !editor.allowed("VIEW_USER", Some(home_ou))? {
+            return session.respond(editor.event());
+        }
+    }
+
+    let params = vec![json::from(authtoken), json::from(user_id)];
+    let mut fines_ses = worker.client_mut().session("open-ils.actor");
+    let mut fines_req = fines_ses.request("open-ils.actor.user.fines.summary", params)?;
+
+    // TODO other stuff in parallel
+
+    let mut fines = match fines_req.recv(120)? {
+        Some(f) => {
+            if let Some(evt) = event::EgEvent::parse(&f) {
+                return session.respond(&evt);
+            }
+            f
+        }
+        None => {
+            // Not all users have a fines summary row in the database.
+            // When not, create a dummy version.
+            let mut f = worker.env().idl().create("mous")?;
+
+            f["balance_owed"] = json::from(0.00);
+            f["total_owed"] = json::from(0.00);
+            f["total_paid"] = json::from(0.00);
+            f["usr"] = json::from(user_id);
+
+            f
+        }
+    };
+
+    // Remove the IDL class designation from our fines object so it can
+    // be treated like a vanilla hash and not an idl/fieldmapper object.
+    eg::idl::Parser::unbless(&mut fines);
+
+    let resp = json::object! {
+        fines: fines,
+    };
+
+    session.respond(resp)
 }
