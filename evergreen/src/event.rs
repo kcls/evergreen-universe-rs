@@ -1,3 +1,4 @@
+use chrono::Local;
 use json;
 use std::fmt;
 
@@ -71,6 +72,8 @@ impl From<&EgEvent> for json::JsonValue {
 
 impl EgEvent {
     pub fn new(textcode: &str) -> Self {
+        let servertime = Local::now().to_rfc3339();
+
         EgEvent {
             code: 0,
             textcode: textcode.to_string(),
@@ -79,7 +82,7 @@ impl EgEvent {
             debug: None,
             note: None,
             org: None,
-            servertime: None,
+            servertime: Some(servertime),
             ilsperm: None,
             ilspermloc: 0,
             success: textcode.eq("SUCCESS"),

@@ -284,7 +284,7 @@ pub fn user_opac_vital_stats(
     }
 
     let user_id = method.param(1).as_i64().unwrap_or(editor.requestor_id());
-    let user = match editor.retrieve("au", user_id)? {
+    let mut user = match editor.retrieve("au", user_id)? {
         Some(u) => u,
         None => return session.respond(editor.event()),
     };
@@ -296,13 +296,43 @@ pub fn user_opac_vital_stats(
         }
     }
 
-    let params = vec![json::from(authtoken), json::from(user_id)];
+    // Kick off a number of parallel requests, then collect the values below.
+    // TODO clone some/all of these APIs into this service
+
+    let params = vec![json::from(authtoken.as_str()), json::from(user_id)];
     let mut fines_ses = worker.client_mut().session("open-ils.actor");
     let mut fines_req = fines_ses.request("open-ils.actor.user.fines.summary", params)?;
 
-    // TODO other stuff in parallel
+    let params = vec![json::from(authtoken.as_str()), json::from(user_id)];
+    let mut holds_ses = worker.client_mut().session("open-ils.actor");
+    let mut holds_req = holds_ses.request("open-ils.actor.user.hold_requests.count", params)?;
 
-    let mut fines = match fines_req.recv(120)? {
+    let params = vec![json::from(authtoken.as_str()), json::from(user_id)];
+    let mut circs_ses = worker.client_mut().session("open-ils.actor");
+    let mut circs_req = circs_ses.request("open-ils.actor.user.checked_out.count", params)?;
+
+    let unread_query = json::object! {
+        select: {aum: [{
+            column: "id",
+            transform: "count",
+            aggregate: 1,
+            alias: "count",
+        }]},
+        from: "aum",
+        where: {
+            usr: user_id,
+            read_date: json::JsonValue::Null,
+            deleted: "f",
+            pub: "t",
+        }
+    };
+
+    let mut unread_count = 0;
+    if let Some(unread) = editor.json_query(unread_query)?.get(0) {
+        unread_count = eg::util::json_int(&unread["count"])?;
+    }
+
+    let mut fines = match fines_req.first()? {
         Some(f) => {
             if let Some(evt) = event::EgEvent::parse(&f) {
                 return session.respond(&evt);
@@ -323,12 +353,27 @@ pub fn user_opac_vital_stats(
         }
     };
 
+    let holds = holds_req.first()?.unwrap(); // always returns a value
+    let mut circs = circs_req.first()?.unwrap();
+    circs["total_out"] =
+        json::from(eg::util::json_int(&circs["out"])? + eg::util::json_int(&circs["overdue"])?);
+
     // Remove the IDL class designation from our fines object so it can
     // be treated like a vanilla hash and not an idl/fieldmapper object.
     eg::idl::Parser::unbless(&mut fines);
 
     let resp = json::object! {
         fines: fines,
+        holds: holds,
+        checkouts: circs,
+        messages: {unread: unread_count},
+        user: {
+            first_given_name: user["first_given_name"].take(),
+            second_given_name: user["second_given_name"].take(),
+            family_name: user["family_name"].take(),
+            alias: user["alias"].take(),
+            usrname: user["usrname"].take(),
+        },
     };
 
     session.respond(resp)

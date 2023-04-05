@@ -51,6 +51,22 @@ impl Request {
         }
     }
 
+    /// Pull all responses from the bus and return the first.
+    ///
+    /// Handy if you are expecting exactly one result, or only care
+    /// about the first, but want to pull all data off the bus until the
+    /// message is officially marked as complete.
+    pub fn first(&mut self) -> Result<Option<JsonValue>, String> {
+        let mut resp: Option<JsonValue> = None;
+        while !self.complete {
+            if let Some(r) = self.recv(DEFAULT_REQUEST_TIMEOUT)? {
+                resp = Some(r);
+            }
+        }
+
+        Ok(resp)
+    }
+
     /// Receive the next response to this Request
     ///
     /// timeout:
