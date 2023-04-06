@@ -101,6 +101,32 @@ pub static METHODS: &[StaticMethod] = &[
         ],
     },
     StaticMethod {
+        name: "settings.retrieve",
+        desc: "Get workstation/user/org unit setting values",
+        param_count: ParamCount::Range(1, 3),
+        handler: retrieve_cascade_settigs,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Settings",
+                datatype: ParamDataType::Array,
+                desc: "List of setting names",
+            },
+            StaticParam {
+                required: false,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authtoken.  Required for workstation, user, and perm-protected settings",
+            },
+            StaticParam {
+                required: true,
+                name: "Org Unit ID",
+                datatype: ParamDataType::Number,
+                desc: "",
+            },
+        ],
+    },
+    StaticMethod {
         name: "user.opac.vital_stats",
         desc: "Key patron counts and info",
         param_count: ParamCount::Range(1, 2),
@@ -227,6 +253,56 @@ pub fn user_has_work_perm_at_batch(
     session.respond(map)
 }
 
+pub fn retrieve_cascade_settigs(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsPubWorker::downcast(worker)?;
+
+    let setting_names: Vec<&str> = method
+        .param(0)
+        .members() // iterate json array
+        .filter(|v| v.is_string())
+        .map(|v| v.as_str().unwrap())
+        .collect();
+
+    if setting_names.len() == 0 {
+        return Ok(());
+    }
+
+    let mut editor = Editor::new(worker.client(), worker.env().idl());
+
+    // Authtoken is optional.  If set, verify it's valid and absorb
+    // it into our editor so it can be picked up by our Settings instance.
+    if let Some(token) = method.param(1).as_str() {
+        editor.set_authtoken(token);
+        if !editor.checkauth()? {
+            return session.respond(editor.event());
+        }
+    }
+
+    let mut settings = Settings::new(&editor);
+
+    // If the caller requests values for a specific org unit,
+    // that supersedes the org unit linked to the workstation.
+    if let Some(org_id) = method.param(2).as_i64() {
+        settings.set_org_id(org_id);
+    }
+
+    // Pre-cache the settings en masse, then pull each from the settings
+    // cache and return to the caller.
+    settings.fetch_values(setting_names.as_slice())?;
+
+    for name in setting_names {
+        let mut obj = json::JsonValue::new_object();
+        obj[name] = settings.get_value(name)?.clone();
+        session.respond(obj)?;
+    }
+
+    Ok(())
+}
+
 pub fn ou_setting_ancestor_default_batch(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
@@ -235,12 +311,16 @@ pub fn ou_setting_ancestor_default_batch(
     let worker = app::RsPubWorker::downcast(worker)?;
     let org_id = eg::util::json_int(method.param(0))?;
 
-    let perms: Vec<&str> = method
+    let setting_names: Vec<&str> = method
         .param(1)
         .members() // iterate json array
         .filter(|v| v.is_string())
         .map(|v| v.as_str().unwrap())
         .collect();
+
+    if setting_names.len() == 0 {
+        return Ok(());
+    }
 
     let mut editor = Editor::new(worker.client(), worker.env().idl());
     let mut settings = Settings::new(&editor);
@@ -258,9 +338,9 @@ pub fn ou_setting_ancestor_default_batch(
 
     // Pre-cache the settings en masse, then pull each from the settings
     // cache and return to the caller.
-    settings.fetch_values(perms.as_slice())?;
+    settings.fetch_values(setting_names.as_slice())?;
 
-    for name in perms {
+    for name in setting_names {
         let mut obj = json::JsonValue::new_object();
         obj[name] = settings.get_value(name)?.clone();
         session.respond(obj)?;
@@ -290,18 +370,22 @@ pub fn user_opac_vital_stats(
     };
 
     if user_id != editor.requestor_id() {
-        let home_ou = eg::util::json_int(&user["home_ou"])?;
-        if !editor.allowed("VIEW_USER", Some(home_ou))? {
+        let home_ou = Some(eg::util::json_int(&user["home_ou"])?);
+
+        // This list of perms seems like overkill for summary data, but
+        // it matches the perm checks of the existing open-ils.actor APIs.
+        if !editor.allowed("VIEW_USER", home_ou)?
+            || !editor.allowed("VIEW_USER_FINES_SUMMARY", home_ou)?
+            || !editor.allowed("VIEW_CIRCULATIONS", home_ou)?
+            || !editor.allowed("VIEW_HOLD", home_ou)?
+        {
             return session.respond(editor.event());
         }
     }
 
-    let params = vec![json::from(authtoken.as_str()), json::from(user_id)];
-    let mut holds_ses = worker.client_mut().session("open-ils.actor");
-    let mut holds_req = holds_ses.request("open-ils.actor.user.hold_requests.count", params)?;
-
-    let checkouts = common::user_open_checkout_counts(&mut editor, user_id)?;
+    let holds = common::user_active_hold_counts(&mut editor, user_id)?;
     let fines = common::user_fines_summary(&mut editor, user_id)?;
+    let checkouts = common::user_open_checkout_counts(&mut editor, user_id)?;
 
     let unread_query = json::object! {
         select: {aum: [{
@@ -323,8 +407,6 @@ pub fn user_opac_vital_stats(
     if let Some(unread) = editor.json_query(unread_query)?.get(0) {
         unread_count = eg::util::json_int(&unread["count"])?;
     }
-
-    let holds = holds_req.first()?.unwrap(); // always returns a value
 
     let resp = json::object! {
         fines: fines,

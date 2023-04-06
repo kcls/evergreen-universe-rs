@@ -67,6 +67,17 @@ impl Request {
         Ok(resp)
     }
 
+    pub fn first_with_timeout(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
+        let mut resp: Option<JsonValue> = None;
+        while !self.complete {
+            if let Some(r) = self.recv(timeout)? {
+                resp = Some(r);
+            }
+        }
+
+        Ok(resp)
+    }
+
     /// Receive the next response to this Request
     ///
     /// timeout:

@@ -385,7 +385,7 @@ impl Editor {
             Err(e)
         })?;
 
-        req.recv(self.timeout)
+        req.first_with_timeout(self.timeout)
     }
 
     /// Returns our mutable session, creating a new one if needed.
