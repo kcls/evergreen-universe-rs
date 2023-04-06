@@ -1,6 +1,6 @@
-use super::event::EgEvent;
-use super::idl;
-use super::util;
+use crate::event::EgEvent;
+use crate::idl;
+use crate::util;
 use opensrf as osrf;
 use osrf::params::ApiParams;
 use std::sync::Arc;
@@ -159,8 +159,15 @@ impl Editor {
         self.authtoken.as_deref()
     }
 
+    /// Set the authtoken value.
     pub fn set_authtoken(&mut self, token: &str) {
         self.authtoken = Some(token.to_string())
+    }
+
+    /// Set the authtoken value and verify the authtoken is valid
+    pub fn apply_authtoken(&mut self, token: &str) -> Result<bool, String> {
+        self.set_authtoken(token);
+        self.checkauth()
     }
 
     pub fn authtime(&self) -> Option<usize> {

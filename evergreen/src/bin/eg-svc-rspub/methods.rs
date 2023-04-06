@@ -1,4 +1,4 @@
-use eg::apputil;
+use eg::common::user;
 use eg::editor::Editor;
 use eg::settings::Settings;
 use evergreen as eg;
@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 // Import our local app module
 use crate::app;
-use crate::common;
 
 /// List of method definitions we know at compile time.
 ///
@@ -224,14 +223,20 @@ pub fn user_has_work_perm_at_batch(
 
     let authtoken = eg::util::json_string(method.param(0))?;
 
-    let perms = match method.param(1) {
-        json::JsonValue::Array(v) => v,
-        _ => Err(format!("Invalid value for 'perms' parameter"))?,
-    };
+    let perm_names: Vec<&str> = method
+        .param(1)
+        .members() // json array iterator
+        .filter(|v| v.is_string())
+        .map(|v| v.as_str().unwrap())
+        .collect();
 
-    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+    if perm_names.len() == 0 {
+        return Ok(());
+    }
 
-    if !editor.checkauth()? {
+    let mut editor = Editor::new(worker.client(), worker.env().idl());
+
+    if !editor.apply_authtoken(&authtoken)? {
         return session.respond(editor.event());
     }
 
@@ -242,11 +247,10 @@ pub fn user_has_work_perm_at_batch(
     };
 
     let mut map: HashMap<String, Vec<i64>> = HashMap::new();
-    for perm in perms.iter() {
-        let perm = eg::util::json_string(perm)?;
+    for perm in perm_names {
         map.insert(
             perm.to_string(),
-            apputil::user_has_work_perm_at(&mut editor, user_id, &perm)?,
+            user::has_work_perm_at(&mut editor, user_id, &perm)?,
         );
     }
 
@@ -262,7 +266,7 @@ pub fn retrieve_cascade_settigs(
 
     let setting_names: Vec<&str> = method
         .param(0)
-        .members() // iterate json array
+        .members() // json array iterator
         .filter(|v| v.is_string())
         .map(|v| v.as_str().unwrap())
         .collect();
@@ -274,18 +278,18 @@ pub fn retrieve_cascade_settigs(
     let mut editor = Editor::new(worker.client(), worker.env().idl());
 
     // Authtoken is optional.  If set, verify it's valid and absorb
-    // it into our editor so it can be picked up by our Settings instance.
+    // it into our editor so its context info can be picked up by
+    // our Settings instance.
     if let Some(token) = method.param(1).as_str() {
-        editor.set_authtoken(token);
-        if !editor.checkauth()? {
+        if !editor.apply_authtoken(token)? {
             return session.respond(editor.event());
         }
     }
 
     let mut settings = Settings::new(&editor);
 
-    // If the caller requests values for a specific org unit,
-    // that supersedes the org unit linked to the workstation.
+    // If the caller requests values for a specific org unit, that
+    // supersedes the org unit potentially linked to the workstation.
     if let Some(org_id) = method.param(2).as_i64() {
         settings.set_org_id(org_id);
     }
@@ -324,13 +328,16 @@ pub fn ou_setting_ancestor_default_batch(
 
     let mut editor = Editor::new(worker.client(), worker.env().idl());
     let mut settings = Settings::new(&editor);
+
     settings.set_org_id(org_id);
 
+    // If available, apply the authtoken to the editor after we apply
+    // the org id to the Settings instance (above).  Otherwise, the
+    // workstation org unit could supersede the requested org id.
     if let Some(token) = method.param(2).as_str() {
         // Authtoken is only required for perm-lmited org settings.
         // If it's provided, though, we gotta check it.
-        editor.set_authtoken(token);
-        if !editor.checkauth()? {
+        if !editor.apply_authtoken(token)? {
             return session.respond(editor.event());
         }
         settings.set_user_id(editor.requestor_id());
@@ -383,9 +390,9 @@ pub fn user_opac_vital_stats(
         }
     }
 
-    let holds = common::user_active_hold_counts(&mut editor, user_id)?;
-    let fines = common::user_fines_summary(&mut editor, user_id)?;
-    let checkouts = common::user_open_checkout_counts(&mut editor, user_id)?;
+    let holds = user::active_hold_counts(&mut editor, user_id)?;
+    let fines = user::fines_summary(&mut editor, user_id)?;
+    let checkouts = user::open_checkout_counts(&mut editor, user_id)?;
 
     let unread_query = json::object! {
         select: {aum: [{

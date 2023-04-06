@@ -849,7 +849,7 @@ impl Session {
         };
 
         log::debug!("{self} verifying password for user ID {user_id}");
-        eg::apputil::verify_migrated_user_password(self.editor_mut(), user_id, password, false)
+        eg::common::user::verify_migrated_password(self.editor_mut(), user_id, password, false)
     }
 
     pub fn handle_patron_status(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {

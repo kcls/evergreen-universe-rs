@@ -93,7 +93,7 @@ impl Application for RsPubApplication {
 
         // Create Method objects from our static method definitions.
         for def in methods::METHODS.iter() {
-            methods.push(def.into_method("open-ils.rspub"));
+            methods.push(def.into_method(APPNAME));
         }
 
         // NOTE here is where additional, dynamically created methods

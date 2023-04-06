@@ -1,7 +1,7 @@
 //! General purpose org / workstation / user setting fetcher and cache.
 //! Primarily uses the 'actor.get_cascade_setting()' DB function.
-use super::editor::Editor;
-use super::util;
+use crate::editor::Editor;
+use crate::util;
 use json::JsonValue;
 use regex::Regex;
 use std::collections::HashMap;

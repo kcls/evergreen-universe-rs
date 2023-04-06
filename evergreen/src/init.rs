@@ -1,4 +1,4 @@
-use super::idl;
+use crate::idl;
 use opensrf as osrf;
 use std::env;
 use std::sync::Arc;

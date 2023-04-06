@@ -1,6 +1,5 @@
 use opensrf::server::Server;
 pub mod app;
-pub mod common;
 pub mod methods;
 
 fn main() {

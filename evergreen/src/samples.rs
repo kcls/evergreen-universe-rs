@@ -1,6 +1,6 @@
-use super::constants as C;
+use crate::constants as C;
 /// Evergreen sample data tools
-use super::editor::Editor;
+use crate::editor::Editor;
 use json::JsonValue;
 
 pub const ACN_CREATOR: i64 = 1;

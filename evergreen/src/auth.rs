@@ -1,4 +1,4 @@
-use super::event;
+use crate::event;
 use json;
 use opensrf::client::Client;
 
