@@ -75,7 +75,7 @@ impl Normalizer {
             .replace_all(&value, "")
             .into_owned();
 
-        // Set aside some chars we want to keep for safe keeping.
+        // Set aside some chars for safe keeping.
         value = value
             .replace("+", "\u{01}")
             .replace("&", "\u{02}")

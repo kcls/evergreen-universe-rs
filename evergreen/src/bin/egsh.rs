@@ -14,6 +14,8 @@ use eg::idl;
 use eg::idldb;
 use eg::init;
 use eg::settings;
+
+use eg::util;
 use evergreen as eg;
 
 //const PROMPT: &str = "egsh# ";
@@ -622,7 +624,7 @@ impl Shell {
         // Apply some kind of limit here to prevent
         // excessive queries.  TODO: configurable?
         // TODO: support paging in the UI?
-        search.set_pager(idldb::Pager::new(100, 0));
+        search.set_pager(util::Pager::new(100, 0));
 
         let mut filter = json::JsonValue::new_object();
         let mut subfilter = json::JsonValue::new_object();

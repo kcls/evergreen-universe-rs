@@ -136,6 +136,10 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// Create a new settings instance from an active Editor.
+    ///
+    /// The Editor instance should be fully setup (e.g. checkauth()
+    /// already run) before using it to create a Settings instance.
     pub fn new(editor: &Editor) -> Settings {
         let mut sc = Settings {
             name_regex: None,
@@ -172,14 +176,17 @@ impl Settings {
         }
     }
 
+    /// Manually set/override the context org unit ID.
     pub fn set_org_id(&mut self, org_id: i64) {
         self.default_context.org_id = Some(org_id);
     }
 
+    /// Manually set/override the context user ID.
     pub fn set_user_id(&mut self, user_id: i64) {
         self.default_context.user_id = Some(user_id);
     }
 
+    /// Manually set/override the context workstation ID.
     pub fn set_workstation_id(&mut self, workstation_id: i64) {
         self.default_context.workstation_id = Some(workstation_id);
     }

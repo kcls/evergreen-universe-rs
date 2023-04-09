@@ -1,6 +1,7 @@
 ///! Tools for translating between IDL objects and Database rows.
 use super::db;
 use super::idl;
+use super::util::Pager;
 use chrono::prelude::*;
 use json::JsonValue;
 use log::{debug, trace};
@@ -47,31 +48,6 @@ impl OrderBy {
             dir,
             field: field.to_string(),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Pager {
-    limit: usize,
-    offset: usize,
-}
-
-impl Pager {
-    pub fn new(limit: usize, offset: usize) -> Self {
-        Pager { limit, offset }
-    }
-
-    pub fn limit(&self) -> usize {
-        self.limit
-    }
-
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn reset(&mut self) {
-        self.limit = 0;
-        self.offset = 0
     }
 }
 
