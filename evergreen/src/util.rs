@@ -108,7 +108,6 @@ pub fn parse_pg_date(pg_iso_date: &str) -> Result<DateTime<FixedOffset>, String>
         .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}")))
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pager {
     limit: usize,
@@ -130,5 +129,3 @@ impl Pager {
         self.offset = 0
     }
 }
-
-

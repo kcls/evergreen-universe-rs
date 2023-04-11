@@ -16,7 +16,6 @@ log = "0.4"
 json = "0.12"
 postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 regex = "1.7"                                                                
-
 getopts = "0.2"
 md5 = "0.7"
 
@@ -32,6 +31,10 @@ rust_decimal = { version = "1.26", features = ["db-postgres"] }
 # Issues with deriving Default for enums in v10.1.0
 rustyline = "10.1"
 atty = "0.2"
+
+# For gateway
+socket2 = "0.5"
+url = "2.3"
 
 [[bin]]
 name = "egsh"

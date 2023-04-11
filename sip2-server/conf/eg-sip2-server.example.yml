@@ -75,4 +75,6 @@ accounts:
     settings: "default"       # Refers to a setting-groups' name.
     #workstation: "BR1-PC123" # Optional.
     #activity-as: "sip2"      # Optional.  Evergreen config.usr_activity_type.ewho
+    # TODO
+    #checkin-requires-transit: false
 
