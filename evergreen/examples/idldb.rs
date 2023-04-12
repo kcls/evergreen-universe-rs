@@ -1,5 +1,6 @@
 use eg::db::DatabaseConnection;
-use eg::idldb::{IdlClassSearch, OrderBy, OrderByDir, Pager, Translator};
+use eg::idldb::{IdlClassSearch, OrderBy, OrderByDir, Translator};
+use eg::util::Pager;
 use evergreen as eg;
 use getopts;
 use std::env;
