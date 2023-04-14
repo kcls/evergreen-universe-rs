@@ -1,19 +1,15 @@
 //! Evergreen HTTP+JSON API Server
-//!
-//! This variation uses a pool of workers that connect to the bus on
-//! each new HTTP connection.  A faster version would pre-init the
-//! workers so they can connect in advance.  We'll see if that level if
-//! efficiency/speed is needed.
 use evergreen as eg;
 use opensrf as osrf;
 use socket2::{Domain, Socket, Type};
 use std::env;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use threadpool::ThreadPool;
+use std::thread;
 use url::Url;
 
 const DEFAULT_PORT: u16 = 9682;
@@ -21,7 +17,8 @@ const MAX_WORKERS: usize = 128;
 const MIN_WORKERS: usize = 4;
 const POLL_INTERVAL: u64 = 3;
 const BUFSIZE: usize = 1024;
-const BASE_URL: &str = "http://localhost";
+const DUMMY_BASE_URL: &str = "http://localhost";
+const MAX_REQUESTS: usize = 10_000;
 
 fn main() {
     let mut server = setup_server();
@@ -63,6 +60,11 @@ fn setup_server() -> Server {
         _ => MIN_WORKERS,
     };
 
+    let max_requests = match env::var("EG_HTTP_GATEWAY_MAX_REQUESTS") {
+        Ok(v) => v.parse::<usize>().expect("Invalid max-requests value"),
+        _ => MAX_REQUESTS,
+    };
+
     let init_ops = eg::init::InitOptions {
         skip_host_settings: true,
         osrf_ops: osrf::init::InitOptions { skip_logging: true },
@@ -77,7 +79,11 @@ fn setup_server() -> Server {
         address,
         port,
         max_workers,
+        min_workers,
+        max_requests,
         ctx: context,
+        worker_id_gen: 0,
+        workers: HashMap::new(),
         shutdown: Arc::new(AtomicBool::new(false)),
     }
 }
@@ -86,11 +92,20 @@ struct Server {
     port: u16,
     address: String,
     max_workers: usize,
+    min_workers: usize,
+    max_requests: usize,
     ctx: eg::init::Context,
+    worker_id_gen: u64,
     shutdown: Arc<AtomicBool>,
+    workers: HashMap<u64, WorkerThread>,
 }
 
 impl Server {
+    fn next_worker_id(&mut self) -> u64 {
+        self.worker_id_gen += 1;
+        self.worker_id_gen
+    }
+
     fn setup_listener(&mut self) -> Result<TcpListener, String> {
         let destination = format!("{}:{}", &self.address, self.port);
         log::info!("EG Gateway listeneing at {destination}");
@@ -129,7 +144,7 @@ impl Server {
     }
 
     fn run(&mut self) -> Result<(), String> {
-        let pool = ThreadPool::new(self.max_workers);
+        self.spawn_threads()?;
         let listener = self.setup_listener()?;
 
         loop {
@@ -152,7 +167,7 @@ impl Server {
                 }
             };
 
-            self.dispatch(&pool, client_socket.into());
+            self.dispatch(client_socket.into());
 
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
@@ -163,27 +178,59 @@ impl Server {
 
         log::debug!("Server shutting down; waiting for threads to complete");
 
-        pool.join();
+        // TODO join threads
 
         log::debug!("All threads complete.  Shutting down");
 
         Ok(())
     }
 
-    fn dispatch(&self, pool: &ThreadPool, stream: TcpStream) {
-        log::debug!(
-            "Accepting new gateway connection; active={} pending={}",
-            pool.active_count(),
-            pool.queued_count()
-        );
+    fn spawn_threads(&mut self) -> Result<(), String> {
+        while self.workers.len() < self.min_workers {
+            self.spawn_thread()?;
+        }
 
+        Ok(())
+    }
+
+    fn spawn_thread(&mut self) -> Result<(), String> {
+        let idl = self.ctx.idl().clone();
+        let osrf_config = self.ctx.config().clone();
+        let worker_id = self.next_worker_id();
+        let max_reqs = self.max_requests;
+
+        let handle: thread::JoinHandle<()> = thread::spawn(
+            move || Worker::start(worker_id, max_reqs, osrf_config, idl));
+
+        let wt = WorkerThread {
+            join_handle: handle,
+            state: WorkerState::Idle,
+        };
+
+        self.workers.insert(worker_id, wt);
+
+        Ok(())
+    }
+
+    fn active_worker_count(&self) -> usize {
+        self.workers.iter()
+            .filter(|(k, v)| v.state == WorkerState::Active)
+            .collect::<Vec<(_, _)>>()
+            .len()
+    }
+
+    fn dispatch(&mut self, stream: TcpStream) {
+        let active_count = self.active_worker_count();
+
+        log::debug!("Accepting new gateway connection; active={active_count}");
+
+        /*
         let maxcon = self.max_workers;
-        let threads = pool.active_count() + pool.queued_count();
 
         // It does no good to queue up a new connection if we hit max
         // threads, because active threads have a long life time, even
         // when they are not currently busy.
-        if threads >= maxcon {
+        if active_count >= maxcon {
             log::warn!("Max clients={maxcon} reached.  Rejecting new connections");
 
             if let Err(e) = stream.shutdown(std::net::Shutdown::Both) {
@@ -197,24 +244,83 @@ impl Server {
         let idl = self.ctx.idl().clone();
         let osrf_config = self.ctx.config().clone();
 
-        pool.execute(move || Worker::run(osrf_config, idl, stream));
+        let worker_id = self.next_worker_id();
+        let handle: thread::JoinHandle<()> = thread::spawn(
+            move || Worker::run(worker_id, osrf_config, idl, stream));
+
+        let wt = WorkerThread {
+            join_handle: handle,
+            state: WorkerState::Idle,
+        };
+
+        self.workers.insert(worker_id, wt);
+        */
     }
 }
 
-struct Worker {}
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum WorkerState {
+    Idle,
+    Active,
+    Done,
+}
+
+#[derive(Debug)]
+struct WorkerStateEvent {
+    pub worker_id: u64,
+    pub state: WorkerState,
+}
+
+struct WorkerThread {
+    join_handle: thread::JoinHandle<()>,
+    state: WorkerState,
+}
+
+struct Worker {
+    worker_id: u64,
+    idl: Arc<eg::idl::Parser>,
+    osrf_client: osrf::client::Client,
+}
 
 impl Worker {
-    fn run(config: Arc<osrf::conf::Config>, idl: Arc<eg::idl::Parser>, stream: TcpStream) {
-        let osrf_client = match osrf::Client::connect(config.clone()) {
+
+    fn start(
+        worker_id: u64,
+        max_requests: usize,
+        config: Arc<osrf::conf::Config>,
+        idl: Arc<eg::idl::Parser>
+    ) {
+
+        let mut osrf_client = match osrf::Client::connect(config.clone()) {
             Ok(c) => c,
             Err(e) => {
-                log::error!("Cannot connect to OpenSRF: {e}");
+                log::error!("Worker cannot connect to OpenSRF: {e}");
                 return;
             }
         };
 
         osrf_client.set_serializer(eg::idl::Parser::as_serializer(&idl));
 
+        let mut worker = Worker {
+            worker_id,
+            idl,
+            osrf_client,
+        };
+
+        let mut request_count = 0;
+
+        while request_count < max_requests {
+            // TODO listen for thread channel message w/ a stream in it.
+            //self.handle_request(stream);
+            request_count += 1;
+        }
+
+        log::debug!("Worker {} exiting on max requests", worker.worker_id);
+
+        worker.osrf_client.clear().ok();
+    }
+
+    fn handle_request(&mut self, mut stream: TcpStream) {
         let client_ip = match stream.peer_addr() {
             Ok(ip) => ip,
             Err(e) => {
@@ -223,16 +329,8 @@ impl Worker {
             }
         };
 
-        log::info!("Gateway connection from {client_ip}");
+        log::debug!("Handling request from client {client_ip}");
 
-        let mut worker = Worker {};
-
-        worker.start(stream);
-
-        osrf_client.clear().ok();
-    }
-
-    fn start(&mut self, mut stream: TcpStream) {
         let text = match self.read_request(&mut stream) {
             Ok(t) => t,
             Err(e) => {
@@ -337,7 +435,7 @@ impl Worker {
             }
         }
 
-        let path_url = Url::parse(&format!("{}{}", BASE_URL, pathquery))
+        let path_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, pathquery))
             .or_else(|e| Err(format!("Error parsing request URL: {e}")))?;
 
         // Anything after the headers is the request body.
@@ -346,7 +444,7 @@ impl Worker {
 
         // Parse the request body as a URL so we can unpack any
         // POST params and add them to our parameter list.
-        let data_url = Url::parse(&format!("{}?{}", BASE_URL, data))
+        let data_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, data))
             .or_else(|e| Err(format!("Error parsing request body as URL: {e}")))?;
 
         let mut method: Option<String> = None;
