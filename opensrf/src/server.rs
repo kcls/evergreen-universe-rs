@@ -20,9 +20,9 @@ const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
 const CHECK_COMMANDS_TIMEOUT: u64 = 1;
 
 #[derive(Debug)]
-struct WorkerThread {
-    state: WorkerState,
-    join_handle: thread::JoinHandle<()>,
+pub struct WorkerThread {
+    pub state: WorkerState,
+    pub join_handle: thread::JoinHandle<()>,
 }
 
 pub struct Server {

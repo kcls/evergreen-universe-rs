@@ -1,6 +1,9 @@
 //! Evergreen HTTP+JSON API Server
 use evergreen as eg;
 use opensrf as osrf;
+use osrf::worker::WorkerState;
+use osrf::worker::WorkerStateEvent;
+use osrf::server::WorkerThread;
 use socket2::{Domain, Socket, Type};
 use std::env;
 use std::collections::HashMap;
@@ -8,6 +11,7 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::Duration;
 use std::thread;
 use url::Url;
@@ -198,9 +202,10 @@ impl Server {
         let osrf_config = self.ctx.config().clone();
         let worker_id = self.next_worker_id();
         let max_reqs = self.max_requests;
+        let shutdown = self.shutdown.clone();
 
         let handle: thread::JoinHandle<()> = thread::spawn(
-            move || Worker::start(worker_id, max_reqs, osrf_config, idl));
+            move || Worker::start(worker_id, max_reqs, osrf_config, idl, shutdown));
 
         let wt = WorkerThread {
             join_handle: handle,
@@ -223,63 +228,13 @@ impl Server {
         let active_count = self.active_worker_count();
 
         log::debug!("Accepting new gateway connection; active={active_count}");
-
-        /*
-        let maxcon = self.max_workers;
-
-        // It does no good to queue up a new connection if we hit max
-        // threads, because active threads have a long life time, even
-        // when they are not currently busy.
-        if active_count >= maxcon {
-            log::warn!("Max clients={maxcon} reached.  Rejecting new connections");
-
-            if let Err(e) = stream.shutdown(std::net::Shutdown::Both) {
-                log::error!("Error shutting down TCP connection: {}", e);
-            }
-
-            return;
-        }
-
-        // Hand the stream off for processing.
-        let idl = self.ctx.idl().clone();
-        let osrf_config = self.ctx.config().clone();
-
-        let worker_id = self.next_worker_id();
-        let handle: thread::JoinHandle<()> = thread::spawn(
-            move || Worker::run(worker_id, osrf_config, idl, stream));
-
-        let wt = WorkerThread {
-            join_handle: handle,
-            state: WorkerState::Idle,
-        };
-
-        self.workers.insert(worker_id, wt);
-        */
     }
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum WorkerState {
-    Idle,
-    Active,
-    Done,
-}
-
-#[derive(Debug)]
-struct WorkerStateEvent {
-    pub worker_id: u64,
-    pub state: WorkerState,
-}
-
-struct WorkerThread {
-    join_handle: thread::JoinHandle<()>,
-    state: WorkerState,
 }
 
 struct Worker {
     worker_id: u64,
-    idl: Arc<eg::idl::Parser>,
     osrf_client: osrf::client::Client,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl Worker {
@@ -288,7 +243,8 @@ impl Worker {
         worker_id: u64,
         max_requests: usize,
         config: Arc<osrf::conf::Config>,
-        idl: Arc<eg::idl::Parser>
+        idl: Arc<eg::idl::Parser>,
+        shutdown: Arc<AtomicBool>,
     ) {
 
         let mut osrf_client = match osrf::Client::connect(config.clone()) {
@@ -303,8 +259,8 @@ impl Worker {
 
         let mut worker = Worker {
             worker_id,
-            idl,
             osrf_client,
+            shutdown,
         };
 
         let mut request_count = 0;
