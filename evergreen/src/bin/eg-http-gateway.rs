@@ -3,7 +3,6 @@ use evergreen as eg;
 use opensrf as osrf;
 use osrf::worker::WorkerState;
 use osrf::worker::WorkerStateEvent;
-use osrf::server::WorkerThread;
 use socket2::{Domain, Socket, Type};
 use std::env;
 use std::collections::HashMap;
@@ -79,6 +78,11 @@ fn setup_server() -> Server {
         Err(e) => panic!("Cannot init: {}", e),
     };
 
+    let (tx, rx): (
+        mpsc::Sender<WorkerStateEvent>,
+        mpsc::Receiver<WorkerStateEvent>,
+    ) = mpsc::channel();
+
     Server {
         address,
         port,
@@ -89,6 +93,8 @@ fn setup_server() -> Server {
         worker_id_gen: 0,
         workers: HashMap::new(),
         shutdown: Arc::new(AtomicBool::new(false)),
+        to_server_tx: tx,
+        to_server_rx: rx,
     }
 }
 
@@ -102,6 +108,10 @@ struct Server {
     worker_id_gen: u64,
     shutdown: Arc<AtomicBool>,
     workers: HashMap<u64, WorkerThread>,
+
+    /// Channels for sending worker state events to the main server thread.
+    to_server_tx: mpsc::Sender<WorkerStateEvent>,
+    to_server_rx: mpsc::Receiver<WorkerStateEvent>,
 }
 
 impl Server {
@@ -176,6 +186,16 @@ impl Server {
             if self.shutdown.load(Ordering::Relaxed) {
                 break;
             }
+
+            if let Ok(evt) = self.to_server_rx.try_recv() {
+                self.handle_worker_event(&evt);
+            }
+
+            self.check_failed_threads();
+
+            if self.shutdown.load(Ordering::Relaxed) {
+                break;
+            }
         }
 
         self.ctx.client().clear().ok();
@@ -189,52 +209,185 @@ impl Server {
         Ok(())
     }
 
+    /// Set the state of our thread worker based on the state reported
+    /// to us by the thread.
+    fn handle_worker_event(&mut self, evt: &WorkerStateEvent) {
+        log::trace!("server received WorkerStateEvent: {:?}", evt);
+
+        let worker_id = evt.worker_id();
+
+        let worker: &mut WorkerThread = match self.workers.get_mut(&worker_id) {
+            Some(w) => w,
+            None => {
+                log::error!("No worker found with id {worker_id}");
+                return;
+            }
+        };
+
+        if evt.state() == WorkerState::Done {
+            // Worker is done -- remove it and fire up new ones as needed.
+            self.remove_thread(&worker_id);
+        } else {
+            log::trace!("server: updating thread state: {:?}", worker_id);
+            worker.state = evt.state();
+        }
+
+        let idle = self.idle_worker_count();
+        let active = self.active_worker_count();
+
+        log::trace!("server: workers idle={idle} active={active}");
+
+        if idle == 0 {
+            // Try to keep at least one idle worker on retainer.
+            if active < self.max_workers {
+                self.spawn_one_thread();
+            } else {
+                log::warn!("server: reached max workers!");
+            }
+        }
+    }
+
+    // Check for threads that panic!ed and were unable to send any
+    // worker state info to us.
+    fn check_failed_threads(&mut self) {
+        let failed: Vec<u64> = self
+            .workers
+            .iter()
+            .filter(|(_, v)| v.join_handle.is_finished())
+            .map(|(k, _)| *k) // k is a &u64
+            .collect();
+
+        for worker_id in failed {
+            log::info!("Found a thread that exited ungracefully: {worker_id}");
+            self.remove_thread(&worker_id);
+        }
+    }
+
+
+    fn remove_thread(&mut self, worker_id: &u64) {
+        log::trace!("server: removing thread {}", worker_id);
+        self.workers.remove(worker_id);
+        self.spawn_threads();
+    }
+
     fn spawn_threads(&mut self) -> Result<(), String> {
         while self.workers.len() < self.min_workers {
-            self.spawn_thread()?;
+            self.spawn_one_thread()?;
         }
 
         Ok(())
     }
 
-    fn spawn_thread(&mut self) -> Result<(), String> {
+    fn spawn_one_thread(&mut self) -> Result<u64, String> {
         let idl = self.ctx.idl().clone();
         let osrf_config = self.ctx.config().clone();
         let worker_id = self.next_worker_id();
         let max_reqs = self.max_requests;
         let shutdown = self.shutdown.clone();
+        let to_server_tx = self.to_server_tx.clone();
 
-        let handle: thread::JoinHandle<()> = thread::spawn(
-            move || Worker::start(worker_id, max_reqs, osrf_config, idl, shutdown));
+        // Channel for sending a stream to the worker for processing.
+        let (tx, rx): (
+            mpsc::Sender<TcpStream>,
+            mpsc::Receiver<TcpStream>,
+        ) = mpsc::channel();
+
+        let handle: thread::JoinHandle<()> = thread::spawn(move || {
+            Worker::start(
+                worker_id,
+                max_reqs,
+                osrf_config,
+                idl,
+                shutdown,
+                to_server_tx,
+                rx
+            )
+        });
 
         let wt = WorkerThread {
             join_handle: handle,
             state: WorkerState::Idle,
+            to_worker_tx: tx,
         };
 
         self.workers.insert(worker_id, wt);
 
-        Ok(())
+        Ok(worker_id)
     }
 
     fn active_worker_count(&self) -> usize {
-        self.workers.iter()
-            .filter(|(k, v)| v.state == WorkerState::Active)
-            .collect::<Vec<(_, _)>>()
-            .len()
+        self.workers
+            .values()
+            .filter(|v| v.state == WorkerState::Active)
+            .count()
     }
 
-    fn dispatch(&mut self, stream: TcpStream) {
+    fn idle_worker_count(&self) -> usize {
+        self.workers
+            .values()
+            .filter(|v| v.state == WorkerState::Idle)
+            .count()
+    }
+
+    fn get_idle_worker(&mut self) -> Result<&mut WorkerThread, String> {
+
+        loop {
+
+            // First look for an existing idle thread
+            let id_op = self.workers
+                .iter()
+                .filter(|(_, v)| v.state == WorkerState::Idle)
+                .map(|(k, _)| *k) // &u64
+                .next();
+
+            if id_op.is_some() {
+                return Ok(self.workers.get_mut(id_op.as_ref().unwrap()).unwrap());
+            }
+
+            // Otherwise, see if we can create a new thread.
+            if self.workers.len() < self.max_workers {
+                let worker_id = self.spawn_one_thread()?;
+                return Ok(self.workers.get_mut(&worker_id).unwrap());
+            }
+
+            log::warn!("We've reach max workers.  Waiting for a worker to finish...");
+
+            // We've hit max threads.  Wait for a busy worker to
+            // become available folllowed by a panic!ed thread check.
+            if let Ok(evt) = self.to_server_rx.recv_timeout(Duration::from_secs(1)) {
+                // This will spawn a new worker for us if it can.
+                self.handle_worker_event(&evt);
+            }
+
+            self.check_failed_threads();
+        }
+    }
+
+    fn dispatch(&mut self, stream: TcpStream) -> Result<(), String> {
         let active_count = self.active_worker_count();
+        let worker_thread = self.get_idle_worker()?;
+
+        //if let Err(e) = self.
 
         log::debug!("Accepting new gateway connection; active={active_count}");
+
+        Ok(())
     }
 }
+
+struct WorkerThread {
+    join_handle: thread::JoinHandle<()>,
+    state: WorkerState,
+    to_worker_tx: mpsc::Sender<TcpStream>,
+}
+
 
 struct Worker {
     worker_id: u64,
     osrf_client: osrf::client::Client,
     shutdown: Arc<AtomicBool>,
+    to_server_tx: mpsc::Sender<WorkerStateEvent>,
+    to_worker_rx: mpsc::Receiver<TcpStream>,
 }
 
 impl Worker {
@@ -245,6 +398,8 @@ impl Worker {
         config: Arc<osrf::conf::Config>,
         idl: Arc<eg::idl::Parser>,
         shutdown: Arc<AtomicBool>,
+        to_server_tx: mpsc::Sender<WorkerStateEvent>,
+        to_worker_rx: mpsc::Receiver<TcpStream>,
     ) {
 
         let mut osrf_client = match osrf::Client::connect(config.clone()) {
@@ -261,6 +416,8 @@ impl Worker {
             worker_id,
             osrf_client,
             shutdown,
+            to_server_tx,
+            to_worker_rx,
         };
 
         let mut request_count = 0;
