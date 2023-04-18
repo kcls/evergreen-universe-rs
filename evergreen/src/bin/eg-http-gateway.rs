@@ -1,127 +1,108 @@
 //! Evergreen HTTP+JSON API Server
 use evergreen as eg;
 use opensrf as osrf;
-use osrf::worker::WorkerState;
-use osrf::worker::WorkerStateEvent;
+use eg::idl;
 use socket2::{Domain, Socket, Type};
+use std::time::Duration;
 use std::env;
-use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::sync::mpsc;
-use std::time::Duration;
-use std::thread;
 use url::Url;
+use std::any::Any;
+use mptc;
 
 const DEFAULT_PORT: u16 = 9682;
-const MAX_WORKERS: usize = 128;
-const MIN_WORKERS: usize = 4;
-const POLL_INTERVAL: u64 = 3;
 const BUFSIZE: usize = 1024;
 const DUMMY_BASE_URL: &str = "http://localhost";
-const MAX_REQUESTS: usize = 10_000;
 
-fn main() {
-    let mut server = setup_server();
+struct GatewayRequest {
+    stream: TcpStream,
+    address: SocketAddr,
+}
 
-    // Use the logging config from the gateway config chunk
-    let gateway = server
-        .ctx
-        .config()
-        .gateway()
-        .expect("No gateway configuration found");
-
-    let logger = osrf::logging::Logger::new(gateway.logging()).expect("Creating logger");
-
-    logger.init().expect("Logger Init");
-
-    if let Err(e) = server.run() {
-        log::error!("Gateway exited with error: {e}");
+impl GatewayRequest {
+    pub fn downcast(h: &mut Box<dyn mptc::Request>) -> &mut GatewayRequest {
+        h.as_any_mut().downcast_mut::<GatewayRequest>()
+            .expect("GatewayRequest::downcast() given wrong type!")
     }
 }
 
-fn setup_server() -> Server {
-    let address = match env::var("EG_HTTP_GATEWAY_ADDRESS") {
-        Ok(v) => v,
-        _ => "127.0.0.1".to_string(),
-    };
-
-    let port = match env::var("EG_HTTP_GATEWAY_PORT") {
-        Ok(v) => v.parse::<u16>().expect("Invalid port number"),
-        _ => DEFAULT_PORT,
-    };
-
-    let max_workers = match env::var("EG_HTTP_GATEWAY_MAX_WORKERS") {
-        Ok(v) => v.parse::<usize>().expect("Invalid max-workers value"),
-        _ => MAX_WORKERS,
-    };
-
-    let min_workers = match env::var("EG_HTTP_GATEWAY_MIN_WORKERS") {
-        Ok(v) => v.parse::<usize>().expect("Invalid min-workers value"),
-        _ => MIN_WORKERS,
-    };
-
-    let max_requests = match env::var("EG_HTTP_GATEWAY_MAX_REQUESTS") {
-        Ok(v) => v.parse::<usize>().expect("Invalid max-requests value"),
-        _ => MAX_REQUESTS,
-    };
-
-    let init_ops = eg::init::InitOptions {
-        skip_host_settings: true,
-        osrf_ops: osrf::init::InitOptions { skip_logging: true },
-    };
-
-    let context = match eg::init::init_with_options(&init_ops) {
-        Ok(c) => c,
-        Err(e) => panic!("Cannot init: {}", e),
-    };
-
-    let (tx, rx): (
-        mpsc::Sender<WorkerStateEvent>,
-        mpsc::Receiver<WorkerStateEvent>,
-    ) = mpsc::channel();
-
-    Server {
-        address,
-        port,
-        max_workers,
-        min_workers,
-        max_requests,
-        ctx: context,
-        worker_id_gen: 0,
-        workers: HashMap::new(),
-        shutdown: Arc::new(AtomicBool::new(false)),
-        to_server_tx: tx,
-        to_server_rx: rx,
+impl mptc::Request for GatewayRequest {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
-struct Server {
-    port: u16,
-    address: String,
-    max_workers: usize,
-    min_workers: usize,
-    max_requests: usize,
-    ctx: eg::init::Context,
-    worker_id_gen: u64,
-    shutdown: Arc<AtomicBool>,
-    workers: HashMap<u64, WorkerThread>,
-
-    /// Channels for sending worker state events to the main server thread.
-    to_server_tx: mpsc::Sender<WorkerStateEvent>,
-    to_server_rx: mpsc::Receiver<WorkerStateEvent>,
+struct GatewayHandler {
+    bus: Option<osrf::bus::Bus>,
+    osrf_config: Arc<osrf::conf::Config>,
+    idl: Arc<idl::Parser>,
 }
 
-impl Server {
-    fn next_worker_id(&mut self) -> u64 {
-        self.worker_id_gen += 1;
-        self.worker_id_gen
+impl GatewayHandler {
+    /// Mutable OpenSRF Bus ref
+    ///
+    /// Panics if the bus is not yet setup, which should happen in thread_start()
+    fn bus(&mut self) -> &mut osrf::bus::Bus {
+        self.bus.as_mut().unwrap()
+    }
+}
+
+impl mptc::RequestHandler for GatewayHandler {
+
+    fn thread_start(&mut self) -> Result<(), String> {
+        // We confirmed we have a gateway() config in main().
+        let bus_conf = self.osrf_config.gateway().unwrap();
+
+        let bus = osrf::bus::Bus::new(bus_conf)?;
+        self.bus = Some(bus);
+        Ok(())
     }
 
-    fn setup_listener(&mut self) -> Result<TcpListener, String> {
-        let destination = format!("{}:{}", &self.address, self.port);
+    fn thread_end(&mut self) -> Result<(), String> {
+        self.bus().disconnect()?;
+        Ok(())
+    }
+
+    fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
+        // Turn the generalic mptc::Request into a type we can perform actions on.
+        let request = GatewayRequest::downcast(&mut request);
+
+        let mut buffer = [0u8; 1024];
+        request.stream.read(&mut buffer).expect("Stream.read()");
+
+        // Trim the null bytes from our read buffer.
+        let buffer: Vec<u8> = buffer.iter().map(|c| *c).filter(|c| c != &0u8).collect();
+
+        request.stream.write_all(buffer.as_slice()).expect("Stream.write()");
+        request.stream.shutdown(std::net::Shutdown::Both).expect("shutdown()");
+
+        Ok(())
+    }
+}
+
+struct GatewayStream {
+    listener: TcpListener,
+    eg_ctx: eg::init::Context,
+}
+
+impl GatewayStream {
+
+    fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> Result<Self, String> {
+        let listener = GatewayStream::setup_listener(address, port)?;
+
+        let stream = GatewayStream {
+            listener,
+            eg_ctx,
+        };
+
+        Ok(stream)
+    }
+
+    fn setup_listener(address: &str, port: u16) -> Result<TcpListener, String> {
+        let destination = format!("{}:{}", address, port);
+
         log::info!("EG Gateway listeneing at {destination}");
 
         let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
@@ -148,7 +129,7 @@ impl Server {
 
         // We need a read timeout so we can wake periodically to check
         // for shutdown signals.
-        let polltime = Duration::from_secs(POLL_INTERVAL);
+        let polltime = Duration::from_secs(mptc::SIGNAL_POLL_INTERVAL);
 
         socket
             .set_read_timeout(Some(polltime))
@@ -156,282 +137,100 @@ impl Server {
 
         Ok(socket.into())
     }
+}
 
-    fn run(&mut self) -> Result<(), String> {
-        self.spawn_threads()?;
-        let listener = self.setup_listener()?;
+impl mptc::RequestStream for GatewayStream {
 
-        loop {
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-
-            let client_socket = match listener.accept() {
-                Ok((s, _)) => s,
-                Err(e) => {
-                    match e.kind() {
-                        std::io::ErrorKind::WouldBlock => {
-                            continue; // Poll timeout, keep going.
-                        }
-                        _ => {
-                            log::error!("accept() failed: {e}");
-                            continue;
-                        }
+    /// Returns the next client request stream.
+    ///
+    /// We don't use 'timeout' here since the timeout is applied directly
+    /// to our TcpStream.
+    fn next(&mut self, _timeout: u64) -> Result<Option<Box<dyn mptc::Request>>, String> {
+        let (stream, address) = match self.listener.accept() {
+            Ok((s, a)) => (s, a),
+            Err(e) => {
+                match e.kind() {
+                    std::io::ErrorKind::WouldBlock => {
+                        // Accept call timed out.  Let the server know
+                        // we received no data within the timeout provided.
+                        return Ok(None);
+                    }
+                    _ => {
+                        // Unexpected error.
+                        return Err(format!("accept() failed: {e}"));
                     }
                 }
-            };
-
-            self.dispatch(client_socket.into());
-
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-
-            if let Ok(evt) = self.to_server_rx.try_recv() {
-                self.handle_worker_event(&evt);
-            }
-
-            self.check_failed_threads();
-
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-        }
-
-        self.ctx.client().clear().ok();
-
-        log::debug!("Server shutting down; waiting for threads to complete");
-
-        // TODO join threads
-
-        log::debug!("All threads complete.  Shutting down");
-
-        Ok(())
-    }
-
-    /// Set the state of our thread worker based on the state reported
-    /// to us by the thread.
-    fn handle_worker_event(&mut self, evt: &WorkerStateEvent) {
-        log::trace!("server received WorkerStateEvent: {:?}", evt);
-
-        let worker_id = evt.worker_id();
-
-        let worker: &mut WorkerThread = match self.workers.get_mut(&worker_id) {
-            Some(w) => w,
-            None => {
-                log::error!("No worker found with id {worker_id}");
-                return;
             }
         };
 
-        if evt.state() == WorkerState::Done {
-            // Worker is done -- remove it and fire up new ones as needed.
-            self.remove_thread(&worker_id);
-        } else {
-            log::trace!("server: updating thread state: {:?}", worker_id);
-            worker.state = evt.state();
-        }
-
-        let idle = self.idle_worker_count();
-        let active = self.active_worker_count();
-
-        log::trace!("server: workers idle={idle} active={active}");
-
-        if idle == 0 {
-            // Try to keep at least one idle worker on retainer.
-            if active < self.max_workers {
-                self.spawn_one_thread();
-            } else {
-                log::warn!("server: reached max workers!");
-            }
-        }
-    }
-
-    // Check for threads that panic!ed and were unable to send any
-    // worker state info to us.
-    fn check_failed_threads(&mut self) {
-        let failed: Vec<u64> = self
-            .workers
-            .iter()
-            .filter(|(_, v)| v.join_handle.is_finished())
-            .map(|(k, _)| *k) // k is a &u64
-            .collect();
-
-        for worker_id in failed {
-            log::info!("Found a thread that exited ungracefully: {worker_id}");
-            self.remove_thread(&worker_id);
-        }
-    }
-
-
-    fn remove_thread(&mut self, worker_id: &u64) {
-        log::trace!("server: removing thread {}", worker_id);
-        self.workers.remove(worker_id);
-        self.spawn_threads();
-    }
-
-    fn spawn_threads(&mut self) -> Result<(), String> {
-        while self.workers.len() < self.min_workers {
-            self.spawn_one_thread()?;
-        }
-
-        Ok(())
-    }
-
-    fn spawn_one_thread(&mut self) -> Result<u64, String> {
-        let idl = self.ctx.idl().clone();
-        let osrf_config = self.ctx.config().clone();
-        let worker_id = self.next_worker_id();
-        let max_reqs = self.max_requests;
-        let shutdown = self.shutdown.clone();
-        let to_server_tx = self.to_server_tx.clone();
-
-        // Channel for sending a stream to the worker for processing.
-        let (tx, rx): (
-            mpsc::Sender<TcpStream>,
-            mpsc::Receiver<TcpStream>,
-        ) = mpsc::channel();
-
-        let handle: thread::JoinHandle<()> = thread::spawn(move || {
-            Worker::start(
-                worker_id,
-                max_reqs,
-                osrf_config,
-                idl,
-                shutdown,
-                to_server_tx,
-                rx
-            )
-        });
-
-        let wt = WorkerThread {
-            join_handle: handle,
-            state: WorkerState::Idle,
-            to_worker_tx: tx,
+        let request = GatewayRequest {
+            stream,
+            address,
         };
 
-        self.workers.insert(worker_id, wt);
-
-        Ok(worker_id)
+        Ok(Some(Box::new(request)))
     }
 
-    fn active_worker_count(&self) -> usize {
-        self.workers
-            .values()
-            .filter(|v| v.state == WorkerState::Active)
-            .count()
-    }
+    fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
+        let handler = GatewayHandler {
+            bus: None,
+            osrf_config: self.eg_ctx.config().clone(),
+            idl: self.eg_ctx.idl().clone(),
+        };
 
-    fn idle_worker_count(&self) -> usize {
-        self.workers
-            .values()
-            .filter(|v| v.state == WorkerState::Idle)
-            .count()
-    }
-
-    fn get_idle_worker(&mut self) -> Result<&mut WorkerThread, String> {
-
-        loop {
-
-            // First look for an existing idle thread
-            let id_op = self.workers
-                .iter()
-                .filter(|(_, v)| v.state == WorkerState::Idle)
-                .map(|(k, _)| *k) // &u64
-                .next();
-
-            if id_op.is_some() {
-                return Ok(self.workers.get_mut(id_op.as_ref().unwrap()).unwrap());
-            }
-
-            // Otherwise, see if we can create a new thread.
-            if self.workers.len() < self.max_workers {
-                let worker_id = self.spawn_one_thread()?;
-                return Ok(self.workers.get_mut(&worker_id).unwrap());
-            }
-
-            log::warn!("We've reach max workers.  Waiting for a worker to finish...");
-
-            // We've hit max threads.  Wait for a busy worker to
-            // become available folllowed by a panic!ed thread check.
-            if let Ok(evt) = self.to_server_rx.recv_timeout(Duration::from_secs(1)) {
-                // This will spawn a new worker for us if it can.
-                self.handle_worker_event(&evt);
-            }
-
-            self.check_failed_threads();
-        }
-    }
-
-    fn dispatch(&mut self, stream: TcpStream) -> Result<(), String> {
-        let active_count = self.active_worker_count();
-        let worker_thread = self.get_idle_worker()?;
-
-        //if let Err(e) = self.
-
-        log::debug!("Accepting new gateway connection; active={active_count}");
-
-        Ok(())
+        Box::new(handler)
     }
 }
 
-struct WorkerThread {
-    join_handle: thread::JoinHandle<()>,
-    state: WorkerState,
-    to_worker_tx: mpsc::Sender<TcpStream>,
-}
+fn main() {
+    let address = match env::var("EG_HTTP_GATEWAY_ADDRESS") {
+        Ok(v) => v,
+        _ => "127.0.0.1".to_string(),
+    };
 
+    let port = match env::var("EG_HTTP_GATEWAY_PORT") {
+        Ok(v) => v.parse::<u16>().expect("Invalid port number"),
+        _ => DEFAULT_PORT,
+    };
 
-struct Worker {
-    worker_id: u64,
-    osrf_client: osrf::client::Client,
-    shutdown: Arc<AtomicBool>,
-    to_server_tx: mpsc::Sender<WorkerStateEvent>,
-    to_worker_rx: mpsc::Receiver<TcpStream>,
-}
+    let init_ops = eg::init::InitOptions {
+        skip_host_settings: true,
+        osrf_ops: osrf::init::InitOptions { skip_logging: true },
+    };
 
-impl Worker {
+    let eg_ctx = eg::init::init_with_options(&init_ops)
+        .expect("Cannot initialize Evergreen");
 
-    fn start(
-        worker_id: u64,
-        max_requests: usize,
-        config: Arc<osrf::conf::Config>,
-        idl: Arc<eg::idl::Parser>,
-        shutdown: Arc<AtomicBool>,
-        to_server_tx: mpsc::Sender<WorkerStateEvent>,
-        to_worker_rx: mpsc::Receiver<TcpStream>,
-    ) {
+    // Use the logging config from the gateway config chunk
+    let gateway_conf = eg_ctx.config().gateway().expect("No gateway configuration found");
+    let logger = osrf::logging::Logger::new(gateway_conf.logging()).expect("Creating logger");
 
-        let mut osrf_client = match osrf::Client::connect(config.clone()) {
-            Ok(c) => c,
-            Err(e) => {
-                log::error!("Worker cannot connect to OpenSRF: {e}");
-                return;
-            }
-        };
+    logger.init().expect("Logger Init");
 
-        osrf_client.set_serializer(eg::idl::Parser::as_serializer(&idl));
+    let stream = GatewayStream::new(eg_ctx, &address, port).expect("Cannot buidl stream");
+    let mut server = mptc::Server::new(Box::new(stream));
 
-        let mut worker = Worker {
-            worker_id,
-            osrf_client,
-            shutdown,
-            to_server_tx,
-            to_worker_rx,
-        };
-
-        let mut request_count = 0;
-
-        while request_count < max_requests {
-            // TODO listen for thread channel message w/ a stream in it.
-            //self.handle_request(stream);
-            request_count += 1;
-        }
-
-        log::debug!("Worker {} exiting on max requests", worker.worker_id);
-
-        worker.osrf_client.clear().ok();
+    if let Ok(n) = env::var("EG_HTTP_GATEWAY_MAX_WORKERS") {
+        server.set_max_workers(
+            n.parse::<usize>().expect("Invalid max-workers value"));
     }
+
+    if let Ok(n) = env::var("EG_HTTP_GATEWAY_MIN_WORKERS") {
+        server.set_min_workers(
+            n.parse::<usize>().expect("Invalid min-workers value"));
+    }
+
+    if let Ok(n) = env::var("EG_HTTP_GATEWAY_MAX_REQUESTS") {
+        server.set_max_worker_requests(
+            n.parse::<usize>().expect("Invalid max-requests value"));
+    }
+
+    server.run();
+}
+
+
+/*
+
 
     fn handle_request(&mut self, mut stream: TcpStream) {
         let client_ip = match stream.peer_addr() {
@@ -590,3 +389,5 @@ impl Worker {
         Ok((service.unwrap(), m))
     }
 }
+
+*/

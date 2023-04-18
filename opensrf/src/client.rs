@@ -49,6 +49,11 @@ pub struct ClientSingleton {
 impl ClientSingleton {
     fn new(config: Arc<conf::Config>) -> Result<ClientSingleton, String> {
         let bus = bus::Bus::new(config.client())?;
+        ClientSingleton::from_bus(bus, config)
+    }
+
+    /// Create a new singleton instance from a previously setup Bus.
+    fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> Result<ClientSingleton, String> {
         let domain = config.client().domain().name().to_string();
 
         Ok(ClientSingleton {
@@ -246,6 +251,21 @@ impl Client {
             singleton: Rc::new(RefCell::new(singleton)),
         })
     }
+
+    pub fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> Result<Client, String> {
+        // This performs the actual bus-level connection.
+        let singleton = ClientSingleton::from_bus(bus, config)?;
+
+        let address = singleton.bus().address().clone();
+        let domain = singleton.domain().to_string();
+
+        Ok(Client {
+            address,
+            domain,
+            singleton: Rc::new(RefCell::new(singleton)),
+        })
+    }
+
 
     pub fn singleton(&self) -> &Rc<RefCell<ClientSingleton>> {
         &self.singleton
