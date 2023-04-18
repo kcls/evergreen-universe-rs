@@ -16,6 +16,9 @@ const BUFSIZE: usize = 1024;
 const DEFAULT_PORT: u16 = 9682;
 const DUMMY_BASE_URL: &str = "http://localhost";
 
+/// Max time we'll wait for a reply from an OpenSRF request.
+const RELAY_TIMEOUT: i32 = 120;
+
 struct GatewayRequest {
     stream: TcpStream,
     address: SocketAddr,
@@ -50,15 +53,76 @@ impl GatewayHandler {
 
     fn handle_request(&mut self, request: &mut GatewayRequest) -> Result<(), String> {
         let text = self.read_request(request)?;
-        let message = self.translate_request(&text)?;
+        let (service, method) = self.translate_request(&text)?;
 
-        // TODO relay to opensrf
-        // TODO relay response to stream.
+        log::trace!("Parsed HTTP request as method: {}", method.to_json_value());
 
-        //request.stream.write_all(message.as_bytes()).expect("Stream.write()");
-        request.stream.shutdown(std::net::Shutdown::Both).expect("shutdown()");
+        let replies = self.relay_to_osrf(&service, method)?;
+        let array = json::JsonValue::Array(replies);
+
+        // TODO handle server errors
+        let response = format!("HTTP/1.1 200 OK\r\n\r\n{}", array.dump());
+
+        if let Err(e) = request.stream.write_all(response.as_bytes()) {
+            return Err(format!("Error writing to client: {e}"));
+        }
 
         Ok(())
+    }
+
+    fn relay_to_osrf(
+        &mut self,
+        service: &str,
+        method: osrf::message::Method
+    ) -> Result<Vec<json::JsonValue>, String> {
+
+        let recipient = osrf::addr::ServiceAddress::new(service);
+
+        // Send every request to the router on our gateway domain.
+        let router = osrf::addr::RouterAddress::new(
+            self.osrf_config.gateway().unwrap().domain().name());
+
+        let tm = osrf::message::TransportMessage::with_body(
+            recipient.as_str(),
+            self.bus().address().as_str(),
+            &osrf::util::random_number(16), // thread
+            osrf::message::Message::new(
+                osrf::message::MessageType::Request,
+                1, // thread trace
+                osrf::message::Payload::Method(method)
+            )
+        );
+
+        let mut replies: Vec<json::JsonValue> = Vec::new();
+
+        self.bus().send_to(&tm, router.as_str())?;
+        let serializer = idl::Parser::as_serializer(&self.idl);
+
+        loop {
+
+            let tm = match self.bus().recv(RELAY_TIMEOUT, None)? {
+                Some(r) => r,
+                None => return Ok(replies), // timeout
+            };
+
+            for resp in tm.body().iter() {
+                if let osrf::message::Payload::Result(resp) = resp.payload() {
+
+                    let content = serializer.pack(resp.content().to_owned());
+                    replies.push(content);
+
+                } else if let osrf::message::Payload::Status(stat) = resp.payload() {
+                    // TODO partial messages not supported here.
+                    // Result of osrf::client::Client not being Send-able :\
+                    // Reconsider.
+                    match stat.status() {
+                        osrf::message::MessageStatus::Complete => return Ok(replies),
+                        osrf::message::MessageStatus::Ok | osrf::message::MessageStatus::Continue => {},
+                        _ => return Err(format!("Request error: {}", stat.to_json_value())),
+                    }
+                }
+            }
+        }
     }
 
     fn read_request(&mut self, request: &mut GatewayRequest) -> Result<String, String> {
@@ -139,6 +203,7 @@ impl GatewayHandler {
         let mut service: Option<String> = None;
         let mut params: Vec<json::JsonValue> = Vec::new();
         let query_iter = path_url.query_pairs().chain(data_url.query_pairs());
+        let serializer = idl::Parser::as_serializer(&self.idl);
 
         for (k, v) in query_iter {
             if k.eq("method") {
@@ -148,8 +213,7 @@ impl GatewayHandler {
             } else if k.eq("param") {
                 let v = json::parse(&v)
                     .or_else(|e| Err(format!("Cannot parse parameter value as JSON: {e}")))?;
-                // TODO serialize
-                params.push(v);
+                params.push(serializer.unpack(v));
             }
         }
 
@@ -185,7 +249,15 @@ impl mptc::RequestHandler for GatewayHandler {
 
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let mut request = GatewayRequest::downcast(&mut request);
-        self.handle_request(&mut request)
+
+        let result = self.handle_request(&mut request);
+
+        // Always try to shut down the request stream regardless of
+        // what happened in our request handler.
+        request.stream.shutdown(std::net::Shutdown::Both)
+            .or_else(|e| Err(format!("Error shutting down worker stream socket: {e}")))?;
+
+        result
     }
 }
 
