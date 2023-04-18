@@ -68,7 +68,7 @@ impl GatewayHandler {
             Ok(r) => r,
             Err(e) => {
                 leader = "HTTP/1.1 400 Bad Request";
-                vec![json::from(e.as_str())]
+                vec![e]
             }
         };
 
@@ -90,7 +90,7 @@ impl GatewayHandler {
         &mut self,
         service: &str,
         method: osrf::message::Method
-    ) -> Result<Vec<json::JsonValue>, String> {
+    ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
 
         let recipient = osrf::addr::ServiceAddress::new(service);
 
@@ -136,7 +136,7 @@ impl GatewayHandler {
                     match stat.status() {
                         osrf::message::MessageStatus::Complete => return Ok(replies),
                         osrf::message::MessageStatus::Ok | osrf::message::MessageStatus::Continue => {},
-                        _ => return Ok(vec![stat.to_json_value()]),
+                        _ => return Err(stat.to_json_value()),
                     }
                 }
             }
