@@ -39,16 +39,20 @@ impl mptc::Request for GatewayRequest {
 
 struct GatewayHandler {
     bus: Option<osrf::bus::Bus>,
-    osrf_config: Arc<osrf::conf::Config>,
+    osrf_conf: Arc<osrf::conf::Config>,
     idl: Arc<idl::Parser>,
 }
 
 impl GatewayHandler {
     /// Mutable OpenSRF Bus ref
     ///
-    /// Panics if the bus is not yet setup, which should happen in thread_start()
+    /// Panics if the bus is not yet setup, which happens in thread_start()
     fn bus(&mut self) -> &mut osrf::bus::Bus {
         self.bus.as_mut().unwrap()
+    }
+
+    fn bus_conf(&self) -> &osrf::conf::BusClient {
+        self.osrf_conf.gateway().unwrap()
     }
 
     fn handle_request(&mut self, request: &mut GatewayRequest) -> Result<(), String> {
@@ -57,11 +61,23 @@ impl GatewayHandler {
 
         log::trace!("Parsed HTTP request as method: {}", method.to_json_value());
 
-        let replies = self.relay_to_osrf(&service, method)?;
-        let array = json::JsonValue::Array(replies);
+        let content_type = "Content-Type: text/json";
+        let mut leader = "HTTP/1.1 200 OK";
 
-        // TODO handle server errors
-        let response = format!("HTTP/1.1 200 OK\r\n\r\n{}", array.dump());
+        let replies = match self.relay_to_osrf(&service, method) {
+            Ok(r) => r,
+            Err(e) => {
+                leader = "HTTP/1.1 400 Bad Request";
+                vec![json::from(e.as_str())]
+            }
+        };
+
+        let array = json::JsonValue::Array(replies);
+        let data = array.dump();
+        let length = format!("Content-length: {}", data.as_bytes().len());
+
+        let response =
+            format!("{leader}\r\n{content_type}\r\n{length}\r\n\r\n{data}");
 
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
             return Err(format!("Error writing to client: {e}"));
@@ -80,7 +96,7 @@ impl GatewayHandler {
 
         // Send every request to the router on our gateway domain.
         let router = osrf::addr::RouterAddress::new(
-            self.osrf_config.gateway().unwrap().domain().name());
+            self.osrf_conf.gateway().unwrap().domain().name());
 
         let tm = osrf::message::TransportMessage::with_body(
             recipient.as_str(),
@@ -96,6 +112,8 @@ impl GatewayHandler {
         let mut replies: Vec<json::JsonValue> = Vec::new();
 
         self.bus().send_to(&tm, router.as_str())?;
+
+        // TODO support non-serialized responses.
         let serializer = idl::Parser::as_serializer(&self.idl);
 
         loop {
@@ -118,7 +136,7 @@ impl GatewayHandler {
                     match stat.status() {
                         osrf::message::MessageStatus::Complete => return Ok(replies),
                         osrf::message::MessageStatus::Ok | osrf::message::MessageStatus::Continue => {},
-                        _ => return Err(format!("Request error: {}", stat.to_json_value())),
+                        _ => return Ok(vec![stat.to_json_value()]),
                     }
                 }
             }
@@ -234,10 +252,7 @@ impl GatewayHandler {
 impl mptc::RequestHandler for GatewayHandler {
 
     fn thread_start(&mut self) -> Result<(), String> {
-        // We confirmed we have a gateway() config in main().
-        let bus_conf = self.osrf_config.gateway().unwrap();
-
-        let bus = osrf::bus::Bus::new(bus_conf)?;
+        let bus = osrf::bus::Bus::new(self.bus_conf())?;
         self.bus = Some(bus);
         Ok(())
     }
@@ -353,7 +368,7 @@ impl mptc::RequestStream for GatewayStream {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = GatewayHandler {
             bus: None,
-            osrf_config: self.eg_ctx.config().clone(),
+            osrf_conf: self.eg_ctx.config().clone(),
             idl: self.eg_ctx.idl().clone(),
         };
 
