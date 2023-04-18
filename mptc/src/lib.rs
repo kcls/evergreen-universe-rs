@@ -1,5 +1,3 @@
-use std::any::Any;
-
 pub mod worker;
 pub mod server;
 
@@ -19,14 +17,14 @@ pub const DEFAULT_MAX_WORKERS: usize = 256;
 pub const DEFAULT_MAX_WORKER_REQS: usize = 10_000;
 
 
-pub trait Request: Send + Any {
+pub trait Request: Send + std::any::Any {
     /// Needed for downcasting a generic Request into the
     /// specific type used by the implementor.
     /// Example: fn as_any_mut(&mut self) -> &mut dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
-pub trait RequestHandler: Any + Send {
+pub trait RequestHandler: Send {
     /// Called from within each worker thread just after spawning.
     fn thread_start(&mut self) -> Result<(), String>;
 

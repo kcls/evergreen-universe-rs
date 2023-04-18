@@ -228,7 +228,11 @@ impl Server {
     }
 
     pub fn run(&mut self) {
-        self.setup_signal_handlers().ok(); // TODO
+        if let Err(e) = self.setup_signal_handlers() {
+            log::error!("Cannot setup signal handlers: {e}");
+            return;
+        }
+
         self.start_workers();
 
         loop {

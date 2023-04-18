@@ -12,8 +12,8 @@ use url::Url;
 use std::any::Any;
 use mptc;
 
-const DEFAULT_PORT: u16 = 9682;
 const BUFSIZE: usize = 1024;
+const DEFAULT_PORT: u16 = 9682;
 const DUMMY_BASE_URL: &str = "http://localhost";
 
 struct GatewayRequest {
@@ -47,6 +47,124 @@ impl GatewayHandler {
     fn bus(&mut self) -> &mut osrf::bus::Bus {
         self.bus.as_mut().unwrap()
     }
+
+    fn handle_request(&mut self, request: &mut GatewayRequest) -> Result<(), String> {
+        let text = self.read_request(request)?;
+        let message = self.translate_request(&text)?;
+
+        // TODO relay to opensrf
+        // TODO relay response to stream.
+
+        //request.stream.write_all(message.as_bytes()).expect("Stream.write()");
+        request.stream.shutdown(std::net::Shutdown::Both).expect("shutdown()");
+
+        Ok(())
+    }
+
+    fn read_request(&mut self, request: &mut GatewayRequest) -> Result<String, String> {
+        let mut text = String::new();
+
+        loop {
+            let mut buffer = [0u8; BUFSIZE];
+
+            let num_bytes = match request.stream.read(&mut buffer) {
+                Ok(n) => n,
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock => 0,
+                    _ => Err(format!("Error reading HTTP stream: {e}"))?,
+                },
+            };
+
+            if num_bytes > 0 {
+                // Append the buffer to the string in progress, removing
+                // any trailing null bytes from our pre-initialized buffer.
+                text.push_str(String::from_utf8_lossy(&buffer).trim_matches(char::from(0)));
+            }
+
+            if num_bytes < BUFSIZE {
+                // Reading fewer than the requested number of bytes is
+                // our indication that we've read all available data.
+                return Ok(text);
+            }
+
+            // If the read exceeds the buffer size, set our stream to
+            // non-blocking and keep reading until there's nothing left
+            // to read.
+            request.stream
+                .set_nonblocking(true)
+                .or_else(|e| Err(format!("Set nonblocking failed: {e}")))?;
+        }
+    }
+
+    /// Translate a gateway request into an OpenSRF Method and service name,
+    /// which can be relayed to the OpenSRF network.
+    ///
+    /// * `request` - Full HTTP request text including headers, etc.
+    fn translate_request(&self, text: &str) -> Result<(String, osrf::message::Method), String> {
+        let mut parts = text.split("\r\n");
+
+        let request = parts.next().ok_or(format!("Request has no request line"))?;
+        let mut request_parts = request.split_whitespace();
+
+        let _http_method = request_parts
+            .next()
+            .ok_or(format!("Request contains no method"))?;
+
+        let pathquery = request_parts
+            .next()
+            .ok_or(format!("Request contains no path"))?;
+
+        // For now, we don't really care about the headers.
+        // Gobble them up and discard them.
+        while let Some(header) = parts.next() {
+            if header.eq("") {
+                // End of headers.
+                break;
+            }
+        }
+
+        let path_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, pathquery))
+            .or_else(|e| Err(format!("Error parsing request URL: {e}")))?;
+
+        // Anything after the headers is the request body.
+        // Join the remaining lines into a data string.
+        let data = parts.collect::<Vec<&str>>().join("");
+
+        // Parse the request body as a URL so we can unpack any
+        // POST params and add them to our parameter list.
+        let data_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, data))
+            .or_else(|e| Err(format!("Error parsing request body as URL: {e}")))?;
+
+        let mut method: Option<String> = None;
+        let mut service: Option<String> = None;
+        let mut params: Vec<json::JsonValue> = Vec::new();
+        let query_iter = path_url.query_pairs().chain(data_url.query_pairs());
+
+        for (k, v) in query_iter {
+            if k.eq("method") {
+                method = Some(v.to_string());
+            } else if k.eq("service") {
+                service = Some(v.to_string());
+            } else if k.eq("param") {
+                let v = json::parse(&v)
+                    .or_else(|e| Err(format!("Cannot parse parameter value as JSON: {e}")))?;
+                // TODO serialize
+                params.push(v);
+            }
+        }
+
+        if method.is_none() {
+            return Err(format!("Request contains no method name"));
+        }
+
+        if service.is_none() {
+            return Err(format!("Request contains no service name"));
+        }
+
+        let m = osrf::message::Method::new(method.as_ref().unwrap(), params);
+
+        Ok((service.unwrap(), m))
+    }
 }
 
 impl mptc::RequestHandler for GatewayHandler {
@@ -66,19 +184,8 @@ impl mptc::RequestHandler for GatewayHandler {
     }
 
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
-        // Turn the generalic mptc::Request into a type we can perform actions on.
-        let request = GatewayRequest::downcast(&mut request);
-
-        let mut buffer = [0u8; 1024];
-        request.stream.read(&mut buffer).expect("Stream.read()");
-
-        // Trim the null bytes from our read buffer.
-        let buffer: Vec<u8> = buffer.iter().map(|c| *c).filter(|c| c != &0u8).collect();
-
-        request.stream.write_all(buffer.as_slice()).expect("Stream.write()");
-        request.stream.shutdown(std::net::Shutdown::Both).expect("shutdown()");
-
-        Ok(())
+        let mut request = GatewayRequest::downcast(&mut request);
+        self.handle_request(&mut request)
     }
 }
 
@@ -285,109 +392,6 @@ fn main() {
         }
     }
 
-    fn read_request(&mut self, stream: &mut TcpStream) -> Result<String, String> {
-        let mut text = String::new();
-
-        loop {
-            let mut buffer = [0u8; BUFSIZE];
-
-            let num_bytes = match stream.read(&mut buffer) {
-                Ok(n) => n,
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::WouldBlock => 0,
-                    _ => Err(format!("Error reading HTTP stream: {e}"))?,
-                },
-            };
-
-            if num_bytes > 0 {
-                // Append the buffer to the string in progress, removing
-                // any trailing null bytes from our pre-initialized buffer.
-                text.push_str(String::from_utf8_lossy(&buffer).trim_matches(char::from(0)));
-            }
-
-            if num_bytes < BUFSIZE {
-                // Reading fewer than the requested number of bytes is
-                // our indication that we've read all available data.
-                return Ok(text);
-            }
-
-            // If the read exceeds the buffer size, set our stream to
-            // non-blocking and keep reading until there's nothing left
-            // to read.
-            stream
-                .set_nonblocking(true)
-                .or_else(|e| Err(format!("Set nonblocking failed: {e}")))?;
-        }
-    }
-
-    /// Translate a gateway request into an OpenSRF Method and service name,
-    /// which can be relayed to the OpenSRF network.
-    ///
-    /// * `request` - Full HTTP request text including headers, etc.
-    fn translate_request(&self, request: &str) -> Result<(String, osrf::message::Method), String> {
-        let mut parts = request.split("\r\n");
-
-        let request = parts.next().ok_or(format!("Request has no request line"))?;
-        let mut request_parts = request.split_whitespace();
-
-        let _http_method = request_parts
-            .next()
-            .ok_or(format!("Request contains no method"))?;
-
-        let pathquery = request_parts
-            .next()
-            .ok_or(format!("Request contains no path"))?;
-
-        // For now, we don't really care about the headers.
-        // Gobble them up and discard them.
-        while let Some(header) = parts.next() {
-            if header.eq("") {
-                // End of headers.
-                break;
-            }
-        }
-
-        let path_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, pathquery))
-            .or_else(|e| Err(format!("Error parsing request URL: {e}")))?;
-
-        // Anything after the headers is the request body.
-        // Join the remaining lines into a data string.
-        let data = parts.collect::<Vec<&str>>().join("");
-
-        // Parse the request body as a URL so we can unpack any
-        // POST params and add them to our parameter list.
-        let data_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, data))
-            .or_else(|e| Err(format!("Error parsing request body as URL: {e}")))?;
-
-        let mut method: Option<String> = None;
-        let mut service: Option<String> = None;
-        let mut params: Vec<json::JsonValue> = Vec::new();
-        let query_iter = path_url.query_pairs().chain(data_url.query_pairs());
-
-        for (k, v) in query_iter {
-            if k.eq("method") {
-                method = Some(v.to_string());
-            } else if k.eq("service") {
-                service = Some(v.to_string());
-            } else if k.eq("param") {
-                let v = json::parse(&v)
-                    .or_else(|e| Err(format!("Cannot parse parameter value as JSON: {e}")))?;
-                params.push(v);
-            }
-        }
-
-        if method.is_none() {
-            return Err(format!("Request contains no method name"));
-        }
-
-        if service.is_none() {
-            return Err(format!("Request contains no service name"));
-        }
-
-        let m = osrf::message::Method::new(method.as_ref().unwrap(), params);
-
-        Ok((service.unwrap(), m))
-    }
 }
 
 */
