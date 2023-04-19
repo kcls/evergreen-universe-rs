@@ -1,6 +1,7 @@
 //! Evergreen HTTP+JSON API Server
 use evergreen as eg;
 use opensrf as osrf;
+use osrf::client::DataSerializer;
 use eg::idl;
 use socket2::{Domain, Socket, Type};
 use std::time::Duration;
@@ -41,7 +42,14 @@ impl mptc::Request for GatewayRequest {
 #[derive(Debug, Clone, PartialEq)]
 enum GatewayRequestFormat {
     Fieldmapper,
+    RawSlim,
     Raw,
+}
+
+impl GatewayRequestFormat {
+    fn is_raw(&self) -> bool {
+        self == &Self::Raw || self == &Self::RawSlim
+    }
 }
 
 #[derive(Debug)]
@@ -126,8 +134,6 @@ impl GatewayHandler {
 
         self.bus().send_to(&tm, router.as_str())?;
 
-        let serializer = idl::Parser::as_serializer(&self.idl);
-
         loop {
 
             let tm = match self.bus().recv(RELAY_TIMEOUT, None)? {
@@ -139,11 +145,15 @@ impl GatewayHandler {
                 if let osrf::message::Payload::Result(resp) = resp.payload() {
 
                     let mut content = resp.content().to_owned();
-                    if request.format == GatewayRequestFormat::Raw {
+                    if request.format.is_raw() {
                         // JSON values arrive as Fieldmapper-encoded objects.
-                        // Unpacking them via the serializer turns them back
+                        // Unpacking them via the IDL turns them back
                         // into raw JSON objects.
-                        content = serializer.unpack(content);
+                        content = self.idl.unpack(content);
+
+                        if request.format == GatewayRequestFormat::RawSlim {
+                            content = self.scrub_nulls(content);
+                        }
                     }
                     replies.push(content);
 
@@ -158,6 +168,42 @@ impl GatewayHandler {
                     }
                 }
             }
+        }
+    }
+
+    fn scrub_nulls(&self, mut value: json::JsonValue) -> json::JsonValue {
+
+        if value.is_object() {
+            let mut hash = json::JsonValue::new_object();
+            loop {
+                let key = match value.entries().next() {
+                    Some((k, _)) => k.to_owned(),
+                    None => break,
+                };
+
+                let scrubbed = self.scrub_nulls(value.remove(&key));
+                if !scrubbed.is_null() {
+                    hash.insert(&key, scrubbed).ok();
+                }
+            }
+
+            hash
+
+        } else if value.is_array() {
+
+            let mut arr = json::JsonValue::new_array();
+            while value.len() > 0 {
+                let scrubbed = self.scrub_nulls(value.array_remove(0));
+                if !scrubbed.is_null() {
+                    arr.push(self.scrub_nulls(value.array_remove(0))).ok();
+                }
+            }
+
+            arr
+
+        } else {
+
+            value
         }
     }
 
@@ -240,7 +286,6 @@ impl GatewayHandler {
         let mut service: Option<String> = None;
         let mut params: Vec<json::JsonValue> = Vec::new();
         let query_iter = path_url.query_pairs().chain(data_url.query_pairs());
-        let serializer = idl::Parser::as_serializer(&self.idl);
 
         for (k, v) in query_iter {
             if k.eq("method") {
@@ -250,23 +295,24 @@ impl GatewayHandler {
             } else if k.eq("format") {
                 if v.eq("raw") {
                     format = GatewayRequestFormat::Raw;
+                } else if v.eq("rawslim") {
+                    format = GatewayRequestFormat::RawSlim;
                 }
             } else if k.eq("param") {
                 let v = json::parse(&v)
                     .or_else(|e| Err(format!("Cannot parse parameter value as JSON: {e}")))?;
-                //params.push(serializer.unpack(v));
                 params.push(v);
             }
         }
 
-        if format == GatewayRequestFormat::Raw {
+        if format.is_raw() {
             // The caller is giving us raw JSON as parameter values.
             // We need to turn them into Fieldmapper-encoded values before
             // passing them to OpenSRF.
             let mut packed_params = Vec::new();
             let mut iter = params.drain(0..);
             while let Some(param) = iter.next() {
-                packed_params.push(serializer.unpack(param));
+                packed_params.push(self.idl.unpack(param));
             }
             drop(iter);
             params = packed_params;
