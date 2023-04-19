@@ -15,12 +15,13 @@ use url::Url;
 
 const BUFSIZE: usize = 1024;
 const DEFAULT_PORT: u16 = 9682;
+const DEFAULT_ADDRESS: &str = "127.0.0.1";
 const DUMMY_BASE_URL: &str = "http://localhost";
 const HTTP_CONTENT_TYPE: &str = "Content-Type: text/json";
 
 /// Max time we'll wait for a reply from an OpenSRF request.
 /// TODO configurable?
-const RELAY_TIMEOUT: i32 = 120;
+const OSRF_RELAY_TIMEOUT: i32 = 120;
 
 struct GatewayRequest {
     stream: TcpStream,
@@ -104,6 +105,10 @@ impl GatewayHandler {
             }
         };
 
+        // TODO consider replying with chunks of data as responses
+        // arrive from opensrf instead of saving them all into
+        // an array and writing the array.
+
         let array = json::JsonValue::Array(replies);
         let data = array.dump();
         let length = format!("Content-length: {}", data.as_bytes().len());
@@ -131,6 +136,7 @@ impl GatewayHandler {
         let router = osrf::addr::RouterAddress::new(self.bus_conf().domain().name());
 
         // Avoid cloning the method which could be a big pile o' JSON.
+        // We know method is non-None here.
         let method = request.method.take().unwrap();
 
         let tm = osrf::message::TransportMessage::with_body(
@@ -149,13 +155,16 @@ impl GatewayHandler {
         let mut replies: Vec<json::JsonValue> = Vec::new();
 
         loop {
-            let tm = match self.bus().recv(RELAY_TIMEOUT, None)? {
+            // A request can result in any number of response messages.
+            let tm = match self.bus().recv(OSRF_RELAY_TIMEOUT, None)? {
                 Some(r) => r,
                 None => return Ok(replies), // Timeout
             };
 
             let mut complete = false;
-            replies.append(&mut self.extract_responses(&request.format, &mut complete, tm)?);
+            let mut batch = self.extract_responses(&request.format, &mut complete, tm)?;
+
+            replies.append(&mut batch);
 
             if complete {
                 // Received a Message-Complete status
@@ -165,16 +174,17 @@ impl GatewayHandler {
     }
 
     /// Extract API response values from each response message body.
+    ///
+    /// Returns Err if we receive an unexpected status/response value.
     fn extract_responses(
         &self,
         format: &GatewayRequestFormat,
         complete: &mut bool,
-        tm: osrf::message::TransportMessage
+        tm: osrf::message::TransportMessage,
     ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
         let mut replies: Vec<json::JsonValue> = Vec::new();
 
         for resp in tm.body().iter() {
-
             if let osrf::message::Payload::Result(resp) = resp.payload() {
                 let mut content = resp.content().to_owned();
 
@@ -190,19 +200,18 @@ impl GatewayHandler {
                 }
 
                 replies.push(content);
-
             } else if let osrf::message::Payload::Status(stat) = resp.payload() {
-
-                // TODO partial messages not supported here.  Result of
+                // TODO partial messages not supported (yet).  Result of
                 // osrf::client::Client not being Send-able, requiring
                 // us to use raw osrf::bus::Bus.  Reconsider.
                 match stat.status() {
-                      osrf::message::MessageStatus::Complete => {
-                          *complete = true;
-                          break;
-                      },
-                    | osrf::message::MessageStatus::Ok
-                    | osrf::message::MessageStatus::Continue => break,
+                    osrf::message::MessageStatus::Complete => {
+                        *complete = true;
+                        break;
+                    }
+                    osrf::message::MessageStatus::Ok | osrf::message::MessageStatus::Continue => {
+                        break
+                    }
                     _ => return Err(stat.to_json_value()),
                 }
             }
@@ -255,6 +264,10 @@ impl GatewayHandler {
         loop {
             let mut buffer = [0u8; BUFSIZE];
 
+            // Block on the first call to read() since we know the
+            // client is expecting to send us data.  After the first read,
+            // set the stream to nonblocking and keep pulling values
+            // until we read fewer bytes than we requested.
             let num_bytes = match request.stream.read(&mut buffer) {
                 Ok(n) => n,
                 Err(e) => match e.kind() {
@@ -285,20 +298,22 @@ impl GatewayHandler {
         }
     }
 
-    /// Translate a raw gateway request String into aParsedGatewayRequest.
+    /// Translate a raw gateway request String into a ParsedGatewayRequest.
     ///
     /// * `request` - Full HTTP request text including headers, etc.
+    ///
+    /// Returns Err if the request cannot be translated.
     fn parse_request(&self, text: &str) -> Result<ParsedGatewayRequest, String> {
         let mut lines = text.split("\r\n");
 
         let request = lines.next().ok_or(format!("Request has no request line"))?;
         let mut request_parts = request.split_whitespace();
 
-        let http_method = request_parts
+        let http_method = request_parts // GET, POST, etc.
             .next()
             .ok_or(format!("Request contains no method"))?;
 
-        let get_query = request_parts
+        let get_query = request_parts // Relative URL with query params
             .next()
             .ok_or(format!("Request contains no path"))?;
 
@@ -309,6 +324,7 @@ impl GatewayHandler {
                 // End of headers.
                 break;
             }
+            log::trace!("Gateway header: {header}");
         }
 
         // Anything after the headers is the request body.
@@ -339,11 +355,11 @@ impl GatewayHandler {
                 "service" => service = Some(v.to_string()),
                 "format" => format = v.as_ref().into(),
                 "param" => {
-                    let v = json::parse(&v)
-                        .or_else(|e| Err(format!("Cannot parse parameter: {e}")))?;
+                    let v =
+                        json::parse(&v).or_else(|e| Err(format!("Cannot parse parameter: {e}")))?;
                     params.push(v);
-                },
-                _ => {}, // ignore other stuff
+                }
+                _ => {} // ignore other stuff
             }
         }
 
@@ -423,6 +439,8 @@ impl GatewayStream {
         Ok(stream)
     }
 
+    // Setup our TcpListener with a timeout so mptc can periodically
+    // wake to check for shutdown, etc. signals.
     fn setup_listener(address: &str, port: u16) -> Result<TcpListener, String> {
         let destination = format!("{}:{}", address, port);
 
@@ -445,9 +463,8 @@ impl GatewayStream {
             .bind(&address.into())
             .or_else(|e| Err(format!("Error binding to address: {destination}: {e}")))?;
 
-        // 128 == backlog
         socket
-            .listen(128)
+            .listen(128) // 128 == backlog.
             .or_else(|e| Err(format!("Error listending on socket {destination}: {e}")))?;
 
         // We need a read timeout so we can wake periodically to check
@@ -502,10 +519,7 @@ impl mptc::RequestStream for GatewayStream {
 }
 
 fn main() {
-    let address = match env::var("EG_HTTP_GATEWAY_ADDRESS") {
-        Ok(v) => v,
-        _ => "127.0.0.1".to_string(),
-    };
+    let address = env::var("EG_HTTP_GATEWAY_ADDRESS").unwrap_or(DEFAULT_ADDRESS.to_string());
 
     let port = match env::var("EG_HTTP_GATEWAY_PORT") {
         Ok(v) => v.parse::<u16>().expect("Invalid port number"),
@@ -513,34 +527,42 @@ fn main() {
     };
 
     let init_ops = eg::init::InitOptions {
+        // As a gateway, we generally won't have access to the host
+        // settings, since that's typically on a private domain.
         skip_host_settings: true,
+
+        // Skip logging so we can use the loging config in
+        // the gateway() config instead.
         osrf_ops: osrf::init::InitOptions { skip_logging: true },
     };
 
-    let eg_ctx = eg::init::init_with_options(&init_ops).expect("Cannot initialize Evergreen");
+    // Connect to OpenSRF, parse the IDL
+    let eg_ctx = eg::init::init_with_options(&init_ops).expect("Evergreen init");
 
-    // Use the logging config from the gateway config chunk
+    // Setup logging with the gateway config
     let gateway_conf = eg_ctx
         .config()
         .gateway()
         .expect("No gateway configuration found");
-    let logger = osrf::logging::Logger::new(gateway_conf.logging()).expect("Creating logger");
 
-    logger.init().expect("Logger Init");
+    osrf::logging::Logger::new(gateway_conf.logging())
+        .expect("Creating logger")
+        .init()
+        .expect("Logger Init");
 
-    let stream = GatewayStream::new(eg_ctx, &address, port).expect("Cannot buidl stream");
+    let stream = GatewayStream::new(eg_ctx, &address, port).expect("Build stream");
     let mut server = mptc::Server::new(Box::new(stream));
 
     if let Ok(n) = env::var("EG_HTTP_GATEWAY_MAX_WORKERS") {
-        server.set_max_workers(n.parse::<usize>().expect("Invalid max-workers value"));
+        server.set_max_workers(n.parse::<usize>().expect("Invalid max-workers"));
     }
 
     if let Ok(n) = env::var("EG_HTTP_GATEWAY_MIN_WORKERS") {
-        server.set_min_workers(n.parse::<usize>().expect("Invalid min-workers value"));
+        server.set_min_workers(n.parse::<usize>().expect("Invalid min-workers"));
     }
 
     if let Ok(n) = env::var("EG_HTTP_GATEWAY_MAX_REQUESTS") {
-        server.set_max_worker_requests(n.parse::<usize>().expect("Invalid max-requests value"));
+        server.set_max_worker_requests(n.parse::<usize>().expect("Invalid max-requests"));
     }
 
     server.run();
