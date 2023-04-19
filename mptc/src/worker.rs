@@ -1,10 +1,10 @@
-use std::thread;
+use super::{Request, RequestHandler};
 use std::fmt;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use super::{Request, RequestHandler};
+use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WorkerState {
@@ -37,7 +37,11 @@ pub struct WorkerStateEvent {
 
 impl fmt::Display for WorkerStateEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "WorkerStateEvent worker={} state={}", self.worker_id, self.state)
+        write!(
+            f,
+            "WorkerStateEvent worker={} state={}",
+            self.worker_id, self.state
+        )
     }
 }
 
@@ -75,7 +79,11 @@ impl WorkerInstance {
 
 impl fmt::Display for WorkerInstance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "WorkerInstance id={} state={}", self.worker_id, self.state)
+        write!(
+            f,
+            "WorkerInstance id={} state={}",
+            self.worker_id, self.state
+        )
     }
 }
 
@@ -131,7 +139,8 @@ impl Worker {
     }
 
     pub fn run(&mut self) {
-        log::debug!("{self} starting");
+        log::trace!("{self} starting");
+
         self.handler.thread_start().unwrap(); // TODO
 
         while self.request_count < self.max_requests {
@@ -148,7 +157,7 @@ impl Worker {
                         log::debug!("{self} exiting listen loop on shutdown");
                         break;
                     }
-                },
+                }
                 Err(e) => {
                     log::error!("{self} Request failed: {e}");
                     break;
@@ -156,7 +165,7 @@ impl Worker {
             }
         }
 
-        log::debug!("{self} exiting on shutdown or max requests");
+        log::debug!("{self} exiting on shutdown / max requests");
 
         self.set_as_done().ok(); // we're done.  ignore errors.
 
@@ -172,18 +181,16 @@ impl Worker {
 
         loop {
             if self.shutdown.load(Ordering::Relaxed) {
-                log::info!("We received a stop signal, exiting");
+                log::debug!("We received a stop signal, exiting");
                 return Ok(true);
             }
 
             request = match self.to_worker_rx.recv_timeout(duration) {
                 Ok(r) => r,
-                Err(e) => {
-                    match e {
-                        mpsc::RecvTimeoutError::Timeout => continue,
-                        _ => return Err(format!("{self} exiting on failed receive: {e}")),
-                    }
-                }
+                Err(e) => match e {
+                    mpsc::RecvTimeoutError::Timeout => continue,
+                    _ => return Err(format!("{self} exiting on failed receive: {e}")),
+                },
             };
 
             break;
@@ -197,6 +204,10 @@ impl Worker {
 
 impl fmt::Display for Worker {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Worker id={} requests={}", self.worker_id, self.request_count)
+        write!(
+            f,
+            "Worker id={} requests={}",
+            self.worker_id, self.request_count
+        )
     }
 }

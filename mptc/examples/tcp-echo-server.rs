@@ -1,7 +1,7 @@
-use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write}; // needed by TcpStream
-use std::any::Any;
 use mptc;
+use std::any::Any;
+use std::io::{Read, Write}; // needed by TcpStream
+use std::net::{TcpListener, TcpStream};
 
 struct TcpEchoRequest {
     stream: TcpStream,
@@ -9,7 +9,8 @@ struct TcpEchoRequest {
 
 impl TcpEchoRequest {
     pub fn downcast(h: &mut Box<dyn mptc::Request>) -> &mut TcpEchoRequest {
-        h.as_any_mut().downcast_mut::<TcpEchoRequest>()
+        h.as_any_mut()
+            .downcast_mut::<TcpEchoRequest>()
             .expect("TcpEchoRequest::downcast() given wrong type!")
     }
 }
@@ -49,8 +50,14 @@ impl mptc::RequestHandler for TcpEchoHandler {
         // Trim the null bytes from our read buffer.
         let buffer: Vec<u8> = buffer.iter().map(|c| *c).filter(|c| c != &0u8).collect();
 
-        request.stream.write_all(buffer.as_slice()).expect("Stream.write()");
-        request.stream.shutdown(std::net::Shutdown::Both).expect("shutdown()");
+        request
+            .stream
+            .write_all(buffer.as_slice())
+            .expect("Stream.write()");
+        request
+            .stream
+            .shutdown(std::net::Shutdown::Both)
+            .expect("shutdown()");
 
         Ok(())
     }
@@ -65,7 +72,9 @@ impl mptc::RequestStream for TcpEchoStream {
     fn next(&mut self, _timeout: u64) -> Result<Option<Box<dyn mptc::Request>>, String> {
         // NOTE use the socket2 crate to apply read timeouts to TcpStreams
 
-        let (stream, _addr) = self.listener.accept()
+        let (stream, _addr) = self
+            .listener
+            .accept()
             .or_else(|e| Err(format!("Accept failed: {e}")))?;
 
         let request = TcpEchoRequest { stream: stream };
@@ -74,7 +83,7 @@ impl mptc::RequestStream for TcpEchoStream {
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         self.id_gen += 1;
-        let h = TcpEchoHandler {id: self.id_gen};
+        let h = TcpEchoHandler { id: self.id_gen };
         Box::new(h)
     }
 }

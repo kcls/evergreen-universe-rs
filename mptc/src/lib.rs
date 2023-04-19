@@ -1,5 +1,5 @@
-pub mod worker;
 pub mod server;
+pub mod worker;
 
 pub use server::Server;
 
@@ -15,7 +15,6 @@ pub const DEFAULT_MAX_WORKERS: usize = 256;
 
 /// Each thread processes this many requests before exiting.
 pub const DEFAULT_MAX_WORKER_REQS: usize = 10_000;
-
 
 pub trait Request: Send + std::any::Any {
     /// Needed for downcasting a generic Request into the
@@ -51,5 +50,3 @@ pub trait RequestStream {
     /// Factory for creating new RequestHandler instances.
     fn new_handler(&mut self) -> Box<dyn RequestHandler>;
 }
-
-

@@ -1,17 +1,17 @@
 //! Evergreen HTTP+JSON API Server
+use eg::idl;
 use evergreen as eg;
+use mptc;
 use opensrf as osrf;
 use osrf::client::DataSerializer;
-use eg::idl;
 use socket2::{Domain, Socket, Type};
-use std::time::Duration;
+use std::any::Any;
 use std::env;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
+use std::time::Duration;
 use url::Url;
-use std::any::Any;
-use mptc;
 
 const BUFSIZE: usize = 1024;
 const DEFAULT_PORT: u16 = 9682;
@@ -28,7 +28,8 @@ struct GatewayRequest {
 
 impl GatewayRequest {
     pub fn downcast(h: &mut Box<dyn mptc::Request>) -> &mut GatewayRequest {
-        h.as_any_mut().downcast_mut::<GatewayRequest>()
+        h.as_any_mut()
+            .downcast_mut::<GatewayRequest>()
             .expect("GatewayRequest::downcast() given wrong type!")
     }
 }
@@ -95,8 +96,7 @@ impl GatewayHandler {
         let data = array.dump();
         let length = format!("Content-length: {}", data.as_bytes().len());
 
-        let response =
-            format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}");
+        let response = format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}");
 
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
             return Err(format!("Error writing to client: {e}"));
@@ -109,12 +109,11 @@ impl GatewayHandler {
         &mut self,
         request: &mut ParsedGatewayRequest,
     ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
-
         let recipient = osrf::addr::ServiceAddress::new(&request.service);
 
         // Send every request to the router on our gateway domain.
-        let router = osrf::addr::RouterAddress::new(
-            self.osrf_conf.gateway().unwrap().domain().name());
+        let router =
+            osrf::addr::RouterAddress::new(self.osrf_conf.gateway().unwrap().domain().name());
 
         // Avoid cloning the method which could be a big pile o' JSON.
         let method = request.method.take().unwrap();
@@ -126,8 +125,8 @@ impl GatewayHandler {
             osrf::message::Message::new(
                 osrf::message::MessageType::Request,
                 1, // thread trace
-                osrf::message::Payload::Method(method)
-            )
+                osrf::message::Payload::Method(method),
+            ),
         );
 
         let mut replies: Vec<json::JsonValue> = Vec::new();
@@ -135,7 +134,6 @@ impl GatewayHandler {
         self.bus().send_to(&tm, router.as_str())?;
 
         loop {
-
             let tm = match self.bus().recv(RELAY_TIMEOUT, None)? {
                 Some(r) => r,
                 None => return Ok(replies), // timeout
@@ -143,7 +141,6 @@ impl GatewayHandler {
 
             for resp in tm.body().iter() {
                 if let osrf::message::Payload::Result(resp) = resp.payload() {
-
                     let mut content = resp.content().to_owned();
                     if request.format.is_raw() {
                         // JSON values arrive as Fieldmapper-encoded objects.
@@ -156,14 +153,14 @@ impl GatewayHandler {
                         }
                     }
                     replies.push(content);
-
                 } else if let osrf::message::Payload::Status(stat) = resp.payload() {
                     // TODO partial messages not supported here.
                     // Result of osrf::client::Client not being Send-able :\
                     // Reconsider.
                     match stat.status() {
                         osrf::message::MessageStatus::Complete => return Ok(replies),
-                        osrf::message::MessageStatus::Ok | osrf::message::MessageStatus::Continue => {},
+                        osrf::message::MessageStatus::Ok
+                        | osrf::message::MessageStatus::Continue => {}
                         _ => return Err(stat.to_json_value()),
                     }
                 }
@@ -171,8 +168,12 @@ impl GatewayHandler {
         }
     }
 
+    /// Remove all JSON NULL's.
+    ///
+    /// Used to support the RawSlim format.  Useful since raw JSON
+    /// versions of Fieldmapper/IDL objects often have lots of null
+    /// values, especially with virtual fields.
     fn scrub_nulls(&self, mut value: json::JsonValue) -> json::JsonValue {
-
         if value.is_object() {
             let mut hash = json::JsonValue::new_object();
             loop {
@@ -183,26 +184,22 @@ impl GatewayHandler {
 
                 let scrubbed = self.scrub_nulls(value.remove(&key));
                 if !scrubbed.is_null() {
-                    hash.insert(&key, scrubbed).ok();
+                    hash.insert(&key, scrubbed).unwrap();
                 }
             }
 
             hash
-
         } else if value.is_array() {
-
             let mut arr = json::JsonValue::new_array();
             while value.len() > 0 {
                 let scrubbed = self.scrub_nulls(value.array_remove(0));
                 if !scrubbed.is_null() {
-                    arr.push(self.scrub_nulls(value.array_remove(0))).ok();
+                    arr.push(self.scrub_nulls(value.array_remove(0))).unwrap();
                 }
             }
 
             arr
-
         } else {
-
             value
         }
     }
@@ -236,7 +233,8 @@ impl GatewayHandler {
             // If the read exceeds the buffer size, set our stream to
             // non-blocking and keep reading until there's nothing left
             // to read.
-            request.stream
+            request
+                .stream
                 .set_nonblocking(true)
                 .or_else(|e| Err(format!("Set nonblocking failed: {e}")))?;
         }
@@ -337,7 +335,6 @@ impl GatewayHandler {
 }
 
 impl mptc::RequestHandler for GatewayHandler {
-
     fn thread_start(&mut self) -> Result<(), String> {
         let bus = osrf::bus::Bus::new(self.bus_conf())?;
         self.bus = Some(bus);
@@ -352,11 +349,15 @@ impl mptc::RequestHandler for GatewayHandler {
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let mut request = GatewayRequest::downcast(&mut request);
 
+        log::debug!("Gateway request received from {}", request.address);
+
         let result = self.handle_request(&mut request);
 
         // Always try to shut down the request stream regardless of
         // what happened in our request handler.
-        request.stream.shutdown(std::net::Shutdown::Both)
+        request
+            .stream
+            .shutdown(std::net::Shutdown::Both)
             .or_else(|e| Err(format!("Error shutting down worker stream socket: {e}")))?;
 
         result
@@ -369,14 +370,10 @@ struct GatewayStream {
 }
 
 impl GatewayStream {
-
     fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> Result<Self, String> {
         let listener = GatewayStream::setup_listener(address, port)?;
 
-        let stream = GatewayStream {
-            listener,
-            eg_ctx,
-        };
+        let stream = GatewayStream { listener, eg_ctx };
 
         Ok(stream)
     }
@@ -421,7 +418,6 @@ impl GatewayStream {
 }
 
 impl mptc::RequestStream for GatewayStream {
-
     /// Returns the next client request stream.
     ///
     /// We don't use 'timeout' here since the timeout is applied directly
@@ -444,10 +440,7 @@ impl mptc::RequestStream for GatewayStream {
             }
         };
 
-        let request = GatewayRequest {
-            stream,
-            address,
-        };
+        let request = GatewayRequest { stream, address };
 
         Ok(Some(Box::new(request)))
     }
@@ -479,11 +472,13 @@ fn main() {
         osrf_ops: osrf::init::InitOptions { skip_logging: true },
     };
 
-    let eg_ctx = eg::init::init_with_options(&init_ops)
-        .expect("Cannot initialize Evergreen");
+    let eg_ctx = eg::init::init_with_options(&init_ops).expect("Cannot initialize Evergreen");
 
     // Use the logging config from the gateway config chunk
-    let gateway_conf = eg_ctx.config().gateway().expect("No gateway configuration found");
+    let gateway_conf = eg_ctx
+        .config()
+        .gateway()
+        .expect("No gateway configuration found");
     let logger = osrf::logging::Logger::new(gateway_conf.logging()).expect("Creating logger");
 
     logger.init().expect("Logger Init");
@@ -492,20 +487,16 @@ fn main() {
     let mut server = mptc::Server::new(Box::new(stream));
 
     if let Ok(n) = env::var("EG_HTTP_GATEWAY_MAX_WORKERS") {
-        server.set_max_workers(
-            n.parse::<usize>().expect("Invalid max-workers value"));
+        server.set_max_workers(n.parse::<usize>().expect("Invalid max-workers value"));
     }
 
     if let Ok(n) = env::var("EG_HTTP_GATEWAY_MIN_WORKERS") {
-        server.set_min_workers(
-            n.parse::<usize>().expect("Invalid min-workers value"));
+        server.set_min_workers(n.parse::<usize>().expect("Invalid min-workers value"));
     }
 
     if let Ok(n) = env::var("EG_HTTP_GATEWAY_MAX_REQUESTS") {
-        server.set_max_worker_requests(
-            n.parse::<usize>().expect("Invalid max-requests value"));
+        server.set_max_worker_requests(n.parse::<usize>().expect("Invalid max-requests value"));
     }
 
     server.run();
 }
-

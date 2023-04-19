@@ -266,7 +266,6 @@ impl Client {
         })
     }
 
-
     pub fn singleton(&self) -> &Rc<RefCell<ClientSingleton>> {
         &self.singleton
     }

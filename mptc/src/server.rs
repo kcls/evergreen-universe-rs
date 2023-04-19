@@ -1,11 +1,11 @@
-use std::thread;
+use super::worker::{Worker, WorkerInstance, WorkerState, WorkerStateEvent};
+use super::{Request, RequestStream};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use super::worker::{WorkerStateEvent, WorkerState, WorkerInstance, Worker};
-use super::{Request, RequestStream};
+use std::thread;
+use std::time::Duration;
 
 pub struct Server {
     worker_id_gen: u64,
@@ -26,9 +26,7 @@ pub struct Server {
 }
 
 impl Server {
-
     pub fn new(stream: Box<dyn RequestStream>) -> Server {
-
         let (tx, rx): (
             mpsc::Sender<WorkerStateEvent>,
             mpsc::Receiver<WorkerStateEvent>,
@@ -82,8 +80,7 @@ impl Server {
         ) = mpsc::channel();
 
         let handle = thread::spawn(move || {
-            let mut w = Worker::new(
-                worker_id, max_reqs, to_parent_tx, rx, shutdown, handler);
+            let mut w = Worker::new(worker_id, max_reqs, to_parent_tx, rx, shutdown, handler);
             w.run();
         });
 
@@ -115,6 +112,7 @@ impl Server {
 
     fn remove_worker(&mut self, worker_id: &u64, respawn: bool) {
         log::trace!("server: removing worker {}", worker_id);
+
         if let Some(worker) = self.workers.remove(worker_id) {
             if let Err(e) = worker.join_handle.join() {
                 log::error!("Worker join failed with: {e:?}");
@@ -154,7 +152,7 @@ impl Server {
         log::trace!("Workers idle={idle} active={active}");
 
         if idle == 0 {
-            // Try to keep at least one idle worker on hand.
+            // Try to keep at least one spare worker.
             if active < self.max_workers {
                 self.start_one_worker();
             } else {
@@ -174,7 +172,7 @@ impl Server {
             .collect();
 
         for worker_id in failed {
-            log::info!("Found a thread that exited ungracefully: {worker_id}");
+            log::debug!("Found a thread that exited ungracefully: {worker_id}");
             self.remove_worker(&worker_id, true);
         }
     }
@@ -185,9 +183,8 @@ impl Server {
     /// becomes available or a shutdown signal is received.
     fn housekeeping(&mut self, block: bool) -> bool {
         loop {
-
             if self.shutdown.load(Ordering::Relaxed) {
-                log::info!("We received a stop signal, exiting");
+                log::debug!("We received a stop signal, exiting");
                 return true;
             }
 
@@ -202,8 +199,7 @@ impl Server {
 
                 // Wait up to 1 second for a worker state event, then
                 // resume housekeeping.
-                if let Ok(evt) =
-                    self.to_parent_rx.recv_timeout(Duration::from_secs(1)) {
+                if let Ok(evt) = self.to_parent_rx.recv_timeout(Duration::from_secs(1)) {
                     self.handle_worker_event(&evt);
                 }
             }
@@ -246,7 +242,7 @@ impl Server {
                 Ok(op) => match op {
                     Some(s) => self.dispatch_request(s),
                     None => {} // timed out.
-                }
+                },
                 Err(e) => {
                     log::error!("Exiting on stream error: {e}");
                     // TODO set shutdown?
@@ -272,7 +268,6 @@ impl Server {
     fn dispatch_request(&mut self, request: Box<dyn Request>) {
         let wid = self.next_idle_worker();
         if let Some(worker) = self.workers.get_mut(&wid) {
-
             worker.state = WorkerState::Active;
 
             if let Err(e) = worker.to_worker_tx.send(request) {
@@ -287,10 +282,13 @@ impl Server {
     }
 
     fn next_idle_worker(&mut self) -> u64 {
-
         // 1. Find an idle worker
-        if let Some((k, _)) =
-            self.workers.iter().filter(|(_, w)| w.state() == &WorkerState::Idle).next() {
+        if let Some((k, _)) = self
+            .workers
+            .iter()
+            .filter(|(_, w)| w.state() == &WorkerState::Idle)
+            .next()
+        {
             return *k; // &u64
         }
 
@@ -302,12 +300,15 @@ impl Server {
         log::warn!("Max workers reached.  Cannot spawn new worker");
 
         loop {
-
             // 3. Wait for a worker to become idle.
             self.housekeeping(true);
 
-            if let Some((k, _)) =
-                self.workers.iter().filter(|(_, w)| w.state() == &WorkerState::Idle).next() {
+            if let Some((k, _)) = self
+                .workers
+                .iter()
+                .filter(|(_, w)| w.state() == &WorkerState::Idle)
+                .next()
+            {
                 return *k; // &u64
             }
         }
@@ -330,7 +331,4 @@ impl Server {
 
         Ok(())
     }
-
-
 }
-
