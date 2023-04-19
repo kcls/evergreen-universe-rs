@@ -19,6 +19,7 @@ const DUMMY_BASE_URL: &str = "http://localhost";
 const HTTP_CONTENT_TYPE: &str = "Content-Type: text/json";
 
 /// Max time we'll wait for a reply from an OpenSRF request.
+/// TODO configurable?
 const RELAY_TIMEOUT: i32 = 120;
 
 struct GatewayRequest {
@@ -47,6 +48,16 @@ enum GatewayRequestFormat {
     Raw,
 }
 
+impl From<&str> for GatewayRequestFormat {
+    fn from(s: &str) -> GatewayRequestFormat {
+        match s {
+            "raw" => Self::Raw,
+            "rawslim" => Self::RawSlim,
+            _ => Self::Fieldmapper,
+        }
+    }
+}
+
 impl GatewayRequestFormat {
     fn is_raw(&self) -> bool {
         self == &Self::Raw || self == &Self::RawSlim
@@ -58,6 +69,7 @@ struct ParsedGatewayRequest {
     service: String,
     method: Option<osrf::message::Method>,
     format: GatewayRequestFormat,
+    http_method: String,
 }
 
 struct GatewayHandler {
@@ -88,7 +100,7 @@ impl GatewayHandler {
             Ok(r) => r,
             Err(e) => {
                 leader = "HTTP/1.1 400 Bad Request";
-                vec![e]
+                vec![e] // Return the raw error message as JSON.
             }
         };
 
@@ -96,7 +108,11 @@ impl GatewayHandler {
         let data = array.dump();
         let length = format!("Content-length: {}", data.as_bytes().len());
 
-        let response = format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}");
+        let response = match req.http_method.as_str() {
+            "HEAD" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n"),
+            "GET" | "POST" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}"),
+            _ => format!("HTTP/1.1 405 Method Not Allowed"),
+        };
 
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
             return Err(format!("Error writing to client: {e}"));
@@ -112,8 +128,7 @@ impl GatewayHandler {
         let recipient = osrf::addr::ServiceAddress::new(&request.service);
 
         // Send every request to the router on our gateway domain.
-        let router =
-            osrf::addr::RouterAddress::new(self.osrf_conf.gateway().unwrap().domain().name());
+        let router = osrf::addr::RouterAddress::new(self.bus_conf().domain().name());
 
         // Avoid cloning the method which could be a big pile o' JSON.
         let method = request.method.take().unwrap();
@@ -129,43 +144,71 @@ impl GatewayHandler {
             ),
         );
 
-        let mut replies: Vec<json::JsonValue> = Vec::new();
-
         self.bus().send_to(&tm, router.as_str())?;
+
+        let mut replies: Vec<json::JsonValue> = Vec::new();
 
         loop {
             let tm = match self.bus().recv(RELAY_TIMEOUT, None)? {
                 Some(r) => r,
-                None => return Ok(replies), // timeout
+                None => return Ok(replies), // Timeout
             };
 
-            for resp in tm.body().iter() {
-                if let osrf::message::Payload::Result(resp) = resp.payload() {
-                    let mut content = resp.content().to_owned();
-                    if request.format.is_raw() {
-                        // JSON values arrive as Fieldmapper-encoded objects.
-                        // Unpacking them via the IDL turns them back
-                        // into raw JSON objects.
-                        content = self.idl.unpack(content);
+            let mut complete = false;
+            replies.append(&mut self.extract_responses(&request.format, &mut complete, tm)?);
 
-                        if request.format == GatewayRequestFormat::RawSlim {
-                            content = self.scrub_nulls(content);
-                        }
+            if complete {
+                // Received a Message-Complete status
+                return Ok(replies);
+            }
+        }
+    }
+
+    /// Extract API response values from each response message body.
+    fn extract_responses(
+        &self,
+        format: &GatewayRequestFormat,
+        complete: &mut bool,
+        tm: osrf::message::TransportMessage
+    ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
+        let mut replies: Vec<json::JsonValue> = Vec::new();
+
+        for resp in tm.body().iter() {
+
+            if let osrf::message::Payload::Result(resp) = resp.payload() {
+                let mut content = resp.content().to_owned();
+
+                if format.is_raw() {
+                    // JSON values arrive as Fieldmapper-encoded objects.
+                    // Unpacking them via the IDL turns them back
+                    // into raw JSON objects.
+                    content = self.idl.unpack(content);
+
+                    if format == &GatewayRequestFormat::RawSlim {
+                        content = self.scrub_nulls(content);
                     }
-                    replies.push(content);
-                } else if let osrf::message::Payload::Status(stat) = resp.payload() {
-                    // TODO partial messages not supported here.
-                    // Result of osrf::client::Client not being Send-able :\
-                    // Reconsider.
-                    match stat.status() {
-                        osrf::message::MessageStatus::Complete => return Ok(replies),
-                        osrf::message::MessageStatus::Ok
-                        | osrf::message::MessageStatus::Continue => {}
-                        _ => return Err(stat.to_json_value()),
-                    }
+                }
+
+                replies.push(content);
+
+            } else if let osrf::message::Payload::Status(stat) = resp.payload() {
+
+                // TODO partial messages not supported here.  Result of
+                // osrf::client::Client not being Send-able, requiring
+                // us to use raw osrf::bus::Bus.  Reconsider.
+                match stat.status() {
+                      osrf::message::MessageStatus::Complete => {
+                          *complete = true;
+                          break;
+                      },
+                    | osrf::message::MessageStatus::Ok
+                    | osrf::message::MessageStatus::Continue => break,
+                    _ => return Err(stat.to_json_value()),
                 }
             }
         }
+
+        Ok(replies)
     }
 
     /// Remove all JSON NULL's.
@@ -204,6 +247,8 @@ impl GatewayHandler {
         }
     }
 
+    /// Pulls the raw request content from the socket and returns it
+    /// as a String.
     fn read_request(&mut self, request: &mut GatewayRequest) -> Result<String, String> {
         let mut text = String::new();
 
@@ -240,66 +285,65 @@ impl GatewayHandler {
         }
     }
 
-    /// Translate a gateway request into an OpenSRF Method and service name,
-    /// which can be relayed to the OpenSRF network.
+    /// Translate a raw gateway request String into aParsedGatewayRequest.
     ///
     /// * `request` - Full HTTP request text including headers, etc.
     fn parse_request(&self, text: &str) -> Result<ParsedGatewayRequest, String> {
-        let mut parts = text.split("\r\n");
+        let mut lines = text.split("\r\n");
 
-        let request = parts.next().ok_or(format!("Request has no request line"))?;
+        let request = lines.next().ok_or(format!("Request has no request line"))?;
         let mut request_parts = request.split_whitespace();
 
-        let _http_method = request_parts
+        let http_method = request_parts
             .next()
             .ok_or(format!("Request contains no method"))?;
 
-        let pathquery = request_parts
+        let get_query = request_parts
             .next()
             .ok_or(format!("Request contains no path"))?;
 
         // For now, we don't really care about the headers.
         // Gobble them up and discard them.
-        while let Some(header) = parts.next() {
+        while let Some(header) = lines.next() {
             if header.eq("") {
                 // End of headers.
                 break;
             }
         }
 
-        let path_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, pathquery))
-            .or_else(|e| Err(format!("Error parsing request URL: {e}")))?;
-
         // Anything after the headers is the request body.
-        // Join the remaining lines into a data string.
-        let data = parts.collect::<Vec<&str>>().join("");
+        // Join the remaining lines into a single string.
+        let body = lines.collect::<Vec<&str>>().join("");
+
+        // Parse the GET portion of the URL so we can extract any params
+        // found there.
+        let get_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, get_query))
+            .or_else(|e| Err(format!("Error parsing request URL: {e}")))?;
 
         // Parse the request body as a URL so we can unpack any
         // POST params and add them to our parameter list.
-        let data_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, data))
+        let post_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, body))
             .or_else(|e| Err(format!("Error parsing request body as URL: {e}")))?;
 
-        let mut format = GatewayRequestFormat::Fieldmapper;
         let mut method: Option<String> = None;
         let mut service: Option<String> = None;
         let mut params: Vec<json::JsonValue> = Vec::new();
-        let query_iter = path_url.query_pairs().chain(data_url.query_pairs());
+        let mut format = GatewayRequestFormat::Fieldmapper;
+
+        // Pack GET and POST params into a single iterator.
+        let query_iter = get_url.query_pairs().chain(post_url.query_pairs());
 
         for (k, v) in query_iter {
-            if k.eq("method") {
-                method = Some(v.to_string());
-            } else if k.eq("service") {
-                service = Some(v.to_string());
-            } else if k.eq("format") {
-                if v.eq("raw") {
-                    format = GatewayRequestFormat::Raw;
-                } else if v.eq("rawslim") {
-                    format = GatewayRequestFormat::RawSlim;
-                }
-            } else if k.eq("param") {
-                let v = json::parse(&v)
-                    .or_else(|e| Err(format!("Cannot parse parameter value as JSON: {e}")))?;
-                params.push(v);
+            match k.as_ref() {
+                "method" => method = Some(v.to_string()),
+                "service" => service = Some(v.to_string()),
+                "format" => format = v.as_ref().into(),
+                "param" => {
+                    let v = json::parse(&v)
+                        .or_else(|e| Err(format!("Cannot parse parameter: {e}")))?;
+                    params.push(v);
+                },
+                _ => {}, // ignore other stuff
             }
         }
 
@@ -330,6 +374,7 @@ impl GatewayHandler {
             format,
             service: service.unwrap(),
             method: Some(m),
+            http_method: http_method.to_string(),
         })
     }
 }
