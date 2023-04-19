@@ -15,6 +15,7 @@ use mptc;
 const BUFSIZE: usize = 1024;
 const DEFAULT_PORT: u16 = 9682;
 const DUMMY_BASE_URL: &str = "http://localhost";
+const HTTP_CONTENT_TYPE: &str = "Content-Type: text/json";
 
 /// Max time we'll wait for a reply from an OpenSRF request.
 const RELAY_TIMEOUT: i32 = 120;
@@ -37,6 +38,19 @@ impl mptc::Request for GatewayRequest {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum GatewayRequestFormat {
+    Fieldmapper,
+    Raw,
+}
+
+#[derive(Debug)]
+struct ParsedGatewayRequest {
+    service: String,
+    method: Option<osrf::message::Method>,
+    format: GatewayRequestFormat,
+}
+
 struct GatewayHandler {
     bus: Option<osrf::bus::Bus>,
     osrf_conf: Arc<osrf::conf::Config>,
@@ -57,14 +71,11 @@ impl GatewayHandler {
 
     fn handle_request(&mut self, request: &mut GatewayRequest) -> Result<(), String> {
         let text = self.read_request(request)?;
-        let (service, method) = self.translate_request(&text)?;
+        let mut req = self.parse_request(&text)?;
 
-        log::trace!("Parsed HTTP request as method: {}", method.to_json_value());
-
-        let content_type = "Content-Type: text/json";
         let mut leader = "HTTP/1.1 200 OK";
 
-        let replies = match self.relay_to_osrf(&service, method) {
+        let replies = match self.relay_to_osrf(&mut req) {
             Ok(r) => r,
             Err(e) => {
                 leader = "HTTP/1.1 400 Bad Request";
@@ -77,7 +88,7 @@ impl GatewayHandler {
         let length = format!("Content-length: {}", data.as_bytes().len());
 
         let response =
-            format!("{leader}\r\n{content_type}\r\n{length}\r\n\r\n{data}");
+            format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}");
 
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
             return Err(format!("Error writing to client: {e}"));
@@ -88,15 +99,17 @@ impl GatewayHandler {
 
     fn relay_to_osrf(
         &mut self,
-        service: &str,
-        method: osrf::message::Method
+        request: &mut ParsedGatewayRequest,
     ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
 
-        let recipient = osrf::addr::ServiceAddress::new(service);
+        let recipient = osrf::addr::ServiceAddress::new(&request.service);
 
         // Send every request to the router on our gateway domain.
         let router = osrf::addr::RouterAddress::new(
             self.osrf_conf.gateway().unwrap().domain().name());
+
+        // Avoid cloning the method which could be a big pile o' JSON.
+        let method = request.method.take().unwrap();
 
         let tm = osrf::message::TransportMessage::with_body(
             recipient.as_str(),
@@ -113,7 +126,6 @@ impl GatewayHandler {
 
         self.bus().send_to(&tm, router.as_str())?;
 
-        // TODO support non-serialized responses.
         let serializer = idl::Parser::as_serializer(&self.idl);
 
         loop {
@@ -126,7 +138,13 @@ impl GatewayHandler {
             for resp in tm.body().iter() {
                 if let osrf::message::Payload::Result(resp) = resp.payload() {
 
-                    let content = serializer.pack(resp.content().to_owned());
+                    let mut content = resp.content().to_owned();
+                    if request.format == GatewayRequestFormat::Raw {
+                        // JSON values arrive as Fieldmapper-encoded objects.
+                        // Unpacking them via the serializer turns them back
+                        // into raw JSON objects.
+                        content = serializer.unpack(content);
+                    }
                     replies.push(content);
 
                 } else if let osrf::message::Payload::Status(stat) = resp.payload() {
@@ -182,7 +200,7 @@ impl GatewayHandler {
     /// which can be relayed to the OpenSRF network.
     ///
     /// * `request` - Full HTTP request text including headers, etc.
-    fn translate_request(&self, text: &str) -> Result<(String, osrf::message::Method), String> {
+    fn parse_request(&self, text: &str) -> Result<ParsedGatewayRequest, String> {
         let mut parts = text.split("\r\n");
 
         let request = parts.next().ok_or(format!("Request has no request line"))?;
@@ -217,6 +235,7 @@ impl GatewayHandler {
         let data_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, data))
             .or_else(|e| Err(format!("Error parsing request body as URL: {e}")))?;
 
+        let mut format = GatewayRequestFormat::Fieldmapper;
         let mut method: Option<String> = None;
         let mut service: Option<String> = None;
         let mut params: Vec<json::JsonValue> = Vec::new();
@@ -228,11 +247,29 @@ impl GatewayHandler {
                 method = Some(v.to_string());
             } else if k.eq("service") {
                 service = Some(v.to_string());
+            } else if k.eq("format") {
+                if v.eq("raw") {
+                    format = GatewayRequestFormat::Raw;
+                }
             } else if k.eq("param") {
                 let v = json::parse(&v)
                     .or_else(|e| Err(format!("Cannot parse parameter value as JSON: {e}")))?;
-                params.push(serializer.unpack(v));
+                //params.push(serializer.unpack(v));
+                params.push(v);
             }
+        }
+
+        if format == GatewayRequestFormat::Raw {
+            // The caller is giving us raw JSON as parameter values.
+            // We need to turn them into Fieldmapper-encoded values before
+            // passing them to OpenSRF.
+            let mut packed_params = Vec::new();
+            let mut iter = params.drain(0..);
+            while let Some(param) = iter.next() {
+                packed_params.push(serializer.unpack(param));
+            }
+            drop(iter);
+            params = packed_params;
         }
 
         if method.is_none() {
@@ -245,7 +282,11 @@ impl GatewayHandler {
 
         let m = osrf::message::Method::new(method.as_ref().unwrap(), params);
 
-        Ok((service.unwrap(), m))
+        Ok(ParsedGatewayRequest {
+            format,
+            service: service.unwrap(),
+            method: Some(m),
+        })
     }
 }
 
@@ -422,63 +463,3 @@ fn main() {
     server.run();
 }
 
-
-/*
-
-
-    fn handle_request(&mut self, mut stream: TcpStream) {
-        let client_ip = match stream.peer_addr() {
-            Ok(ip) => ip,
-            Err(e) => {
-                log::error!("Could not determine client IP address: {e}");
-                return;
-            }
-        };
-
-        log::debug!("Handling request from client {client_ip}");
-
-        let text = match self.read_request(&mut stream) {
-            Ok(t) => t,
-            Err(e) => {
-                // TODO 500 internal server error
-                log::error!("Error reading TCP stream: {e}");
-                return;
-            }
-        };
-
-        let (service, method) = match self.translate_request(&text) {
-            Ok((s, m)) => (s, m),
-            Err(e) => {
-                // TODO send 400 bad request error
-                log::error!("Error translating HTTP request: {e}");
-                return;
-            }
-        };
-
-        let leader = "HTTP/1.1 200 OK";
-        let content_type = "Content-Type: text/json";
-        let data = format!(
-            "[{}]",
-            method
-                .params()
-                .iter()
-                .map(|p| p.dump())
-                .collect::<Vec<String>>()
-                .join(",")
-        );
-        let content_length = format!("Content-length: {}", data.as_bytes().len());
-
-        let reply = format!("{leader}\r\n{content_type}\r\n{content_length}\r\n\r\n{data}");
-
-        if let Err(e) = stream.write_all(reply.as_bytes()) {
-            log::error!("Error writing data to client: {e}");
-        }
-
-        if let Err(e) = stream.shutdown(std::net::Shutdown::Both) {
-            log::error!("Error shutting down TCP connection: {}", e);
-        }
-    }
-
-}
-
-*/
