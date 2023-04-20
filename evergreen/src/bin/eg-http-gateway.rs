@@ -10,7 +10,7 @@ use std::env;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use url::Url;
 
 const BUFSIZE: usize = 1024;
@@ -26,6 +26,8 @@ const OSRF_RELAY_TIMEOUT: i32 = 120;
 struct GatewayRequest {
     stream: TcpStream,
     address: SocketAddr,
+    start_time: Instant,
+    log_trace: String,
 }
 
 impl GatewayRequest {
@@ -95,6 +97,10 @@ impl GatewayHandler {
         let text = self.read_request(request)?;
         let mut req = self.parse_request(&text)?;
 
+        // Log the call before we relay it to OpenSRF in case the
+        // request exits early on a failure.
+        self.log_request(&request, &req);
+
         let mut leader = "HTTP/1.1 200 OK";
 
         let replies = match self.relay_to_osrf(&mut req) {
@@ -122,6 +128,16 @@ impl GatewayHandler {
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
             return Err(format!("Error writing to client: {e}"));
         }
+
+        let duration = request.start_time.elapsed().as_millis();
+        let millis = (duration as f64) / 1000.0;
+
+        log::debug!(
+            "[{}:{}] Request duration: {:.3}s",
+            request.address,
+            request.log_trace,
+            millis
+        );
 
         Ok(())
     }
@@ -393,6 +409,40 @@ impl GatewayHandler {
             http_method: http_method.to_string(),
         })
     }
+
+    fn log_request(&self, request: &GatewayRequest, req: &ParsedGatewayRequest) {
+        let mut log_params: Option<String> = None;
+        let method = req.method.as_ref().unwrap();
+
+        if self
+            .osrf_conf
+            .log_protect()
+            .iter()
+            .filter(|m| method.method().starts_with(&m[..]))
+            .next()
+            .is_none()
+        {
+            log_params = Some(
+                method
+                    .params()
+                    .iter()
+                    .map(|p| p.dump())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+        };
+
+        let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
+
+        log::info!(
+            "ACT:[{}:{}] {} {} {}",
+            request.address,
+            request.log_trace,
+            req.service,
+            method.method(),
+            log_params
+        );
+    }
 }
 
 impl mptc::RequestHandler for GatewayHandler {
@@ -410,7 +460,11 @@ impl mptc::RequestHandler for GatewayHandler {
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let mut request = GatewayRequest::downcast(&mut request);
 
-        log::debug!("Gateway request received from {}", request.address);
+        log::debug!(
+            "[{}:{}] Gateway request received",
+            request.address,
+            request.log_trace
+        );
 
         let result = self.handle_request(&mut request);
 
@@ -502,7 +556,12 @@ impl mptc::RequestStream for GatewayStream {
             }
         };
 
-        let request = GatewayRequest { stream, address };
+        let request = GatewayRequest {
+            stream,
+            address,
+            log_trace: osrf::logging::Logger::mk_log_trace(),
+            start_time: Instant::now(),
+        };
 
         Ok(Some(Box::new(request)))
     }
