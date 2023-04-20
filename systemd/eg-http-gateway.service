@@ -1,0 +1,14 @@
+[Unit]
+Description=Evergreen HTTP Gateway
+Requires=redis-server.service
+After=redis-server.service
+Wants=opensrf-router.service
+After=opensrf-router.service
+
+[Service]
+Type=simple
+User=opensrf
+Group=opensrf
+ExecStart=/usr/local/bin/eg-http-gateway
+ExecReload=/bin/kill -HUP $MAINPID
+
