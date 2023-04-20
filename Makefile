@@ -30,7 +30,7 @@ install-opensrf: install-opensrf-config
 	cp ./target/debug/opensrf-websockets ${TARGET}/bin
 	cp ./target/debug/opensrf-buswatch ${TARGET}/bin
 
-install-opensrf-release: install-opensrf-config
+install-opensrf-release: build-opensrf-release install-opensrf-config
 	cp ./target/release/opensrf-router ${TARGET}/bin
 	cp ./target/release/opensrf-websockets ${TARGET}/bin
 	cp ./target/release/opensrf-buswatch ${TARGET}/bin
@@ -49,11 +49,11 @@ build-evergreen:
 build-evergreen-release:
 	cargo build --package evergreen --release
 
-install-evergreen: install-evergreen-config
+install-evergreen: build-evergreen install-evergreen-config
 	cp ./target/debug/egsh ${TARGET}/bin
 	cp ./target/debug/eg-http-gateway ${TARGET}/bin
 
-install-evergreen-release: install-evergreen-config
+install-evergreen-release: build-evergreen-release install-evergreen-config
 	cp ./target/release/egsh ${TARGET}/bin
 	cp ./target/release/eg-http-gateway ${TARGET}/bin
 
@@ -69,10 +69,10 @@ build-sip2server:
 build-sip2server-release:
 	cargo build --package sip2server --release
 
-install-sip2server: install-sip2server-config
+install-sip2server: build-sip2server install-sip2server-config
 	cp ./target/debug/eg-sip2-server ${TARGET}/bin
 
-install-sip2server-release: install-sip2server-config
+install-sip2server-release: build-sip2server-release install-sip2server-config
 	cp ./target/release/eg-sip2-server ${TARGET}/bin
 
 install-sip2server-config:
