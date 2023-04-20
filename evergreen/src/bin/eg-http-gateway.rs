@@ -246,7 +246,7 @@ impl GatewayHandler {
             while value.len() > 0 {
                 let scrubbed = self.scrub_nulls(value.array_remove(0));
                 if !scrubbed.is_null() {
-                    arr.push(self.scrub_nulls(value.array_remove(0))).unwrap();
+                    arr.push(scrubbed).unwrap();
                 }
             }
 
