@@ -74,6 +74,11 @@ impl Server {
         let shutdown = self.shutdown.clone();
         let handler = self.stream.new_handler();
 
+        log::trace!("Starting worker with idle={} active={}",
+            self.idle_worker_count(),
+            self.active_worker_count(),
+        );
+
         let (tx, rx): (
             mpsc::Sender<Box<dyn Request>>,
             mpsc::Receiver<Box<dyn Request>>,
