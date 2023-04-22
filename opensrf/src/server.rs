@@ -14,6 +14,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Warn when there are fewer than this many idle threads
 const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
@@ -308,6 +309,11 @@ impl Server {
         method.set_desc("Echo back any values sent");
         hash.insert(name.to_string(), method);
 
+        let name = "opensrf.system.time";
+        let mut method = method::Method::new(name, method::ParamCount::Zero, system_method_time);
+        method.set_desc("Respond with system time in epoch seconds");
+        hash.insert(name.to_string(), method);
+
         let name = "opensrf.system.method.all";
         let mut method = method::Method::new(
             name,
@@ -451,6 +457,17 @@ fn system_method_echo(
         session.respond(p.clone())?;
     }
     Ok(())
+}
+
+fn system_method_time(
+    _worker: &mut Box<dyn app::ApplicationWorker>,
+    session: &mut session::ServerSession,
+    _method: &message::Method,
+) -> Result<(), String> {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(t) => session.respond(t.as_secs()),
+        Err(e) => Err(format!("System time error: {e}")),
+    }
 }
 
 fn system_method_introspect(
