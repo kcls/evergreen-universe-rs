@@ -31,7 +31,8 @@ use websocket::OwnedMessage;
  * Outbound session thread reads opensrf replies and relays them to the
  * main thread for processing.
  *
- * Main sesion thread does everything else.
+ * Main sesion thread does everything else, including writing responses
+ * to the websocket client and tracking connections.
  */
 
 const DEFAULT_PORT: u16 = 7682;
@@ -72,7 +73,7 @@ enum ChannelMessage {
     /// OpenSRF Reply
     Outbound(message::TransportMessage),
 
-    /// Tell the main thread to wake up and assess, e.g. check for shutdown_session flag.
+    /// Tell the main thread to wake up and assess, e.g. check for shutdown flag.
     Wakeup,
 }
 
@@ -96,10 +97,10 @@ impl fmt::Display for InboundThread {
 impl InboundThread {
     fn run(&mut self, mut receiver: Reader<TcpStream>) {
         for message in receiver.incoming_messages() {
-            // Check before processing in case the stop flag we set
+            // Check before processing in case the stop flag was set
             // while we were waiting on a new message.
             if self.shutdown_session.load(Ordering::Relaxed) {
-                log::info!("{self} Inbound thread received a stop signal.  Exiting");
+                log::debug!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
             }
 
@@ -123,7 +124,7 @@ impl InboundThread {
 
             // Check before going back to wait for the next ws message.
             if self.shutdown_session.load(Ordering::Relaxed) {
-                log::info!("{self} Inbound thread received a stop signal.  Exiting");
+                log::debug!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
             }
         }
@@ -155,7 +156,7 @@ impl OutboundThread {
     fn run(&mut self) {
         loop {
             if self.shutdown_session.load(Ordering::Relaxed) {
-                log::info!("{self} Outbound thread received a stop signal.  Exiting");
+                log::debug!("{self} Outbound thread received a stop signal.  Exiting");
                 return;
             }
 
@@ -248,9 +249,7 @@ impl Session {
             }
         };
 
-        log::info!(
-            "Starting new session for {client_ip} with max requests set to {MAX_ACTIVE_REQUESTS}"
-        );
+        log::debug!("Starting new session for {client_ip}");
 
         let (receiver, sender) = match client.split() {
             Ok((r, s)) => (r, s),
@@ -314,7 +313,7 @@ impl Session {
             request_queue: VecDeque::new(),
         };
 
-        log::info!("{session} starting channel threads");
+        log::debug!("{session} starting channel threads");
 
         let in_thread = thread::spawn(move || inbound.run(receiver));
         let out_thread = thread::spawn(move || outbound.run());
@@ -324,7 +323,7 @@ impl Session {
     }
 
     fn shutdown(&mut self, in_thread: JoinHandle<()>, out_thread: JoinHandle<()>) {
-        log::info!("{self} shutting down");
+        log::debug!("{self} shutting down");
 
         // It's possible we are shutting down due to an issue that
         // occurred within this thread.  In that case, let the other
@@ -388,7 +387,7 @@ impl Session {
             // one of the above completed without error.  In either case,
             // check the shutdown_session flag.
             if self.shutdown_session.load(Ordering::Relaxed) {
-                log::info!("{self} Main thread received a stop signal.  Exiting");
+                log::debug!("{self} Main session thread received a stop signal.  Exiting");
                 return;
             }
         }
