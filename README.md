@@ -4,6 +4,10 @@ Rust bindings, libs, and binaries for Evergreen and related projects.
 
 ## Included Packages
 
+### MPTC
+
+General purpose threaded server, similar to Perl Net::Server.
+
 ### OpenSRF
 
 OpenSRF bindings for communicating with OpenSRF services and creating
@@ -44,7 +48,7 @@ specified at build time or they can all be built with the --all option.
 
 ```sh
 # Install rust tools 
-sudo apt install rust-all git
+sudo apt install rust-all
 
 # Checkout the repo
 git clone github.com:kcls/evergreen-universe-rs

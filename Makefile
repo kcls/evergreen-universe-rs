@@ -52,13 +52,16 @@ build-evergreen-release:
 install-evergreen: install-evergreen-config
 	cp ./target/debug/egsh ${TARGET}/bin
 	cp ./target/debug/eg-http-gateway ${TARGET}/bin
+	cp ./target/debug/eg-svc-rspub ${TARGET}/bin
 
 install-evergreen-release: install-evergreen-config
 	cp ./target/release/egsh ${TARGET}/bin
 	cp ./target/release/eg-http-gateway ${TARGET}/bin
+	cp ./target/release/eg-svc-rspub ${TARGET}/bin
 
 install-evergreen-config:
 	cp ./systemd/eg-http-gateway.service ${SYSTEMD_DIR}/
+	cp ./systemd/eg-svc-rspub.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
 # --- SIP2 Server ---
