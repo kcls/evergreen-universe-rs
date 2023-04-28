@@ -264,13 +264,16 @@ impl ConfigBuilder {
             // transport node.
             client.logging = self.unpack_logging_node(&rnode)?;
 
-            let mut router = Router { 
+            let mut router = Router {
                 client,
                 trusted_server_domains: Vec::new(),
                 trusted_client_domains: Vec::new(),
             };
 
-            for tdnode in rnode.children().filter(|d| d.has_tag_name("trusted_domains")) {
+            for tdnode in rnode
+                .children()
+                .filter(|d| d.has_tag_name("trusted_domains"))
+            {
                 for snode in tdnode.children().filter(|d| d.has_tag_name("server")) {
                     if let Some(domain) = snode.text() {
                         router.trusted_server_domains.push(domain.to_string());

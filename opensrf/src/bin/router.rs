@@ -7,10 +7,10 @@ use opensrf::logging::Logger;
 use opensrf::message;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::env;
+use std::fmt;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use std::fmt;
 
 /// A service controller.
 ///
@@ -263,7 +263,6 @@ impl Router {
         let addr = RouterAddress::new(busconf.domain().name());
         let primary_domain = RouterDomain::new(&busconf);
 
-
         Router {
             config,
             primary_domain,
@@ -369,9 +368,15 @@ impl Router {
     fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
         let domain = address.domain(); // Known to be a client addr.
 
-        if self.trusted_server_domains.iter().filter(|d| d.as_str().eq(domain)).next().is_none() {
+        let mut matches = self
+            .trusted_server_domains
+            .iter()
+            .filter(|d| d.as_str().eq(domain));
+
+        if matches.next().is_none() {
             return Err(format!(
-                "Domain {domain} is not a trusted server domain for this router {address} : {self}"));
+                "Domain {domain} is not a trusted server domain for this router {address} : {self}"
+            ));
         }
 
         let r_domain = self.find_or_create_domain(domain)?;
@@ -506,12 +511,19 @@ impl Router {
         let client_addr = BusAddress::new_from_string(tm.from())?;
 
         if let Some(domain) = client_addr.domain() {
-            if self.trusted_client_domains.iter().filter(|d| d.as_str().eq(domain)).next().is_none() {
+            let mut matches = self
+                .trusted_client_domains
+                .iter()
+                .filter(|d| d.as_str().eq(domain));
+
+            if matches.next().is_none() {
                 return Err(format!(
                     "Domain {domain} is not a trusted client domain for this router {client_addr} : {self}"));
             }
         } else {
-            return Err(format!("Unexpected client address in request: {client_addr}"));
+            return Err(format!(
+                "Unexpected client address in request: {client_addr}"
+            ));
         }
 
         if let Some(svc) = self.primary_domain.get_service_mut(service) {
