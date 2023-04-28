@@ -59,6 +59,8 @@ impl ServiceEntry {
         &self.controllers
     }
 
+    /// Remove a specific service controller from the set
+    /// of registered controllers.
     fn remove_controller(&mut self, address: &ClientAddress) {
         if let Some(pos) = self
             .controllers
@@ -98,7 +100,7 @@ impl ServiceEntry {
 /// specific routable domain.
 /// E.g. "public.localhost"
 struct RouterDomain {
-    // e.g. public.localhost
+    /// The domain we route for.  e.g. public.localhost
     domain: String,
 
     /// Bus connection to the redis instance for this domain.
@@ -114,6 +116,7 @@ struct RouterDomain {
     /// pick up any given request routed to a domain.
     route_count: usize,
 
+    /// List of services registered with this router domain instance.
     services: Vec<ServiceEntry>,
 
     config: conf::BusClient,
@@ -150,6 +153,7 @@ impl RouterDomain {
         &self.services
     }
 
+    /// Get a service by service name.
     fn get_service_mut(&mut self, name: &str) -> Option<&mut ServiceEntry> {
         self.services
             .iter_mut()
@@ -157,6 +161,8 @@ impl RouterDomain {
             .next()
     }
 
+    /// Remove a service entry and its linked ServiceInstance's from
+    /// our registered services.
     fn remove_service(&mut self, service: &str, address: &ClientAddress) {
         if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
@@ -247,6 +253,10 @@ impl fmt::Display for Router {
 }
 
 impl Router {
+
+    /// Create a new router instance.
+    ///
+    /// * `domain` - Primary domain for this router instance.
     pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
         log::info!("Starting router on domain: {domain}");
 
@@ -282,6 +292,7 @@ impl Router {
         &self.primary_domain
     }
 
+    /// What other domains may we be forwarding requests to.
     fn remote_domains(&self) -> &Vec<RouterDomain> {
         &self.remote_domains
     }
@@ -320,6 +331,8 @@ impl Router {
         Ok(self.remote_domains.get_mut(pos_op.unwrap()).unwrap())
     }
 
+    // Remove the service registration from the domain entry implied by the
+    // caller's address.
     fn handle_unregister(&mut self, address: &ClientAddress, service: &str) -> Result<(), String> {
         let domain = address.domain();
 
@@ -365,6 +378,10 @@ impl Router {
         Ok(())
     }
 
+    /// Add a service registration on the domain implied by the
+    /// caller's bus address.
+    ///
+    /// The domain must be configured as a trusted server domain.
     fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
         let domain = address.domain(); // Known to be a client addr.
 
@@ -477,6 +494,8 @@ impl Router {
         //return false;
     }
 
+    /// Route the provided transport message to the destination service
+    /// or process as a router command.
     fn route_message(&mut self, tm: TransportMessage) -> Result<(), String> {
         let to = tm.to();
 
@@ -497,6 +516,7 @@ impl Router {
         }
     }
 
+    /// Route an API call request to the desired service.
     fn route_api_request(
         &mut self,
         to_addr: &ServiceAddress,
@@ -656,6 +676,7 @@ impl Router {
         }
     }
 
+    /// Register, Un-Register, etc. services
     fn handle_router_command(&mut self, tm: TransportMessage) -> Result<(), String> {
         let router_command = match tm.router_command() {
             Some(s) => s,
@@ -727,6 +748,9 @@ impl Router {
         r_domain.send_to_domain(tm)
     }
 
+    /// Receive the nessage message destined for this router on this
+    /// domain, breaking periodically to check for shutdown, etc.
+    /// signals.
     fn recv_one(&mut self) -> Result<TransportMessage, String> {
         let bus = self
             .primary_domain
