@@ -12,13 +12,26 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-/// A service controller.
+const POLL_TIMEOUT: i32 = 5;
+
+/// A service instance.
 ///
 /// This is what we traditionally call a "Listener" in OpenSRF.
-/// It's a single endpoint for receiving top-level API calls.
+/// It represents a single managed destination for routing top-level 
+/// API calls.
+///
+/// Generally this is the same as the combination of a service name
+/// and the domain where it runs.  (However, it's possible for
+/// multiple instances of a service to run on a single domain).
 #[derive(Debug, Clone)]
 struct ServiceInstance {
+    /// The unique bus address of the service mananager / listener.
+    /// This address will not be used directly, since API calls are
+    /// routed to generic service addresses, but it's helpful for
+    /// differentiating service instances.
     address: ClientAddress,
+
+    /// When was this instance registered with the router.
     register_time: DateTime<Local>,
 }
 
@@ -39,14 +52,19 @@ impl ServiceInstance {
     }
 }
 
-/// An API-producing service.
+/// A named service with a published API.
 ///
 /// E.g. "opensrf.settings"
 /// Models a service, which may have one or more registered ServiceInstance's.
 #[derive(Debug, Clone)]
 struct ServiceEntry {
+    /// The service name
     name: String,
+
+    /// Which specific instances of this service are registered.
     controllers: Vec<ServiceInstance>,
+
+    /// How many API requests have been routed to this service.
     route_count: usize,
 }
 
@@ -218,9 +236,7 @@ impl RouterDomain {
 
         let bus = match &mut self.bus {
             Some(b) => b,
-            None => {
-                return Err(format!("We have no connection to domain {}", self.domain()));
-            }
+            None => Err(format!("We have no connection to domain {}", self.domain()))?,
         };
 
         bus.send(&tm)
@@ -235,6 +251,9 @@ struct Router {
     /// Well-known address where top-level API calls should be routed.
     listen_address: RouterAddress,
 
+    /// All other domains where services we care about are running.
+    /// This value is empty by default and populates as service
+    /// registrations arrive from other domains.
     remote_domains: Vec<RouterDomain>,
 
     config: Arc<conf::Config>,
@@ -283,6 +302,7 @@ impl Router {
         }
     }
 
+    /// Connect to the opensrf message bus
     fn init(&mut self) -> Result<(), String> {
         self.primary_domain.connect()?;
         Ok(())
@@ -392,7 +412,10 @@ impl Router {
 
         if matches.next().is_none() {
             return Err(format!(
-                "Domain {domain} is not a trusted server domain for this router {address} : {self}"
+                "Domain {} is not a trusted server domain for this router {} : {}",
+                domain,
+                address,
+                self
             ));
         }
 
@@ -489,9 +512,6 @@ impl Router {
                 log::error!("Error routing message: {}", s);
             }
         }
-
-        // This will be reachable once we implement graceful shutdown.
-        //return false;
     }
 
     /// Route the provided transport message to the destination service
@@ -748,7 +768,7 @@ impl Router {
         r_domain.send_to_domain(tm)
     }
 
-    /// Receive the nessage message destined for this router on this
+    /// Receive the next message destined for this router on this
     /// domain, breaking periodically to check for shutdown, etc.
     /// signals.
     fn recv_one(&mut self) -> Result<TransportMessage, String> {
@@ -759,7 +779,9 @@ impl Router {
 
         loop {
             // Break periodically
-            if let Some(tm) = bus.recv(10, Some(self.listen_address.as_str()))? {
+            let tm_op = bus.recv(POLL_TIMEOUT, Some(self.listen_address.as_str()))?;
+
+            if let Some(tm) = tm_op {
                 return Ok(tm);
             }
         }
@@ -767,6 +789,7 @@ impl Router {
 }
 
 fn main() {
+    // Prefer router-specific logging to the default client logging
     let init_ops = init::InitOptions { skip_logging: true };
 
     let config = init::init_with_options(&init_ops).unwrap();
