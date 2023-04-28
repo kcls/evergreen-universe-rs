@@ -10,6 +10,7 @@ use std::env;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use std::fmt;
 
 /// A service controller.
 ///
@@ -96,7 +97,7 @@ impl ServiceEntry {
 /// Every service, including all of its ServicEntry's, are linked to a
 /// specific routable domain.
 /// E.g. "public.localhost"
-struct Routerdomain {
+struct RouterDomain {
     // e.g. public.localhost
     domain: String,
 
@@ -118,9 +119,9 @@ struct Routerdomain {
     config: conf::BusClient,
 }
 
-impl Routerdomain {
+impl RouterDomain {
     fn new(config: &conf::BusClient) -> Self {
-        Routerdomain {
+        RouterDomain {
             domain: config.domain().name().to_string(),
             bus: None,
             route_count: 0,
@@ -223,31 +224,51 @@ impl Routerdomain {
 /// Routes API requests from clients to services.
 struct Router {
     /// Primary domain for this router instance.
-    primary_domain: Routerdomain,
+    primary_domain: RouterDomain,
 
     /// Well-known address where top-level API calls should be routed.
     listen_address: RouterAddress,
 
-    remote_domains: Vec<Routerdomain>,
+    remote_domains: Vec<RouterDomain>,
 
     config: Arc<conf::Config>,
+
+    /// Which domains can register services with us
+    trusted_server_domains: Vec<String>,
+
+    /// Which domains can send requests our way.
+    trusted_client_domains: Vec<String>,
+}
+
+impl fmt::Display for Router {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Router for {}", self.primary_domain.domain())
+    }
 }
 
 impl Router {
     pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
         log::info!("Starting router on domain: {domain}");
 
-        let busconf = match config.get_router_conf(domain) {
-            Some(rc) => rc.client(),
+        let router_conf = match config.get_router_conf(domain) {
+            Some(rc) => rc,
             None => panic!("No router config for domain {}", domain),
         };
 
+        let tsd = router_conf.trusted_server_domains().clone();
+        let tcd = router_conf.trusted_client_domains().clone();
+
+        let busconf = router_conf.client();
+
         let addr = RouterAddress::new(busconf.domain().name());
-        let primary_domain = Routerdomain::new(&busconf);
+        let primary_domain = RouterDomain::new(&busconf);
+
 
         Router {
             config,
             primary_domain,
+            trusted_server_domains: tsd,
+            trusted_client_domains: tcd,
             listen_address: addr,
             remote_domains: Vec::new(),
         }
@@ -258,11 +279,11 @@ impl Router {
         Ok(())
     }
 
-    fn primary_domain(&self) -> &Routerdomain {
+    fn primary_domain(&self) -> &RouterDomain {
         &self.primary_domain
     }
 
-    fn remote_domains(&self) -> &Vec<Routerdomain> {
+    fn remote_domains(&self) -> &Vec<RouterDomain> {
         &self.remote_domains
     }
 
@@ -276,8 +297,8 @@ impl Router {
         }
     }
 
-    /// Find or create a new Routerdomain entry.
-    fn find_or_create_domain(&mut self, domain: &str) -> Result<&mut Routerdomain, String> {
+    /// Find or create a new RouterDomain entry.
+    fn find_or_create_domain(&mut self, domain: &str) -> Result<&mut RouterDomain, String> {
         if self.primary_domain.domain.eq(domain) {
             return Ok(&mut self.primary_domain);
         }
@@ -285,13 +306,13 @@ impl Router {
         let mut pos_op = self.remote_domains.iter().position(|d| d.domain.eq(domain));
 
         if pos_op.is_none() {
-            log::debug!("Adding new Routerdomain for domain={}", domain);
+            log::debug!("Adding new RouterDomain for domain={}", domain);
 
             // Primary connection is required at this point.
             let mut busconf = self.config.client().clone();
             busconf.set_domain(domain);
 
-            self.remote_domains.push(Routerdomain::new(&busconf));
+            self.remote_domains.push(RouterDomain::new(&busconf));
 
             pos_op = Some(self.remote_domains.len() - 1);
         }
@@ -347,6 +368,11 @@ impl Router {
 
     fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
         let domain = address.domain(); // Known to be a client addr.
+
+        if self.trusted_server_domains.iter().filter(|d| d.as_str().eq(domain)).next().is_none() {
+            return Err(format!(
+                "Domain {domain} is not a trusted server domain for this router {address} : {self}"));
+        }
 
         let r_domain = self.find_or_create_domain(domain)?;
 
@@ -475,6 +501,17 @@ impl Router {
 
         if service.eq("router") {
             return self.handle_router_api_request(tm);
+        }
+
+        let client_addr = BusAddress::new_from_string(tm.from())?;
+
+        if let Some(domain) = client_addr.domain() {
+            if self.trusted_client_domains.iter().filter(|d| d.as_str().eq(domain)).next().is_none() {
+                return Err(format!(
+                    "Domain {domain} is not a trusted client domain for this router {client_addr} : {self}"));
+            }
+        } else {
+            return Err(format!("Unexpected client address in request: {client_addr}"));
         }
 
         if let Some(svc) = self.primary_domain.get_service_mut(service) {

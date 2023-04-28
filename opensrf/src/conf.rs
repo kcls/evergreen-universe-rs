@@ -136,11 +136,19 @@ impl ClientRouter {
 #[derive(Debug, Clone)]
 pub struct Router {
     client: BusClient,
+    trusted_server_domains: Vec<String>,
+    trusted_client_domains: Vec<String>,
 }
 
 impl Router {
     pub fn client(&self) -> &BusClient {
         &self.client
+    }
+    pub fn trusted_server_domains(&self) -> &Vec<String> {
+        &self.trusted_server_domains
+    }
+    pub fn trusted_client_domains(&self) -> &Vec<String> {
+        &self.trusted_client_domains
     }
 }
 
@@ -256,7 +264,24 @@ impl ConfigBuilder {
             // transport node.
             client.logging = self.unpack_logging_node(&rnode)?;
 
-            let router = Router { client };
+            let mut router = Router { 
+                client,
+                trusted_server_domains: Vec::new(),
+                trusted_client_domains: Vec::new(),
+            };
+
+            for tdnode in rnode.children().filter(|d| d.has_tag_name("trusted_domains")) {
+                for snode in tdnode.children().filter(|d| d.has_tag_name("server")) {
+                    if let Some(domain) = snode.text() {
+                        router.trusted_server_domains.push(domain.to_string());
+                    }
+                }
+                for cnode in tdnode.children().filter(|d| d.has_tag_name("client")) {
+                    if let Some(domain) = cnode.text() {
+                        router.trusted_client_domains.push(domain.to_string());
+                    }
+                }
+            }
 
             self.routers.push(router);
         }
