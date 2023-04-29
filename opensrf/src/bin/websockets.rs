@@ -54,6 +54,8 @@ const MAX_MESSAGE_SIZE: usize = 10485760; // ~10M
 
 const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
 
+const DEFAULT_LISTEN_ADDRESS: &str = "127.0.0.1";
+
 /// Max active parallel requests
 const MAX_ACTIVE_REQUESTS: usize = 8;
 
@@ -65,6 +67,9 @@ const MAX_ACTIVE_REQUESTS: usize = 8;
 /// NOTE: should we kick the client off at this point?
 const MAX_BACKLOG_SIZE: usize = 1000;
 
+/// ChannelMessage's are delivered to the main thread.  There are 3
+/// varieties: inbound websocket request, outbound opensrf response,
+/// and a wakeup message.
 #[derive(Debug, PartialEq)]
 enum ChannelMessage {
     /// Websocket Request
@@ -77,6 +82,8 @@ enum ChannelMessage {
     Wakeup,
 }
 
+/// Listens for inbound websocket requests from our connected client
+/// and relay them to the main thread.
 struct InboundThread {
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
@@ -131,6 +138,8 @@ impl InboundThread {
     }
 }
 
+/// Listens for responses on the OpenSRF bus and relays each to the
+/// main thread for processing.
 struct OutboundThread {
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
@@ -196,6 +205,8 @@ impl OutboundThread {
     }
 }
 
+/// Manages a single websocket client connection.  Sessions run in the
+/// main thread for each websocket connection.
 struct Session {
     /// OpenSRF config
     conf: Arc<conf::Config>,
@@ -418,6 +429,8 @@ impl Session {
         Ok(())
     }
 
+    /// Process each inbound websocket message.  Requests are relayed
+    /// to the OpenSRF bus.
     fn handle_inbound_message(&mut self, msg: OwnedMessage) -> Result<(), String> {
         match msg {
             OwnedMessage::Text(text) => {
@@ -453,6 +466,8 @@ impl Session {
         }
     }
 
+    /// Wrap a websocket request in an OpenSRF transport message and
+    /// put on the OpenSRF bus for delivery.
     fn relay_to_osrf(&mut self, json_text: &str) -> Result<(), String> {
         let mut wrapper = json::parse(json_text).or_else(|e| {
             Err(format!(
@@ -576,6 +591,8 @@ impl Session {
         Ok(())
     }
 
+    /// Package an OpenSRF response as a websocket message and
+    /// send the message to this Session's websocket client.
     fn relay_to_websocket(&mut self, tm: message::TransportMessage) -> Result<(), String> {
         let msg_list = tm.body();
 
@@ -638,6 +655,7 @@ impl Session {
         })
     }
 
+    /// Log an API call, honoring the log-protect configs.
     fn log_request(&self, service: &str, msg: &message::Message) -> Result<(), String> {
         let request = match msg.payload() {
             osrf::message::Payload::Method(m) => m,
@@ -680,6 +698,8 @@ impl Session {
     }
 }
 
+/// Listens for websocket connections and spawn a Session thread per
+/// connection.  Blocks new connections once max clients is reached.
 struct Server {
     conf: Arc<conf::Config>,
     port: u16,
@@ -747,10 +767,8 @@ fn main() {
     let logger = Logger::new(gateway.logging()).expect("Creating logger");
     logger.init().expect("Logger Init");
 
-    let address = match env::var("OSRF_WS_ADDRESS") {
-        Ok(v) => v,
-        _ => "127.0.0.1".to_string(),
-    };
+    let address = env::var("OSRF_WS_ADDRESS")
+        .unwrap_or(DEFAULT_LISTEN_ADDRESS.to_string());
 
     let port = match env::var("OSRF_WS_PORT") {
         Ok(v) => v.parse::<u16>().expect("Invalid port number"),

@@ -1,3 +1,21 @@
+//! OpenSRF Router
+//!
+//! Starts one thread per routed domain.  Each thread listens
+//! for messages at the router address on its domain (e.g.
+//! opensrf:router:private.localhost).
+//!
+//! For API calls, requests are routed to service entry points on the
+//! same domain when possible.  Otherwise, requests are routed to
+//! service entry points on another domain whose service is locally
+//! registered.
+//!
+//! Once the initial request is routed, the router is no longer involved
+//! in the conversation.
+use std::env;
+use std::fmt;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 use chrono::prelude::{DateTime, Local};
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
@@ -6,18 +24,15 @@ use opensrf::init;
 use opensrf::logging::Logger;
 use opensrf::message;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
-use std::env;
-use std::fmt;
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 
+/// How often do we wake from listening for messages and give shutdown
+/// signals a chance to propagate.
 const POLL_TIMEOUT: i32 = 5;
 
 /// A service instance.
 ///
 /// This is what we traditionally call a "Listener" in OpenSRF.
-/// It represents a single managed destination for routing top-level 
+/// It represents a single entry point for routing top-level
 /// API calls.
 ///
 /// Generally this is the same as the combination of a service name
@@ -115,8 +130,7 @@ impl ServiceEntry {
 /// One domain entry.
 ///
 /// Every service, including all of its ServicEntry's, are linked to a
-/// specific routable domain.
-/// E.g. "public.localhost"
+/// specific routable domain.  E.g. "public.localhost"
 struct RouterDomain {
     /// The domain we route for.  e.g. public.localhost
     domain: String,
@@ -351,8 +365,8 @@ impl Router {
         Ok(self.remote_domains.get_mut(pos_op.unwrap()).unwrap())
     }
 
-    // Remove the service registration from the domain entry implied by the
-    // caller's address.
+    /// Remove the service registration from the domain entry implied by the
+    /// caller's address.
     fn handle_unregister(&mut self, address: &ClientAddress, service: &str) -> Result<(), String> {
         let domain = address.domain();
 
@@ -493,6 +507,7 @@ impl Router {
         return services;
     }
 
+    /// Listen for inbound messages and dispatch each as needed.
     /// Returns true if the caller should restart the router after exit.
     /// Return false if this is a clean / intentional exit.
     fn listen(&mut self) -> bool {
@@ -537,6 +552,10 @@ impl Router {
     }
 
     /// Route an API call request to the desired service.
+    ///
+    /// If the request can be routed locally, do so, otherwise send
+    /// the request to one of our remote domains where the service
+    /// is registered.
     fn route_api_request(
         &mut self,
         to_addr: &ServiceAddress,
