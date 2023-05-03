@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 use threadpool::ThreadPool;
+use signal_hook;
 use websocket::client::sync::Client;
 use websocket::receiver::Reader;
 use websocket::sender::Writer;
@@ -104,8 +105,7 @@ impl fmt::Display for InboundThread {
 impl InboundThread {
     fn run(&mut self, mut receiver: Reader<TcpStream>) {
         for message in receiver.incoming_messages() {
-            // Check before processing in case the stop flag was set
-            // while we were waiting on a new message.
+            // Check on wakeup
             if self.shutdown_session.load(Ordering::Relaxed) {
                 log::debug!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
@@ -164,6 +164,10 @@ impl fmt::Display for OutboundThread {
 impl OutboundThread {
     fn run(&mut self) {
         loop {
+
+            // Check the shutdown flag at the to of the loop since we
+            // have at least one 'continue' in the body and we need to
+            // check on every iteration.
             if self.shutdown_session.load(Ordering::Relaxed) {
                 log::debug!("{self} Outbound thread received a stop signal.  Exiting");
                 return;
@@ -226,6 +230,9 @@ struct Session {
     /// Cleanup and exit if true.
     shutdown_session: Arc<AtomicBool>,
 
+    /// True if the server as a whole wants to shut down.
+    shutdown_server: Arc<AtomicBool>,
+
     /// Currently active (stateful) OpenSRF sessions.
     osrf_sessions: HashMap<String, String>,
 
@@ -251,7 +258,12 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn run(conf: Arc<conf::Config>, client: Client<TcpStream>, max_parallel: usize) {
+    fn run(
+        conf: Arc<conf::Config>,
+        client: Client<TcpStream>,
+        max_parallel: usize,
+        shutdown_server: Arc<AtomicBool>,
+    ) {
         let client_ip = match client.peer_addr() {
             Ok(ip) => ip,
             Err(e) => {
@@ -312,6 +324,7 @@ impl Session {
 
         let mut session = Session {
             shutdown_session,
+            shutdown_server,
             client_ip,
             to_main_rx,
             sender,
@@ -397,7 +410,8 @@ impl Session {
             // We may be here as a result of a Wakeup message or because
             // one of the above completed without error.  In either case,
             // check the shutdown_session flag.
-            if self.shutdown_session.load(Ordering::Relaxed) {
+            if self.shutdown_session.load(Ordering::Relaxed)
+                || self.shutdown_server.load(Ordering::Relaxed) {
                 log::debug!("{self} Main session thread received a stop signal.  Exiting");
                 return;
             }
@@ -706,6 +720,7 @@ struct Server {
     address: String,
     max_clients: usize,
     max_parallel: usize,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl Server {
@@ -722,13 +737,29 @@ impl Server {
             address,
             max_clients,
             max_parallel,
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
+
+    fn setup_signal_handlers(&self) -> Result<(), String> {
+
+        // If any of these signals occur, our self.shutdown flag will be set to true
+        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
+            if let Err(e) = signal_hook::flag::register(sig, self.shutdown.clone()) {
+                return Err(format!("Cannot register signal handler: {e}"));
+            }
+        }
+
+        Ok(())
+    }
+
 
     fn run(&mut self) {
         let host = format!("{}:{}", self.address, self.port);
 
         log::info!("Server listening for connections at {host}");
+
+        self.setup_signal_handlers().expect("Cannot setup signal handlers");
 
         let server =
             websocket::sync::Server::bind(host).expect("Could not start websockets server");
@@ -736,6 +767,11 @@ impl Server {
         let pool = ThreadPool::new(MAX_WS_CLIENTS);
 
         for connection in server.filter_map(Result::ok) {
+            if self.shutdown.load(Ordering::Relaxed) {
+                log::debug!("Server received a stop signal.  Exiting");
+                break;
+            }
+
             let tcount = pool.active_count() + pool.queued_count();
 
             if tcount >= self.max_clients {
@@ -746,12 +782,21 @@ impl Server {
 
             let conf = self.conf.clone();
             let max_parallel = self.max_parallel;
+            let shutdown = self.shutdown.clone();
 
             pool.execute(move || match connection.accept() {
-                Ok(client) => Session::run(conf, client, max_parallel),
+                Ok(client) => Session::run(conf, client, max_parallel, shutdown),
                 Err(e) => log::error!("Error accepting new connection: {}", e.1),
             });
+
+            if self.shutdown.load(Ordering::Relaxed) {
+                log::debug!("Server received a stop signal.  Exiting");
+                break;
+            }
         }
+
+        // Wait for all active threads to complete.
+        pool.join();
     }
 }
 
