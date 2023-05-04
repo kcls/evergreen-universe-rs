@@ -31,7 +31,7 @@ fn main() -> Result<(), String> {
     ];
 
     // ONE-OFF WITH ITERATOR --------------------------
-    for resp in client.send_recv("opensrf.settings", "opensrf.system.echo", params.clone())? {
+    for resp in client.send_recv_iter("opensrf.settings", "opensrf.system.echo", params.clone())? {
         println!("Response: {}", resp.dump());
     }
 
