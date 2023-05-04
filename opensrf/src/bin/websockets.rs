@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 use threadpool::ThreadPool;
+use std::time;
 use signal_hook;
 use websocket::client::sync::Client;
 use websocket::receiver::Reader;
@@ -22,6 +23,10 @@ use websocket::sender::Writer;
 use websocket::OwnedMessage;
 
 /*
+ * Server spawns a single inbound thread for accepting new websocket
+ * client connections.  Each connection is sent to the Server thread
+ * for dispatch.
+ *
  * Server spawns a session thread per connection.
  *
  * Each session has 3 threads of its own: Inbound, Main, and Outbound.
@@ -32,8 +37,8 @@ use websocket::OwnedMessage;
  * Outbound session thread reads opensrf replies and relays them to the
  * main thread for processing.
  *
- * Main sesion thread does everything else, including writing responses
- * to the websocket client and tracking connections.
+ * The Session thread writes responses to the websocket client and
+ * tracks connections.
  */
 
 const DEFAULT_PORT: u16 = 7682;
@@ -41,7 +46,7 @@ const DEFAULT_PORT: u16 = 7682;
 /// How many websocket clients we allow before block new connections.
 const MAX_WS_CLIENTS: usize = 256;
 
-/// How often to wake the OutboundThread to check for a shutdown signal.
+/// How often to wake the SessionOutbound to check for a shutdown signal.
 const SHUTDOWN_POLL_INTERVAL: i32 = 5;
 
 /// Prevent huge session threads
@@ -85,7 +90,7 @@ enum ChannelMessage {
 
 /// Listens for inbound websocket requests from our connected client
 /// and relay them to the main thread.
-struct InboundThread {
+struct SessionInbound {
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
 
@@ -96,51 +101,60 @@ struct InboundThread {
     client_ip: SocketAddr,
 }
 
-impl fmt::Display for InboundThread {
+impl fmt::Display for SessionInbound {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "InboundThread ({})", self.client_ip)
+        write!(f, "SessionInbound ({})", self.client_ip)
     }
 }
 
-impl InboundThread {
+impl SessionInbound {
     fn run(&mut self, mut receiver: Reader<TcpStream>) {
+
+        // Pull messages from our websocket TCP stream, forwarding each to
+        // the Session thread for processing.
         for message in receiver.incoming_messages() {
-            // Check on wakeup
-            if self.shutdown_session.load(Ordering::Relaxed) {
-                log::debug!("{self} Inbound thread received a stop signal.  Exiting");
-                break;
-            }
 
             let channel_msg = match message {
                 Ok(m) => {
-                    log::trace!("{self} InboundThread received message: {m:?}");
+                    log::trace!("{self} SessionInbound received message: {m:?}");
                     ChannelMessage::Inbound(m)
                 }
                 Err(e) => {
                     log::error!("{self} Fatal error unpacking websocket message: {e}");
-                    self.shutdown_session.store(true, Ordering::Relaxed);
-                    ChannelMessage::Wakeup
+                    break;
                 }
             };
 
-            if let Err(e) = self.to_main_tx.send(channel_msg) {
+            if self.to_main_tx.send(channel_msg).is_err() {
                 // Likely the main thread has exited.
-                log::error!("{self} Fatal error sending websocket message to main thread: {e}");
-                return;
+                log::error!("{self} Cannot sent message to Session.  Exiting");
+                break;
             }
 
             // Check before going back to wait for the next ws message.
             if self.shutdown_session.load(Ordering::Relaxed) {
-                log::debug!("{self} Inbound thread received a stop signal.  Exiting");
                 break;
             }
         }
+
+        self.finish();
+    }
+
+    fn finish(&mut self) {
+        log::debug!("{self} shutting down");
+
+        self.shutdown_session.store(true, Ordering::Relaxed);
+
+        // Tell our Session thread to wake up and check for shutdown
+        // signals.  At this point, it's 50/50 our Session thread is
+        // already exited, so we can ignore errors.
+        self.to_main_tx.send(ChannelMessage::Wakeup).ok();
     }
 }
 
 /// Listens for responses on the OpenSRF bus and relays each to the
 /// main thread for processing.
-struct OutboundThread {
+struct SessionOutbound {
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
 
@@ -155,13 +169,13 @@ struct OutboundThread {
     client_ip: SocketAddr,
 }
 
-impl fmt::Display for OutboundThread {
+impl fmt::Display for SessionOutbound {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "OutboundThread ({})", self.client_ip)
+        write!(f, "SessionOutbound ({})", self.client_ip)
     }
 }
 
-impl OutboundThread {
+impl SessionOutbound {
     fn run(&mut self) {
         loop {
 
@@ -169,12 +183,11 @@ impl OutboundThread {
             // have at least one 'continue' in the body and we need to
             // check on every iteration.
             if self.shutdown_session.load(Ordering::Relaxed) {
-                log::debug!("{self} Outbound thread received a stop signal.  Exiting");
-                return;
+                break;
             }
 
             // Wait for outbound OpenSRF messages, waking periodically
-            // to assess, e.g. check for 'shutdown_session' flag.
+            // to check for shutdown signals.
             log::trace!(
                 "{self} waiting for opensrf response at {}",
                 self.osrf_receiver.address()
@@ -183,7 +196,7 @@ impl OutboundThread {
             let msg = match self.osrf_receiver.recv(SHUTDOWN_POLL_INTERVAL, None) {
                 Ok(op) => match op {
                     Some(tm) => {
-                        log::debug!("{self} OutboundThread received message from: {}", tm.from());
+                        log::debug!("{self} received message from: {}", tm.from());
                         ChannelMessage::Outbound(tm)
                     }
                     None => {
@@ -195,17 +208,27 @@ impl OutboundThread {
                 },
                 Err(e) => {
                     log::error!("{self} Fatal error reading OpenSRF message: {e}");
-                    self.shutdown_session.store(true, Ordering::Relaxed);
-                    ChannelMessage::Wakeup
+                    break;
                 }
             };
 
-            if let Err(e) = self.to_main_tx.send(msg) {
-                // Likely the main thread has already exited.
-                log::error!("{self} Fatal error relaying channel message to main thread: {e}");
-                return;
+            if self.to_main_tx.send(msg).is_err() {
+                break; // Session thread has exited.
             }
         }
+
+        self.finish();
+    }
+
+    fn finish(&mut self) {
+        log::debug!("{self} shutting down");
+
+        self.shutdown_session.store(true, Ordering::Relaxed);
+
+        // Tell our Session thread to wake up and check for shutdown
+        // signals.  At this point, it's 50/50 our Session thread is
+        // already exited, so we can ignore errors.
+        self.to_main_tx.send(ChannelMessage::Wakeup).ok();
     }
 }
 
@@ -309,13 +332,13 @@ impl Session {
 
         let shutdown_session = Arc::new(AtomicBool::new(false));
 
-        let mut inbound = InboundThread {
+        let mut inbound = SessionInbound {
             shutdown_session: shutdown_session.clone(),
             to_main_tx: to_main_tx.clone(),
             client_ip: client_ip.clone(),
         };
 
-        let mut outbound = OutboundThread {
+        let mut outbound = SessionOutbound {
             shutdown_session: shutdown_session.clone(),
             to_main_tx: to_main_tx.clone(),
             client_ip: client_ip.clone(),
@@ -355,8 +378,8 @@ impl Session {
         self.shutdown_session.store(true, Ordering::Relaxed);
 
         // Send a Close message to the Websocket client.  This has the
-        // secondary benefit of forcing the InboundThread to exit its
-        // listen loop.  (The OutboundThread will periodically check
+        // secondary benefit of forcing the SessionInbound to exit its
+        // listen loop.  (The SessionOutbound will periodically check
         // for shutdown messages on its own).
         if let Err(e) = self.sender.send_message(&OwnedMessage::Close(None)) {
             log::error!("{self} Main thread could not send a Close message: {e}");
@@ -377,12 +400,26 @@ impl Session {
 
     /// Main Session listen loop
     fn listen(&mut self) {
+        let duration = time::Duration::from_secs(SHUTDOWN_POLL_INTERVAL as u64);
+
         loop {
-            let channel_msg = match self.to_main_rx.recv() {
+
+            if self.shutdown_session.load(Ordering::Relaxed)
+                || self.shutdown_server.load(Ordering::Relaxed) {
+                log::debug!("{self} Session thread received a stop signal.  Exiting");
+                return;
+            }
+
+            let channel_msg = match self.to_main_rx.recv_timeout(duration) {
                 Ok(m) => m,
                 Err(e) => {
-                    log::error!("{self} Error in main thread reading message channel: {e}");
-                    return;
+                    match e {
+                        mpsc::RecvTimeoutError::Timeout => continue,
+                        _ => {
+                            log::error!("{self} Error in main thread reading message channel: {e}");
+                            return;
+                        }
+                    }
                 }
             };
 
@@ -404,15 +441,6 @@ impl Session {
 
             if let Err(e) = self.process_message_queue() {
                 log::error!("{self} Error processing inbound message: {e}");
-                return;
-            }
-
-            // We may be here as a result of a Wakeup message or because
-            // one of the above completed without error.  In either case,
-            // check the shutdown_session flag.
-            if self.shutdown_session.load(Ordering::Relaxed)
-                || self.shutdown_server.load(Ordering::Relaxed) {
-                log::debug!("{self} Main session thread received a stop signal.  Exiting");
                 return;
             }
         }
@@ -712,6 +740,42 @@ impl Session {
     }
 }
 
+/// Listens for new Websocket clients and forwards the connections
+/// on to the main Server thread.
+struct ServerInbound;
+
+impl ServerInbound {
+
+    /// Wait for new websocket connections and forward each to the main
+    /// Server thread for processing.
+    fn run(to_main_tx: mpsc::Sender<Client<TcpStream>>, hostport: String) {
+
+        let server = websocket::sync::Server::bind(hostport)
+            .expect("Could not start websockets server");
+
+        for connection in server.filter_map(Result::ok) {
+
+            let client = match connection.accept() {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("Error accepting new connection: {}", e.1);
+                    continue;
+                }
+            };
+
+            log::debug!("ServerInbound received new connection.  Sending to Server thread");
+
+            if to_main_tx.send(client).is_err() {
+                // Likely the main thread died.  Let's get outta here.
+                log::error!("Cannot send new client to Server; exiting");
+                break;
+            }
+        }
+
+        log::info!("ServerInbound exited listen loop");
+    }
+}
+
 /// Listens for websocket connections and spawn a Session thread per
 /// connection.  Blocks new connections once max clients is reached.
 struct Server {
@@ -753,30 +817,48 @@ impl Server {
         Ok(())
     }
 
-
     fn run(&mut self) {
         let host = format!("{}:{}", self.address, self.port);
 
         log::info!("Server listening for connections at {host}");
 
-        self.setup_signal_handlers().expect("Cannot setup signal handlers");
+        let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let server =
-            websocket::sync::Server::bind(host).expect("Could not start websockets server");
+        thread::spawn(|| ServerInbound::run(to_main_tx, host));
+
+        self.setup_signal_handlers().expect("Cannot setup signal handlers");
 
         let pool = ThreadPool::new(MAX_WS_CLIENTS);
 
-        for connection in server.filter_map(Result::ok) {
+        let duration = time::Duration::from_secs(SHUTDOWN_POLL_INTERVAL as u64);
+
+        loop {
+
             if self.shutdown.load(Ordering::Relaxed) {
                 log::debug!("Server received a stop signal.  Exiting");
                 break;
             }
 
+            let client = match to_main_rx.recv_timeout(duration) {
+                Ok(c) => c,
+                Err(e) => {
+                    match e {
+                        mpsc::RecvTimeoutError::Timeout => continue,
+                        _ => {
+                            log::error!("Server thread receive error: {e}");
+                            break;
+                        }
+                    }
+                }
+            };
+
+            log::debug!("Server thread received new client connection");
+
             let tcount = pool.active_count() + pool.queued_count();
 
             if tcount >= self.max_clients {
                 log::warn!("Max websocket clients reached.  Ignoring new connection");
-                connection.reject().ok();
+                client.shutdown().ok();
                 continue;
             }
 
@@ -784,19 +866,21 @@ impl Server {
             let max_parallel = self.max_parallel;
             let shutdown = self.shutdown.clone();
 
-            pool.execute(move || match connection.accept() {
-                Ok(client) => Session::run(conf, client, max_parallel, shutdown),
-                Err(e) => log::error!("Error accepting new connection: {}", e.1),
-            });
-
-            if self.shutdown.load(Ordering::Relaxed) {
-                log::debug!("Server received a stop signal.  Exiting");
-                break;
-            }
+            pool.execute(move || Session::run(conf, client, max_parallel, shutdown));
         }
 
-        // Wait for all active threads to complete.
+        // Let the Session threads know we're shutting down.
+        self.shutdown.store(true, Ordering::Relaxed);
+
+        // Wait for all active worker threads to complete.  This does
+        // not wait on our ServerInbound, which is not part of our
+        // worker pool and which will block on waiting for new websocket
+        // clients.
         pool.join();
+
+        // Worker threads are all done.  Kill the process so we
+        // can clean up our ServerInbound.
+        std::process::exit(0);
     }
 }
 
