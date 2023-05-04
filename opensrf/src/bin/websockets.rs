@@ -5,6 +5,7 @@ use osrf::conf;
 use osrf::init;
 use osrf::logging::Logger;
 use osrf::message;
+use signal_hook;
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fmt;
@@ -14,9 +15,8 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
-use threadpool::ThreadPool;
 use std::time;
-use signal_hook;
+use threadpool::ThreadPool;
 use websocket::client::sync::Client;
 use websocket::receiver::Reader;
 use websocket::sender::Writer;
@@ -109,11 +109,9 @@ impl fmt::Display for SessionInbound {
 
 impl SessionInbound {
     fn run(&mut self, mut receiver: Reader<TcpStream>) {
-
         // Pull messages from our websocket TCP stream, forwarding each to
         // the Session thread for processing.
         for message in receiver.incoming_messages() {
-
             let channel_msg = match message {
                 Ok(m) => {
                     log::trace!("{self} SessionInbound received message: {m:?}");
@@ -178,7 +176,6 @@ impl fmt::Display for SessionOutbound {
 impl SessionOutbound {
     fn run(&mut self) {
         loop {
-
             // Check the shutdown flag at the to of the loop since we
             // have at least one 'continue' in the body and we need to
             // check on every iteration.
@@ -403,24 +400,22 @@ impl Session {
         let duration = time::Duration::from_secs(SHUTDOWN_POLL_INTERVAL as u64);
 
         loop {
-
             if self.shutdown_session.load(Ordering::Relaxed)
-                || self.shutdown_server.load(Ordering::Relaxed) {
+                || self.shutdown_server.load(Ordering::Relaxed)
+            {
                 log::debug!("{self} Session thread received a stop signal.  Exiting");
                 return;
             }
 
             let channel_msg = match self.to_main_rx.recv_timeout(duration) {
                 Ok(m) => m,
-                Err(e) => {
-                    match e {
-                        mpsc::RecvTimeoutError::Timeout => continue,
-                        _ => {
-                            log::error!("{self} Error in main thread reading message channel: {e}");
-                            return;
-                        }
+                Err(e) => match e {
+                    mpsc::RecvTimeoutError::Timeout => continue,
+                    _ => {
+                        log::error!("{self} Error in main thread reading message channel: {e}");
+                        return;
                     }
-                }
+                },
             };
 
             log::trace!("{self} read channel message: {channel_msg:?}");
@@ -745,16 +740,13 @@ impl Session {
 struct ServerInbound;
 
 impl ServerInbound {
-
     /// Wait for new websocket connections and forward each to the main
     /// Server thread for processing.
     fn run(to_main_tx: mpsc::Sender<Client<TcpStream>>, hostport: String) {
-
-        let server = websocket::sync::Server::bind(hostport)
-            .expect("Could not start websockets server");
+        let server =
+            websocket::sync::Server::bind(hostport).expect("Could not start websockets server");
 
         for connection in server.filter_map(Result::ok) {
-
             let client = match connection.accept() {
                 Ok(c) => c,
                 Err(e) => {
@@ -806,7 +798,6 @@ impl Server {
     }
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
-
         // If any of these signals occur, our self.shutdown flag will be set to true
         for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
             if let Err(e) = signal_hook::flag::register(sig, self.shutdown.clone()) {
@@ -826,14 +817,14 @@ impl Server {
 
         thread::spawn(|| ServerInbound::run(to_main_tx, host));
 
-        self.setup_signal_handlers().expect("Cannot setup signal handlers");
+        self.setup_signal_handlers()
+            .expect("Cannot setup signal handlers");
 
         let pool = ThreadPool::new(MAX_WS_CLIENTS);
 
         let duration = time::Duration::from_secs(SHUTDOWN_POLL_INTERVAL as u64);
 
         loop {
-
             if self.shutdown.load(Ordering::Relaxed) {
                 log::debug!("Server received a stop signal.  Exiting");
                 break;
@@ -841,15 +832,13 @@ impl Server {
 
             let client = match to_main_rx.recv_timeout(duration) {
                 Ok(c) => c,
-                Err(e) => {
-                    match e {
-                        mpsc::RecvTimeoutError::Timeout => continue,
-                        _ => {
-                            log::error!("Server thread receive error: {e}");
-                            break;
-                        }
+                Err(e) => match e {
+                    mpsc::RecvTimeoutError::Timeout => continue,
+                    _ => {
+                        log::error!("Server thread receive error: {e}");
+                        break;
                     }
-                }
+                },
             };
 
             log::debug!("Server thread received new client connection");
@@ -896,8 +885,7 @@ fn main() {
     let logger = Logger::new(gateway.logging()).expect("Creating logger");
     logger.init().expect("Logger Init");
 
-    let address = env::var("OSRF_WS_ADDRESS")
-        .unwrap_or(DEFAULT_LISTEN_ADDRESS.to_string());
+    let address = env::var("OSRF_WS_ADDRESS").unwrap_or(DEFAULT_LISTEN_ADDRESS.to_string());
 
     let port = match env::var("OSRF_WS_PORT") {
         Ok(v) => v.parse::<u16>().expect("Invalid port number"),

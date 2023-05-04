@@ -11,11 +11,6 @@
 //!
 //! Once the initial request is routed, the router is no longer involved
 //! in the conversation.
-use std::env;
-use std::fmt;
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 use chrono::prelude::{DateTime, Local};
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
@@ -24,6 +19,11 @@ use opensrf::init;
 use opensrf::logging::Logger;
 use opensrf::message;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
+use std::env;
+use std::fmt;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 /// How often do we wake from listening for messages and give shutdown
 /// signals a chance to propagate.
@@ -286,7 +286,6 @@ impl fmt::Display for Router {
 }
 
 impl Router {
-
     /// Create a new router instance.
     ///
     /// * `domain` - Primary domain for this router instance.
@@ -427,9 +426,7 @@ impl Router {
         if matches.next().is_none() {
             return Err(format!(
                 "Domain {} is not a trusted server domain for this router {} : {}",
-                domain,
-                address,
-                self
+                domain, address, self
             ));
         }
 

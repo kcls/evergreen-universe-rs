@@ -179,11 +179,11 @@ fn relay(
     worker.relay_count += 1;
     let api_name = method.method().replace("rs-public", "rs-private");
 
-    for resp in
-        worker
-            .client_mut()
-            .send_recv_iter("opensrf.rs-private", &api_name, method.params().clone())?
-    {
+    for resp in worker.client_mut().send_recv_iter(
+        "opensrf.rs-private",
+        &api_name,
+        method.params().clone(),
+    )? {
         session.respond(resp.clone())?;
         session.respond(json::from(format!("Relay count: {}", worker.relay_count)))?
     }
