@@ -261,32 +261,6 @@ impl Bus {
         Ok(())
     }
 
-    /// Remove all pending data from the recipient queue.
-    pub fn clear_bus(&mut self) -> Result<(), String> {
-        let sname = self.address().as_str().to_string(); // mut borrow
-        self.clear_named_queue(&sname)
-    }
-
-    pub fn clear_named_queue(&mut self, stream: &str) -> Result<(), String> {
-        log::trace!("Clearing stream {stream}");
-
-        let res: Result<i32, _> = self.connection().del(stream);
-
-        if let Err(e) = res {
-            return Err(format!("Error in queue clear(): {e}"));
-        }
-
-        Ok(())
-    }
-
-    /// Delete our stream.
-    ///
-    /// Redis connectionts are closed on free, so no specific
-    /// disconnect action is taken.
-    pub fn disconnect(&mut self) -> Result<(), String> {
-        self.clear_bus()
-    }
-
     /// Returns a list of keys that match the provided pattern.
     pub fn keys(&mut self, pattern: &str) -> Result<Vec<String>, String> {
         let res: Result<Vec<String>, _> = self.connection().keys(pattern);
@@ -344,10 +318,34 @@ impl Bus {
         let val = res.unwrap();
         Ok(val)
     }
+
+    /// Remove all pending data from the recipient queue.
+    pub fn clear_bus(&mut self) -> Result<(), String> {
+        let stream = self.address().as_str().to_string(); // mut borrow
+        let res: Result<i32, _> = self.connection().del(stream);
+
+        if let Err(e) = res {
+            return Err(format!("Error in queue clear(): {e}"));
+        }
+
+        Ok(())
+    }
 }
 
 impl fmt::Display for Bus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Bus {}", self.address())
+    }
+}
+
+/// Every Bus instance has a unique address which will never be used
+/// again.  When this bus instance is dropped, remove any remaining
+/// messages destined for this address since otherwise they will linger.
+impl Drop for Bus {
+    /// Similar to clear_bus but avoids any logging / error reporting.
+    fn drop(&mut self) {
+        let stream = self.address().as_str().to_string();
+        let res: Result<i32, _> = self.connection().del(&stream);
+        res.ok();
     }
 }

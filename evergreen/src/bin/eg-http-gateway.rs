@@ -453,7 +453,7 @@ impl mptc::RequestHandler for GatewayHandler {
     }
 
     fn thread_end(&mut self) -> Result<(), String> {
-        self.bus().disconnect()?;
+        // Bus will be cleaned up on Drop / thread exit.
         Ok(())
     }
 
