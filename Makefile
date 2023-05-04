@@ -1,7 +1,4 @@
-# Handy builder / installer for the stuff we want to put into /usr/local/
-#
-# NOTE if installing via sudo, root may not have 'cargo' in the path,
-# so do your 'make foo' first, then 'sudo make install-foo'
+# Build and Install Rust Components and Binaries
 
 TARGET = /usr/local
 SYSTEMD_DIR = /lib/systemd/system

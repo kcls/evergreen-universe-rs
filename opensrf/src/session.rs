@@ -57,21 +57,16 @@ impl Request {
     /// about the first, but want to pull all data off the bus until the
     /// message is officially marked as complete.
     pub fn first(&mut self) -> Result<Option<JsonValue>, String> {
-        let mut resp: Option<JsonValue> = None;
-        while !self.complete {
-            if let Some(r) = self.recv(DEFAULT_REQUEST_TIMEOUT)? {
-                resp = Some(r);
-            }
-        }
-
-        Ok(resp)
+        self.first_with_timeout(DEFAULT_REQUEST_TIMEOUT)
     }
 
     pub fn first_with_timeout(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
         let mut resp: Option<JsonValue> = None;
         while !self.complete {
             if let Some(r) = self.recv(timeout)? {
-                resp = Some(r);
+                if resp.is_none() {
+                    resp = Some(r);
+                } // else discard the non-first response.
             }
         }
 

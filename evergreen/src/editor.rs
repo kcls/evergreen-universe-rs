@@ -130,7 +130,8 @@ impl Editor {
         let method = "open-ils.auth.session.retrieve";
         let params = vec![json::from(token), json::from(true)];
 
-        let resp_op = self.client.send_recv(service, method, params)?.next();
+        let mut ses = self.client.session(service);
+        let resp_op = ses.request(method, params)?.first()?;
 
         if let Some(ref user) = resp_op {
             if let Some(evt) = EgEvent::parse(&user) {

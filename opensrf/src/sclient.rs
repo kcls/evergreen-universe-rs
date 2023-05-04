@@ -16,7 +16,7 @@ impl SettingsClient {
         let mut ses = client.session("opensrf.settings");
 
         let mut req = ses.request(
-            "opensrf.settings.default_config.get",
+            "opensrf.settings.host_config.get",
             vec![json::from(client.config().hostname()), json::from(force)],
         )?;
 
