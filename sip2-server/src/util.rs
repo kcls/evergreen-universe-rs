@@ -140,4 +140,33 @@ impl Session {
 
         addr
     }
+
+    pub fn _format_stat_cat_sip_field(
+        &self,
+        code: &str,
+        value: &str,
+        format_op: Option<&str>
+    ) -> Option<sip2::Field> {
+
+        if let Some(format) = format_op {
+            let flen = format.len();
+
+            // Regex formats are couched in "|" wrappers.
+            if flen > 1 && format.starts_with("|") && format.ends_with("|") {
+                // Got a regex.
+                todo!();
+            } else {
+                // Non-regex values are assumed to be sprint-style
+                // format strings.
+                // TODO requires https://docs.rs/sprintf/latest/sprintf/
+                todo!();
+            }
+        }
+
+        if value.len() > 0 {
+            Some(sip2::Field::new(code, value))
+        } else {
+            None
+        }
+    }
 }
