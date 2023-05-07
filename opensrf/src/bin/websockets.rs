@@ -211,11 +211,7 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn run(
-        conf: Arc<conf::Config>,
-        client: Client<TcpStream>,
-        max_parallel: usize,
-    ) {
+    fn run(conf: Arc<conf::Config>, client: Client<TcpStream>, max_parallel: usize) {
         let client_ip = match client.peer_addr() {
             Ok(ip) => ip,
             Err(e) => {
@@ -669,7 +665,6 @@ impl Server {
         };
 
         for connection in server.filter_map(Result::ok) {
-
             let client = match connection.accept() {
                 Ok(c) => c,
                 Err(e) => {

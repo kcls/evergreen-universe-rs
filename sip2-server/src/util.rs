@@ -145,9 +145,8 @@ impl Session {
         &self,
         code: &str,
         value: &str,
-        format_op: Option<&str>
+        format_op: Option<&str>,
     ) -> Option<sip2::Field> {
-
         if let Some(format) = format_op {
             let flen = format.len();
 
