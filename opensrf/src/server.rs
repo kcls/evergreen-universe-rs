@@ -6,6 +6,7 @@ use super::message;
 use super::method;
 use super::sclient::{HostSettings, SettingsClient};
 use super::session;
+use super::util;
 use super::worker::{Worker, WorkerState, WorkerStateEvent};
 use signal_hook;
 use std::collections::HashMap;
@@ -19,6 +20,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Warn when there are fewer than this many idle threads
 const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
 const CHECK_COMMANDS_TIMEOUT: u64 = 1;
+const SHUTDOWN_MAX_WAIT: i32 = 30;
 
 #[derive(Debug)]
 pub struct WorkerThread {
@@ -362,7 +364,33 @@ impl Server {
             }
         }
 
-        self.unregister_routers()
+        self.unregister_routers()?;
+        self.shutdown();
+
+        Ok(())
+    }
+
+    fn shutdown(&mut self) {
+        log::info!("{} shutting down", self.application.name());
+
+        let timer = util::Timer::new(SHUTDOWN_MAX_WAIT);
+        let duration = Duration::from_secs(1);
+
+        while self.active_thread_count() > 0 && !timer.done() {
+            log::info!(
+                "Waiting for workers to finish in graceful shutdown; remaining={}",
+                timer.remaining()
+            );
+
+            if let Ok(evt) = self.to_parent_rx.recv_timeout(duration) {
+                self.handle_worker_event(&evt);
+            }
+            self.check_failed_threads();
+        }
+
+        // Timer may have completed before all working threads reported
+        // as finished.  Force-kill all of our threads at this point.
+        std::process::exit(0);
     }
 
     // Check for threads that panic!ed and were unable to send any
