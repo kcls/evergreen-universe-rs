@@ -5,6 +5,7 @@ use osrf::conf;
 use osrf::init;
 use osrf::logging::Logger;
 use osrf::message;
+use osrf::util;
 use signal_hook;
 use std::collections::{HashMap, VecDeque};
 use std::env;
@@ -47,7 +48,11 @@ const DEFAULT_PORT: u16 = 7682;
 const MAX_WS_CLIENTS: usize = 256;
 
 /// How often to wake the SessionOutbound to check for a shutdown signal.
-const SHUTDOWN_POLL_INTERVAL: i32 = 5;
+const SHUTDOWN_POLL_INTERVAL: i32 = 3;
+
+/// Max number of seconds we allow active reqeusts to complete
+/// before forcing a shutdown.
+const SHUTDOWN_MAX_WAIT: i32 = 30;
 
 /// Prevent huge session threads
 const MAX_THREAD_SIZE: usize = 256;
@@ -253,6 +258,10 @@ struct Session {
     /// True if the server as a whole wants to shut down.
     shutdown_server: Arc<AtomicBool>,
 
+    /// Starts once we detect a shutdown signal.  If we're still
+    /// running when the timer runs out, force a shutdown.
+    shutdown_timer: Option<util::Timer>,
+
     /// Currently active (stateful) OpenSRF sessions.
     osrf_sessions: HashMap<String, String>,
 
@@ -353,6 +362,7 @@ impl Session {
             max_parallel,
             reqs_in_flight: 0,
             log_trace: None,
+            shutdown_timer: None,
             osrf_sessions: HashMap::new(),
             request_queue: VecDeque::new(),
         };
@@ -371,7 +381,7 @@ impl Session {
 
         // It's possible we are shutting down due to an issue that
         // occurred within this thread.  In that case, let the other
-        // threads know it's time to cleanup and go home.
+        // session threads know it's time to cleanup and go home.
         self.shutdown_session.store(true, Ordering::Relaxed);
 
         // Send a Close message to the Websocket client.  This has the
@@ -395,15 +405,51 @@ impl Session {
         }
     }
 
+    /// Returns true if it's finally time to force a shutdown.
+    fn check_shutdown(&mut self) -> bool {
+
+        if self.shutdown_server.load(Ordering::Relaxed) {
+
+            // Server shutdown issued, make sure we have notified
+            // our in/out bound threads.
+            if !self.shutdown_session.load(Ordering::Relaxed) {
+                self.shutdown_session.store(true, Ordering::Relaxed);
+            }
+
+        } else if !self.shutdown_session.load(Ordering::Relaxed) {
+
+            // No shutdown flags are set.  Get outta here.
+            return false;
+        }
+
+        if let Some(t) = &self.shutdown_timer {
+            if t.done() {
+                // Timer expired.  Force a shutdown.
+                return true;
+            } else {
+                if self.reqs_in_flight == 0 && self.request_queue.len() == 0 {
+                    // We have no more work to do.  We can get outta here.
+                    return true;
+                } else {
+                    // Work left to do and the timer is still running.
+                    return false;
+                }
+            }
+        }
+
+        // We are shutting down, but have not yet started a timer.
+        self.shutdown_timer = Some(util::Timer::new(SHUTDOWN_MAX_WAIT));
+
+        return false;
+    }
+
     /// Main Session listen loop
     fn listen(&mut self) {
         let duration = time::Duration::from_secs(SHUTDOWN_POLL_INTERVAL as u64);
 
         loop {
-            if self.shutdown_session.load(Ordering::Relaxed)
-                || self.shutdown_server.load(Ordering::Relaxed)
-            {
-                log::debug!("{self} Session thread received a stop signal.  Exiting");
+
+            if self.check_shutdown() {
                 return;
             }
 
@@ -740,13 +786,22 @@ impl Session {
 struct ServerInbound;
 
 impl ServerInbound {
+
     /// Wait for new websocket connections and forward each to the main
     /// Server thread for processing.
-    fn run(to_main_tx: mpsc::Sender<Client<TcpStream>>, hostport: String) {
-        let server =
-            websocket::sync::Server::bind(hostport).expect("Could not start websockets server");
+    fn run(to_main_tx: mpsc::Sender<Client<TcpStream>>, hostport: String, shutdown: Arc<AtomicBool>) {
+
+        let server = match websocket::sync::Server::bind(hostport) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Could not start websockets server: {e}");
+                shutdown.store(true, Ordering::Relaxed);
+                return;
+            }
+        };
 
         for connection in server.filter_map(Result::ok) {
+
             let client = match connection.accept() {
                 Ok(c) => c,
                 Err(e) => {
@@ -760,6 +815,14 @@ impl ServerInbound {
             if to_main_tx.send(client).is_err() {
                 // Likely the main thread died.  Let's get outta here.
                 log::error!("Cannot send new client to Server; exiting");
+                break;
+            }
+
+            // During shutdown, we may be sat blocking, waiting for the
+            // next client to connect.  If one connects during our shutdown
+            // phase, pass it on to be handled, then exit the main listen
+            // loop which will shut down the main listen socket.
+            if shutdown.load(Ordering::Relaxed) {
                 break;
             }
         }
@@ -815,7 +878,9 @@ impl Server {
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        thread::spawn(|| ServerInbound::run(to_main_tx, host));
+        let shutdown = self.shutdown.clone();
+
+        thread::spawn(|| ServerInbound::run(to_main_tx, host, shutdown));
 
         self.setup_signal_handlers()
             .expect("Cannot setup signal handlers");
@@ -826,7 +891,7 @@ impl Server {
 
         loop {
             if self.shutdown.load(Ordering::Relaxed) {
-                log::debug!("Server received a stop signal.  Exiting");
+                log::info!("Server received a stop signal.  Exiting");
                 break;
             }
 
