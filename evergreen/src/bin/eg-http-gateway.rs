@@ -84,7 +84,7 @@ struct GatewayHandler {
 impl GatewayHandler {
     /// Mutable OpenSRF Bus ref
     ///
-    /// Panics if the bus is not yet setup, which happens in thread_start()
+    /// Panics if the bus is not yet setup, which happens in worker_start()
     fn bus(&mut self) -> &mut osrf::bus::Bus {
         self.bus.as_mut().unwrap()
     }
@@ -446,14 +446,14 @@ impl GatewayHandler {
 }
 
 impl mptc::RequestHandler for GatewayHandler {
-    fn thread_start(&mut self) -> Result<(), String> {
+    fn worker_start(&mut self) -> Result<(), String> {
         let bus = osrf::bus::Bus::new(self.bus_conf())?;
         self.bus = Some(bus);
         Ok(())
     }
 
-    fn thread_end(&mut self) -> Result<(), String> {
-        // Bus will be cleaned up on Drop / thread exit.
+    fn worker_end(&mut self) -> Result<(), String> {
+        // Bus will be cleaned up on thread exit -> Drop
         Ok(())
     }
 
@@ -534,26 +534,13 @@ impl GatewayStream {
 }
 
 impl mptc::RequestStream for GatewayStream {
+
     /// Returns the next client request stream.
-    ///
-    /// We don't use 'timeout' here since the timeout is applied directly
-    /// to our TcpStream.
-    fn next(&mut self, _timeout: u64) -> Result<Option<Box<dyn mptc::Request>>, String> {
+    fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
+
         let (stream, address) = match self.listener.accept() {
             Ok((s, a)) => (s, a),
-            Err(e) => {
-                match e.kind() {
-                    std::io::ErrorKind::WouldBlock => {
-                        // Accept call timed out.  Let the server know
-                        // we received no data within the timeout provided.
-                        return Ok(None);
-                    }
-                    _ => {
-                        // Unexpected error.
-                        return Err(format!("accept() failed: {e}"));
-                    }
-                }
-            }
+            Err(e) => Err(format!("accept() failed: {e}"))?,
         };
 
         let request = GatewayRequest {
@@ -563,17 +550,21 @@ impl mptc::RequestStream for GatewayStream {
             start_time: Instant::now(),
         };
 
-        Ok(Some(Box::new(request)))
+        Ok(Box::new(request))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = GatewayHandler {
             bus: None,
-            osrf_conf: self.eg_ctx.config().clone(),
             idl: self.eg_ctx.idl().clone(),
+            osrf_conf: self.eg_ctx.config().clone(),
         };
 
         Box::new(handler)
+    }
+
+    fn reload(&mut self) -> Result<(), String> {
+        Ok(())
     }
 }
 

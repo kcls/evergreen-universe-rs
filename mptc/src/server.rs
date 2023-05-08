@@ -18,7 +18,6 @@ pub struct Server {
     max_workers: usize,
     max_worker_reqs: usize,
 
-    shutdown: Arc<AtomicBool>,
     reload: Arc<AtomicBool>,
 
     /// All inbound requests arrive via this stream.
@@ -41,7 +40,6 @@ impl Server {
             min_workers: super::DEFAULT_MIN_WORKERS,
             max_workers: super::DEFAULT_MAX_WORKERS,
             max_worker_reqs: super::DEFAULT_MAX_WORKER_REQS,
-            shutdown: Arc::new(AtomicBool::new(false)),
             reload: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -67,11 +65,21 @@ impl Server {
         }
     }
 
+    fn stop_workers(&mut self) {
+        loop {
+            let id = match self.workers.keys().next() {
+                Some(i) => *i,
+                None => break,
+            };
+            log::debug!("Server cleaning up worker {}", id);
+            self.remove_worker(&id, false);
+        }
+    }
+
     fn start_one_worker(&mut self) -> u64 {
         let worker_id = self.next_worker_id();
         let to_parent_tx = self.to_parent_tx.clone();
         let max_reqs = self.max_worker_reqs;
-        let shutdown = self.shutdown.clone();
         let handler = self.stream.new_handler();
 
         log::trace!(
@@ -86,7 +94,7 @@ impl Server {
         ) = mpsc::channel();
 
         let handle = thread::spawn(move || {
-            let mut w = Worker::new(worker_id, max_reqs, to_parent_tx, rx, shutdown, handler);
+            let mut w = Worker::new(worker_id, max_reqs, to_parent_tx, rx, handler);
             w.run();
         });
 
@@ -186,37 +194,33 @@ impl Server {
     /// Returns true if the it's time to shut down.
     ///
     /// * `block` - Continue performing housekeeping until an idle worker
-    /// becomes available or a shutdown signal is received.
+    /// becomes available.
     fn housekeeping(&mut self, block: bool) -> bool {
         loop {
-            if self.shutdown.load(Ordering::Relaxed) {
-                log::debug!("We received a stop signal, exiting");
-                return true;
-            }
-
             if self.reload.load(Ordering::Relaxed) {
                 log::info!("Reload request received.  Reloading config");
-                // TODO
-                // This will have to be passed to our RequestStream
+                self.reload.store(false, Ordering::Relaxed);
+
+                if let Err(e) = self.stream.reload() {
+                    log::error!("Reload command failed, exiting. {e}");
+                    return true;
+                }
             }
 
             if block {
                 log::debug!("Waiting for a worker to become available...");
 
                 // Wait up to 1 second for a worker state event, then
-                // resume housekeeping.
+                // resume housekeeping, looping back around and trying
+                // again if necessary.
                 if let Ok(evt) = self.to_parent_rx.recv_timeout(Duration::from_secs(1)) {
                     self.handle_worker_event(&evt);
                 }
             }
 
             // Pull all state events from the channel.
-            loop {
-                if let Ok(evt) = self.to_parent_rx.try_recv() {
-                    self.handle_worker_event(&evt);
-                } else {
-                    break;
-                }
+            while let Ok(evt) = self.to_parent_rx.try_recv() {
+                self.handle_worker_event(&evt);
             }
 
             // Finally clean up any threads that panic!ed before they
@@ -238,21 +242,11 @@ impl Server {
         self.start_workers();
 
         loop {
-            if self.housekeeping(false) {
-                break;
-            }
-
-            // pull request data from something
-
-            match self.stream.next(super::SIGNAL_POLL_INTERVAL) {
-                Ok(op) => match op {
-                    Some(s) => self.dispatch_request(s),
-                    None => {} // timed out.
-                },
+            match self.stream.next() {
+                Ok(r) => self.dispatch_request(r),
                 Err(e) => {
                     log::error!("Exiting on stream error: {e}");
-                    // TODO set shutdown?
-                    return;
+                    break;
                 }
             }
 
@@ -261,14 +255,7 @@ impl Server {
             }
         }
 
-        loop {
-            let id = match self.workers.keys().next() {
-                Some(i) => *i,
-                None => break,
-            };
-            log::debug!("Server cleaning up worker {}", id);
-            self.remove_worker(&id, false);
-        }
+        self.stop_workers();
     }
 
     fn dispatch_request(&mut self, request: Box<dyn Request>) {
@@ -321,20 +308,12 @@ impl Server {
     }
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
-        // TERM and INT result in a graceful shutdown
-        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-            if let Err(e) = signal_hook::flag::register(sig, self.shutdown.clone()) {
-                Err(format!("Cannot register signal handler: {e}"))?;
-            }
-        }
+        let res = signal_hook::flag::register(
+            signal_hook::consts::SIGHUP, self.reload.clone());
 
-        // HUP causes us to reload our configuration.
-        if let Err(e) =
-            signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone())
-        {
-            Err(format!("Cannot register HUP signal: {e}"))?;
+        match res {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Cannot register HUP signal: {e}")),
         }
-
-        Ok(())
     }
 }

@@ -28,20 +28,20 @@ struct TcpEchoHandler {
 }
 
 impl mptc::RequestHandler for TcpEchoHandler {
-    fn thread_start(&mut self) -> Result<(), String> {
-        println!("TcpEchoHandler::thread_start({})", self.id);
+    fn worker_start(&mut self) -> Result<(), String> {
+        println!("TcpEchoHandler::worker_start({})", self.id);
         Ok(())
     }
 
-    fn thread_end(&mut self) -> Result<(), String> {
-        println!("TcpEchoHandler::thread_end({})", self.id);
+    fn worker_end(&mut self) -> Result<(), String> {
+        println!("TcpEchoHandler::worker_end({})", self.id);
         Ok(())
     }
 
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         println!("TcpEchoHandler::process({})", self.id);
 
-        // Turn the generalic mptc::Request into a type we can perform actions on.
+        // Turn the general mptc::Request into a type we can perform actions on.
         let request = TcpEchoRequest::downcast(&mut request);
 
         let mut buffer = [0u8; 1024];
@@ -69,8 +69,7 @@ struct TcpEchoStream {
 }
 
 impl mptc::RequestStream for TcpEchoStream {
-    fn next(&mut self, _timeout: u64) -> Result<Option<Box<dyn mptc::Request>>, String> {
-        // NOTE use the socket2 crate to apply read timeouts to TcpStreams
+    fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
 
         let (stream, _addr) = self
             .listener
@@ -78,13 +77,16 @@ impl mptc::RequestStream for TcpEchoStream {
             .or_else(|e| Err(format!("Accept failed: {e}")))?;
 
         let request = TcpEchoRequest { stream: stream };
-        Ok(Some(Box::new(request)))
+        Ok(Box::new(request))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         self.id_gen += 1;
         let h = TcpEchoHandler { id: self.id_gen };
         Box::new(h)
+    }
+
+    fn reload(&mut self) -> Result<(), String> {
     }
 }
 

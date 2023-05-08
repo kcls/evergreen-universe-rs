@@ -21,8 +21,9 @@ const TRIM_THREAD_ID: usize = 5;
 ///
 /// TODO: As it stands, there's no way to apply a log trace value to the
 /// logger, since the global logger isn't generally writable or accessible
-/// to individual threads.  Log traces currently have to be passed
-/// by the log::* caller within the log message.  Consider alternatives.
+/// to individual threads.  Additionally, each thread will have its own
+/// log trace values. Log traces currently have to be passed by the
+/// log::* caller within the log message.  Consider alternatives.
 ///
 pub struct Logger {
     _logfile: conf::LogFile,

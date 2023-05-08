@@ -25,10 +25,10 @@ pub trait Request: Send + std::any::Any {
 
 pub trait RequestHandler: Send {
     /// Called from within each worker thread just after spawning.
-    fn thread_start(&mut self) -> Result<(), String>;
+    fn worker_start(&mut self) -> Result<(), String>;
 
     /// Called from within each worker thread just before the thread exits.
-    fn thread_end(&mut self) -> Result<(), String>;
+    fn worker_end(&mut self) -> Result<(), String>;
 
     /// Process a single request.
     ///
@@ -39,14 +39,15 @@ pub trait RequestHandler: Send {
 
 pub trait RequestStream {
     /// Returns the next incoming request in the stream.
-    ///
-    /// * `timeout` - Maximum amount of time to wait for the next
-    /// Request to arrive.  Timeout support is not strictly required by
-    /// the RequestStream, however without a timeout -- i.e. every call
-    /// to next() blocks indefinitely -- the server cannot periodically
-    /// wake to check for shutdown, etc. signals.
-    fn next(&mut self, timeout: u64) -> Result<Option<Box<dyn Request>>, String>;
+    fn next(&mut self) -> Result<Box<dyn Request>, String>;
 
     /// Factory for creating new RequestHandler instances.
     fn new_handler(&mut self) -> Box<dyn RequestHandler>;
+
+    /// Reload configuration data.
+    ///
+    /// If the RequestStream cannot reload, it should revert to its
+    /// previous state and continue functioning.  It should only return
+    /// an Err() if it cannot proceed.
+    fn reload(&mut self) -> Result<(), String>;
 }

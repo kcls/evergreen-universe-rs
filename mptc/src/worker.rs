@@ -1,10 +1,7 @@
 use super::{Request, RequestHandler};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WorkerState {
@@ -93,7 +90,6 @@ pub struct Worker {
     request_count: usize,
     to_parent_tx: mpsc::Sender<WorkerStateEvent>,
     to_worker_rx: mpsc::Receiver<Box<dyn Request>>,
-    shutdown: Arc<AtomicBool>,
     handler: Box<dyn RequestHandler>,
 }
 
@@ -103,7 +99,6 @@ impl Worker {
         max_requests: usize,
         to_parent_tx: mpsc::Sender<WorkerStateEvent>,
         to_worker_rx: mpsc::Receiver<Box<dyn Request>>,
-        shutdown: Arc<AtomicBool>,
         handler: Box<dyn RequestHandler>,
     ) -> Worker {
         Worker {
@@ -111,7 +106,6 @@ impl Worker {
             max_requests,
             to_parent_tx,
             to_worker_rx,
-            shutdown,
             request_count: 0,
             handler,
         }
@@ -141,7 +135,10 @@ impl Worker {
     pub fn run(&mut self) {
         log::trace!("{self} starting");
 
-        self.handler.thread_start().unwrap(); // TODO
+        if let Err(e) = self.handler.worker_start() {
+            log::error!("Error starting worker: {e}.  Exiting");
+            return;
+        }
 
         while self.request_count < self.max_requests {
             self.request_count += 1;
@@ -151,54 +148,29 @@ impl Worker {
                 break;
             }
 
-            match self.process_one_request() {
-                Ok(shutdown) => {
-                    if shutdown {
-                        log::debug!("{self} exiting listen loop on shutdown");
-                        break;
-                    }
-                }
-                Err(e) => {
-                    log::error!("{self} Request failed: {e}");
-                    break;
-                }
+            if let Err(e) = self.process_one_request() {
+                log::error!("{self} Request failed: {e}");
+                break;
             }
         }
 
-        log::debug!("{self} exiting on shutdown / max requests");
+        log::debug!("{self} exiting on max requests (or error)");
 
         self.set_as_done().ok(); // we're done.  ignore errors.
 
-        if let Err(e) = self.handler.thread_end() {
+        if let Err(e) = self.handler.worker_end() {
             log::error!("{self} handler returned on error on exit: {e}");
         }
     }
 
     /// Returns result of true of this worker should exit.
-    fn process_one_request(&mut self) -> Result<bool, String> {
-        let duration = Duration::from_secs(super::SIGNAL_POLL_INTERVAL);
-        let request;
+    fn process_one_request(&mut self) -> Result<(), String> {
+        let request = match self.to_worker_rx.recv() {
+            Ok(r) => r,
+            Err(e) => Err(format!("{self} exiting on failed receive: {e}"))?,
+        };
 
-        loop {
-            if self.shutdown.load(Ordering::Relaxed) {
-                log::debug!("We received a stop signal, exiting");
-                return Ok(true);
-            }
-
-            request = match self.to_worker_rx.recv_timeout(duration) {
-                Ok(r) => r,
-                Err(e) => match e {
-                    mpsc::RecvTimeoutError::Timeout => continue,
-                    _ => return Err(format!("{self} exiting on failed receive: {e}")),
-                },
-            };
-
-            break;
-        }
-
-        self.handler.process(request)?;
-
-        Ok(false)
+        self.handler.process(request)
     }
 }
 

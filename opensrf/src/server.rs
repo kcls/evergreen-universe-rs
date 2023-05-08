@@ -385,6 +385,7 @@ impl Server {
             if let Ok(evt) = self.to_parent_rx.recv_timeout(duration) {
                 self.handle_worker_event(&evt);
             }
+
             self.check_failed_threads();
         }
 
