@@ -87,6 +87,7 @@ impl mptc::RequestStream for TcpEchoStream {
     }
 
     fn reload(&mut self) -> Result<(), String> {
+        Ok(())
     }
 }
 
