@@ -34,23 +34,7 @@ rustyline = "10.1"
 atty = "0.2"
 
 # For gateway
-socket2 = "0.5"
 url = "2.3"
-
-[[bin]]
-name = "egsh"
-
-[[bin]]
-name = "eg-parallel-ingest"
-
-[[bin]]
-name = "eg-bib-to-auth-linker"
-
-[[bin]]
-name = "eg-marc-export"
-
-[[bin]]
-name = "eg-svc-rspub"
 
 [[example]]
 name = "basic-requests"
