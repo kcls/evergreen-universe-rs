@@ -4,7 +4,6 @@ use evergreen as eg;
 use mptc;
 use opensrf as osrf;
 use osrf::client::DataSerializer;
-use socket2::{Domain, Socket, Type};
 use std::any::Any;
 use std::env;
 use std::io::{Read, Write};
@@ -486,50 +485,16 @@ struct GatewayStream {
 
 impl GatewayStream {
     fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> Result<Self, String> {
-        let listener = GatewayStream::setup_listener(address, port)?;
+        let hostport = format!("{}:{}", address, port);
+
+        log::info!("EG Gateway listening at {hostport}");
+
+        let listener = TcpListener::bind(&hostport)
+            .or_else(|e| Err(format!("Cannot listen for connections on {hostport}: {e}")))?;
 
         let stream = GatewayStream { listener, eg_ctx };
 
         Ok(stream)
-    }
-
-    // Setup our TcpListener with a timeout so mptc can periodically
-    // wake to check for shutdown, etc. signals.
-    fn setup_listener(address: &str, port: u16) -> Result<TcpListener, String> {
-        let destination = format!("{}:{}", address, port);
-
-        log::info!("EG Gateway listeneing at {destination}");
-
-        let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
-            .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
-
-        // When we stop/start the service, the address may briefly linger
-        // from open (idle) client connections.
-        socket
-            .set_reuse_address(true)
-            .or_else(|e| Err(format!("Error setting reuse address: {e}")))?;
-
-        let address: SocketAddr = destination
-            .parse()
-            .or_else(|e| Err(format!("Error parsing listen address: {destination}: {e}")))?;
-
-        socket
-            .bind(&address.into())
-            .or_else(|e| Err(format!("Error binding to address: {destination}: {e}")))?;
-
-        socket
-            .listen(128) // 128 == backlog.
-            .or_else(|e| Err(format!("Error listending on socket {destination}: {e}")))?;
-
-        // We need a read timeout so we can wake periodically to check
-        // for shutdown signals.
-        let polltime = Duration::from_secs(mptc::SIGNAL_POLL_INTERVAL);
-
-        socket
-            .set_read_timeout(Some(polltime))
-            .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
-
-        Ok(socket.into())
     }
 }
 
