@@ -499,10 +499,8 @@ impl GatewayStream {
 }
 
 impl mptc::RequestStream for GatewayStream {
-
     /// Returns the next client request stream.
     fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
-
         let (stream, address) = match self.listener.accept() {
             Ok((s, a)) => (s, a),
             Err(e) => Err(format!("accept() failed: {e}"))?,

@@ -308,8 +308,7 @@ impl Server {
     }
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
-        let res = signal_hook::flag::register(
-            signal_hook::consts::SIGHUP, self.reload.clone());
+        let res = signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone());
 
         match res {
             Ok(_) => Ok(()),

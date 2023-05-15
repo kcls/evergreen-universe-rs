@@ -70,7 +70,6 @@ struct TcpEchoStream {
 
 impl mptc::RequestStream for TcpEchoStream {
     fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
-
         let (stream, _addr) = self
             .listener
             .accept()
