@@ -29,7 +29,3 @@ path = "src/bin/websockets.rs"
 name = "opensrf-buswatch"
 path = "src/bin/buswatch.rs"
 
-[[example]]
-name = "client-demo"
-path = "examples/client-demo.rs"
-
