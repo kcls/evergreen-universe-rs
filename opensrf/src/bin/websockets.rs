@@ -61,9 +61,8 @@ const MAX_ACTIVE_REQUESTS: usize = 8;
 /// NOTE: should we kick the client off at this point?
 const MAX_BACKLOG_SIZE: usize = 1000;
 
-/// ChannelMessage's are delivered to the main thread.  There are 3
-/// varieties: inbound websocket request, outbound opensrf response,
-/// and a wakeup message.
+/// ChannelMessage's are delivered to the main thread.  There are 2
+/// types: Inbound websocket request and Ooutbound opensrf response.
 #[derive(Debug, PartialEq)]
 enum ChannelMessage {
     /// Websocket Request
@@ -177,7 +176,7 @@ struct Session {
     /// All messages flow to the main thread via this channel.
     to_main_rx: mpsc::Receiver<ChannelMessage>,
 
-    /// For posting messages to the outbound websocket stream.
+    /// For posting responses to the outbound websocket stream.
     sender: Writer<TcpStream>,
 
     /// Relays request to the OpenSRF bus.
@@ -186,7 +185,10 @@ struct Session {
     /// Websocket client address.
     client_ip: SocketAddr,
 
-    /// Currently active (stateful) OpenSRF sessions.
+    /// Currently active stateful/connected OpenSRF sessions.
+    /// These must be tracked so that subsequent requests for the
+    /// same OpenSRF session may be routed to the OpenSRF worker
+    /// we have already connected to.
     osrf_sessions: HashMap<String, String>,
 
     /// Number of inbound connects/requests that are currently
@@ -340,14 +342,14 @@ impl Session {
                 self.relay_to_osrf(&text)?;
             } else {
                 // Backlog is empty
-                log::trace!("{self} message queue is empty");
+                log::trace!("{self} message queue is now empty");
                 return Ok(());
             }
         }
 
         if self.request_queue.len() > 0 {
             log::warn!(
-                "{self} MAX_ACTIVE_REQUESTS reached.  {} messages queued",
+                "{self} MAX_ACTIVE_REQUESTS reached. {} messages queued",
                 self.request_queue.len()
             );
         }
@@ -422,7 +424,7 @@ impl Session {
             .as_str()
             .ok_or(format!("{self} service name is required"))?;
 
-        // recipient is the final destination, but me may put this
+        // recipient is the final destination, but we may put this
         // message into the queue of the router as needed.
         let mut send_to_router: Option<String> = None;
 
@@ -440,7 +442,7 @@ impl Session {
 
         log::debug!("{self} WS relaying message thread={thread} recipient={recipient}");
 
-        // msg_list should be an array, but may be a single opensrf message.
+        // msg_list is typically an array, but may be a single opensrf message.
         if !msg_list.is_array() {
             let mut list = json::JsonValue::new_array();
 
@@ -516,6 +518,16 @@ impl Session {
         Ok(())
     }
 
+    /// Subtract one from our request-in-flight while protecting
+    /// against underflow on an unsigned number.  Underflow should
+    /// not happen in practice, but if it did, the thread would panic.
+    fn subtract_reqs(&mut self) {
+        if self.reqs_in_flight > 0 {
+            // Avoid unsigned underflow, which would cause panic.
+            self.reqs_in_flight -= 1;
+        }
+    }
+
     /// Package an OpenSRF response as a websocket message and
     /// send the message to this Session's websocket client.
     fn relay_to_websocket(&mut self, tm: message::TransportMessage) -> Result<(), String> {
@@ -527,23 +539,19 @@ impl Session {
         for msg in msg_list.iter() {
             if let osrf::message::Payload::Status(s) = msg.payload() {
                 match *s.status() {
+                    message::MessageStatus::Complete => self.subtract_reqs(),
                     message::MessageStatus::Ok => {
-                        if self.reqs_in_flight > 0 {
-                            // avoid underflow
-                            self.reqs_in_flight -= 1;
-                        };
+                        self.subtract_reqs();
+                        // Connection successful message.  Track the worker address.
                         self.osrf_sessions
                             .insert(tm.thread().to_string(), tm.from().to_string());
                     }
-                    message::MessageStatus::Complete => {
-                        if self.reqs_in_flight > 0 {
-                            self.reqs_in_flight -= 1;
-                        };
-                    }
+
+                    // Any response whose status is >= 400 (bad-request) is
+                    // treated as an error and any stateful connection (if
+                    // active) is severed.
                     s if s as usize >= message::MessageStatus::BadRequest as usize => {
-                        if self.reqs_in_flight > 0 {
-                            self.reqs_in_flight -= 1;
-                        };
+                        self.subtract_reqs();
                         transport_error = true;
                         log::error!("{self} Request returned unexpected status: {:?}", msg);
                         self.osrf_sessions.remove(tm.thread());
