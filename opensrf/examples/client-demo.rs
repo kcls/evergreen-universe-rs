@@ -1,10 +1,10 @@
 use opensrf::Client;
 
 fn main() -> Result<(), String> {
+    // Standard setup + connect routines.
     let conf = opensrf::init::init()?;
     let client = Client::connect(conf.into_shared())?;
 
-    // SESSION + MANUAL REQUEST --------------------------------
     let mut ses = client.session("opensrf.settings");
 
     ses.connect()?; // Optional
@@ -13,34 +13,27 @@ fn main() -> Result<(), String> {
 
     let mut req = ses.request("opensrf.system.echo", params)?;
 
-    // Loop will continue until the request is complete or a recv()
-    // call times out.
+    // We anticipate multiple responses.  Collect them all!
     while let Some(resp) = req.recv(60)? {
         println!("Response: {}", resp.dump());
     }
 
     ses.disconnect()?; // Only required if connected
 
-    // Variety of param creation options.
-    let params = vec![
-        json::parse("{\"stuff\":[3, 123, null]}").unwrap(),
-        json::from(std::collections::HashMap::from([("more stuff", "yep")])),
-        json::JsonValue::Null,
-        json::from(vec![1.1, 2.0, 3.0]),
-        json::object! {"just fantastic": json::array!["a", "b"]},
-    ];
+    // ------------------------------------------------------------------
+    // One-off request and we only care about the 1st response.
 
-    // ONE-OFF WITH ITERATOR --------------------------
-    for resp in client.send_recv_iter("opensrf.settings", "opensrf.system.echo", params.clone())? {
-        println!("Response: {}", resp.dump());
-    }
+    let value = "Hello, World, Pamplemousse";
+    let response = client
+        .send_recv_one("opensrf.settings", "opensrf.system.echo", value)?
+        .unwrap();
 
-    // Give me a single response ----------------------
-    let json_str = client
-        .send_recv_one("opensrf.settings", "opensrf.system.echo", "Hello, World")?
-        .expect("echo response");
+    // Client responses are json::JsonValue's
+    let resp_str = response.as_str().unwrap();
 
-    println!("GOT A: {}", json_str);
+    assert_eq!(resp_str, value);
+
+    println!("Response: {resp_str}");
 
     Ok(())
 }
