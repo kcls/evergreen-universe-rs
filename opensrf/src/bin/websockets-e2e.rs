@@ -4,26 +4,41 @@ use threadpool::ThreadPool;
 use opensrf::util;
 use opensrf::message;
 
-const REQS_PER_THREAD: usize = 200;
-const THREAD_COUNT: usize = 20;
+/// Each websocket client will send this many requests in a loop.
+const REQS_PER_THREAD: usize = 100;
+/// Number of parallel websocket clients to launch.
+/// Be cautious when setting this value, especially on a production
+/// system, since it's trivial to overwhelm a service with too many
+/// websocket clients making API calls to the same service.
+const THREAD_COUNT: usize = 15;
 const DEFAULT_URI: &str = "ws://127.0.0.1:7682";
+
+/// How many times we repeat the entire batch.
+const NUM_ITERS: usize = 5;
 
 // Since we're testing Websockets, which is a public-facing gateway,
 // the destination service must be a public service.
 const SERVICE: &str = "open-ils.actor";
 
 fn main() {
-    let mut threads = 0;
-    let pool = ThreadPool::new(THREAD_COUNT);
+    let mut batches = 0;
 
-    while threads < THREAD_COUNT {
-        pool.execute(|| run_thread());
-        threads += 1;
+    while batches < NUM_ITERS {
+        batches += 1;
+
+        let mut threads = 0;
+        let pool = ThreadPool::new(THREAD_COUNT);
+
+        while threads < THREAD_COUNT {
+            pool.execute(|| run_thread());
+            threads += 1;
+        }
+
+        // Wait for every thread / client in this pool to complete.
+        pool.join();
+
+        println!("");
     }
-
-    pool.join();
-
-    println!("");
 }
 
 fn run_thread() {
