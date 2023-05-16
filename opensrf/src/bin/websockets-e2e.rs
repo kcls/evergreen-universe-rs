@@ -2,6 +2,7 @@ use opensrf::message;
 use opensrf::util;
 use std::thread;
 use std::time::Instant;
+use std::io::Write;
 use websocket::stream::sync::NetworkStream;
 use websocket::sync::Client;
 use websocket::{ClientBuilder, Message, OwnedMessage};
@@ -13,13 +14,13 @@ const REQS_PER_THREAD: usize = 100;
 /// Be cautious when setting this value, especially on a production
 /// system, since it's trivial to overwhelm a service with too many
 /// websocket clients making API calls to the same service.
-const THREAD_COUNT: usize = 15;
+const THREAD_COUNT: usize = 10;
 
 /// Websocket server URI.
 /// TODO: At present, dummy SSL certs will fail.
 /// https://docs.rs/websocket/latest/websocket/client/builder/struct.ClientBuilder.html#method.connect
 /// https://docs.rs/native-tls/0.2.8/native_tls/struct.TlsConnectorBuilder.html
-//const DEFAULT_URI: &str = "wss://127.0.0.1:443";
+//const DEFAULT_URI: &str = "wss://redis.demo.kclseg.org:443/osrf-websocket-translator";
 const DEFAULT_URI: &str = "ws://127.0.0.1:7682";
 
 /// How many times we repeat the entire batch.
@@ -125,6 +126,7 @@ fn send_one_request(client: &mut Client<Box<dyn NetworkStream + Send>>, count: u
             let content = res.content();
             assert_eq!(content, &echostr);
             print!("+");
+            std::io::stdout().flush().ok();
         }
     }
 }
