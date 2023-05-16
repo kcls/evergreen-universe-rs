@@ -1,16 +1,25 @@
-use websocket::{OwnedMessage, ClientBuilder, Message};
-use websocket::sync::Client;
-use threadpool::ThreadPool;
-use opensrf::util;
 use opensrf::message;
+use opensrf::util;
+use std::thread;
+use std::time::Instant;
+use websocket::stream::sync::NetworkStream;
+use websocket::sync::Client;
+use websocket::{ClientBuilder, Message, OwnedMessage};
 
 /// Each websocket client will send this many requests in a loop.
 const REQS_PER_THREAD: usize = 100;
+
 /// Number of parallel websocket clients to launch.
 /// Be cautious when setting this value, especially on a production
 /// system, since it's trivial to overwhelm a service with too many
 /// websocket clients making API calls to the same service.
 const THREAD_COUNT: usize = 15;
+
+/// Websocket server URI.
+/// TODO: At present, dummy SSL certs will fail.
+/// https://docs.rs/websocket/latest/websocket/client/builder/struct.ClientBuilder.html#method.connect
+/// https://docs.rs/native-tls/0.2.8/native_tls/struct.TlsConnectorBuilder.html
+//const DEFAULT_URI: &str = "wss://127.0.0.1:443";
 const DEFAULT_URI: &str = "ws://127.0.0.1:7682";
 
 /// How many times we repeat the entire batch.
@@ -22,30 +31,35 @@ const SERVICE: &str = "open-ils.actor";
 
 fn main() {
     let mut batches = 0;
+    let reqs_per_batch = THREAD_COUNT * REQS_PER_THREAD;
 
     while batches < NUM_ITERS {
         batches += 1;
+        let mut handles: Vec<thread::JoinHandle<()>> = Vec::new();
 
-        let mut threads = 0;
-        let pool = ThreadPool::new(THREAD_COUNT);
+        let start = Instant::now();
 
-        while threads < THREAD_COUNT {
-            pool.execute(|| run_thread());
-            threads += 1;
+        while handles.len() < THREAD_COUNT {
+            handles.push(thread::spawn(|| run_thread()));
         }
 
-        // Wait for every thread / client in this pool to complete.
-        pool.join();
+        // Wait for all threads to finish.
+        for h in handles {
+            h.join().ok();
+        }
 
-        println!("");
+        let duration = (start.elapsed().as_millis() as f64) / 1000.0;
+        println!(
+            "\n\nBatch Requests: {reqs_per_batch}; Duration: {:.3}\n",
+            duration
+        );
     }
 }
 
 fn run_thread() {
-
     let mut client = ClientBuilder::new(DEFAULT_URI)
         .unwrap()
-        .connect_insecure()
+        .connect(None)
         .unwrap();
 
     let mut counter = 0;
@@ -56,7 +70,7 @@ fn run_thread() {
     }
 }
 
-fn send_one_request(client: &mut Client<std::net::TcpStream>, count: usize) {
+fn send_one_request(client: &mut Client<Box<dyn NetworkStream + Send>>, count: usize) {
     let echo = format!("Hello, World {count}");
     let echostr = echo.as_str();
 
@@ -97,7 +111,6 @@ fn send_one_request(client: &mut Client<std::net::TcpStream>, count: usize) {
     };
 
     if let OwnedMessage::Text(text) = response {
-
         let mut ws_msg = json::parse(&text).unwrap();
         let mut osrf_list = ws_msg["osrf_msg"].take();
         let osrf_msg = osrf_list[0].take();
@@ -115,4 +128,3 @@ fn send_one_request(client: &mut Client<std::net::TcpStream>, count: usize) {
         }
     }
 }
-

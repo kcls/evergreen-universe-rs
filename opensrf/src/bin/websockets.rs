@@ -6,15 +6,14 @@ use osrf::init;
 use osrf::logging::Logger;
 use osrf::message;
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::env;
 use std::fmt;
 use std::net::{SocketAddr, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
-use threadpool::ThreadPool;
 use websocket::client::sync::Client;
 use websocket::receiver::Reader;
 use websocket::sender::Writer;
@@ -277,7 +276,7 @@ impl Session {
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let busconf = conf.gateway().unwrap(); // previoiusly verified
+        let busconf = conf.gateway().unwrap(); // previously verified
 
         let osrf_sender = match Bus::new(&busconf) {
             Ok(b) => b,
@@ -392,7 +391,7 @@ impl Session {
                     Ok(closing) => {
                         if closing {
                             log::debug!("{self} Client closed connection.  Exiting");
-                            break;
+                            return;
                         }
                     }
                     Err(e) => {
@@ -406,7 +405,8 @@ impl Session {
                     log::error!("{self} Error relaying response: {e}");
                     return;
                 }
-            } else { // Wakeup
+            } else {
+                // Wakeup
                 log::debug!("{self} received a Wakeup message.  Likely time to go");
                 // Jump back to the front of the loop and check for shutdown.
                 continue;
@@ -746,7 +746,6 @@ impl Server {
     }
 
     fn run(&mut self) {
-        let pool = ThreadPool::new(MAX_WS_CLIENTS);
         let hostport = format!("{}:{}", self.address, self.port);
 
         log::info!("Server listening for connections at {hostport}");
@@ -759,6 +758,8 @@ impl Server {
             }
         };
 
+        let mut handles: Vec<JoinHandle<()>> = Vec::new();
+
         for connection in server.filter_map(Result::ok) {
             let client = match connection.accept() {
                 Ok(c) => c,
@@ -770,7 +771,9 @@ impl Server {
 
             log::debug!("Server thread received new client connection");
 
-            if pool.active_count() >= self.max_clients {
+            handles = self.cleanup_handles(&mut handles);
+
+            if handles.len() >= self.max_clients {
                 log::warn!("Max websocket clients reached.  Ignoring new connection");
                 client.shutdown().ok();
                 continue;
@@ -779,8 +782,26 @@ impl Server {
             let conf = self.conf.clone();
             let max_parallel = self.max_parallel;
 
-            pool.execute(move || Session::run(conf, client, max_parallel));
+            handles.push(thread::spawn(move || {
+                Session::run(conf, client, max_parallel)
+            }));
         }
+    }
+
+    /// Remove completed threads from our list of join handles.
+    fn cleanup_handles(&mut self, handles: &mut Vec<JoinHandle<()>>) -> Vec<JoinHandle<()>> {
+        let mut active: Vec<JoinHandle<()>> = Vec::new();
+
+        while handles.len() > 0 {
+            let handle = handles.remove(0);
+            if handle.is_finished() {
+                handle.join().ok();
+            } else {
+                active.push(handle);
+            }
+        }
+
+        active
     }
 }
 

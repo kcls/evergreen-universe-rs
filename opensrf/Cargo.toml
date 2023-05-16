@@ -13,7 +13,6 @@ json = "0.12.4"
 roxmltree = "0.18"
 redis = "0.22.1"
 gethostname = "0.4"
-threadpool = "1.8.1"
 websocket = "0.26"
 signal-hook = "0.3"
 
