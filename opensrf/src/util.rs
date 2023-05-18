@@ -1,6 +1,26 @@
 use json;
 use rand::Rng;
+use std::thread;
 use std::time::Instant;
+
+/// Current thread ID as u64.
+///
+/// Eventually this will not be needed.
+/// https://doc.rust-lang.org/stable/std/thread/struct.ThreadId.html#method.as_u64
+/// https://github.com/rust-lang/rust/pull/110738
+pub fn thread_id() -> u64 {
+    // "Thread(123)"
+    let id = format!("{:?}", thread::current().id());
+    let mut parts = id.split(&['(', ')']);
+
+    if let Some(id) = parts.nth(1) {
+        if let Ok(idnum) = id.parse::<u64>() {
+            return idnum;
+        }
+    }
+
+    return 0;
+}
 
 /// Returns a string of random numbers of the requested length
 pub fn random_number(size: usize) -> String {

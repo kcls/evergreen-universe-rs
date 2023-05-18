@@ -1,18 +1,13 @@
 ///! OpenSRF Syslog
 use super::conf;
+use super::util;
 use log;
 use std::os::unix::net::UnixDatagram;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 use syslog;
-use thread_id;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
-
-/// Thread IDs can be many digits, though in practice only the last
-/// few digits vary.  In log messages, include only the final
-/// TRIM_THREAD_ID characters to differentiate threads.
-const TRIM_THREAD_ID: usize = 5;
 
 /// Main logging structure
 ///
@@ -120,15 +115,11 @@ impl Logger {
 
     /// Generate a log trace string from the epoch time and thread id.
     pub fn mk_log_trace() -> String {
-        let mut tid: String = thread_id::get().to_string();
-        if tid.len() > TRIM_THREAD_ID {
-            tid = tid.chars().skip(tid.len() - TRIM_THREAD_ID).collect();
-        }
         let t = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("SystemTime before UNIX EPOCH!");
 
-        format!("{}{}", t.as_millis(), tid)
+        format!("{}{:0>5}", t.as_millis(), util::thread_id())
     }
 }
 
@@ -169,13 +160,8 @@ impl log::Log for Logger {
             })
         };
 
-        let mut tid: String = thread_id::get().to_string();
-        if tid.len() > TRIM_THREAD_ID {
-            tid = tid.chars().skip(tid.len() - TRIM_THREAD_ID).collect();
-        }
-
         let message = format!(
-            "<{}>{} [{}:{}:{}:{}:{}] {}",
+            "<{}>{} [{}:{}:{}:{}:{:0>5}] {}",
             severity,
             &self.application,
             levelname,
@@ -185,7 +171,7 @@ impl log::Log for Logger {
                 Some(l) => l,
                 _ => 0,
             },
-            tid,
+            util::thread_id(),
             logmsg
         );
 
