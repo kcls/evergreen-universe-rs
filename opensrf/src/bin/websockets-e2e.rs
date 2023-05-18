@@ -1,8 +1,8 @@
 use opensrf::message;
 use opensrf::util;
-use std::thread;
-use std::time::{Instant, Duration};
 use std::io::Write;
+use std::thread;
+use std::time::{Duration, Instant};
 use websocket::stream::sync::NetworkStream;
 use websocket::sync::Client;
 use websocket::{ClientBuilder, Message, OwnedMessage};
@@ -63,7 +63,6 @@ fn main() {
 }
 
 fn run_thread() {
-
     // TODO: At present, dummy SSL certs will fail.
     // https://docs.rs/websocket/latest/websocket/client/builder/struct.ClientBuilder.html#method.connect
     // https://docs.rs/native-tls/0.2.8/native_tls/struct.TlsConnectorBuilder.html

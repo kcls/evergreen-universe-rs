@@ -11,7 +11,6 @@
 //!
 //! Once the initial request is routed, the router is no longer involved
 //! in the conversation.
-use chrono::prelude::{DateTime, Local};
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
@@ -19,6 +18,7 @@ use opensrf::init;
 use opensrf::logging::Logger;
 use opensrf::message;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
+use opensrf::util;
 use std::env;
 use std::fmt;
 use std::sync::Arc;
@@ -47,7 +47,7 @@ struct ServiceInstance {
     address: ClientAddress,
 
     /// When was this instance registered with the router.
-    register_time: DateTime<Local>,
+    register_time: f64,
 }
 
 impl ServiceInstance {
@@ -55,14 +55,14 @@ impl ServiceInstance {
         &self.address
     }
 
-    fn register_time(&self) -> &DateTime<Local> {
-        &self.register_time
+    fn register_time(&self) -> f64 {
+        self.register_time
     }
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
             address: json::from(self.address().as_str()),
-            register_time: json::from(self.register_time().to_rfc3339()),
+            register_time: json::from(self.register_time()),
         }
     }
 }
@@ -455,7 +455,7 @@ impl Router {
 
                 svc.controllers.push(ServiceInstance {
                     address: address.clone(),
-                    register_time: Local::now(),
+                    register_time: util::epoch_secs(),
                 });
 
                 return Ok(());
@@ -477,7 +477,7 @@ impl Router {
             route_count: 0,
             controllers: vec![ServiceInstance {
                 address: address,
-                register_time: Local::now(),
+                register_time: util::epoch_secs(),
             }],
         });
 

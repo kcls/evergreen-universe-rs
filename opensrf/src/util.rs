@@ -1,7 +1,7 @@
 use json;
 use rand::Rng;
 use std::thread;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 /// Current thread ID as u64.
 ///
@@ -84,4 +84,17 @@ impl Timer {
     pub fn done(&self) -> bool {
         self.remaining() <= 0
     }
+}
+
+pub fn epoch_secs() -> f64 {
+    if let Ok(dur) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        let ms = dur.as_millis();
+        ms as f64 / 1000.0
+    } else {
+        0.0
+    }
+}
+
+pub fn epoch_secs_str() -> String {
+    format!("{:0<3}", epoch_secs())
 }

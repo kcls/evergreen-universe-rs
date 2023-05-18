@@ -1,6 +1,6 @@
-use chrono::{DateTime, Local};
 use opensrf::bus;
 use opensrf::conf;
+use opensrf::util;
 use std::env;
 use std::fmt;
 use std::sync::Arc;
@@ -22,7 +22,6 @@ struct BusWatch {
     wait_time: u64,
     config: Arc<conf::Config>,
     ttl: u64,
-    _start_time: DateTime<Local>,
 }
 
 impl fmt::Display for BusWatch {
@@ -45,7 +44,6 @@ impl BusWatch {
             config,
             wait_time,
             ttl: DEFAULT_KEY_EXPIRE_SECS,
-            _start_time: Local::now(),
         }
     }
 
@@ -113,7 +111,7 @@ impl BusWatch {
                 }
             }
 
-            obj["time"] = json::from(format!("{}", Local::now().format("%FT%T%z")));
+            obj["time"] = json::from(util::epoch_secs_str());
 
             log::info!("{}", obj.dump());
         }
