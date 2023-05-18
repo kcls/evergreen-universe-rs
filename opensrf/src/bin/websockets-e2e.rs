@@ -17,14 +17,11 @@ const REQS_PER_THREAD: usize = 100;
 const THREAD_COUNT: usize = 10;
 
 /// Websocket server URI.
-/// TODO: At present, dummy SSL certs will fail.
-/// https://docs.rs/websocket/latest/websocket/client/builder/struct.ClientBuilder.html#method.connect
-/// https://docs.rs/native-tls/0.2.8/native_tls/struct.TlsConnectorBuilder.html
 //const DEFAULT_URI: &str = "wss://redis.demo.kclseg.org:443/osrf-websocket-translator";
 const DEFAULT_URI: &str = "ws://127.0.0.1:7682";
 
 /// How many times we repeat the entire batch.
-const NUM_ITERS: usize = 100;
+const NUM_ITERS: usize = 5;
 
 /// If non-zero, have each thread pause this many ms between requests.
 /// Helpful for focusing on endurance / real-world traffic patterns more
@@ -66,6 +63,10 @@ fn main() {
 }
 
 fn run_thread() {
+
+    // TODO: At present, dummy SSL certs will fail.
+    // https://docs.rs/websocket/latest/websocket/client/builder/struct.ClientBuilder.html#method.connect
+    // https://docs.rs/native-tls/0.2.8/native_tls/struct.TlsConnectorBuilder.html
     let mut client = ClientBuilder::new(DEFAULT_URI)
         .unwrap()
         .connect(None)
