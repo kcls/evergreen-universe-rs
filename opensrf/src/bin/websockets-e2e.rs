@@ -1,7 +1,7 @@
 use opensrf::message;
 use opensrf::util;
 use std::thread;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 use std::io::Write;
 use websocket::stream::sync::NetworkStream;
 use websocket::sync::Client;
@@ -24,7 +24,13 @@ const THREAD_COUNT: usize = 10;
 const DEFAULT_URI: &str = "ws://127.0.0.1:7682";
 
 /// How many times we repeat the entire batch.
-const NUM_ITERS: usize = 5;
+const NUM_ITERS: usize = 100;
+
+/// If non-zero, have each thread pause this many ms between requests.
+/// Helpful for focusing on endurance / real-world traffic patterns more
+/// than per-request speed.
+const REQ_PAUSE: u64 = 10;
+//const REQ_PAUSE: u64 = 0;
 
 // Since we're testing Websockets, which is a public-facing gateway,
 // the destination service must be a public service.
@@ -55,6 +61,8 @@ fn main() {
             duration
         );
     }
+
+    println!("Total requests processed: {}", reqs_per_batch * NUM_ITERS);
 }
 
 fn run_thread() {
@@ -68,6 +76,9 @@ fn run_thread() {
     while counter < REQS_PER_THREAD {
         send_one_request(&mut client, counter);
         counter += 1;
+        if REQ_PAUSE > 0 {
+            thread::sleep(Duration::from_millis(REQ_PAUSE));
+        }
     }
 }
 
