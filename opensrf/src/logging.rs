@@ -2,6 +2,8 @@
 use super::conf;
 use super::util;
 use log;
+use std::fs;
+use std::io::Write;
 use std::os::unix::net::UnixDatagram;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,7 +23,7 @@ const SYSLOG_UNIX_PATH: &str = "/dev/log";
 /// log::* caller within the log message.  Consider alternatives.
 ///
 pub struct Logger {
-    _logfile: conf::LogFile,
+    logfile: conf::LogFile,
     loglevel: log::LevelFilter,
     facility: syslog::Facility,
     activity_facility: syslog::Facility,
@@ -51,7 +53,7 @@ impl Logger {
             .unwrap_or(syslog::Facility::LOG_LOCAL1);
 
         Ok(Logger {
-            _logfile: file.clone(),
+            logfile: file.clone(),
             loglevel: level.clone(),
             facility: facility.clone(),
             activity_facility: act_facility.clone(),
@@ -88,10 +90,23 @@ impl Logger {
     /// Setup our global log handler.
     ///
     /// Attempts to connect to syslog unix socket if possible.
-    pub fn init(mut self) -> Result<(), log::SetLoggerError> {
-        self.writer = Logger::writer().ok();
+    pub fn init(mut self) -> Result<(), String> {
+        if self.logfile == conf::LogFile::Syslog {
+            self.writer = match Logger::writer() {
+                Ok(w) => Some(w),
+                Err(e) => {
+                    eprintln!("Cannot init Logger: {e}");
+                    return Err(format!("Cannot init Logger: {e}"));
+                }
+            };
+        }
+
         log::set_max_level(self.loglevel);
-        log::set_boxed_logger(Box::new(self))?;
+
+        if let Err(e) = log::set_boxed_logger(Box::new(self)) {
+            eprintln!("Cannot init Logger: {e}");
+            return Err(format!("Cannot init Logger: {e}"));
+        }
 
         Ok(())
     }
@@ -160,9 +175,12 @@ impl log::Log for Logger {
             })
         };
 
-        let message = format!(
-            "<{}>{} [{}:{}:{}:{}:{:0>5}] {}",
-            severity,
+        let mut message = format!(
+            "{}{} [{}:{}:{}:{}:{:0>5}] {}",
+            match self.writer.is_some() {
+                true => format!("<{}>", severity),
+                _ => format!("{} ", util::epoch_secs()),
+            },
             &self.application,
             levelname,
             process::id(),
@@ -179,8 +197,16 @@ impl log::Log for Logger {
             if w.send(message.as_bytes()).is_ok() {
                 return;
             }
+        } else if let conf::LogFile::Filename(ref name) = self.logfile {
+            if let Ok(mut file) = fs::File::options().append(true).open(name) {
+                message += "\n";
+                if file.write_all(message.as_bytes()).is_ok() {
+                    return;
+                }
+            }
         }
 
+        // If all else fails, print the log message.
         println!("{message}");
     }
 

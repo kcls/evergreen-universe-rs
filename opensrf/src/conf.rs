@@ -8,7 +8,7 @@ use syslog;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LogFile {
     Syslog,
     Filename(String),
