@@ -16,8 +16,7 @@ impl InitOptions {
     }
 }
 
-/// Read common command line parameters, parse the core config,
-/// setup logging.
+/// Read environment variables, parse the core config, setup logging.
 ///
 /// This does not connect to the bus.
 pub fn init() -> Result<conf::Config, String> {

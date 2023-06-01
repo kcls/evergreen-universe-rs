@@ -3,9 +3,11 @@ use opensrf::util;
 use std::io::Write;
 use std::thread;
 use std::time::{Duration, Instant};
-use websocket::stream::sync::NetworkStream;
-use websocket::sync::Client;
-use websocket::{ClientBuilder, Message, OwnedMessage};
+
+use tungstenite as ws;
+use ws::protocol::Message;
+use ws::protocol::WebSocket;
+use ws::stream::MaybeTlsStream;
 
 /// Each websocket client will send this many requests in a loop.
 const REQS_PER_THREAD: usize = 100;
@@ -63,13 +65,9 @@ fn main() {
 }
 
 fn run_thread() {
-    // TODO: At present, dummy SSL certs will fail.
-    // https://docs.rs/websocket/latest/websocket/client/builder/struct.ClientBuilder.html#method.connect
-    // https://docs.rs/native-tls/0.2.8/native_tls/struct.TlsConnectorBuilder.html
-    let mut client = ClientBuilder::new(DEFAULT_URI)
-        .unwrap()
-        .connect(None)
-        .unwrap();
+    // TODO make SSL connections possible.
+    // https://docs.rs/tungstenite/latest/tungstenite/client/fn.client.html
+    let (mut client, _) = ws::client::connect(DEFAULT_URI).unwrap();
 
     let mut counter = 0;
 
@@ -80,9 +78,11 @@ fn run_thread() {
             thread::sleep(Duration::from_millis(REQ_PAUSE));
         }
     }
+
+    client.close(None).ok();
 }
 
-fn send_one_request(client: &mut Client<Box<dyn NetworkStream + Send>>, count: usize) {
+fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>, count: usize) {
     let echo = format!("Hello, World {count}");
     let echostr = echo.as_str();
 
@@ -109,12 +109,12 @@ fn send_one_request(client: &mut Client<Box<dyn NetworkStream + Send>>, count: u
         }]
     };
 
-    if let Err(e) = client.send_message(&Message::text(message.dump())) {
+    if let Err(e) = client.write_message(Message::text(message.dump())) {
         eprintln!("Error in send: {e}");
         return;
     }
 
-    let response = match client.recv_message() {
+    let response = match client.read_message() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error in recv: {e}");
@@ -122,7 +122,7 @@ fn send_one_request(client: &mut Client<Box<dyn NetworkStream + Send>>, count: u
         }
     };
 
-    if let OwnedMessage::Text(text) = response {
+    if let Message::Text(text) = response {
         let mut ws_msg = json::parse(&text).unwrap();
         let mut osrf_list = ws_msg["osrf_msg"].take();
         let osrf_msg = osrf_list[0].take();

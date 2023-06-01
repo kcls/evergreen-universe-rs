@@ -8,16 +8,16 @@ use osrf::message;
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fmt;
+use std::net::TcpListener;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
-use websocket::client::sync::Client;
-use websocket::receiver::Reader;
-use websocket::sender::Writer;
-use websocket::OwnedMessage;
+use tungstenite as ws;
+use ws::protocol::Message as WebSocketMessage;
+use ws::protocol::WebSocket;
 
 /* Server spawns a new client session per connection.
  *
@@ -69,7 +69,7 @@ const SHUTDOWN_POLL_INTERVAL: i32 = 3;
 #[derive(Debug, PartialEq)]
 enum ChannelMessage {
     /// Websocket Request
-    Inbound(OwnedMessage),
+    Inbound(WebSocketMessage),
 
     /// OpenSRF Reply
     Outbound(message::TransportMessage),
@@ -99,20 +99,25 @@ impl fmt::Display for SessionInbound {
 }
 
 impl SessionInbound {
-    fn run(&mut self, mut receiver: Reader<TcpStream>) {
+    fn run(&mut self, mut receiver: WebSocket<TcpStream>) {
         // Pull messages from our websocket TCP stream, forwarding each to
         // the Session thread for processing.
-        for message in receiver.incoming_messages() {
-            let channel_msg = match message {
-                Ok(m) => {
-                    log::trace!("{self} SessionInbound received message: {m:?}");
-                    ChannelMessage::Inbound(m)
-                }
+
+        loop {
+            let message = match receiver.read_message() {
+                Ok(m) => m,
                 Err(e) => {
-                    log::debug!("{self} Client likely disconnected: {e}");
+                    match e {
+                        ws::error::Error::ConnectionClosed | ws::error::Error::AlreadyClosed => {
+                            log::debug!("Connection closed normally")
+                        }
+                        _ => log::error!("Error reading inbound message: {e}"),
+                    }
                     break;
                 }
             };
+
+            let channel_msg = ChannelMessage::Inbound(message);
 
             if self.to_main_tx.send(channel_msg).is_err() {
                 // Likely the main thread has exited.
@@ -216,7 +221,7 @@ struct Session {
     to_main_rx: mpsc::Receiver<ChannelMessage>,
 
     /// For posting responses to the outbound websocket stream.
-    sender: Writer<TcpStream>,
+    sender: WebSocket<TcpStream>,
 
     /// Relays request to the OpenSRF bus.
     osrf_sender: Bus,
@@ -255,8 +260,8 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn run(conf: Arc<conf::Config>, client: Client<TcpStream>, max_parallel: usize) {
-        let client_ip = match client.peer_addr() {
+    fn run(conf: Arc<conf::Config>, stream: TcpStream, max_parallel: usize) {
+        let client_ip = match stream.peer_addr() {
             Ok(ip) => ip,
             Err(e) => {
                 log::error!("Could not determine client IP address: {e}");
@@ -266,13 +271,28 @@ impl Session {
 
         log::debug!("Starting new session for {client_ip}");
 
-        let (receiver, sender) = match client.split() {
-            Ok((r, s)) => (r, s),
+        // Split the TcpStream into a read/write pair so each endpoint
+        // can be managed within its own thread.
+        let instream = stream;
+        let outstream = match instream.try_clone() {
+            Ok(s) => s,
             Err(e) => {
                 log::error!("Fatal error splitting client streams: {e}");
                 return;
             }
         };
+
+        // Wrap each endpoint in a WebSocket container.
+
+        let receiver = match ws::accept(instream) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Error accepting new connection: {}", e);
+                return;
+            }
+        };
+
+        let sender = WebSocket::from_raw_socket(outstream, ws::protocol::Role::Server, None);
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
@@ -349,9 +369,12 @@ impl Session {
         // secondary benefit of forcing the SessionInbound to exit its
         // listen loop.  (The SessionOutbound will periodically check
         // for shutdown messages on its own).
-        if let Err(e) = self.sender.send_message(&OwnedMessage::Close(None)) {
-            log::error!("{self} Main thread could not send a Close message: {e}");
-        }
+        // During shutdown, various error conditions may occur as our
+        // sockets are in different states of disconnecting.  Discard
+        // any errors and keep going.
+        self.sender
+            .write_message(WebSocketMessage::Close(None))
+            .ok();
 
         if let Err(e) = in_thread.join() {
             log::error!("{self} Inbound thread exited with error: {e:?}");
@@ -446,9 +469,9 @@ impl Session {
 
     /// Process each inbound websocket message.  Requests are relayed
     /// to the OpenSRF bus.
-    fn handle_inbound_message(&mut self, msg: OwnedMessage) -> Result<bool, String> {
+    fn handle_inbound_message(&mut self, msg: WebSocketMessage) -> Result<bool, String> {
         match msg {
-            OwnedMessage::Text(text) => {
+            WebSocketMessage::Text(text) => {
                 let tlen = text.len();
 
                 if tlen >= MAX_MESSAGE_SIZE {
@@ -462,14 +485,14 @@ impl Session {
 
                 Ok(false)
             }
-            OwnedMessage::Ping(text) => {
-                let message = OwnedMessage::Pong(text);
+            WebSocketMessage::Ping(text) => {
+                let message = WebSocketMessage::Pong(text);
                 self.sender
-                    .send_message(&message)
+                    .write_message(message)
                     .or_else(|e| Err(format!("{self} Error sending Pong to client: {e}")))?;
                 Ok(false)
             }
-            OwnedMessage::Close(_) => {
+            WebSocketMessage::Close(_) => {
                 // Let the main session loop know we're all done.
                 Ok(true)
             }
@@ -666,9 +689,9 @@ impl Session {
 
         log::trace!("{self} replying with message: {msg_json}");
 
-        let msg = OwnedMessage::Text(msg_json);
+        let msg = WebSocketMessage::Text(msg_json);
 
-        self.sender.send_message(&msg).or_else(|e| {
+        self.sender.write_message(msg).or_else(|e| {
             Err(format!(
                 "{self} Error sending response to websocket client: {e}"
             ))
@@ -750,7 +773,7 @@ impl Server {
 
         log::info!("Server listening for connections at {hostport}");
 
-        let server = match websocket::sync::Server::bind(hostport) {
+        let server = match TcpListener::bind(hostport) {
             Ok(s) => s,
             Err(e) => {
                 log::error!("Could not start websockets server: {e}");
@@ -760,11 +783,11 @@ impl Server {
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
 
-        for connection in server.filter_map(Result::ok) {
-            let client = match connection.accept() {
+        for connection_res in server.incoming() {
+            let stream = match connection_res {
                 Ok(c) => c,
                 Err(e) => {
-                    log::error!("Error accepting new connection: {}", e.1);
+                    log::error!("Error accepting new connection: {}", e);
                     continue;
                 }
             };
@@ -775,7 +798,7 @@ impl Server {
 
             if handles.len() >= self.max_clients {
                 log::warn!("Max websocket clients reached.  Ignoring new connection");
-                client.shutdown().ok();
+                stream.shutdown(std::net::Shutdown::Both).ok();
                 continue;
             }
 
@@ -783,7 +806,7 @@ impl Server {
             let max_parallel = self.max_parallel;
 
             handles.push(thread::spawn(move || {
-                Session::run(conf, client, max_parallel)
+                Session::run(conf, stream, max_parallel)
             }));
         }
     }
