@@ -155,6 +155,9 @@ pub fn get_barcodes(
     // Cast our worker instance into something we know how to use.
     let worker = app::RsPubWorker::downcast(worker)?;
 
+    // Extract the method call parameters.
+    // Incorrectly shaped parameters will result in an error
+    // response to the caller.
     let authtoken = eg::util::json_string(method.param(0))?;
     let org_id = eg::util::json_int(method.param(1))?;
     let context = eg::util::json_string(method.param(2))?;
@@ -162,14 +165,17 @@ pub fn get_barcodes(
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
+    // Auth check
     if !editor.checkauth()? {
         return session.respond(editor.event());
     }
 
+    // Perm check
     if !editor.allowed("STAFF_LOGIN", Some(org_id))? {
         return session.respond(editor.event());
     }
 
+    // Inline JSON object construction
     let query = json::object! {
         from: [
             "evergreen.get_barcodes",
@@ -187,6 +193,7 @@ pub fn get_barcodes(
     let requestor_id = editor.requestor_id();
     let mut response: Vec<json::JsonValue> = Vec::new();
 
+    // "actor" barcodes require additional perm checks.
     for user_row in result {
         let user_id = eg::util::json_int(&user_row["id"])?;
 
