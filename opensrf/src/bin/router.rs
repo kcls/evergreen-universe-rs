@@ -582,6 +582,15 @@ impl Router {
             ));
         }
 
+        // TODO
+        // Use the domain of the service instance to determine which
+        // bus domain should receive the routed API request.  E.g. a
+        // router running on public.localhost may (will likely) have
+        // service instances that are actually listening on the
+        // private.localhost bus domain. RouterDomain::send_to_domain
+        // will need a destination addresses / domain to determine
+        // the destination bus domain.
+
         if let Some(svc) = self.primary_domain.get_service_mut(service) {
             svc.route_count += 1;
             self.primary_domain.route_count += 1;
