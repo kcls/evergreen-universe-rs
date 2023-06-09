@@ -1,4 +1,5 @@
 use eg::common::user;
+use eg::common::circ;
 use eg::editor::Editor;
 use eg::settings::Settings;
 use evergreen as eg;
@@ -142,6 +143,26 @@ pub static METHODS: &[StaticMethod] = &[
                 name: "User ID",
                 datatype: ParamDataType::Number,
                 desc: "User ID whose stats to load; defaults to requestor",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "renewal_chain.retrieve_by_circ.summary",
+        desc: "Circulation Renewal Chain Summary",
+        param_count: ParamCount::Exactly(2),
+        handler: renewal_chain_summary,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "Circ ID",
+                datatype: ParamDataType::Number,
+                desc: "Circulation ID to lookup",
             },
         ],
     },
@@ -438,3 +459,28 @@ pub fn user_opac_vital_stats(
 
     session.respond(resp)
 }
+
+pub fn renewal_chain_summary(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsPubWorker::downcast(worker)?;
+    let authtoken = eg::util::json_string(method.param(0))?;
+    let circ_id = eg::util::json_int(method.param(1))?;
+
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    if !editor.allowed("VIEW_CIRCULATIONS", None)? {
+        return session.respond(editor.event());
+    }
+
+    let chain = circ::summarize_circ_chain(&mut editor, circ_id)?;
+
+    session.respond(chain)
+}
+
