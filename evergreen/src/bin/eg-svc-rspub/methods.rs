@@ -2,6 +2,7 @@ use eg::common::user;
 use eg::common::circ;
 use eg::editor::Editor;
 use eg::settings::Settings;
+use eg::util;
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
@@ -166,6 +167,26 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
+    StaticMethod {
+        name: "prev_renewal_chain.retrieve_by_circ.summary",
+        desc: "Previous Circulation Renewal Chain Summary",
+        param_count: ParamCount::Exactly(2),
+        handler: prev_renewal_chain_summary,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "Circ ID",
+                datatype: ParamDataType::Number,
+                desc: "Circulation ID to lookup",
+            },
+        ],
+    },
 ];
 
 pub fn get_barcodes(
@@ -179,10 +200,10 @@ pub fn get_barcodes(
     // Extract the method call parameters.
     // Incorrectly shaped parameters will result in an error
     // response to the caller.
-    let authtoken = eg::util::json_string(method.param(0))?;
-    let org_id = eg::util::json_int(method.param(1))?;
-    let context = eg::util::json_string(method.param(2))?;
-    let barcode = eg::util::json_string(method.param(3))?;
+    let authtoken = util::json_string(method.param(0))?;
+    let org_id = util::json_int(method.param(1))?;
+    let context = util::json_string(method.param(2))?;
+    let barcode = util::json_string(method.param(3))?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -216,7 +237,7 @@ pub fn get_barcodes(
 
     // "actor" barcodes require additional perm checks.
     for user_row in result {
-        let user_id = eg::util::json_int(&user_row["id"])?;
+        let user_id = util::json_int(&user_row["id"])?;
 
         if user_id == requestor_id {
             // We're allowed to know about ourselves.
@@ -226,7 +247,7 @@ pub fn get_barcodes(
 
         // Do we have permission to view info about this user?
         let u = editor.retrieve("au", user_id)?.unwrap();
-        let home_ou = eg::util::json_int(&u["home_ou"])?;
+        let home_ou = util::json_int(&u["home_ou"])?;
 
         if editor.allowed("VIEW_USER", Some(home_ou))? {
             response.push(user_row);
@@ -249,7 +270,7 @@ pub fn user_has_work_perm_at_batch(
     // Cast our worker instance into something we know how to use.
     let worker = app::RsPubWorker::downcast(worker)?;
 
-    let authtoken = eg::util::json_string(method.param(0))?;
+    let authtoken = util::json_string(method.param(0))?;
 
     let perm_names: Vec<&str> = method
         .param(1)
@@ -270,7 +291,7 @@ pub fn user_has_work_perm_at_batch(
 
     // user_id parameter is optional
     let user_id = match method.params().get(2) {
-        Some(id) => eg::util::json_int(id)?,
+        Some(id) => util::json_int(id)?,
         None => editor.requestor_id(),
     };
 
@@ -341,7 +362,7 @@ pub fn ou_setting_ancestor_default_batch(
     method: &message::Method,
 ) -> Result<(), String> {
     let worker = app::RsPubWorker::downcast(worker)?;
-    let org_id = eg::util::json_int(method.param(0))?;
+    let org_id = util::json_int(method.param(0))?;
 
     let setting_names: Vec<&str> = method
         .param(1)
@@ -390,7 +411,7 @@ pub fn user_opac_vital_stats(
     method: &message::Method,
 ) -> Result<(), String> {
     let worker = app::RsPubWorker::downcast(worker)?;
-    let authtoken = eg::util::json_string(method.param(0))?;
+    let authtoken = util::json_string(method.param(0))?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -405,7 +426,7 @@ pub fn user_opac_vital_stats(
     };
 
     if user_id != editor.requestor_id() {
-        let home_ou = Some(eg::util::json_int(&user["home_ou"])?);
+        let home_ou = Some(util::json_int(&user["home_ou"])?);
 
         // This list of perms seems like overkill for summary data, but
         // it matches the perm checks of the existing open-ils.actor APIs.
@@ -440,7 +461,7 @@ pub fn user_opac_vital_stats(
 
     let mut unread_count = 0;
     if let Some(unread) = editor.json_query(unread_query)?.get(0) {
-        unread_count = eg::util::json_int(&unread["count"])?;
+        unread_count = util::json_int(&unread["count"])?;
     }
 
     let resp = json::object! {
@@ -466,8 +487,8 @@ pub fn renewal_chain_summary(
     method: &message::Method,
 ) -> Result<(), String> {
     let worker = app::RsPubWorker::downcast(worker)?;
-    let authtoken = eg::util::json_string(method.param(0))?;
-    let circ_id = eg::util::json_int(method.param(1))?;
+    let authtoken = util::json_string(method.param(0))?;
+    let circ_id = util::json_int(method.param(1))?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -482,5 +503,62 @@ pub fn renewal_chain_summary(
     let chain = circ::summarize_circ_chain(&mut editor, circ_id)?;
 
     session.respond(chain)
+}
+
+pub fn prev_renewal_chain_summary(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsPubWorker::downcast(worker)?;
+    let authtoken = util::json_string(method.param(0))?;
+    let circ_id = util::json_int(method.param(1))?;
+
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    if !editor.allowed("VIEW_CIRCULATIONS", None)? {
+        return session.respond(editor.event());
+    }
+
+    let chain = circ::circ_chain(&mut editor, circ_id)?;
+    let first_circ = &chain[0];
+
+    // The previous circ chain contains the circ that occurred most recently
+    // before the first circ in the latest circ chain.
+
+    let query = json::object! {
+        target_copy: util::json_int(&first_circ["target_copy"])?,
+        xact_start: {"<": first_circ["xact_start"].as_str().unwrap()}, // xact_tart required
+    };
+
+    let flesh = json::object! {
+        flesh: 1,
+        flesh_fields: {
+            aacs: [
+                "active_circ",
+                "aged_circ"
+            ]
+        },
+        order_by: {aacs: "xact_start desc"},
+        limit: 1
+    };
+
+    let prev_circ = editor.search_with_ops("aacs", query, flesh)?;
+
+    if prev_circ.len() == 0 {
+        // No previous circ chain
+        return Ok(());
+    }
+
+    session.respond(
+        circ::summarize_circ_chain(
+            &mut editor,
+            util::json_int(&prev_circ[0]["id"])?
+        )?
+    )
 }
 

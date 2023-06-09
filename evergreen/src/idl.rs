@@ -604,16 +604,21 @@ impl Parser {
             Err(format!("IDL cannot create_from() on a non-object"))?;
         }
 
-        let idlclass = self
+        let _ = self
             .classes
             .get(classname)
             .ok_or(format!("IDL no such class {classname}"))?;
 
+        /*
+        // There may be cases where we want to attach misc. fields
+        // to an IDL object.  We could provide an option to this
+        // method to scrub unknown fields...shrug.
         for (field, _) in obj.entries() {
             if !idlclass.fields().contains_key(field) {
                 Err(format!("IDL class {classname} has no field {field}"))?;
             }
         }
+        */
 
         obj[CLASSNAME_KEY] = json::from(classname);
 

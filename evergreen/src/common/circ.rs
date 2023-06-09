@@ -20,4 +20,24 @@ pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> Result<JsonValue, S
     Ok(summary)
 }
 
+pub fn circ_chain(e: &mut Editor, circ_id: i64) -> Result<Vec<JsonValue>, String> {
+    let query = json::object!{
+        from: ["action.all_circ_chain", circ_id]
+    };
+
+    let mut circ_list = e.json_query(query)?;
+
+    if circ_list.len() == 0 {
+        Err("No such circulation: {circ_id}")?;
+    }
+
+    let mut idx = 0;
+    while idx < circ_list.len() {
+        circ_list[idx] = e.idl().create_from("aacs", circ_list[idx].to_owned())?;
+        idx += 1;
+    }
+
+    Ok(circ_list)
+}
+
 
