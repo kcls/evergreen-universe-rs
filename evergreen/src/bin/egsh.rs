@@ -32,7 +32,7 @@ Options
     --with-database
         Connect directly to an Evergreen database.
 
-    Standard OpenSRF command line options (e.g. --osrf-config)
+    Standard OpenSRF environment variables (e.g. OSRF_CONFIG) are
     also supported.
 
 Commands
