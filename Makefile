@@ -24,16 +24,16 @@ build-opensrf-release:
 
 install-opensrf: install-opensrf-config
 	#cp ./target/debug/opensrf-router ${TARGET}/bin
-	cp ./target/debug/opensrf-websockets ${TARGET}/bin
+	#cp ./target/debug/opensrf-websockets ${TARGET}/bin
 
 install-opensrf-release: install-opensrf-config
 	#cp ./target/release/opensrf-router ${TARGET}/bin
-	cp ./target/release/opensrf-websockets ${TARGET}/bin
+	#cp ./target/release/opensrf-websockets ${TARGET}/bin
 
 install-opensrf-config:
 	#cp ./systemd/opensrf-router.service ${SYSTEMD_DIR}/
-	cp ./systemd/opensrf-websockets.service ${SYSTEMD_DIR}/
-	systemctl daemon-reload
+	#cp ./systemd/opensrf-websockets.service ${SYSTEMD_DIR}/
+	#systemctl daemon-reload
 
 # --- Evergreen ---
 
