@@ -34,7 +34,9 @@ make build-opensrf build-evergreen
 cargo run --package opensrf --example client-demo
 ```
 
-### Evergreen egsh ("Eggshell") Script (srfsh clone-ish)
+### Run Evergreen egsh ("eggshell")
+
+This is an Evergreen-aware clone of srfsh.
 
 ```sh
 cargo run --package evergreen --bin egsh
@@ -42,5 +44,4 @@ cargo run --package evergreen --bin egsh
 
 * Try 'login admin demo123' or 'help'
 * This uses opensrf\_core.xml as the default configuration file.
-
 
