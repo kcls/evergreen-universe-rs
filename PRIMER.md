@@ -47,3 +47,15 @@ cargo run --package evergreen --bin egsh
 * egsh# help
 * egsh# login admin demo123
 * egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
+
+### Connecting with the local database
+
+```sh
+cargo run --package evergreen --bin egsh -- --with-database
+```
+#### Some More Commands
+
+* egsh# idl get aou 1
+* egsh# idlf get au 1
+* egsh# idlf search aou shortname like "BR%"
+
