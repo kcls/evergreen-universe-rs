@@ -33,3 +33,17 @@ make build-opensrf build-evergreen
 ```sh
 cargo run --package opensrf --example client-demo
 ```
+
+### Running egsh ("eggshell")
+
+egsh is an Evergreen-aware srfsh clone (more or less)
+
+```sh
+cargo run --package evergreen --bin egsh
+```
+
+#### Some Commands
+
+* egsh# help
+* egsh# login admin demo123
+* egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
