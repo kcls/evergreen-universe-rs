@@ -185,7 +185,7 @@ fn relay(
         method.params().clone(),
     )? {
         session.respond(resp.clone())?;
-        session.respond(json::from(format!("Relay count: {}", worker.relay_count)))?
+        session.respond(json::from_str(format!("Relay count: {}", worker.relay_count)))?
     }
 
     Ok(())

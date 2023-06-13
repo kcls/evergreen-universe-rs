@@ -59,11 +59,11 @@ impl ServiceInstance {
         self.register_time
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
-            address: json::from(self.address().as_str()),
-            register_time: json::from(self.register_time()),
-        }
+    fn to_json_value(&self) -> json::Value {
+        json::json!({
+            address: json::from_str(self.address().as_str()),
+            register_time: json::from_str(self.register_time()),
+        })
     }
 }
 
@@ -115,15 +115,15 @@ impl ServiceEntry {
         }
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
-            name: json::from(self.name()),
-            route_count: json::from(self.route_count),
-            controllers: json::from(
+    fn to_json_value(&self) -> json::Value {
+        json::json!({
+            name: json::from_str(self.name()),
+            route_count: json::from_str(self.route_count),
+            controllers: json::from_str(
                 self.controllers().iter()
-                    .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
+                    .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
             )
-        }
+        })
     }
 }
 
@@ -214,14 +214,14 @@ impl RouterDomain {
         }
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
-            domain: json::from(self.domain()),
-            route_count: json::from(self.route_count()),
-            services: json::from(self.services().iter()
-                .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
+    fn to_json_value(&self) -> json::Value {
+        json::json!({
+            domain: json::from_str(self.domain()),
+            route_count: json::from_str(self.route_count()),
+            services: json::from_str(self.services().iter()
+                .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
             )
-        }
+        })
     }
 
     /// Connect to the Redis instance on this domain.
@@ -330,14 +330,14 @@ impl Router {
         &self.remote_domains
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
-            listen_address: json::from(self.listen_address.as_str()),
+    fn to_json_value(&self) -> json::Value {
+        json::json!({
+            listen_address: json::from_str(self.listen_address.as_str()),
             primary_domain: self.primary_domain().to_json_value(),
-            remote_domains: json::from(self.remote_domains().iter()
-                .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
+            remote_domains: json::from_str(self.remote_domains().iter()
+                .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
             )
-        }
+        })
     }
 
     /// Find or create a new RouterDomain entry.
@@ -703,7 +703,7 @@ impl Router {
     fn process_router_api_request(
         &mut self,
         m: &message::Method,
-    ) -> Result<json::JsonValue, String> {
+    ) -> Result<json::Value, String> {
         match m.method() {
             "opensrf.router.info.class.list" => {
                 // Caller wants a list of service names
@@ -715,7 +715,7 @@ impl Router {
                     .map(|s| s.name())
                     .collect();
 
-                Ok(json::from(names))
+                Ok(json::from_str(names))
             }
             _ => Err(format!("Router cannot handle api {}", m.method())),
         }

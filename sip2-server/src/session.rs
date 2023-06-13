@@ -50,7 +50,7 @@ pub struct Session {
     account: Option<conf::SipAccount>,
 
     /// Cache of org unit shortnames and IDs.
-    org_cache: HashMap<i64, json::JsonValue>,
+    org_cache: HashMap<i64, json::Value>,
 }
 
 impl Session {
@@ -62,7 +62,7 @@ impl Session {
         stream: net::TcpStream,
         sesid: usize,
         shutdown: Arc<AtomicBool>,
-        org_cache: HashMap<i64, json::JsonValue>,
+        org_cache: HashMap<i64, json::Value>,
     ) {
         match stream.peer_addr() {
             Ok(a) => log::info!("New SIP connection from {a}"),
@@ -106,11 +106,11 @@ impl Session {
         }
     }
 
-    pub fn org_cache(&self) -> &HashMap<i64, json::JsonValue> {
+    pub fn org_cache(&self) -> &HashMap<i64, json::Value> {
         &self.org_cache
     }
 
-    pub fn org_cache_mut(&mut self) -> &mut HashMap<i64, json::JsonValue> {
+    pub fn org_cache_mut(&mut self) -> &mut HashMap<i64, json::Value> {
         &mut self.org_cache
     }
 

@@ -2,6 +2,7 @@ use super::app;
 use super::message;
 use super::session;
 use std::fmt;
+use serde_json as json;
 
 pub type MethodHandler = fn(
     &mut Box<dyn app::ApplicationWorker>,
@@ -102,16 +103,16 @@ pub struct Param {
 }
 
 impl Param {
-    pub fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
-            name: self.name.as_str(),
-            required: self.required,
-            datatype: self.datatype.to_string(),
-            desc: match self.desc.as_ref() {
-                Some(d) => json::from(d.as_str()),
-                _ => json::JsonValue::Null,
+    pub fn to_json_value(&self) -> json::Value {
+        json::json!({
+            "name": self.name.as_str(),
+            "required": self.required,
+            "datatype": self.datatype.to_string(),
+            "desc": match self.desc.as_ref() {
+                Some(d) => json::from_str(d.as_str()),
+                _ => json::Value::Null,
             }
-        }
+        })
     }
 }
 
@@ -240,22 +241,22 @@ impl Method {
         params.push(param);
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
-        let mut pa = json::JsonValue::new_array();
+    pub fn to_json_value(&self) -> json::Value {
+        let mut pa = json::Value::new_array();
         if let Some(params) = self.params() {
             for param in params {
                 pa.push(param.to_json_value()).unwrap();
             }
         }
 
-        json::object! {
-            name: self.name(),
-            param_count: self.param_count().to_string(),
-            params: pa,
-            desc: match self.desc() {
-                Some(d) => json::from(d),
-                _ => json::JsonValue::Null,
+        json::json!({
+            "name": self.name(),
+            "param_count": self.param_count().to_string(),
+            "params": pa,
+            "desc": match self.desc() {
+                Some(d) => json::from_str(d),
+                _ => json::Value::Null,
             }
-        }
+        })
     }
 }

@@ -7,7 +7,7 @@ impl Session {
     /// Assumes copy is fleshed out to the bib simple_record.
     pub fn get_copy_title_author(
         &self,
-        copy: &json::JsonValue,
+        copy: &json::Value,
     ) -> Result<(Option<String>, Option<String>), String> {
         let mut resp = (None, None);
 
@@ -34,7 +34,7 @@ impl Session {
         Ok(resp)
     }
 
-    pub fn org_from_id(&mut self, id: i64) -> Result<Option<&json::JsonValue>, String> {
+    pub fn org_from_id(&mut self, id: i64) -> Result<Option<&json::Value>, String> {
         if self.org_cache().contains_key(&id) {
             return Ok(self.org_cache().get(&id));
         }
@@ -47,7 +47,7 @@ impl Session {
         Ok(None)
     }
 
-    pub fn org_from_sn(&mut self, sn: &str) -> Result<Option<&json::JsonValue>, String> {
+    pub fn org_from_sn(&mut self, sn: &str) -> Result<Option<&json::Value>, String> {
         for (id, org) in self.org_cache() {
             if org["shortname"].as_str().unwrap().eq(sn) {
                 return Ok(self.org_cache().get(id));
@@ -83,7 +83,7 @@ impl Session {
         eg::util::json_int(field)
     }
 
-    pub fn get_user_and_card(&mut self, user_id: i64) -> Result<Option<json::JsonValue>, String> {
+    pub fn get_user_and_card(&mut self, user_id: i64) -> Result<Option<json::Value>, String> {
         let ops = json::object! {
             flesh: 1,
             flesh_fields: {au: ["card"]}
@@ -92,7 +92,7 @@ impl Session {
         self.editor_mut().retrieve_with_ops("au", user_id, ops)
     }
 
-    pub fn format_user_name(&self, user: &json::JsonValue) -> String {
+    pub fn format_user_name(&self, user: &json::Value) -> String {
         let mut name = String::new();
 
         if let Some(n) = user["first_given_name"].as_str() {
@@ -111,7 +111,7 @@ impl Session {
     }
 
     /// Format an address as a single line value
-    pub fn format_address(&self, address: &json::JsonValue) -> String {
+    pub fn format_address(&self, address: &json::Value) -> String {
         let mut addr = String::new();
         if let Some(v) = address["street1"].as_str() {
             addr += v;

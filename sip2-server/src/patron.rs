@@ -2,9 +2,9 @@ use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
 use evergreen as eg;
-use json::JsonValue;
+use json::Value;
 
-const JSON_NULL: JsonValue = JsonValue::Null;
+const JSON_NULL: json::Value = json::Value::Null;
 const DEFAULT_LIST_ITEM_SIZE: usize = 10;
 
 /// SIP clients can request detail info for specific types of data.
@@ -292,7 +292,7 @@ impl Session {
         Ok(())
     }
 
-    fn add_fine_item(&mut self, xact: &JsonValue) -> Result<String, String> {
+    fn add_fine_item(&mut self, xact: &json::Value) -> Result<String, String> {
         let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
         let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
 
@@ -500,7 +500,7 @@ impl Session {
         Ok(())
     }
 
-    fn find_title_for_hold(&mut self, hold: &JsonValue) -> Result<Option<String>, String> {
+    fn find_title_for_hold(&mut self, hold: &json::Value) -> Result<Option<String>, String> {
         let hold_id = eg::util::json_int(&hold["id"])?;
         let bib_link = match self.editor_mut().retrieve("rhrr", hold_id)? {
             Some(l) => l,
@@ -524,7 +524,7 @@ impl Session {
         Ok(None)
     }
 
-    fn find_copy_for_hold(&mut self, hold: &JsonValue) -> Result<Option<JsonValue>, String> {
+    fn find_copy_for_hold(&mut self, hold: &json::Value) -> Result<Option<json::Value>, String> {
         if !hold["current_copy"].is_null() {
             // We have a captured copy.  Use it.
             let copy_id = eg::util::json_int(&hold["current_copy"])?;
@@ -575,7 +575,7 @@ impl Session {
         Ok(None)
     }
 
-    fn get_copy_for_vol(&mut self, vol_id: i64) -> Result<Option<JsonValue>, String> {
+    fn get_copy_for_vol(&mut self, vol_id: i64) -> Result<Option<json::Value>, String> {
         let search = json::object! {
             call_number: vol_id,
             deleted: "f",
@@ -630,7 +630,7 @@ impl Session {
         &mut self,
         patron: &Patron,
         summary_ops: Option<&SummaryListOptions>,
-    ) -> Result<Vec<JsonValue>, String> {
+    ) -> Result<Vec<json::Value>, String> {
         let search = json::object! {
             usr: patron.id,
             balance_owed: {"<>": 0},
@@ -642,8 +642,8 @@ impl Session {
         };
 
         if let Some(sum_ops) = summary_ops {
-            ops["limit"] = json::from(sum_ops.limit());
-            ops["offset"] = json::from(sum_ops.offset());
+            ops["limit"] = json::from_str(sum_ops.limit());
+            ops["offset"] = json::from_str(sum_ops.offset());
         }
 
         self.editor_mut().search_with_ops("mbts", search, ops)
@@ -678,10 +678,10 @@ impl Session {
         };
 
         if let Some(l) = limit {
-            query["limit"] = json::from(l);
+            query["limit"] = json::from_str(l);
         }
         if let Some(o) = offset {
-            query["offset"] = json::from(o);
+            query["offset"] = json::from_str(o);
         }
 
         let id_hash_list = self.editor_mut().json_query(query)?;
@@ -706,7 +706,7 @@ impl Session {
 
     fn set_patron_privileges(
         &mut self,
-        user: &JsonValue,
+        user: &json::Value,
         patron: &mut Patron,
     ) -> Result<(), String> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
@@ -773,7 +773,7 @@ impl Session {
     fn penalties_contain(
         &self,
         penalty_id: i64,
-        penalties: &Vec<JsonValue>,
+        penalties: &Vec<json::Value>,
     ) -> Result<bool, String> {
         for pen in penalties.iter() {
             let pen_id = eg::util::json_int(&pen["id"])?;
@@ -784,7 +784,7 @@ impl Session {
         Ok(false)
     }
 
-    fn get_patron_penalties(&mut self, user_id: i64) -> Result<Vec<JsonValue>, String> {
+    fn get_patron_penalties(&mut self, user_id: i64) -> Result<Vec<json::Value>, String> {
         let ws_org = self.get_ws_org_id()?;
 
         let search = json::object! {
@@ -817,7 +817,7 @@ impl Session {
         self.editor_mut().json_query(search)
     }
 
-    fn get_user(&mut self, barcode: &str) -> Result<Option<JsonValue>, String> {
+    fn get_user(&mut self, barcode: &str) -> Result<Option<json::Value>, String> {
         let search = json::object! { barcode: barcode };
 
         let flesh = json::object! {

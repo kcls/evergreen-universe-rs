@@ -1,12 +1,12 @@
 use chrono::Local;
-use json;
+use serde_json as json;
 use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct EgEvent {
     code: isize,
     textcode: String,
-    payload: json::JsonValue, // json::JsonValue::Null if empty
+    payload: json::Value, // json::Value::Null if empty
     desc: Option<String>,
     debug: Option<String>,
     note: Option<String>,
@@ -37,7 +37,7 @@ impl fmt::Display for EgEvent {
     }
 }
 
-impl From<&EgEvent> for json::JsonValue {
+impl From<&EgEvent> for json::Value {
     fn from(evt: &EgEvent) -> Self {
         let mut obj = json::object! {
             code: evt.code(),
@@ -48,22 +48,22 @@ impl From<&EgEvent> for json::JsonValue {
         };
 
         if let Some(v) = evt.desc() {
-            obj["desc"] = json::from(v);
+            obj["desc"] = json::from_str(v);
         }
         if let Some(v) = evt.debug() {
-            obj["debug"] = json::from(v);
+            obj["debug"] = json::from_str(v);
         }
         if let Some(v) = evt.note() {
-            obj["note"] = json::from(v);
+            obj["note"] = json::from_str(v);
         }
         if let Some(v) = evt.org() {
-            obj["org"] = json::from(*v);
+            obj["org"] = json::from_str(*v);
         }
         if let Some(v) = evt.servertime() {
-            obj["servertime"] = json::from(v);
+            obj["servertime"] = json::from_str(v);
         }
         if let Some(v) = evt.ilsperm() {
-            obj["ilsperm"] = json::from(v);
+            obj["ilsperm"] = json::from_str(v);
         }
 
         obj
@@ -77,7 +77,7 @@ impl EgEvent {
         EgEvent {
             code: 0,
             textcode: textcode.to_string(),
-            payload: json::JsonValue::Null,
+            payload: json::Value::Null,
             desc: None,
             debug: None,
             note: None,
@@ -89,7 +89,7 @@ impl EgEvent {
         }
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> json::Value {
         self.into()
     }
 
@@ -109,7 +109,7 @@ impl EgEvent {
         &self.textcode
     }
 
-    pub fn payload(&self) -> &json::JsonValue {
+    pub fn payload(&self) -> &json::Value {
         &self.payload
     }
 
@@ -145,17 +145,17 @@ impl EgEvent {
         &self.org
     }
 
-    /// Parses a JsonValue and optionally returns an EgEvent.
+    /// Parses a json::Value and optionally returns an EgEvent.
     ///
     /// ```
-    /// use json;
+    /// use serde_json as json;
     /// use evergreen as eg;
     /// use eg::event::EgEvent;
     ///
     /// let jv = json::object! {
-    ///     code: json::from(100),
-    ///     textcode: json::from("SUCCESS"),
-    ///     ilsperm: json::from("STAFF_LOGIN"),
+    ///     code: json::from_str(100),
+    ///     textcode: json::from_str("SUCCESS"),
+    ///     ilsperm: json::from_str("STAFF_LOGIN"),
     ///     ilspermloc: 1
     /// };
     ///
@@ -165,13 +165,13 @@ impl EgEvent {
     /// assert_eq!(format!("{}", evt), String::from("Event: -1:SUCCESS STAFF_LOGIN@1"));
     ///
     /// let jv2 = json::object! {
-    ///     howdy: json::from(123)
+    ///     howdy: json::from_str(123)
     /// };
     ///
     /// let evt_op = EgEvent::parse(&jv2);
     /// assert!(evt_op.is_none());
     /// ```
-    pub fn parse(jv: &json::JsonValue) -> Option<EgEvent> {
+    pub fn parse(jv: &json::Value) -> Option<EgEvent> {
         if !jv.is_object() {
             return None;
         }

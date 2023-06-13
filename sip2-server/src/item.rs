@@ -189,9 +189,9 @@ impl Session {
     /// the holds shelf or in transit to the holds shelf.
     fn get_copy_hold(
         &mut self,
-        copy: &json::JsonValue,
-        transit: &Option<json::JsonValue>,
-    ) -> Result<Option<json::JsonValue>, String> {
+        copy: &json::Value,
+        transit: &Option<json::Value>,
+    ) -> Result<Option<json::Value>, String> {
         let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 8 {
@@ -211,9 +211,9 @@ impl Session {
 
         let search = json::object! {
             current_copy: copy_id,
-            capture_time: {"!=": json::JsonValue::Null},
-            cancel_time: json::JsonValue::Null,
-            fulfillment_time: json::JsonValue::Null,
+            capture_time: {"!=": json::Value::Null},
+            cancel_time: json::Value::Null,
+            fulfillment_time: json::Value::Null,
         };
 
         let flesh = json::object! {
@@ -234,8 +234,8 @@ impl Session {
     /// Find the active transit for a copy if one exists.
     fn get_copy_transit(
         &mut self,
-        copy: &json::JsonValue,
-    ) -> Result<Option<json::JsonValue>, String> {
+        copy: &json::Value,
+    ) -> Result<Option<json::Value>, String> {
         let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 6 {
@@ -246,8 +246,8 @@ impl Session {
 
         let search = json::object! {
             target_copy: copy_id,
-            dest_recv_time: json::JsonValue::Null,
-            cancel_time: json::JsonValue::Null,
+            dest_recv_time: json::Value::Null,
+            cancel_time: json::Value::Null,
         };
 
         let flesh = json::object! {
@@ -264,7 +264,7 @@ impl Session {
         }
     }
 
-    fn circ_status(&self, copy: &json::JsonValue) -> &str {
+    fn circ_status(&self, copy: &json::Value) -> &str {
         // copy.status is fleshed
         let copy_status = eg::util::json_int(&copy["status"]["id"]).unwrap();
 
@@ -308,7 +308,7 @@ impl Session {
     }
 
     /// Find an open circulation linked to the copy.
-    fn get_copy_circ(&mut self, copy: &json::JsonValue) -> Result<Option<json::JsonValue>, String> {
+    fn get_copy_circ(&mut self, copy: &json::Value) -> Result<Option<json::Value>, String> {
         let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 1 {
@@ -320,9 +320,9 @@ impl Session {
 
         let search = json::object! {
             target_copy: copy_id,
-            checkin_time: json::JsonValue::Null,
+            checkin_time: json::Value::Null,
             "-or": [
-              {stop_fines: json::JsonValue::Null},
+              {stop_fines: json::Value::Null},
               {stop_fines: ["MAXFINES", "LONGOVERDUE"]}
             ]
         };

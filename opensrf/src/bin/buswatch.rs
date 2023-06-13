@@ -51,7 +51,7 @@ impl BusWatch {
     /// buswatcher to recover from a potentially temporary bus
     /// connection error.  False if this is a clean shutdown.
     pub fn watch(&mut self) -> bool {
-        let mut obj = json::object! {};
+        let mut obj = json::json!({});
 
         loop {
             thread::sleep(Duration::from_secs(self.wait_time));
@@ -69,7 +69,7 @@ impl BusWatch {
                 continue;
             }
 
-            obj["stats"] = json::JsonValue::new_object();
+            obj["stats"] = json::Value::new_object();
 
             for key in keys.iter() {
                 match self.bus.llen(key) {
@@ -77,12 +77,12 @@ impl BusWatch {
                         // The list may have cleared in the time between the
                         // time we called keys() and llen().
                         if l > 0 {
-                            obj["stats"][key]["count"] = json::from(l);
+                            obj["stats"][key]["count"] = json::from_str(l);
                             // Uncomment this chunk to see the next opensrf
                             // message in the queue for this key as JSON.
                             if let Ok(list) = self.bus.lrange(key, 0, 1) {
                                 if let Some(s) = list.get(0) {
-                                    obj["stats"][key]["next_value"] = json::from(s.as_str());
+                                    obj["stats"][key]["next_value"] = json::from_str(s.as_str());
                                 }
                             }
                         }
@@ -96,7 +96,7 @@ impl BusWatch {
 
                 match self.bus.ttl(key) {
                     Ok(ttl) => {
-                        obj["stats"][key]["ttl"] = json::from(ttl);
+                        obj["stats"][key]["ttl"] = json::from_str(ttl);
                         if ttl == -1 {
                             log::debug!("Setting TTL for stale key {key}");
                             if let Err(e) = self.bus.set_key_timeout(key, self.ttl) {
@@ -111,7 +111,7 @@ impl BusWatch {
                 }
             }
 
-            obj["time"] = json::from(util::epoch_secs_str());
+            obj["time"] = json::from_str(util::epoch_secs_str());
 
             log::info!("{}", obj.dump());
         }

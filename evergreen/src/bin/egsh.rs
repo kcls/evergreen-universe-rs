@@ -342,7 +342,7 @@ impl Shell {
         }
     }
 
-    fn _check_for_event(&mut self, v: &json::JsonValue) -> Result<(), String> {
+    fn _check_for_event(&mut self, v: &json::Value) -> Result<(), String> {
         if let Some(evt) = event::EgEvent::parse(v) {
             if !evt.success() {
                 return Err(format!("Non-SUCCESS event returned: {evt}"));
@@ -432,7 +432,7 @@ impl Shell {
         self.args_min_length(args, 2)?;
 
         let authtoken = match &self.auth_session {
-            Some(s) => json::from(s.token()).dump(),
+            Some(s) => json::from_str(s.token()).dump(),
             None => return Err(format!("reqauth requires an auth token")),
         };
 
@@ -496,11 +496,11 @@ impl Shell {
     fn send_request(&mut self, args: &[&str]) -> Result<(), String> {
         self.args_min_length(args, 2)?;
 
-        let mut params: Vec<json::JsonValue> = Vec::new();
+        let mut params: Vec<json::Value> = Vec::new();
 
         let mut idx = 2;
         while idx < args.len() {
-            let p = match json::parse(args[idx]) {
+            let p = match json::from_str(args[idx]) {
                 Ok(p) => p,
                 Err(e) => return Err(format!("Cannot parse parameter: {} {}", args[idx], e)),
             };
@@ -616,7 +616,7 @@ impl Shell {
             Err(format!("Invalid query operand: {operand}"))?;
         }
 
-        let value = json::parse(value)
+        let value = json::from_str(value)
             .or_else(|e| Err(format!("Cannot parse query value: {value} : {e}")))?;
 
         let mut search = idldb::IdlClassSearch::new(classname);
@@ -626,8 +626,8 @@ impl Shell {
         // TODO: support paging in the UI?
         search.set_pager(util::Pager::new(100, 0));
 
-        let mut filter = json::JsonValue::new_object();
-        let mut subfilter = json::JsonValue::new_object();
+        let mut filter = json::Value::new_object();
+        let mut subfilter = json::Value::new_object();
         subfilter[operand] = value;
         filter[fieldname] = subfilter;
 
@@ -646,7 +646,7 @@ impl Shell {
         Ok(())
     }
 
-    fn print_json_record(&mut self, obj: &json::JsonValue) -> Result<(), String> {
+    fn print_json_record(&mut self, obj: &json::Value) -> Result<(), String> {
         self.result_count += 1;
 
         println!("{SEPARATOR}");
@@ -658,7 +658,7 @@ impl Shell {
         Ok(())
     }
 
-    fn print_idl_object(&mut self, obj: &json::JsonValue) -> Result<(), String> {
+    fn print_idl_object(&mut self, obj: &json::Value) -> Result<(), String> {
         self.result_count += 1;
 
         let classname = obj[idl::CLASSNAME_KEY]

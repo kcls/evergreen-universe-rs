@@ -146,7 +146,7 @@ impl BibLinker {
 
     /// Collect the list of controlled fields from the database.
     fn get_controlled_fields(&mut self) -> Result<Vec<ControlledField>, String> {
-        let search = json::object! {"id": {"<>": json::JsonValue::Null}};
+        let search = json::object! {"id": {"<>": json::Value::Null}};
 
         let flesh = json::object! {
             flesh: 1,
@@ -368,7 +368,7 @@ impl BibLinker {
 
     fn update_bib_record(
         &mut self,
-        bre: &mut json::JsonValue,
+        bre: &mut json::Value,
         record: &marc::Record,
     ) -> Result<(), String> {
         let xml = record.to_xml()?;
@@ -381,9 +381,9 @@ impl BibLinker {
 
         log::info!("Applying updates to bib record {bre_id}");
 
-        bre["marc"] = json::from(xml);
-        bre["edit_date"] = json::from("now");
-        bre["editor"] = json::from(self.staff_account);
+        bre["marc"] = json::from_str(xml);
+        bre["edit_date"] = json::from_str("now");
+        bre["editor"] = json::from_str(self.staff_account);
 
         self.editor.xact_begin()?;
         self.editor.update(&bre)?;
@@ -458,8 +458,8 @@ impl BibLinker {
             log::debug!("Sub-heading search for: {heading}");
 
             let search = json::object! {
-                "simple_heading": json::from(heading),
-                "deleted": json::from("f"),
+                "simple_heading": json::from_str(heading),
+                "deleted": json::from_str("f"),
             };
 
             // TODO idlist searches
@@ -541,7 +541,7 @@ impl BibLinker {
     fn link_one_bib(
         &mut self,
         rec_id: i64,
-        bre: &mut json::JsonValue,
+        bre: &mut json::Value,
         control_fields: &Vec<ControlledField>,
         record: &mut marc::Record,
     ) -> Result<(), String> {

@@ -4,6 +4,7 @@ use eg::util::Pager;
 use evergreen as eg;
 use getopts;
 use std::env;
+use serde_json as json;
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
@@ -30,13 +31,13 @@ fn main() -> Result<(), String> {
         println!("org: {} {}\n", org["id"], org["shortname"]);
     }
 
-    search.set_filter(json::object! {id: 1, name: "CONS", opac_visible: false});
+    search.set_filter(json!({id: 1, name: "CONS", opac_visible: false}));
 
     for org in translator.idl_class_search(&search)? {
         println!("org: {} {}\n", org["id"], org["shortname"]);
     }
 
-    search.set_filter(json::object! {id: json::object! {">": 1}, ou_type: [1, 2, 3]});
+    search.set_filter(json!({id: json!({">": 1}), ou_type: [1, 2, 3]}));
 
     for org in translator.idl_class_search(&search)? {
         println!("org: {} {}\n", org["id"], org["shortname"]);

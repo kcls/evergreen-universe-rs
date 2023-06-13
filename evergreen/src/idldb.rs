@@ -3,7 +3,7 @@ use super::db;
 use super::idl;
 use super::util::Pager;
 use chrono::prelude::*;
-use json::JsonValue;
+use json::Value;
 use log::{debug, trace};
 use pg::types::ToSql;
 use postgres as pg;
@@ -53,7 +53,7 @@ impl OrderBy {
 
 pub struct IdlClassSearch {
     pub classname: String,
-    pub filter: Option<JsonValue>,
+    pub filter: Option<json::Value>,
     pub order_by: Option<Vec<OrderBy>>,
     pub pager: Option<Pager>,
 }
@@ -72,11 +72,11 @@ impl IdlClassSearch {
         &self.classname
     }
 
-    pub fn filter(&self) -> &Option<JsonValue> {
+    pub fn filter(&self) -> &Option<json::Value> {
         &self.filter
     }
 
-    pub fn set_filter(&mut self, f: JsonValue) {
+    pub fn set_filter(&mut self, f: json::Value) {
         self.filter = Some(f);
     }
 
@@ -125,7 +125,7 @@ impl Translator {
         &self,
         classname: &str,
         pkey: &str,
-    ) -> Result<Option<JsonValue>, String> {
+    ) -> Result<Option<json::Value>, String> {
         let idl_class = match self.idl().classes().get(classname) {
             Some(c) => c,
             None => return Err(format!("No such IDL class: {classname}")),
@@ -150,7 +150,7 @@ impl Translator {
             }
         };
 
-        let mut filter = JsonValue::new_object();
+        let mut filter = json::Value::new_object();
 
         if idl_field.datatype().is_numeric() {
             let num = match pkey.parse::<f64>() {
@@ -162,9 +162,9 @@ impl Translator {
                 }
             };
 
-            filter.insert(&pkey_field, json::from(num)).unwrap();
+            filter.insert(&pkey_field, json::from_str(num)).unwrap();
         } else {
-            filter.insert(&pkey_field, json::from(pkey)).unwrap();
+            filter.insert(&pkey_field, json::from_str(pkey)).unwrap();
         }
 
         let mut search = IdlClassSearch::new(classname);
@@ -182,8 +182,8 @@ impl Translator {
         }
     }
 
-    pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<JsonValue>, String> {
-        let mut results: Vec<JsonValue> = Vec::new();
+    pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<json::Value>, String> {
+        let mut results: Vec<json::Value> = Vec::new();
         let classname = &search.classname;
 
         let class = match self.idl().classes().get(classname) {
@@ -208,7 +208,7 @@ impl Translator {
 
         // Track String parameters so we can use query binding on the
         // them in the final query.  All other types, being derived
-        // from JsonValue, have a known shape and size (number, bool,
+        // from json::Value, have a known shape and size (number, bool,
         // etc.), so query binding is less critical from a sql-injection
         // perspective.
         let mut param_list: Vec<String> = Vec::new();
@@ -289,7 +289,7 @@ impl Translator {
     fn compile_class_filter(
         &self,
         class: &idl::Class,
-        filter: &JsonValue,
+        filter: &json::Value,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> Result<String, String> {
@@ -328,19 +328,19 @@ impl Translator {
             sql += &format!(" {field}");
 
             match subq {
-                JsonValue::Array(_) => {
+                json::Value::Array(_) => {
                     sql += &self.compile_class_filter_array(param_index, param_list, &subq)?;
                 }
-                JsonValue::Object(_) => {
+                json::Value::Object(_) => {
                     sql += &self.compile_class_filter_object(param_index, param_list, &subq)?;
                 }
-                JsonValue::Number(_) | JsonValue::String(_) | JsonValue::Short(_) => {
+                json::Value::Number(_) | json::Value::String(_) | json::Value::Short(_) => {
                     sql += &format!(
                         " {}",
                         self.append_json_literal(param_index, param_list, subq, Some("="))?
                     );
                 }
-                JsonValue::Boolean(_) | JsonValue::Null => {
+                json::Value::Boolean(_) | json::Value::Null => {
                     sql += &format!(
                         " {}",
                         self.append_json_literal(param_index, param_list, subq, Some("IS"))?
@@ -356,7 +356,7 @@ impl Translator {
         &self,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
-        obj: &JsonValue,
+        obj: &json::Value,
         operand: Option<&str>,
     ) -> Result<String, String> {
         if obj.is_object() || obj.is_array() {
@@ -383,7 +383,7 @@ impl Translator {
         &self,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
-        obj: &JsonValue,
+        obj: &json::Value,
     ) -> Result<String, String> {
         let mut sql = String::new();
 
@@ -411,7 +411,7 @@ impl Translator {
         &self,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
-        arr: &JsonValue,
+        arr: &json::Value,
     ) -> Result<String, String> {
         let mut sql = String::from(" IN (");
         let mut strings: Vec<String> = Vec::new();
@@ -427,10 +427,10 @@ impl Translator {
         Ok(sql)
     }
 
-    /// Maps a PG row into an IDL-based JsonValue;
-    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> Result<JsonValue, String> {
-        let mut obj = JsonValue::new_object();
-        obj[idl::CLASSNAME_KEY] = json::from(class.classname());
+    /// Maps a PG row into an IDL-based json::Value;
+    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> Result<json::Value, String> {
+        let mut obj = json::Value::new_object();
+        obj[idl::CLASSNAME_KEY] = json::from_str(class.classname());
 
         let mut index = 0;
 
@@ -442,72 +442,72 @@ impl Translator {
         Ok(obj)
     }
 
-    /// Translate a PG-typed row value into a JsonValue
-    fn col_value_to_json_value(&self, row: &pg::Row, index: usize) -> Result<JsonValue, String> {
+    /// Translate a PG-typed row value into a json::Value
+    fn col_value_to_json_value(&self, row: &pg::Row, index: usize) -> Result<json::Value, String> {
         let col_type = row.columns().get(index).map(|c| c.type_().name()).unwrap();
 
         match col_type {
-            // JsonValue has From<Option<T>>
+            // json::Value has From<Option<T>>
             "bool" => {
                 let v: Option<bool> = row.get(index);
-                Ok(json::from(v))
+                Ok(json::from_str(v))
             }
             "interval" => {
                 let v: Option<pg_interval::Interval> = row.get(index);
                 let s = match v {
                     Some(val) => val.to_postgres(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(json::Value::Null),
                 };
-                Ok(json::from(s))
+                Ok(json::from_str(s))
             }
             "varchar" | "char(n)" | "text" | "name" => {
                 let v: Option<String> = row.get(index);
-                Ok(json::from(v))
+                Ok(json::from_str(v))
             }
             "date" => {
                 let v: Option<chrono::NaiveDate> = row.get(index);
                 let s = match v {
                     Some(val) => val.format("%F").to_string(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(json::Value::Null),
                 };
-                Ok(json::from(s))
+                Ok(json::from_str(s))
             }
             "timestamp" | "timestamptz" => {
                 let v: Option<chrono::DateTime<Utc>> = row.get(index);
                 let s = match v {
                     Some(val) => val.format("%FT%T%z").to_string(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(json::Value::Null),
                 };
-                Ok(json::from(s))
+                Ok(json::from_str(s))
             }
             "int2" | "smallserial" | "smallint" => {
                 let v: Option<i16> = row.get(index);
-                Ok(json::from(v))
+                Ok(json::from_str(v))
             }
             "int" | "int4" | "serial" => {
                 let v: Option<i32> = row.get(index);
-                Ok(json::from(v))
+                Ok(json::from_str(v))
             }
             "int8" | "bigserial" | "bigint" => {
                 let v: Option<i64> = row.get(index);
-                Ok(json::from(v))
+                Ok(json::from_str(v))
             }
             "float4" | "real" => {
                 let v: Option<f32> = row.get(index);
-                Ok(json::from(v))
+                Ok(json::from_str(v))
             }
             "float8" | "double precision" => {
                 let v: Option<f64> = row.get(index);
-                Ok(json::from(v))
+                Ok(json::from_str(v))
             }
             "numeric" => {
                 let decimal: Option<Decimal> = row.get(index);
                 match decimal {
-                    Some(d) => Ok(json::from(d.to_string())),
-                    None => Ok(JsonValue::Null),
+                    Some(d) => Ok(json::from_str(d.to_string())),
+                    None => Ok(json::Value::Null),
                 }
             }
-            "tsvector" => Ok(JsonValue::Null),
+            "tsvector" => Ok(json::Value::Null),
             _ => Err(format!("Unsupported column type: {col_type}")),
         }
     }

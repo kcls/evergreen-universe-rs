@@ -159,7 +159,7 @@ impl Session {
         };
 
         if cancel {
-            args["revert_hold_fulfillment"] = json::from(cancel);
+            args["revert_hold_fulfillment"] = json::from_str(cancel);
         }
 
         if return_date.trim().len() == 18 {
@@ -171,7 +171,7 @@ impl Session {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("{self} Checking in with backdate: {iso_date}");
 
-                args["backdate"] = json::from(iso_date);
+                args["backdate"] = json::from_str(iso_date);
             } else {
                 log::warn!("{self} Invalid checkin return date: {return_date}");
             }
@@ -184,7 +184,7 @@ impl Session {
         }
 
         if !args.has_key("circ_lib") {
-            args["circ_lib"] = json::from(self.get_ws_org_id()?);
+            args["circ_lib"] = json::from_str(self.get_ws_org_id()?);
         }
 
         let method = match ovride {
@@ -192,7 +192,7 @@ impl Session {
             false => "open-ils.circ.checkin",
         };
 
-        let params = vec![json::from(self.authtoken()?), args];
+        let params = vec![json::from_str(self.authtoken()?), args];
 
         let resp = match self
             .osrf_client_mut()
@@ -205,11 +205,11 @@ impl Session {
         log::debug!("{self} Checkin of {} returned: {resp}", item.barcode);
 
         let evt_json = match resp {
-            json::JsonValue::Array(list) => {
+            json::Value::Array(list) => {
                 if list.len() > 0 {
                     list[0].to_owned()
                 } else {
-                    json::JsonValue::Null
+                    json::Value::Null
                 }
             }
             _ => resp,

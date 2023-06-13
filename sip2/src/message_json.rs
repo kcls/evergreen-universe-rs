@@ -1,5 +1,5 @@
 use super::Message;
-use json;
+use serde_json as json;
 use std::collections::HashMap;
 use std::error;
 use std::fmt;
@@ -40,7 +40,7 @@ impl Message {
     /// ```
     /// use sip2::{Message, Field, FixedField};
     /// use sip2::spec;
-    /// use json;
+    /// use serde_json as json;
     ///
     /// let msg = Message::new(
     ///     &spec::M_LOGIN,
@@ -62,7 +62,7 @@ impl Message {
     ///
     /// assert_eq!(expected, json_val);
     /// ```
-    pub fn to_json_value(&self) -> Result<json::JsonValue, SipJsonError> {
+    pub fn to_json_value(&self) -> Result<json::Value, SipJsonError> {
         let ff: Vec<String> = self
             .fixed_fields()
             .iter()
@@ -121,7 +121,7 @@ impl Message {
     /// ```
     /// use sip2::{Message, Field, FixedField};
     /// use sip2::spec;
-    /// use json;
+    /// use serde_json as json;
     ///
     /// let expected = Message::new(
     ///     &spec::M_LOGIN,
@@ -144,7 +144,7 @@ impl Message {
     ///
     /// assert_eq!(expected, msg);
     /// ```
-    pub fn from_json_value(json_value: &json::JsonValue) -> Result<Message, SipJsonError> {
+    pub fn from_json_value(json_value: &json::Value) -> Result<Message, SipJsonError> {
         // Start with a message that's just the code plus fixed fields
         // as a SIP string.
         let mut strbuf = format!("{}", json_value["code"]);
@@ -191,7 +191,7 @@ impl Message {
     /// ```
     /// use sip2::{Message, Field, FixedField};
     /// use sip2::spec;
-    /// use json;
+    /// use serde_json as json;
     ///
     /// let expected = Message::new(
     ///     &spec::M_LOGIN,
@@ -218,7 +218,7 @@ impl Message {
     /// assert_eq!(expected, msg);
     /// ```
     pub fn from_json(msg_json: &str) -> Result<Message, SipJsonError> {
-        let json_value: json::JsonValue = match json::parse(msg_json) {
+        let json_value: json::Value = match json::from_str(msg_json) {
             Ok(v) => v,
             Err(e) => {
                 return Err(SipJsonError::JsonError(e));

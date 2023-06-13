@@ -179,7 +179,7 @@ fn time(
     _method: &message::Method,
 ) -> Result<(), String> {
     let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    session.respond(json::from(dur.as_secs()))?;
+    session.respond(json::from_str(dur.as_secs()))?;
     Ok(())
 }
 

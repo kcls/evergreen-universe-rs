@@ -10,7 +10,7 @@ use super::message::Status;
 use super::message::TransportMessage;
 use super::params::ApiParams;
 use super::util;
-use json::JsonValue;
+use serde_json as json;                                                       
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::VecDeque;
@@ -22,8 +22,8 @@ pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 
 /// Response data propagated from a session to the calling Request.
 struct Response {
-    /// Response from an API call as a JsonValue.
-    value: Option<JsonValue>,
+    /// Response from an API call as a json::Value.
+    value: Option<json::Value>,
     /// True if the Request we are a response to is complete.
     complete: bool,
     /// True if this is a partial response
@@ -56,12 +56,12 @@ impl Request {
     /// Handy if you are expecting exactly one result, or only care
     /// about the first, but want to pull all data off the bus until the
     /// message is officially marked as complete.
-    pub fn first(&mut self) -> Result<Option<JsonValue>, String> {
+    pub fn first(&mut self) -> Result<Option<json::Value>, String> {
         self.first_with_timeout(DEFAULT_REQUEST_TIMEOUT)
     }
 
-    pub fn first_with_timeout(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
-        let mut resp: Option<JsonValue> = None;
+    pub fn first_with_timeout(&mut self, timeout: i32) -> Result<Option<json::Value>, String> {
+        let mut resp: Option<json::Value> = None;
         while !self.complete {
             if let Some(r) = self.recv(timeout)? {
                 if resp.is_none() {
@@ -79,7 +79,7 @@ impl Request {
     ///     <0 == wait indefinitely
     ///      0 == do not wait/block
     ///     >0 == wait up to this many seconds for a reply.
-    pub fn recv(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
+    pub fn recv(&mut self, timeout: i32) -> Result<Option<json::Value>, String> {
         if self.complete {
             // If we are marked complete, it means we've read all the
             // replies, the last of which was a request-complete message.
@@ -319,7 +319,7 @@ impl Session {
 
                 // Compile the collected JSON chunks into a single value,
                 // which is the final response value.
-                value = json::parse(&buf)
+                value = json::from_str(&buf)
                     .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
 
                 log::trace!("Partial message is now complete");
@@ -538,7 +538,7 @@ impl SessionHandle {
 
     /// Issue a new API call and return the Request
     ///
-    /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json::object!{a: "b"}]
+    /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json::json!({a: "b"})]
     pub fn request<T>(&mut self, method: &str, params: T) -> Result<Request, String>
     where
         T: Into<ApiParams>,
@@ -579,7 +579,7 @@ pub struct ResponseIterator {
 }
 
 impl Iterator for ResponseIterator {
-    type Item = JsonValue;
+    type Item = json::Value;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.request.recv(DEFAULT_REQUEST_TIMEOUT) {
@@ -622,7 +622,7 @@ pub struct ServerSession {
     last_thread_trace: usize,
 
     /// Responses collected to be packaed into an "atomic" response array.
-    atomic_resp_queue: Option<Vec<JsonValue>>,
+    atomic_resp_queue: Option<Vec<json::Value>>,
 }
 
 impl fmt::Display for ServerSession {
@@ -690,9 +690,9 @@ impl ServerSession {
 
     pub fn respond<T>(&mut self, value: T) -> Result<(), String>
     where
-        T: Into<JsonValue>,
+        T: Into<json::Value>,
     {
-        let mut value = json::from(value);
+        let mut value = json::from_str(value);
         if let Some(s) = self.client.singleton().borrow().serializer() {
             value = s.pack(value);
         }
@@ -729,7 +729,7 @@ impl ServerSession {
 
     pub fn respond_complete<T>(&mut self, value: T) -> Result<(), String>
     where
-        T: Into<JsonValue>,
+        T: Into<json::Value>,
     {
         if self.responded_complete {
             log::warn!(

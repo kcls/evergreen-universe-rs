@@ -2,6 +2,7 @@
 ///
 use super::client::Client;
 use std::sync::Arc;
+use serde_json as json;                                                        
 
 const SETTINGS_TIMEOUT: i32 = 10;
 
@@ -17,7 +18,7 @@ impl SettingsClient {
 
         let mut req = ses.request(
             "opensrf.settings.host_config.get",
-            vec![json::from(client.config().hostname()), json::from(force)],
+            vec![json::from_str(client.config().hostname()), json::from_str(force)],
         )?;
 
         if let Some(s) = req.recv(SETTINGS_TIMEOUT)? {
@@ -31,24 +32,24 @@ impl SettingsClient {
 /// Read-only wrapper around a JSON blob of server setting values, which
 /// provides accessor methods for pulling setting values.
 pub struct HostSettings {
-    settings: json::JsonValue,
+    settings: json::Value,
 }
 
 impl HostSettings {
-    /// Returns the full host settings config as a JsonValue.
-    pub fn settings(&self) -> &json::JsonValue {
+    /// Returns the full host settings config as a json::Value.
+    pub fn settings(&self) -> &json::Value {
         &self.settings
     }
 
-    /// Returns the JsonValue at the specified path.
+    /// Returns the json::Value at the specified path.
     ///
     /// Panics of the host config has not yet been retrieved.
     ///
     /// E.g. sclient.value("apps/opensrf.settings/unix_config/max_children");
-    pub fn value(&self, slashpath: &str) -> &json::JsonValue {
+    pub fn value(&self, slashpath: &str) -> &json::Value {
         let mut value = self.settings();
         for part in slashpath.split("/") {
-            value = &value[part]; // -> JsonValue::Null if key is not found.
+            value = &value[part]; // -> json::Value::Null if key is not found.
         }
 
         value

@@ -1,8 +1,8 @@
 //! Shared, circ-focused utility functions
 use crate::editor::Editor;
-use json::JsonValue;
+use json::Value;
 
-pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> Result<JsonValue, String> {
+pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> Result<json::Value, String> {
     let query = json::object!{
         from: ["action.summarize_all_circ_chain", circ_id]
     };
@@ -20,7 +20,7 @@ pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> Result<JsonValue, S
     Ok(summary)
 }
 
-pub fn circ_chain(e: &mut Editor, circ_id: i64) -> Result<Vec<JsonValue>, String> {
+pub fn circ_chain(e: &mut Editor, circ_id: i64) -> Result<Vec<json::Value>, String> {
     let query = json::object!{
         from: ["action.all_circ_chain", circ_id]
     };

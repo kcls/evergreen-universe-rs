@@ -506,7 +506,7 @@ impl Session {
     /// Wrap a websocket request in an OpenSRF transport message and
     /// put on the OpenSRF bus for delivery.
     fn relay_to_osrf(&mut self, json_text: &str) -> Result<(), String> {
-        let mut wrapper = json::parse(json_text).or_else(|e| {
+        let mut wrapper = json::from_str(json_text).or_else(|e| {
             Err(format!(
                 "{self} Cannot parse websocket message: {e} {json_text}"
             ))
@@ -554,7 +554,7 @@ impl Session {
 
         // msg_list is typically an array, but may be a single opensrf message.
         if !msg_list.is_array() {
-            let mut list = json::JsonValue::new_array();
+            let mut list = json::Value::new_array();
 
             if let Err(e) = list.push(msg_list) {
                 Err(format!("{self} Error creating message list {e}"))?;
@@ -643,7 +643,7 @@ impl Session {
     fn relay_to_websocket(&mut self, tm: message::TransportMessage) -> Result<(), String> {
         let msg_list = tm.body();
 
-        let mut body = json::JsonValue::new_array();
+        let mut body = json::Value::new_array();
         let mut transport_error = false;
 
         for msg in msg_list.iter() {
@@ -675,14 +675,14 @@ impl Session {
             }
         }
 
-        let mut obj = json::object! {
+        let mut obj = json::json!({
             oxrf_xid: tm.osrf_xid(),
             thread: tm.thread(),
             osrf_msg: body
-        };
+        });
 
         if transport_error {
-            obj["transport_error"] = json::from(true);
+            obj["transport_error"] = json::from_str(true);
         }
 
         let msg_json = obj.dump();

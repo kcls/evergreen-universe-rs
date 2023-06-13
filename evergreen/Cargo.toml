@@ -14,7 +14,7 @@ roxmltree = "0.18"
 chrono = "0.4"
 yaml-rust = "0.4"
 log = "0.4"
-json = "0.12"
+serde_json = "1.0.96"                                                          
 postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 regex = "1.7"                                                                
 getopts = "0.2"

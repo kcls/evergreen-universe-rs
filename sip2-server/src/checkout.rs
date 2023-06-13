@@ -155,7 +155,7 @@ impl Session {
         ovride: bool,
     ) -> Result<CheckoutResult, String> {
         let params = vec![
-            json::from(self.authtoken()?),
+            json::from_str(self.authtoken()?),
             json::object! {
                 copy_barcode: item_barcode,
                 patron_barcode: patron_barcode,
@@ -183,7 +183,7 @@ impl Session {
 
         log::debug!("{self} Checkout of {item_barcode} returned: {resp}");
 
-        let event = if let json::JsonValue::Array(list) = resp {
+        let event = if let json::Value::Array(list) = resp {
             list[0].to_owned()
         } else {
             resp

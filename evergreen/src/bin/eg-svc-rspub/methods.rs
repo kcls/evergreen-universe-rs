@@ -233,7 +233,7 @@ pub fn get_barcodes(
     }
 
     let requestor_id = editor.requestor_id();
-    let mut response: Vec<json::JsonValue> = Vec::new();
+    let mut response: Vec<json::Value> = Vec::new();
 
     // "actor" barcodes require additional perm checks.
     for user_row in result {
@@ -348,7 +348,7 @@ pub fn retrieve_cascade_settigs(
     settings.fetch_values(setting_names.as_slice())?;
 
     for name in setting_names {
-        let mut obj = json::JsonValue::new_object();
+        let mut obj = json::Value::new_object();
         obj[name] = settings.get_value(name)?.clone();
         session.respond(obj)?;
     }
@@ -397,7 +397,7 @@ pub fn ou_setting_ancestor_default_batch(
     settings.fetch_values(setting_names.as_slice())?;
 
     for name in setting_names {
-        let mut obj = json::JsonValue::new_object();
+        let mut obj = json::Value::new_object();
         obj[name] = settings.get_value(name)?.clone();
         session.respond(obj)?;
     }
@@ -453,7 +453,7 @@ pub fn user_opac_vital_stats(
         from: "aum",
         where: {
             usr: user_id,
-            read_date: json::JsonValue::Null,
+            read_date: json::Value::Null,
             deleted: "f",
             pub: "t",
         }

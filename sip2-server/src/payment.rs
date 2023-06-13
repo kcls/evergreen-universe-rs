@@ -127,7 +127,7 @@ impl Session {
     /// a viable choice.
     fn compile_one_xact(
         &mut self,
-        user: &json::JsonValue,
+        user: &json::Value,
         xact_id: i64,
         pay_amount: f64,
         result: &mut PaymentResult,
@@ -156,7 +156,7 @@ impl Session {
     /// Find transactions to pay
     fn compile_multi_xacts(
         &mut self,
-        user: &json::JsonValue,
+        user: &json::Value,
         pay_amount: f64,
         result: &mut PaymentResult,
     ) -> Result<Vec<(i64, f64)>, String> {
@@ -222,7 +222,7 @@ impl Session {
     /// Send payment data to the server for processing.
     fn apply_payments(
         &mut self,
-        user: &json::JsonValue,
+        user: &json::Value,
         result: &mut PaymentResult,
         pay_type: &str,
         terminal_xact_op: &Option<String>,
@@ -268,33 +268,33 @@ impl Session {
                 // '01' is "VISA"; '02' is "credit card"
 
                 args["cc_args"]["terminal_xact"] = match terminal_xact_op {
-                    Some(tx) => json::from(tx.as_str()),
-                    None => json::from("Not provided by SIP client"),
+                    Some(tx) => json::from_str(tx.as_str()),
+                    None => json::from_str("Not provided by SIP client"),
                 };
 
-                args["payment_type"] = json::from("credit_card_payment");
+                args["payment_type"] = json::from_str("credit_card_payment");
             }
 
             "05" => {
                 // Check payment
-                args["payment_type"] = json::from("check_payment");
+                args["payment_type"] = json::from_str("check_payment");
                 args["check_number"] = match check_number_op {
-                    Some(s) => json::from(s.as_str()),
-                    None => json::from("Not provided by SIP client"),
+                    Some(s) => json::from_str(s.as_str()),
+                    None => json::from_str("Not provided by SIP client"),
                 };
             }
             _ => {
-                args["payment_type"] = json::from("cash_payment");
+                args["payment_type"] = json::from_str("cash_payment");
             }
         }
 
-        let authtoken = json::from(self.authtoken()?);
+        let authtoken = json::from_str(self.authtoken()?);
         let last_xact_id = user["last_xact_id"].as_str().unwrap(); // required
 
         let resp = self.osrf_client_mut().send_recv_one(
             "open-ils.circ",
             "open-ils.circ.money.payment",
-            vec![authtoken, args, json::from(last_xact_id)],
+            vec![authtoken, args, json::from_str(last_xact_id)],
         )?;
 
         let resp = resp.ok_or(format!("Payment API returned no response"))?;

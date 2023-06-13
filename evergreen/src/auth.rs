@@ -1,5 +1,5 @@
 use crate::event;
-use json;
+use serde_json as json;
 use opensrf::client::Client;
 
 const LOGIN_TIMEOUT: i32 = 30;
@@ -77,7 +77,7 @@ impl AuthLoginArgs {
         self.workstation.as_deref()
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> json::Value {
         let lt: &str = self.login_type().into();
 
         let mut jv = json::object! {
@@ -87,7 +87,7 @@ impl AuthLoginArgs {
         };
 
         if let Some(w) = &self.workstation {
-            jv["workstation"] = json::from(w.as_str());
+            jv["workstation"] = json::from_str(w.as_str());
         }
 
         jv
@@ -115,7 +115,7 @@ impl AuthInternalLoginArgs {
         }
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> json::Value {
         let lt: &str = (&self.login_type).into();
 
         let mut jv = json::object! {
@@ -124,11 +124,11 @@ impl AuthInternalLoginArgs {
         };
 
         if let Some(w) = &self.workstation {
-            jv["workstation"] = json::from(w.as_str());
+            jv["workstation"] = json::from_str(w.as_str());
         }
 
         if let Some(w) = self.org_unit {
-            jv["org_unit"] = json::from(w);
+            jv["org_unit"] = json::from_str(w);
         }
 
         jv
@@ -189,7 +189,7 @@ impl AuthSession {
 
     fn handle_auth_response(
         workstation: &Option<String>,
-        response: &json::JsonValue,
+        response: &json::Value,
     ) -> Result<Option<AuthSession>, String> {
         let evt = match event::EgEvent::parse(&response) {
             Some(e) => e,

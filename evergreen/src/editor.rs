@@ -51,7 +51,7 @@ pub struct Editor {
     personality: Personality,
     authtoken: Option<String>,
     authtime: Option<usize>,
-    requestor: Option<json::JsonValue>,
+    requestor: Option<json::Value>,
     timeout: i32,
 
     /// True if the caller wants us to perform actions within
@@ -128,7 +128,7 @@ impl Editor {
 
         let service = "open-ils.auth";
         let method = "open-ils.auth.session.retrieve";
-        let params = vec![json::from(token), json::from(true)];
+        let params = vec![json::from_str(token), json::from_str(true)];
 
         let mut ses = self.client.session(service);
         let resp_op = ses.request(method, params)?.first()?;
@@ -192,11 +192,11 @@ impl Editor {
         util::json_int(&self.requestor().unwrap()["id"]).unwrap()
     }
 
-    pub fn requestor(&self) -> Option<&json::JsonValue> {
+    pub fn requestor(&self) -> Option<&json::Value> {
         self.requestor.as_ref()
     }
 
-    pub fn set_requestor(&mut self, r: &json::JsonValue) {
+    pub fn set_requestor(&mut self, r: &json::Value) {
         self.requestor = Some(r.clone())
     }
 
@@ -204,12 +204,12 @@ impl Editor {
         self.last_event.as_ref()
     }
 
-    /// Returns our last event as JSON or JsonValue::Null if we have
+    /// Returns our last event as JSON or json::Value::Null if we have
     /// no last event.
-    pub fn event(&self) -> json::JsonValue {
+    pub fn event(&self) -> json::Value {
         match self.last_event() {
             Some(e) => e.to_json_value(),
-            None => json::JsonValue::Null,
+            None => json::Value::Null,
         }
     }
 
@@ -312,8 +312,8 @@ impl Editor {
     /// Send an API request without any parameters.
     ///
     /// See request() for more.
-    fn request_np(&mut self, method: &str) -> Result<Option<json::JsonValue>, String> {
-        let params: Vec<json::JsonValue> = Vec::new();
+    fn request_np(&mut self, method: &str) -> Result<Option<json::Value>, String> {
+        let params: Vec<json::Value> = Vec::new();
         self.request(method, params)
     }
 
@@ -358,7 +358,7 @@ impl Editor {
     /// Send an API request to our service/worker with parameters.
     ///
     /// All requests return at most a single response.
-    fn request<T>(&mut self, method: &str, params: T) -> Result<Option<json::JsonValue>, String>
+    fn request<T>(&mut self, method: &str, params: T) -> Result<Option<json::Value>, String>
     where
         T: Into<ApiParams>,
     {
@@ -425,19 +425,19 @@ impl Editor {
         }
     }
 
-    pub fn json_query(&mut self, query: json::JsonValue) -> Result<Vec<json::JsonValue>, String> {
-        self.json_query_with_ops(query, json::JsonValue::Null)
+    pub fn json_query(&mut self, query: json::Value) -> Result<Vec<json::Value>, String> {
+        self.json_query_with_ops(query, json::Value::Null)
     }
 
     pub fn json_query_with_ops(
         &mut self,
-        query: json::JsonValue,
-        ops: json::JsonValue,
-    ) -> Result<Vec<json::JsonValue>, String> {
+        query: json::Value,
+        ops: json::Value,
+    ) -> Result<Vec<json::Value>, String> {
         let method = self.app_method(&format!("json_query.atomic"));
 
         if let Some(jvec) = self.request(&method, vec![query, ops])? {
-            if let json::JsonValue::Array(vec) = jvec {
+            if let json::Value::Array(vec) = jvec {
                 return Ok(vec);
             }
         }
@@ -445,19 +445,19 @@ impl Editor {
         Err(format!("Unexpected response to method {method}"))
     }
 
-    pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> Result<Option<json::JsonValue>, String>
+    pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> Result<Option<json::Value>, String>
     where
         T: Into<ApiParams>,
     {
-        self.retrieve_with_ops(idlclass, id, json::JsonValue::Null)
+        self.retrieve_with_ops(idlclass, id, json::Value::Null)
     }
 
     pub fn retrieve_with_ops<T>(
         &mut self,
         idlclass: &str,
         id: T,
-        ops: json::JsonValue, // flesh, etc.
-    ) -> Result<Option<json::JsonValue>, String>
+        ops: json::Value, // flesh, etc.
+    ) -> Result<Option<json::Value>, String>
     where
         T: Into<ApiParams>,
     {
@@ -481,23 +481,23 @@ impl Editor {
     pub fn search(
         &mut self,
         idlclass: &str,
-        query: json::JsonValue,
-    ) -> Result<Vec<json::JsonValue>, String> {
-        self.search_with_ops(idlclass, query, json::JsonValue::Null)
+        query: json::Value,
+    ) -> Result<Vec<json::Value>, String> {
+        self.search_with_ops(idlclass, query, json::Value::Null)
     }
 
     pub fn search_with_ops(
         &mut self,
         idlclass: &str,
-        query: json::JsonValue,
-        ops: json::JsonValue, // flesh, etc.
-    ) -> Result<Vec<json::JsonValue>, String> {
+        query: json::Value,
+        ops: json::Value, // flesh, etc.
+    ) -> Result<Vec<json::Value>, String> {
         let fmapper = self.get_fieldmapper(idlclass)?;
 
         let method = self.app_method(&format!("direct.{fmapper}.search.atomic"));
 
         if let Some(jvec) = self.request(&method, vec![query, ops])? {
-            if let json::JsonValue::Array(vec) = jvec {
+            if let json::Value::Array(vec) = jvec {
                 return Ok(vec);
             }
         }
@@ -505,7 +505,7 @@ impl Editor {
         Err(format!("Unexpected response to method {method}"))
     }
 
-    pub fn update(&mut self, object: &json::JsonValue) -> Result<(), String> {
+    pub fn update(&mut self, object: &json::Value) -> Result<(), String> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for UPDATE"))?;
         }
@@ -528,7 +528,7 @@ impl Editor {
         Ok(())
     }
 
-    pub fn create(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, String> {
+    pub fn create(&mut self, object: &json::Value) -> Result<json::Value, String> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for CREATE"))?;
         }
@@ -557,8 +557,8 @@ impl Editor {
 
     /// Delete an IDL Object.
     ///
-    /// Response is the PKEY value as a JsonValue.
-    pub fn delete(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, String> {
+    /// Response is the PKEY value as a json::Value.
+    pub fn delete(&mut self, object: &json::Value) -> Result<json::Value, String> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for DELETE"))?;
         }
@@ -587,8 +587,8 @@ impl Editor {
         };
 
         let org_id = match org_id_op {
-            Some(i) => json::from(i),
-            None => json::JsonValue::Null,
+            Some(i) => json::from_str(i),
+            None => json::Value::Null,
         };
 
         let query = json::object! {

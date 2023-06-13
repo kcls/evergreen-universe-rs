@@ -21,7 +21,7 @@ pub struct Server {
     shutdown: Arc<AtomicBool>,
     reload: Arc<AtomicBool>,
     /// Cache of org unit shortnames and IDs.
-    org_cache: HashMap<i64, json::JsonValue>,
+    org_cache: HashMap<i64, json::Value>,
 }
 
 impl Server {
@@ -59,7 +59,7 @@ impl Server {
         let mut e = eg::Editor::new(self.ctx.client(), self.ctx.idl());
 
         let search = json::object! {
-            id: {"!=": json::JsonValue::Null},
+            id: {"!=": json::Value::Null},
         };
 
         let orgs = e.search("aou", search)?;
