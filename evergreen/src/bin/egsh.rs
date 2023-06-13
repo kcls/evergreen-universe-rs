@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
 use std::time::Instant;
+use serde_json;
 
 use getopts;
 use rustyline;
@@ -195,6 +196,8 @@ impl Shell {
         }
 
         let mut readline = self.setup_readline();
+
+        println!("\nNOTE: Request parameters should be separated by spaces, not commas.\n");
 
         loop {
             if let Err(e) = self.read_one_line(&mut readline) {
@@ -498,14 +501,29 @@ impl Shell {
 
         let mut params: Vec<json::JsonValue> = Vec::new();
 
-        let mut idx = 2;
-        while idx < args.len() {
-            let p = match json::parse(args[idx]) {
+        // Use the serde_json stream parser to read the parameters.
+        let data = args[2..].join(" ");
+        let stream =
+            serde_json::Deserializer::from_str(&data).into_iter::<serde_json::Value>();
+
+        for param_res in stream {
+            let p = match param_res {
                 Ok(p) => p,
-                Err(e) => return Err(format!("Cannot parse parameter: {} {}", args[idx], e)),
+                Err(e) => Err(format!("Cannot parse params: {data} {e}"))?,
             };
-            params.push(p);
-            idx += 1;
+
+            // Translate the serde_json::Value into a json::JsonValue.
+            let p_str = match serde_json::to_string(&p) {
+                Ok(s) => s,
+                Err(e) => Err(format!("Error stringifying: {e}"))?,
+            };
+
+            let param = match json::parse(&p_str) {
+                Ok(p) => p,
+                Err(e) => Err(format!("Cannot parse params: {p_str} {e}"))?,
+            };
+
+            params.push(param);
         }
 
         let mut ses = self.ctx().client().session(args[0]);
