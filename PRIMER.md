@@ -48,7 +48,7 @@ cargo run --package evergreen --bin egsh
 * egsh# login admin demo123
 * egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
 
-### Connecting with the local database
+### Connecting egsh to the localhost database
 
 ```sh
 cargo run --package evergreen --bin egsh -- --with-database
