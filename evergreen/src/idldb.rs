@@ -65,6 +65,10 @@ impl IdlClassUpdate {
             filter: None,
         }
     }
+    pub fn reset(&mut self) {
+        self.values = Vec::new();
+        self.filter = None;
+    }
     pub fn values(&self) -> &Vec<(String, JsonValue)> {
         &self.values
     }
@@ -142,6 +146,18 @@ impl Translator {
         &self.idl
     }
 
+    pub fn xact_begin(&mut self) -> Result<(), String> {
+        self.db.borrow_mut().xact_begin()
+    }
+
+    pub fn xact_commit(&mut self) -> Result<(), String> {
+        self.db.borrow_mut().xact_commit()
+    }
+
+    pub fn xact_rollback(&mut self) -> Result<(), String> {
+        self.db.borrow_mut().xact_rollback()
+    }
+
     pub fn is_supported_operand(op: &str) -> bool {
         SUPPORTED_OPERANDS.contains(&op.to_uppercase().as_str())
     }
@@ -213,9 +229,13 @@ impl Translator {
         }
     }
 
-    // TODO can we return the count of rows updated here?
-    pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<(), String> {
+    /// Returns Result of the number of rows modified.
+    pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<u64, String> {
         let classname = &update.classname;
+
+        if !self.db.borrow().in_transaction() {
+            Err(format!("idl_class_update() requires a transaction"))?;
+        }
 
         let class = match self.idl().classes().get(classname) {
             Some(c) => c,
@@ -238,7 +258,6 @@ impl Translator {
                 &self.compile_class_filter(&class, filter, &mut param_index, &mut param_list)?;
         }
 
-
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
         for p in param_list.iter() {
             params.push(p);
@@ -246,26 +265,19 @@ impl Translator {
 
         debug!("update() executing query: {query}; params=[{param_list:?}]");
 
-        /*
-
         let query_res = self
             .db
             .borrow_mut()
             .client()
-            .query(&query[..], params.as_slice());
+            .execute(&query[..], params.as_slice());
 
-        if let Err(e) = query_res {
-            return Err(format!("DB query failed: {e}"));
+        match query_res {
+            Ok(v) => {
+                log::debug!("Update modified {v} rows");
+                Ok(v)
+            }
+            Err(e) => Err(format!("DB query failed: {e}")),
         }
-
-        for row in query_res.unwrap() {
-            results.push(self.row_to_idl(&class, &row)?);
-        }
-
-        Ok(results)
-        */
-
-        Ok(())
     }
 
     pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<JsonValue>, String> {

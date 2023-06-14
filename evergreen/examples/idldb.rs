@@ -21,7 +21,7 @@ fn main() -> Result<(), String> {
     db.connect()?;
     let db = db.into_shared();
 
-    let translator = Translator::new(ctx.idl().clone(), db.clone());
+    let mut translator = Translator::new(ctx.idl().clone(), db.clone());
 
     // Give me all rows
     let mut search = IdlClassSearch::new("aou");
@@ -54,12 +54,42 @@ fn main() -> Result<(), String> {
         println!("org: {} {}\n", org["id"], org["shortname"]);
     }
 
+
+    // Grab an org unit to update.
+    search.set_filter(json::object! {id: json::object! {">": 0}});
+    let results = translator.idl_class_search(&search)?;
+    let org = results.first().expect("Wanted at least one org unit");
+
+    let shortname = org["shortname"].as_str().unwrap();
+
+    translator.xact_begin()?;
     let mut update = IdlClassUpdate::new("aou");
-    update.set_filter(json::object! {id: 1, shortname: "CONS"});
-    update.add_value("shortname", &json::from("CONS-TEST"));
-    update.add_value("name", &json::from("; drop table foobar;"));
+    update.set_filter(json::object! {id: org["id"].clone()});
+    update.add_value("shortname", &json::from(format!("{}-TEST", shortname)));
 
     translator.idl_class_update(&update)?;
+    translator.xact_commit()?;
+
+    search.set_filter(json::object! {id: org["id"].clone()});
+    let results = translator.idl_class_search(&search)?;
+    let org_updated = results.first().expect("Cannot find org unit");
+
+    println!("org name updated to: {}", org_updated["shortname"]);
+
+    translator.xact_begin()?;
+    update.reset(); // clear filters and values
+    update.set_filter(json::object! {id: org["id"].clone()});
+    update.add_value("shortname", &json::from(shortname));
+
+    translator.idl_class_update(&update)?;
+
+    translator.xact_commit()?;
+
+    search.set_filter(json::object! {id: org["id"].clone()});
+    let results = translator.idl_class_search(&search)?;
+    let org_updated = results.first().expect("Cannot find org unit");
+
+    println!("org name updated to: {}", org_updated["shortname"]);
 
     Ok(())
 }

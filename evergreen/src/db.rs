@@ -179,6 +179,7 @@ impl DatabaseConnectionBuilder {
             password: pass,
             application: self.application,
             client: None,
+            in_transaction: false,
         }
     }
 }
@@ -193,6 +194,7 @@ pub struct DatabaseConnection {
     password: Option<String>,
     database: String,
     application: Option<String>,
+    in_transaction: bool,
 }
 
 impl DatabaseConnection {
@@ -270,6 +272,7 @@ impl DatabaseConnection {
             port: self.port,
             user: self.user.to_string(),
             database: self.database.to_string(),
+            in_transaction: false,
             password: match &self.password {
                 Some(p) => Some(p.to_string()),
                 None => None,
@@ -278,6 +281,44 @@ impl DatabaseConnection {
                 Some(a) => Some(a.to_string()),
                 None => None,
             },
+        }
+    }
+
+    pub fn in_transaction(&self) -> bool {
+        self.in_transaction
+    }
+
+    pub fn xact_begin(&mut self) -> Result<(), String> {
+        if self.in_transaction {
+            return Err(format!("DatabaseConnection is already in a transaction"));
+        }
+        self.in_transaction = true;
+        match self.client().execute("BEGIN", &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("BEGIN transaction error: {e}"))
+        }
+    }
+
+    pub fn xact_commit(&mut self) -> Result<(), String> {
+        if !self.in_transaction {
+            return Err(format!("DatabaseConnection has no transaction to commit"))?;
+        }
+        self.in_transaction = false;
+        match self.client().execute("COMMIT", &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("COMMIT transaction error: {e}"))
+        }
+    }
+
+    pub fn xact_rollback(&mut self) -> Result<(), String> {
+        if !self.in_transaction {
+            log::warn!("No transaction to roll back");
+            return Ok(()); // error as well?
+        }
+        self.in_transaction = false;
+        match self.client().execute("ROLLBACK", &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("ROLLBACK transaction error: {e}"))
         }
     }
 
