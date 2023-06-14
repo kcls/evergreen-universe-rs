@@ -51,6 +51,37 @@ impl OrderBy {
     }
 }
 
+pub struct IdlClassUpdate {
+    pub classname: String,
+    pub values: Vec<(String, JsonValue)>,
+    pub filter: Option<JsonValue>,
+}
+
+impl IdlClassUpdate {
+    pub fn new(classname: &str) -> Self {
+        IdlClassUpdate {
+            classname: classname.to_string(),
+            values: Vec::new(),
+            filter: None,
+        }
+    }
+    pub fn values(&self) -> &Vec<(String, JsonValue)> {
+        &self.values
+    }
+
+    pub fn add_value(&mut self, field: &str, value: &JsonValue) {
+        self.values.push((field.to_string(), value.clone()));
+    }
+
+    pub fn filter(&self) -> &Option<JsonValue> {
+        &self.filter
+    }
+
+    pub fn set_filter(&mut self, f: JsonValue) {
+        self.filter = Some(f);
+    }
+}
+
 pub struct IdlClassSearch {
     pub classname: String,
     pub filter: Option<JsonValue>,
@@ -182,6 +213,61 @@ impl Translator {
         }
     }
 
+    // TODO can we return the count of rows updated here?
+    pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<(), String> {
+        let classname = &update.classname;
+
+        let class = match self.idl().classes().get(classname) {
+            Some(c) => c,
+            None => Err(format!("No such IDL class: {classname}"))?,
+        };
+
+        let tablename = match class.tablename() {
+            Some(t) => t,
+            None => Err(format!(
+                "Cannot query an IDL class that has no tablename: {classname}"))?,
+        };
+
+        let mut param_list: Vec<String> = Vec::new();
+        let mut param_index: usize = 1;
+        let updates = self.compile_class_update(&class, &update.values, &mut param_index, &mut param_list)?;
+        let mut query = format!("UPDATE {tablename} {updates}");
+
+        if let Some(filter) = update.filter() {
+            query +=
+                &self.compile_class_filter(&class, filter, &mut param_index, &mut param_list)?;
+        }
+
+
+        let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
+        for p in param_list.iter() {
+            params.push(p);
+        }
+
+        debug!("update() executing query: {query}; params=[{param_list:?}]");
+
+        /*
+
+        let query_res = self
+            .db
+            .borrow_mut()
+            .client()
+            .query(&query[..], params.as_slice());
+
+        if let Err(e) = query_res {
+            return Err(format!("DB query failed: {e}"));
+        }
+
+        for row in query_res.unwrap() {
+            results.push(self.row_to_idl(&class, &row)?);
+        }
+
+        Ok(results)
+        */
+
+        Ok(())
+    }
+
     pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<JsonValue>, String> {
         let mut results: Vec<JsonValue> = Vec::new();
         let classname = &search.classname;
@@ -269,6 +355,42 @@ impl Translator {
         sql
     }
 
+    fn compile_class_update(
+        &self,
+        class: &idl::Class,
+        values: &Vec<(String, JsonValue)>,
+        param_index: &mut usize,
+        param_list: &mut Vec<String>,
+    ) -> Result<String, String> {
+        let mut sql = String::from("SET");
+        let mut first = true;
+
+        for kvp in values {
+            let field = &kvp.0;
+            let value = &kvp.1;
+
+            if !class.has_real_field(field) {
+                Err(format!(
+                    "Cannot query field '{field}' on class '{}'",
+                    class.classname()
+                ))?;
+            }
+
+            if first {
+                first = false;
+            } else {
+                sql += ",";
+            }
+
+            sql += &format!(" {field} ");
+
+            sql += &self.append_json_literal(param_index, param_list, value, Some("="))?;
+        }
+
+        Ok(sql)
+    }
+
+
     fn compile_class_select(&self, class: &idl::Class) -> String {
         let mut sql = String::from("SELECT");
 
@@ -306,17 +428,11 @@ impl Translator {
         for (field, subq) in filter.entries() {
             trace!("compile_class_filter adding filter on field: {field}");
 
-            if class
-                .fields()
-                .iter()
-                .filter(|(n, _)| n.eq(&field))
-                .next()
-                .is_none()
-            {
-                return Err(format!(
+            if !class.has_real_field(&field) {
+                Err(format!(
                     "Cannot query field '{field}' on class '{}'",
                     class.classname()
-                ));
+                ))?;
             }
 
             if first {
@@ -360,7 +476,7 @@ impl Translator {
         operand: Option<&str>,
     ) -> Result<String, String> {
         if obj.is_object() || obj.is_array() {
-            return Err(format!("Cannot format non-literl as a literal: {obj:?}"));
+            return Err(format!("Cannot format array/object as a literal: {obj:?}"));
         }
 
         let opstr = match operand {
@@ -374,6 +490,7 @@ impl Translator {
             *param_index += 1;
             Ok(s)
         } else {
+            // obj here is a bool, number, or null
             Ok(format!("{opstr}{}", obj))
         }
     }

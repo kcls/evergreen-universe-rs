@@ -214,6 +214,10 @@ impl Class {
         fields.sort_by(|a, b| a.name().cmp(b.name()));
         fields
     }
+
+    pub fn has_real_field(&self, field: &str) -> bool {
+        self.real_fields().iter().filter(|f| f.name().eq(field)).next().is_some()
+    }
 }
 
 impl fmt::Display for Class {

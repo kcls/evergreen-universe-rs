@@ -1,5 +1,5 @@
 use eg::db::DatabaseConnection;
-use eg::idldb::{IdlClassSearch, OrderBy, OrderByDir, Translator};
+use eg::idldb::{IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
 use evergreen as eg;
 use getopts;
@@ -53,6 +53,13 @@ fn main() -> Result<(), String> {
     for org in translator.idl_class_search(&search)? {
         println!("org: {} {}\n", org["id"], org["shortname"]);
     }
+
+    let mut update = IdlClassUpdate::new("aou");
+    update.set_filter(json::object! {id: 1, shortname: "CONS"});
+    update.add_value("shortname", &json::from("CONS-TEST"));
+    update.add_value("name", &json::from("; drop table foobar;"));
+
+    translator.idl_class_update(&update)?;
 
     Ok(())
 }
