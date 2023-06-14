@@ -1,5 +1,5 @@
-use eg::common::user;
 use eg::common::circ;
+use eg::common::user;
 use eg::editor::Editor;
 use eg::settings::Settings;
 use eg::util;
@@ -554,11 +554,8 @@ pub fn prev_renewal_chain_summary(
         return Ok(());
     }
 
-    session.respond(
-        circ::summarize_circ_chain(
-            &mut editor,
-            util::json_int(&prev_circ[0]["id"])?
-        )?
-    )
+    session.respond(circ::summarize_circ_chain(
+        &mut editor,
+        util::json_int(&prev_circ[0]["id"])?,
+    )?)
 }
-

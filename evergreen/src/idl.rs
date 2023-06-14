@@ -172,6 +172,7 @@ pub struct Class {
     fields: HashMap<String, Field>,
     links: HashMap<String, Link>,
     tablename: Option<String>,
+    controller: Option<String>,
 }
 
 impl Class {
@@ -197,6 +198,14 @@ impl Class {
         self.tablename.as_deref()
     }
 
+    pub fn get_field(&self, name: &str) -> Option<&Field> {
+        self.fields.get(name)
+    }
+
+    pub fn controller(&self) -> Option<&str> {
+        self.controller.as_deref()
+    }
+
     /// Vec of non-virutal fields.
     pub fn real_fields(&self) -> Vec<&Field> {
         let mut fields: Vec<&Field> = Vec::new();
@@ -213,6 +222,21 @@ impl Class {
         let mut fields = self.real_fields();
         fields.sort_by(|a, b| a.name().cmp(b.name()));
         fields
+    }
+
+    pub fn has_real_field(&self, field: &str) -> bool {
+        self.fields()
+            .values()
+            .filter(|f| f.name().eq(field) && !f.is_virtual())
+            .next()
+            .is_some()
+    }
+
+    pub fn get_real_field(&self, field: &str) -> Option<&Field> {
+        self.fields()
+            .values()
+            .filter(|f| f.name().eq(field) && !f.is_virtual())
+            .next()
     }
 }
 
@@ -365,11 +389,17 @@ impl Parser {
             None => false,
         };
 
+        let controller = match node.attribute("controller") {
+            Some(v) => Some(v.to_string()),
+            None => None,
+        };
+
         let mut class = Class {
             tablename,
             fieldmapper,
             field_safe,
             read_only,
+            controller,
             classname: name.to_string(),
             label: label,
             fields: HashMap::new(),

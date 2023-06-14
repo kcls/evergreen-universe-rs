@@ -167,7 +167,7 @@ impl DatabaseConnectionBuilder {
         }
 
         if let Some(ref app) = self.application {
-            dsn += &format!(" application={}", app);
+            dsn += &format!(" application_name={}", app);
         }
 
         DatabaseConnection {
@@ -179,6 +179,7 @@ impl DatabaseConnectionBuilder {
             password: pass,
             application: self.application,
             client: None,
+            in_transaction: false,
         }
     }
 }
@@ -193,6 +194,18 @@ pub struct DatabaseConnection {
     password: Option<String>,
     database: String,
     application: Option<String>,
+    in_transaction: bool,
+}
+
+impl Drop for DatabaseConnection {
+    fn drop(&mut self) {
+        // This is probably unnecessary, since I expect the PG backend
+        // will automatically rollback, but let's make it official.
+        // The pg::Client will close its own connection once it's dropped.
+        if self.in_transaction {
+            self.xact_rollback().ok();
+        }
+    }
 }
 
 impl DatabaseConnection {
@@ -270,6 +283,7 @@ impl DatabaseConnection {
             port: self.port,
             user: self.user.to_string(),
             database: self.database.to_string(),
+            in_transaction: false,
             password: match &self.password {
                 Some(p) => Some(p.to_string()),
                 None => None,
@@ -278,6 +292,51 @@ impl DatabaseConnection {
                 Some(a) => Some(a.to_string()),
                 None => None,
             },
+        }
+    }
+
+    pub fn in_transaction(&self) -> bool {
+        self.in_transaction
+    }
+
+    /// Start a new transaction on this database connection.
+    ///
+    /// There is a pg::Transaction object we could use instead, but it's
+    /// a wrapper around the pg::Client, which we also have a reference
+    /// to, so it causes all kinds of hassle with lifetimes and RefCell
+    /// borrows.  This means we can only have one open transaction per
+    /// DatabaseConnection.
+    pub fn xact_begin(&mut self) -> Result<(), String> {
+        if self.in_transaction {
+            return Err(format!("DatabaseConnection is already in a transaction"));
+        }
+        self.in_transaction = true;
+        match self.client().execute("BEGIN", &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("BEGIN transaction error: {e}")),
+        }
+    }
+
+    pub fn xact_commit(&mut self) -> Result<(), String> {
+        if !self.in_transaction {
+            return Err(format!("DatabaseConnection has no transaction to commit"))?;
+        }
+        self.in_transaction = false;
+        match self.client().execute("COMMIT", &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("COMMIT transaction error: {e}")),
+        }
+    }
+
+    pub fn xact_rollback(&mut self) -> Result<(), String> {
+        if !self.in_transaction {
+            log::warn!("No transaction to roll back");
+            return Ok(()); // error as well?
+        }
+        self.in_transaction = false;
+        match self.client().execute("ROLLBACK", &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("ROLLBACK transaction error: {e}")),
         }
     }
 

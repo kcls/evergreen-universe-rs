@@ -1,6 +1,7 @@
 ///! Tools for translating between IDL objects and Database rows.
 use super::db;
 use super::idl;
+use super::util;
 use super::util::Pager;
 use chrono::prelude::*;
 use json::JsonValue;
@@ -48,6 +49,41 @@ impl OrderBy {
             dir,
             field: field.to_string(),
         }
+    }
+}
+
+pub struct IdlClassUpdate {
+    pub classname: String,
+    pub values: Vec<(String, JsonValue)>,
+    pub filter: Option<JsonValue>,
+}
+
+impl IdlClassUpdate {
+    pub fn new(classname: &str) -> Self {
+        IdlClassUpdate {
+            classname: classname.to_string(),
+            values: Vec::new(),
+            filter: None,
+        }
+    }
+    pub fn reset(&mut self) {
+        self.values = Vec::new();
+        self.filter = None;
+    }
+    pub fn values(&self) -> &Vec<(String, JsonValue)> {
+        &self.values
+    }
+
+    pub fn add_value(&mut self, field: &str, value: &JsonValue) {
+        self.values.push((field.to_string(), value.clone()));
+    }
+
+    pub fn filter(&self) -> &Option<JsonValue> {
+        &self.filter
+    }
+
+    pub fn set_filter(&mut self, f: JsonValue) {
+        self.filter = Some(f);
     }
 }
 
@@ -111,6 +147,19 @@ impl Translator {
         &self.idl
     }
 
+    /// Start a new database transaction
+    pub fn xact_begin(&mut self) -> Result<(), String> {
+        self.db.borrow_mut().xact_begin()
+    }
+
+    pub fn xact_commit(&mut self) -> Result<(), String> {
+        self.db.borrow_mut().xact_commit()
+    }
+
+    pub fn xact_rollback(&mut self) -> Result<(), String> {
+        self.db.borrow_mut().xact_rollback()
+    }
+
     pub fn is_supported_operand(op: &str) -> bool {
         SUPPORTED_OPERANDS.contains(&op.to_uppercase().as_str())
     }
@@ -119,12 +168,10 @@ impl Translator {
     ///
     /// Numeric pkey values should be passed as strings.  They will be
     /// numerified withih before the query is issued.
-    ///
-    /// TODO: create a pkey type to handle strings, numbers, other?
     pub fn idl_class_by_pkey(
         &self,
         classname: &str,
-        pkey: &str,
+        pkey: &JsonValue,
     ) -> Result<Option<JsonValue>, String> {
         let idl_class = match self.idl().classes().get(classname) {
             Some(c) => c,
@@ -150,22 +197,12 @@ impl Translator {
             }
         };
 
+        // See if we need to translate this pkey value into a JSON Number.
+        let numeric_pkey_op = self.try_translate_numeric(idl_field, pkey)?;
+        let pkey = numeric_pkey_op.as_ref().unwrap_or(pkey);
+
         let mut filter = JsonValue::new_object();
-
-        if idl_field.datatype().is_numeric() {
-            let num = match pkey.parse::<f64>() {
-                Ok(n) => n,
-                Err(_) => {
-                    return Err(format!(
-                        "Pkey is numeric, but filter value provided is not: {pkey:?}"
-                    ))
-                }
-            };
-
-            filter.insert(&pkey_field, json::from(num)).unwrap();
-        } else {
-            filter.insert(&pkey_field, json::from(pkey)).unwrap();
-        }
+        filter.insert(&pkey_field, pkey.clone()).unwrap(); // we know pkey_field is valid
 
         let mut search = IdlClassSearch::new(classname);
         search.set_filter(filter);
@@ -179,6 +216,101 @@ impl Translator {
                 "Pkey query for {classname} returned {} results",
                 list.len()
             )),
+        }
+    }
+
+    pub fn idl_object_update(&self, obj: &JsonValue) -> Result<u64, String> {
+        let classname = match obj[idl::CLASSNAME_KEY].as_str() {
+            Some(name) => name,
+            None => Err(format!("Not an IDL object: {}", obj.dump()))?,
+        };
+
+        let class = match self.idl().classes().get(classname) {
+            Some(c) => c,
+            None => Err(format!("No such IDL class: {classname}"))?,
+        };
+
+        // TODO refactor so we don't have to clone the JsonValue innards.
+        // Consider modifying compile_class_update to work from a JsonValue
+        // ref instead of the key/value Vec.
+        let mut update = IdlClassUpdate::new(classname);
+        for field in class.real_fields() {
+            update.add_value(field.name(), &obj[field.name()]);
+        }
+
+        // Build the filter from the primary key value of the IDL object.
+        let pkey_field = class
+            .pkey()
+            .ok_or(format!("Class {classname} has no primary key field"))?;
+        let pkey_value = self
+            .idl
+            .get_pkey_value(obj)
+            .ok_or(format!("Object has no primary key value"))?;
+
+        let mut filter = json::object! {};
+        filter[pkey_field] = json::from(pkey_value);
+        update.set_filter(filter);
+
+        self.idl_class_update(&update)
+    }
+
+    /// Returns Result of the number of rows modified.
+    pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<u64, String> {
+        if update.values.len() == 0 {
+            Err(format!("No values to update in idl_class_update()"))?;
+        }
+
+        let classname = &update.classname;
+
+        if !self.db.borrow().in_transaction() {
+            Err(format!("idl_class_update() requires a transaction"))?;
+        }
+
+        let class = match self.idl().classes().get(classname) {
+            Some(c) => c,
+            None => Err(format!("No such IDL class: {classname}"))?,
+        };
+
+        let tablename = match class.tablename() {
+            Some(t) => t,
+            None => Err(format!(
+                "Cannot query an IDL class that has no tablename: {classname}"
+            ))?,
+        };
+
+        let mut param_list: Vec<String> = Vec::new();
+        let mut param_index: usize = 1;
+        let updates =
+            self.compile_class_update(&class, &update.values, &mut param_index, &mut param_list)?;
+        let mut query = format!("UPDATE {tablename} {updates}");
+
+        if let Some(filter) = update.filter() {
+            query +=
+                &self.compile_class_filter(&class, filter, &mut param_index, &mut param_list)?;
+        }
+
+        let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
+        for p in param_list.iter() {
+            params.push(p);
+        }
+
+        debug!("update() executing query: {query}; params=[{param_list:?}]");
+
+        let query_res = self
+            .db
+            .borrow_mut()
+            .client()
+            .execute(&query[..], params.as_slice());
+
+        match query_res {
+            Ok(v) => {
+                log::debug!("Update modified {v} rows");
+                Ok(v)
+            }
+            Err(e) => {
+                log::error!("DB query failed: error={e} query={query} param={params:?}");
+                Err(format!("DB query failed. See error logs"))
+            }
         }
     }
 
@@ -269,6 +401,73 @@ impl Translator {
         sql
     }
 
+    /// Translate numeric IDL field values from JSON Strings into JSON
+    /// Numbers.
+    ///
+    /// Sometimes numbers are passed as strings in the wild west of JSON,
+    /// but the database doesn't want strings for, say, numeric primary key
+    /// matches.  Numerify if we should and can.
+    ///
+    /// JSON Null values are ignored.
+    fn try_translate_numeric(
+        &self,
+        idl_field: &idl::Field,
+        value: &JsonValue,
+    ) -> Result<Option<JsonValue>, String> {
+        if !value.is_string() {
+            return Ok(None);
+        }
+
+        if !idl_field.datatype().is_numeric() {
+            return Ok(None);
+        }
+
+        // First try u64, then f64.
+        match util::json_int(&value) {
+            Ok(n) => Ok(Some(json::from(n))),
+            Err(_) => match util::json_float(&value) {
+                Ok(n) => Ok(Some(json::from(n))),
+                Err(_) => Err(format!(
+                    "Numeric value cannot be coerced int a number: {value}"
+                ))?,
+            },
+        }
+    }
+
+    fn compile_class_update(
+        &self,
+        class: &idl::Class,
+        values: &Vec<(String, JsonValue)>,
+        param_index: &mut usize,
+        param_list: &mut Vec<String>,
+    ) -> Result<String, String> {
+        let mut sql = String::from("SET");
+        let mut first = true;
+
+        for kvp in values {
+            let field = &kvp.0;
+            let value = &kvp.1;
+
+            let idl_field = class.get_real_field(field).ok_or(format!(
+                "No such real field '{field}' on class '{}'",
+                class.classname()
+            ))?;
+
+            if first {
+                first = false;
+            } else {
+                sql += ",";
+            }
+
+            sql += &format!(" {field} ");
+
+            sql +=
+                &self.append_json_literal(param_index, param_list, idl_field, value, Some("="))?;
+        }
+
+        Ok(sql)
+    }
+
     fn compile_class_select(&self, class: &idl::Class) -> String {
         let mut sql = String::from("SELECT");
 
@@ -306,18 +505,10 @@ impl Translator {
         for (field, subq) in filter.entries() {
             trace!("compile_class_filter adding filter on field: {field}");
 
-            if class
-                .fields()
-                .iter()
-                .filter(|(n, _)| n.eq(&field))
-                .next()
-                .is_none()
-            {
-                return Err(format!(
-                    "Cannot query field '{field}' on class '{}'",
-                    class.classname()
-                ));
-            }
+            let idl_field = class.get_real_field(field).ok_or(format!(
+                "No such real field '{field}' on class '{}'",
+                class.classname()
+            ))?;
 
             if first {
                 first = false;
@@ -329,21 +520,43 @@ impl Translator {
 
             match subq {
                 JsonValue::Array(_) => {
-                    sql += &self.compile_class_filter_array(param_index, param_list, &subq)?;
+                    sql += &self.compile_class_filter_array(
+                        param_index,
+                        param_list,
+                        idl_field,
+                        &subq,
+                    )?;
                 }
                 JsonValue::Object(_) => {
-                    sql += &self.compile_class_filter_object(param_index, param_list, &subq)?;
+                    sql += &self.compile_class_filter_object(
+                        param_index,
+                        param_list,
+                        idl_field,
+                        &subq,
+                    )?;
                 }
                 JsonValue::Number(_) | JsonValue::String(_) | JsonValue::Short(_) => {
                     sql += &format!(
                         " {}",
-                        self.append_json_literal(param_index, param_list, subq, Some("="))?
+                        self.append_json_literal(
+                            param_index,
+                            param_list,
+                            idl_field,
+                            subq,
+                            Some("=")
+                        )?
                     );
                 }
                 JsonValue::Boolean(_) | JsonValue::Null => {
                     sql += &format!(
                         " {}",
-                        self.append_json_literal(param_index, param_list, subq, Some("IS"))?
+                        self.append_json_literal(
+                            param_index,
+                            param_list,
+                            idl_field,
+                            subq,
+                            Some("IS")
+                        )?
                     );
                 }
             }
@@ -356,11 +569,12 @@ impl Translator {
         &self,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
+        idl_field: &idl::Field,
         obj: &JsonValue,
         operand: Option<&str>,
     ) -> Result<String, String> {
         if obj.is_object() || obj.is_array() {
-            return Err(format!("Cannot format non-literl as a literal: {obj:?}"));
+            return Err(format!("Cannot format array/object as a literal: {obj:?}"));
         }
 
         let opstr = match operand {
@@ -368,12 +582,17 @@ impl Translator {
             None => String::new(),
         };
 
+        // We may need to coerce a JSON String into a JSON Number
+        let new_obj = self.try_translate_numeric(idl_field, obj)?;
+        let obj = new_obj.as_ref().unwrap_or(obj);
+
         if obj.is_string() {
             let s = format!("{opstr}${param_index}");
             param_list.push(obj.to_string());
             *param_index += 1;
             Ok(s)
         } else {
+            // obj here is a bool, number, or null
             Ok(format!("{opstr}{}", obj))
         }
     }
@@ -383,6 +602,7 @@ impl Translator {
         &self,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
+        idl_field: &idl::Field,
         obj: &JsonValue,
     ) -> Result<String, String> {
         let mut sql = String::new();
@@ -396,7 +616,7 @@ impl Translator {
 
             sql += &format!(
                 " {}",
-                self.append_json_literal(param_index, param_list, val, Some(&operand))?
+                self.append_json_literal(param_index, param_list, idl_field, val, Some(&operand))?
             );
 
             // A filter object may only contain a single operand => value combo
@@ -411,13 +631,20 @@ impl Translator {
         &self,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
+        idl_field: &idl::Field,
         arr: &JsonValue,
     ) -> Result<String, String> {
         let mut sql = String::from(" IN (");
         let mut strings: Vec<String> = Vec::new();
 
         for val in arr.members() {
-            strings.push(self.append_json_literal(param_index, param_list, val, None)?);
+            strings.push(self.append_json_literal(
+                param_index,
+                param_list,
+                idl_field,
+                val,
+                None,
+            )?);
         }
 
         sql += &strings.join(",");

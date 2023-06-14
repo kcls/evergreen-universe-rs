@@ -3,7 +3,7 @@ use crate::editor::Editor;
 use json::JsonValue;
 
 pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> Result<JsonValue, String> {
-    let query = json::object!{
+    let query = json::object! {
         from: ["action.summarize_all_circ_chain", circ_id]
     };
 
@@ -21,7 +21,7 @@ pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> Result<JsonValue, S
 }
 
 pub fn circ_chain(e: &mut Editor, circ_id: i64) -> Result<Vec<JsonValue>, String> {
-    let query = json::object!{
+    let query = json::object! {
         from: ["action.all_circ_chain", circ_id]
     };
 
@@ -39,5 +39,3 @@ pub fn circ_chain(e: &mut Editor, circ_id: i64) -> Result<Vec<JsonValue>, String
 
     Ok(circ_list)
 }
-
-
