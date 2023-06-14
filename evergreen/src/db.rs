@@ -197,6 +197,15 @@ pub struct DatabaseConnection {
     in_transaction: bool,
 }
 
+impl Drop for DatabaseConnection {
+    fn drop(&mut self) {
+        if self.in_transaction {
+            self.xact_rollback().ok();
+        }
+        // pg::Client will close its own connection once it's dropped.
+    }
+}
+
 impl DatabaseConnection {
     /// Add options to an in-progress getopts::Options related to creating
     /// a database connection.
@@ -288,6 +297,13 @@ impl DatabaseConnection {
         self.in_transaction
     }
 
+    /// Start a new transaction on this database connection.
+    ///
+    /// There is a pg::Transaction object we could use instead, but it's
+    /// a wrapper around the pg::Client, which we also have a reference
+    /// to, so it causes all kinds of hassle with lifetimes and RefCell
+    /// borrows.  This means we can only have one open transaction per
+    /// DatabaseConnection.
     pub fn xact_begin(&mut self) -> Result<(), String> {
         if self.in_transaction {
             return Err(format!("DatabaseConnection is already in a transaction"));

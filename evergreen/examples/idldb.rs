@@ -88,7 +88,30 @@ fn main() -> Result<(), String> {
     search.set_filter(json::object! {id: org["id"].clone()});
     let results = translator.idl_class_search(&search)?;
     let org_updated = results.first().expect("Cannot find org unit");
+    println!("org name updated to: {}", org_updated["shortname"]);
 
+
+    // Now update some objects directly
+    let mut org_mod = org_updated.clone();
+
+    translator.xact_begin()?;
+    org_mod["shortname"] = json::from("TEST NAME");
+    translator.idl_object_update(&org_mod)?;
+    translator.xact_commit()?;
+
+    search.set_filter(json::object! {id: org["id"].clone()});
+    let results = translator.idl_class_search(&search)?;
+    let org_updated = results.first().expect("Cannot find org unit");
+    println!("org name updated to: {}", org_updated["shortname"]);
+
+    translator.xact_begin()?;
+    org_mod["shortname"] = json::from(shortname);
+    translator.idl_object_update(&org_mod)?;
+    translator.xact_commit()?;
+
+    search.set_filter(json::object! {id: org["id"].clone()});
+    let results = translator.idl_class_search(&search)?;
+    let org_updated = results.first().expect("Cannot find org unit");
     println!("org name updated to: {}", org_updated["shortname"]);
 
     Ok(())

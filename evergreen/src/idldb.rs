@@ -146,6 +146,7 @@ impl Translator {
         &self.idl
     }
 
+    /// Start a new database transaction
     pub fn xact_begin(&mut self) -> Result<(), String> {
         self.db.borrow_mut().xact_begin()
     }
@@ -229,8 +230,44 @@ impl Translator {
         }
     }
 
+    pub fn idl_object_update(&self, obj: &JsonValue) -> Result<u64, String> {
+        let classname = match obj[idl::CLASSNAME_KEY].as_str() {
+            Some(name) => name,
+            None => Err(format!("Not an IDL object: {}", obj.dump()))?,
+        };
+
+        let class = match self.idl().classes().get(classname) {
+            Some(c) => c,
+            None => Err(format!("No such IDL class: {classname}"))?,
+        };
+
+        // TODO refactor so we don't have to clone the JsonValue innards.
+        // Consider modifying compile_class_update to work from a JsonValue
+        // ref instead of the key/value Vec.
+        let mut update = IdlClassUpdate::new(classname);
+        for field in class.real_fields() {
+            update.add_value(field.name(), &obj[field.name()]);
+        }
+
+        // Build the filter from the primary key value of the IDL object.
+        let pkey_field = class.pkey()
+            .ok_or(format!("Class {classname} has no primary key field"))?;
+        let pkey_value = self.idl.get_pkey_value(obj)
+            .ok_or(format!("Object has no primary key value"))?;
+
+        let mut filter = json::object! {};
+        filter[pkey_field] = json::from(pkey_value);
+        update.set_filter(filter);
+
+        self.idl_class_update(&update)
+    }
+
     /// Returns Result of the number of rows modified.
     pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<u64, String> {
+        if update.values.len() == 0 {
+            Err(format!("No values to update in idl_class_update()"))?;
+        }
+
         let classname = &update.classname;
 
         if !self.db.borrow().in_transaction() {
@@ -276,7 +313,10 @@ impl Translator {
                 log::debug!("Update modified {v} rows");
                 Ok(v)
             }
-            Err(e) => Err(format!("DB query failed: {e}")),
+            Err(e) => {
+                log::error!("DB query failed: error={e} query={query} param={params:?}");
+                Err(format!("DB query failed. See error logs"))
+            }
         }
     }
 
@@ -387,6 +427,11 @@ impl Translator {
                     class.classname()
                 ))?;
             }
+
+            // TODO
+            // Check the datatype of the field and see if we should
+            // attempt to coerce, say, string values into numeric
+            // values when the IDL says a field is numeric.
 
             if first {
                 first = false;
