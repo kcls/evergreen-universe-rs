@@ -168,12 +168,10 @@ impl Translator {
     ///
     /// Numeric pkey values should be passed as strings.  They will be
     /// numerified withih before the query is issued.
-    ///
-    /// TODO: create a pkey type to handle strings, numbers, other?
     pub fn idl_class_by_pkey(
         &self,
         classname: &str,
-        pkey: &str,
+        pkey: &JsonValue,
     ) -> Result<Option<JsonValue>, String> {
         let idl_class = match self.idl().classes().get(classname) {
             Some(c) => c,
@@ -199,22 +197,12 @@ impl Translator {
             }
         };
 
+        // See if we need to translate this pkey value into a JSON Number.
+        let numeric_pkey_op = self.try_translate_numeric(idl_field, pkey)?;
+        let pkey = numeric_pkey_op.as_ref().unwrap_or(pkey);
+
         let mut filter = JsonValue::new_object();
-
-        if idl_field.datatype().is_numeric() {
-            let num = match pkey.parse::<f64>() {
-                Ok(n) => n,
-                Err(_) => {
-                    return Err(format!(
-                        "Pkey is numeric, but filter value provided is not: {pkey:?}"
-                    ))
-                }
-            };
-
-            filter.insert(&pkey_field, json::from(num)).unwrap();
-        } else {
-            filter.insert(&pkey_field, json::from(pkey)).unwrap();
-        }
+        filter.insert(&pkey_field, pkey.clone()).unwrap(); // we know pkey_field is valid
 
         let mut search = IdlClassSearch::new(classname);
         search.set_filter(filter);
@@ -418,7 +406,7 @@ impl Translator {
     ///
     /// Sometimes numbers are passed as strings in the wild west of JSON,
     /// but the database doesn't want strings for, say, numeric primary key
-    /// matches.  Try to fix up the data.
+    /// matches.  Numerify if we should and can.
     ///
     /// JSON Null values are ignored.
     fn try_translate_numeric(
