@@ -1,8 +1,8 @@
+use serde_json;
 use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
 use std::time::Instant;
-use serde_json;
 
 use getopts;
 use rustyline;
@@ -503,8 +503,7 @@ impl Shell {
 
         // Use the serde_json stream parser to read the parameters.
         let data = args[2..].join(" ");
-        let stream =
-            serde_json::Deserializer::from_str(&data).into_iter::<serde_json::Value>();
+        let stream = serde_json::Deserializer::from_str(&data).into_iter::<serde_json::Value>();
 
         for param_res in stream {
             let p = match param_res {

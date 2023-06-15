@@ -199,10 +199,12 @@ pub struct DatabaseConnection {
 
 impl Drop for DatabaseConnection {
     fn drop(&mut self) {
+        // This is probably unnecessary, since I expect the PG backend
+        // will automatically rollback, but let's make it official.
+        // The pg::Client will close its own connection once it's dropped.
         if self.in_transaction {
             self.xact_rollback().ok();
         }
-        // pg::Client will close its own connection once it's dropped.
     }
 }
 
@@ -311,7 +313,7 @@ impl DatabaseConnection {
         self.in_transaction = true;
         match self.client().execute("BEGIN", &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("BEGIN transaction error: {e}"))
+            Err(e) => Err(format!("BEGIN transaction error: {e}")),
         }
     }
 
@@ -322,7 +324,7 @@ impl DatabaseConnection {
         self.in_transaction = false;
         match self.client().execute("COMMIT", &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("COMMIT transaction error: {e}"))
+            Err(e) => Err(format!("COMMIT transaction error: {e}")),
         }
     }
 
@@ -334,7 +336,7 @@ impl DatabaseConnection {
         self.in_transaction = false;
         match self.client().execute("ROLLBACK", &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("ROLLBACK transaction error: {e}"))
+            Err(e) => Err(format!("ROLLBACK transaction error: {e}")),
         }
     }
 

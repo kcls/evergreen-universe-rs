@@ -54,7 +54,6 @@ fn main() -> Result<(), String> {
         println!("org: {} {}\n", org["id"], org["shortname"]);
     }
 
-
     // Grab an org unit to update.
     search.set_filter(json::object! {id: json::object! {">": 0}});
     let results = translator.idl_class_search(&search)?;
@@ -89,7 +88,6 @@ fn main() -> Result<(), String> {
     let results = translator.idl_class_search(&search)?;
     let org_updated = results.first().expect("Cannot find org unit");
     println!("org name updated to: {}", org_updated["shortname"]);
-
 
     // Now update some objects directly
     let mut org_mod = org_updated.clone();

@@ -197,6 +197,10 @@ impl Class {
         self.tablename.as_deref()
     }
 
+    pub fn get_field(&self, name: &str) -> Option<&Field> {
+        self.fields.get(name)
+    }
+
     /// Vec of non-virutal fields.
     pub fn real_fields(&self) -> Vec<&Field> {
         let mut fields: Vec<&Field> = Vec::new();
@@ -216,7 +220,18 @@ impl Class {
     }
 
     pub fn has_real_field(&self, field: &str) -> bool {
-        self.real_fields().iter().filter(|f| f.name().eq(field)).next().is_some()
+        self.fields()
+            .values()
+            .filter(|f| f.name().eq(field) && !f.is_virtual())
+            .next()
+            .is_some()
+    }
+
+    pub fn get_real_field(&self, field: &str) -> Option<&Field> {
+        self.fields()
+            .values()
+            .filter(|f| f.name().eq(field) && !f.is_virtual())
+            .next()
     }
 }
 
