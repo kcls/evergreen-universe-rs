@@ -341,7 +341,7 @@ impl Editor {
         for p in params.params().iter() {
             if self.idl.is_idl_object(p) {
                 if let Some(pkv) = self.idl.get_pkey_value(p) {
-                    buf.push_str(&pkv);
+                    buf.push_str(&pkv.dump());
                 } else {
                     buf.push_str("<new object>");
                 }
@@ -543,7 +543,7 @@ impl Editor {
 
         if let Some(resp) = self.request(&method, object)? {
             if let Some(pkey) = self.idl.get_pkey_value(&resp) {
-                log::info!("Created new {idlclass} object with pkey: {pkey}");
+                log::info!("Created new {idlclass} object with pkey: {}", pkey.dump());
             } else {
                 // Don't think we can get here, but mabye.
                 log::debug!("Created new {idlclass} object: {resp:?}");

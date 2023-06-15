@@ -179,6 +179,14 @@ impl Class {
     pub fn pkey(&self) -> Option<&str> {
         self.pkey.as_deref()
     }
+    pub fn pkey_field(&self) -> Option<&Field> {
+        if let Some(pk) = self.pkey() {
+            self.fields().values().filter(|f| f.name().eq(pk)).next()
+        } else {
+            None
+        }
+    }
+
     pub fn classname(&self) -> &str {
         &self.classname
     }
@@ -592,8 +600,12 @@ impl Parser {
         false
     }
 
-    // TODO create a Pkey type that can handle numbers and strings.
-    pub fn get_pkey_value(&self, obj: &json::JsonValue) -> Option<String> {
+    pub fn get_pkey_value(&self, obj: &json::JsonValue) -> Option<json::JsonValue> {
+        self.get_pkey_info(obj).map(|(_, v)| v)
+    }
+
+    /// Get the primary key field and value from an IDL object if one exists.
+    pub fn get_pkey_info(&self, obj: &json::JsonValue) -> Option<(&Field, json::JsonValue)> {
         if !self.is_idl_object(obj) {
             return None;
         }
@@ -603,8 +615,8 @@ impl Parser {
         let idlclass = self.classes.get(classname).unwrap();
 
         if let Some(pkey_field) = idlclass.pkey() {
-            if obj.has_key(pkey_field) {
-                return Some(format!("{}", obj[pkey_field]));
+            if let Some(field) = idlclass.fields().get(pkey_field) {
+                return Some((field, obj[pkey_field].clone()));
             }
         }
 

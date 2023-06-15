@@ -5,7 +5,6 @@ use super::util;
 use super::util::Pager;
 use chrono::prelude::*;
 use json::JsonValue;
-use log::{debug, trace};
 use pg::types::ToSql;
 use postgres as pg;
 use rust_decimal::Decimal;
@@ -52,6 +51,8 @@ impl OrderBy {
     }
 }
 
+/// Models a request to update a set of values on a set of IDL objects
+/// of a given class.
 pub struct IdlClassUpdate {
     pub classname: String,
     pub values: Vec<(String, JsonValue)>,
@@ -87,6 +88,7 @@ impl IdlClassUpdate {
     }
 }
 
+/// Models a request to search for a set of IDL objects of a given class.
 pub struct IdlClassSearch {
     pub classname: String,
     pub filter: Option<JsonValue>,
@@ -133,6 +135,7 @@ impl IdlClassSearch {
     }
 }
 
+/// Manages the translation to / from IDL objects and database queries.
 pub struct Translator {
     idl: Arc<idl::Parser>,
     db: Rc<RefCell<db::DatabaseConnection>>,
@@ -152,14 +155,17 @@ impl Translator {
         self.db.borrow_mut().xact_begin()
     }
 
+    /// Commit an in-progress transaction.
     pub fn xact_commit(&mut self) -> Result<(), String> {
         self.db.borrow_mut().xact_commit()
     }
 
+    /// Roll back an in-progress transaction.
     pub fn xact_rollback(&mut self) -> Result<(), String> {
         self.db.borrow_mut().xact_rollback()
     }
 
+    /// Verify a query operand provided by the caller is allowed.
     pub fn is_supported_operand(op: &str) -> bool {
         SUPPORTED_OPERANDS.contains(&op.to_uppercase().as_str())
     }
@@ -178,31 +184,16 @@ impl Translator {
             None => return Err(format!("No such IDL class: {classname}")),
         };
 
-        let pkey_field = match idl_class.pkey() {
-            Some(f) => f,
-            None => {
-                return Err(format!(
-                    "IDL class {} has no pkey value and cannot be queried",
-                    idl_class.classname()
-                ));
-            }
-        };
-
-        let idl_field = match idl_class.fields().get(pkey_field) {
-            Some(f) => f,
-            None => {
-                return Err(format!(
-                    "Field {pkey_field} is listed as pkey, but is not listed as a field"
-                ))
-            }
-        };
+        let idl_field = idl_class
+            .pkey_field()
+            .ok_or(format!("Class {classname} has no primary key field"))?;
 
         // See if we need to translate this pkey value into a JSON Number.
         let numeric_pkey_op = self.try_translate_numeric(idl_field, pkey)?;
         let pkey = numeric_pkey_op.as_ref().unwrap_or(pkey);
 
         let mut filter = JsonValue::new_object();
-        filter.insert(&pkey_field, pkey.clone()).unwrap(); // we know pkey_field is valid
+        filter.insert(idl_field.name(), pkey.clone()).unwrap(); // we know pkey_field is valid
 
         let mut search = IdlClassSearch::new(classname);
         search.set_filter(filter);
@@ -220,40 +211,35 @@ impl Translator {
     }
 
     pub fn idl_object_update(&self, obj: &JsonValue) -> Result<u64, String> {
-        let classname = match obj[idl::CLASSNAME_KEY].as_str() {
-            Some(name) => name,
-            None => Err(format!("Not an IDL object: {}", obj.dump()))?,
-        };
+        let classname = obj[idl::CLASSNAME_KEY]
+            .as_str()
+            .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
 
-        let class = match self.idl().classes().get(classname) {
-            Some(c) => c,
-            None => Err(format!("No such IDL class: {classname}"))?,
-        };
+        let class = self
+            .idl()
+            .classes()
+            .get(classname)
+            .ok_or(format!("No such IDL class: {classname}"))?;
 
-        // TODO refactor so we don't have to clone the JsonValue innards.
-        // Consider modifying compile_class_update to work from a JsonValue
-        // ref instead of the key/value Vec.
         let mut update = IdlClassUpdate::new(classname);
         for field in class.real_fields() {
             update.add_value(field.name(), &obj[field.name()]);
         }
 
-        // Build the filter from the primary key value of the IDL object.
-        let pkey_field = class
-            .pkey()
-            .ok_or(format!("Class {classname} has no primary key field"))?;
-        let pkey_value = self
+        let (pkey_field, pkey_value) = self
             .idl
-            .get_pkey_value(obj)
-            .ok_or(format!("Object has no primary key value"))?;
+            .get_pkey_info(obj)
+            .ok_or(format!("Object has no primary key field"))?;
 
-        let mut filter = json::object! {};
-        filter[pkey_field] = json::from(pkey_value);
+        let mut filter = json::JsonValue::new_object();
+        filter[pkey_field.name()] = pkey_value;
         update.set_filter(filter);
 
         self.idl_class_update(&update)
     }
 
+    /// Update an IDL object in the database.
+    ///
     /// Returns Result of the number of rows modified.
     pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<u64, String> {
         if update.values.len() == 0 {
@@ -294,7 +280,7 @@ impl Translator {
             params.push(p);
         }
 
-        debug!("update() executing query: {query}; params=[{param_list:?}]");
+        log::debug!("update() executing query: {query}; params=[{param_list:?}]");
 
         let query_res = self
             .db
@@ -314,35 +300,27 @@ impl Translator {
         }
     }
 
+    /// Search for IDL objects in the database.
     pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<JsonValue>, String> {
         let mut results: Vec<JsonValue> = Vec::new();
         let classname = &search.classname;
 
-        let class = match self.idl().classes().get(classname) {
-            Some(c) => c,
-            None => {
-                return Err(format!("No such IDL class: {classname}"));
-            }
-        };
+        let class = self
+            .idl()
+            .classes()
+            .get(classname)
+            .ok_or(format!("No such IDL class: {classname}"))?;
 
-        let tablename = match class.tablename() {
-            Some(t) => t,
-            None => {
-                return Err(format!(
-                    "Cannot query an IDL class that has no tablename: {classname}"
-                ));
-            }
-        };
+        let tablename = class.tablename().ok_or(format!(
+            "Cannot query an IDL class that has no tablename: {classname}"
+        ))?;
 
         let select = self.compile_class_select(&class);
 
         let mut query = format!("{select} FROM {tablename}");
 
-        // Track String parameters so we can use query binding on the
-        // them in the final query.  All other types, being derived
-        // from JsonValue, have a known shape and size (number, bool,
-        // etc.), so query binding is less critical from a sql-injection
-        // perspective.
+        // Some parameters require binding within the DB statement.
+        // Put them here.
         let mut param_list: Vec<String> = Vec::new();
         let mut param_index: usize = 1;
 
@@ -359,7 +337,7 @@ impl Translator {
             query += &self.compile_pager(pager);
         }
 
-        debug!("search() executing query: {query}");
+        log::debug!("search() executing query: {query}");
 
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
         for p in param_list.iter() {
@@ -383,6 +361,7 @@ impl Translator {
         Ok(results)
     }
 
+    /// Create a query ORDER BY string.
     fn compile_class_order_by(&self, order: &Vec<OrderBy>) -> String {
         let mut sql = String::new();
         let mut count = order.len();
@@ -422,7 +401,7 @@ impl Translator {
             return Ok(None);
         }
 
-        // First try u64, then f64.
+        // Try to create a int, then try a float.
         match util::json_int(&value) {
             Ok(n) => Ok(Some(json::from(n))),
             Err(_) => match util::json_float(&value) {
@@ -434,6 +413,7 @@ impl Translator {
         }
     }
 
+    /// Create the SET portion of an SQL update command.
     fn compile_class_update(
         &self,
         class: &idl::Class,
@@ -468,6 +448,7 @@ impl Translator {
         Ok(sql)
     }
 
+    /// Create the SELECT clause for a search query.
     fn compile_class_select(&self, class: &idl::Class) -> String {
         let mut sql = String::from("SELECT");
 
@@ -480,11 +461,12 @@ impl Translator {
         String::from(&sql[0..sql.len() - 1]) // Trim final ","
     }
 
+    /// Create the limit/offset part of the query string.
     fn compile_pager(&self, pager: &Pager) -> String {
         format!(" LIMIT {} OFFSET {}", pager.limit(), pager.offset())
     }
 
-    /// Generate a WHERE clause from a JSON query object for an IDL class.
+    /// Generate a WHERE clause from a JSON query object.
     fn compile_class_filter(
         &self,
         class: &idl::Class,
@@ -503,7 +485,7 @@ impl Translator {
 
         let mut first = true;
         for (field, subq) in filter.entries() {
-            trace!("compile_class_filter adding filter on field: {field}");
+            log::trace!("compile_class_filter adding filter on field: {field}");
 
             let idl_field = class.get_real_field(field).ok_or(format!(
                 "No such real field '{field}' on class '{}'",
@@ -565,6 +547,11 @@ impl Translator {
         Ok(sql)
     }
 
+    /// Add a JSON literal (scalar) value to a query.
+    ///
+    /// If the value is a JSON String, add it to the param_list for
+    /// query binding.  Otherwise, add it directly to the compiled
+    /// SQL string.
     fn append_json_literal(
         &self,
         param_index: &mut usize,
@@ -586,6 +573,11 @@ impl Translator {
         let new_obj = self.try_translate_numeric(idl_field, obj)?;
         let obj = new_obj.as_ref().unwrap_or(obj);
 
+        // Track String parameters so we can use query binding on the
+        // them in the final query.  All other types, being derived
+        // from JsonValue, have a known shape and size (number/bool/null),
+        // so query binding is less critical from a sql-injection
+        // perspective.
         if obj.is_string() {
             let s = format!("{opstr}${param_index}");
             param_list.push(obj.to_string());
@@ -607,7 +599,8 @@ impl Translator {
     ) -> Result<String, String> {
         let mut sql = String::new();
 
-        for (key, val) in obj.entries() {
+        // A filter object may only contain a single operand => value combo
+        if let Some((key, val)) = obj.entries().next() {
             let operand = key.to_uppercase();
 
             if !Translator::is_supported_operand(&operand) {
@@ -618,15 +611,14 @@ impl Translator {
                 " {}",
                 self.append_json_literal(param_index, param_list, idl_field, val, Some(&operand))?
             );
-
-            // A filter object may only contain a single operand => value combo
-            break;
         }
 
         Ok(sql)
     }
 
     /// Turn an array-based subquery into part of the WHERE AND.
+    ///
+    /// This creates a SQL IN clause.
     fn compile_class_filter_array(
         &self,
         param_index: &mut usize,
