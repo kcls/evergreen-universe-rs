@@ -71,6 +71,7 @@ pub enum ParamDataType {
     Array,
     Hash,
     Boolish,
+    Scalar, // Not an Object or Array.
     Any,
 }
 
@@ -82,6 +83,7 @@ impl fmt::Display for ParamDataType {
             ParamDataType::Array => write!(f, "Array"),
             ParamDataType::Hash => write!(f, "Hash"),
             ParamDataType::Boolish => write!(f, "Boolish"),
+            ParamDataType::Scalar => write!(f, "Scalar"),
             ParamDataType::Any => write!(f, "Any"),
         }
     }

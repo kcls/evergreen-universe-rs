@@ -614,10 +614,8 @@ impl Parser {
         let classname = obj[CLASSNAME_KEY].as_str().unwrap();
         let idlclass = self.classes.get(classname).unwrap();
 
-        if let Some(pkey_field) = idlclass.pkey() {
-            if let Some(field) = idlclass.fields().get(pkey_field) {
-                return Some((field, obj[pkey_field].clone()));
-            }
+        if let Some(pkey_field) = idlclass.pkey_field() {
+            return Some((pkey_field, obj[pkey_field.name()].clone()));
         }
 
         None

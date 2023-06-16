@@ -174,7 +174,7 @@ impl Translator {
     ///
     /// Numeric pkey values should be passed as strings.  They will be
     /// numerified withih before the query is issued.
-    pub fn idl_class_by_pkey(
+    pub fn get_idl_object_by_pkey(
         &self,
         classname: &str,
         pkey: &JsonValue,
@@ -291,6 +291,69 @@ impl Translator {
         match query_res {
             Ok(v) => {
                 log::debug!("Update modified {v} rows");
+                Ok(v)
+            }
+            Err(e) => {
+                log::error!("DB query failed: error={e} query={query} param={params:?}");
+                Err(format!("DB query failed. See error logs"))
+            }
+        }
+    }
+
+    pub fn delete_idl_object_by_pkey(
+        &self,
+        classname: &str,
+        pkey: &JsonValue,
+    ) -> Result<u64, String> {
+        if !self.db.borrow().in_transaction() {
+            Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
+        }
+
+        let class = match self.idl().classes().get(classname) {
+            Some(c) => c,
+            None => Err(format!("No such IDL class: {classname}"))?,
+        };
+
+        let tablename = match class.tablename() {
+            Some(t) => t,
+            None => Err(format!(
+                "Cannot query an IDL class that has no tablename: {classname}"
+            ))?,
+        };
+
+        let pkey_field = class
+            .pkey_field()
+            .ok_or(format!("IDL class {classname} has no primary key field"))?;
+
+        let mut param_list: Vec<String> = Vec::new();
+        let mut param_index: usize = 1;
+
+        self.append_json_literal(
+            &mut param_index,
+            &mut param_list,
+            pkey_field,
+            pkey,
+            Some("="),
+        )?;
+
+        let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
+        for p in param_list.iter() {
+            params.push(p);
+        }
+
+        let query = format!("DELETE FROM {tablename} WHERE {} = $1", pkey_field.name());
+
+        log::debug!("delete() executing query: {query}; params=[{param_list:?}]");
+
+        let query_res = self
+            .db
+            .borrow_mut()
+            .client()
+            .execute(&query[..], params.as_slice());
+
+        match query_res {
+            Ok(v) => {
+                log::debug!("Deleted {v} rows");
                 Ok(v)
             }
             Err(e) => {

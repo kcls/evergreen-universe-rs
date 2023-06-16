@@ -55,10 +55,16 @@ impl RsStoreApplication {
         RsStoreApplication { idl: None }
     }
 
-    fn register_retrieve_methods(&self, methods: &mut Vec<Method>) {
-        let stub = methods::METHODS
+    fn register_auto_methods(&self, methods: &mut Vec<Method>) {
+        let retrieve_stub = methods::METHODS
             .iter()
             .filter(|m| m.name.eq("retrieve-stub"))
+            .next()
+            .unwrap();
+
+        let delete_stub = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq("delete-stub"))
             .next()
             .unwrap();
 
@@ -67,16 +73,27 @@ impl RsStoreApplication {
                 // For now, publish all of cstore's classes
                 if ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store") {
                     if let Some(fm) = idl_class.fieldmapper() {
-                        let mut clone = stub.into_method(APPNAME);
                         let fieldmapper = fm.replace("::", ".");
+
+                        // RETRIEVE ---
+                        let mut clone = retrieve_stub.into_method(APPNAME);
                         let apiname = format!("{APPNAME}.direct.{fieldmapper}.retrieve");
-                        log::trace!("REGISTERING: {apiname}");
                         clone.set_name(&apiname);
+                        log::trace!("Registering: {apiname}");
+                        methods.push(clone);
+
+                        // DELETE ---
+                        let mut clone = delete_stub.into_method(APPNAME);
+                        let apiname = format!("{APPNAME}.direct.{fieldmapper}.delete");
+                        clone.set_name(&apiname);
+                        log::trace!("Registering: {apiname}");
                         methods.push(clone);
                     }
                 }
             }
         }
+
+        log::info!("{APPNAME} registered {} auto methods", methods.len());
     }
 }
 
@@ -118,7 +135,7 @@ impl Application for RsStoreApplication {
     ) -> Result<Vec<Method>, String> {
         let mut methods: Vec<Method> = Vec::new();
 
-        self.register_retrieve_methods(&mut methods);
+        self.register_auto_methods(&mut methods);
 
         Ok(methods)
     }
@@ -235,9 +252,12 @@ impl ApplicationWorker for RsStoreWorker {
         log::debug!("Thread starting");
 
         // TODO pull DB settings from host settings
-        // TODO add hostname and thread ID to application name.
         let mut builder = DatabaseConnectionBuilder::new();
-        builder.set_application(APPNAME);
+        builder.set_application(&format!(
+            "{APPNAME}@{}(thread_{})",
+            self.config.as_ref().unwrap().hostname(),
+            opensrf::util::thread_id()
+        ));
 
         log::info!("{APPNAME} connecting to database");
         let mut db = builder.build();
