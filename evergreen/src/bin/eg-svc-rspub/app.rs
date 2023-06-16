@@ -209,4 +209,8 @@ impl ApplicationWorker for RsPubWorker {
         log::debug!("Thread ending");
         Ok(())
     }
+
+    fn keepalive_timeout(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }

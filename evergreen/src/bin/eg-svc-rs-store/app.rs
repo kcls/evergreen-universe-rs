@@ -95,6 +95,36 @@ impl RsStoreApplication {
 
         log::info!("{APPNAME} registered {} auto methods", methods.len());
     }
+
+    fn register_xact_methods(&self, methods: &mut Vec<Method>) {
+        let api = "transaction.begin";
+        let begin = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq(api))
+            .next()
+            .unwrap();
+
+        log::info!("Registering: {}", begin.name()); // XXX
+        methods.push(begin.into_method(APPNAME));
+
+        let api = "transaction.rollback";
+        let rollback = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq(api))
+            .next()
+            .unwrap();
+
+        methods.push(rollback.into_method(APPNAME));
+
+        let api = "transaction.commit";
+        let commit = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq(api))
+            .next()
+            .unwrap();
+
+        methods.push(commit.into_method(APPNAME));
+    }
 }
 
 impl Application for RsStoreApplication {
@@ -136,6 +166,15 @@ impl Application for RsStoreApplication {
         let mut methods: Vec<Method> = Vec::new();
 
         self.register_auto_methods(&mut methods);
+        self.register_xact_methods(&mut methods);
+
+        log::info!("{APPNAME} registered {} total methods", methods.len());
+        for m in methods
+            .iter()
+            .filter(|m| m.name().starts_with("open-ils.rs-store.transaction"))
+        {
+            log::info!("REGISTERED: {}", m.name());
+        }
 
         Ok(methods)
     }
@@ -271,6 +310,16 @@ impl ApplicationWorker for RsStoreWorker {
     fn worker_end(&mut self) -> Result<(), String> {
         log::debug!("Thread ending");
         // Our database connection will clean itself up on Drop.
+        Ok(())
+    }
+
+    fn keepalive_timeout(&mut self) -> Result<(), String> {
+        if let Some(ref mut db) = self.database {
+            if db.borrow().in_transaction() {
+                log::info!("Rollback back DB session after keepalive timeout");
+                db.borrow_mut().xact_rollback()?;
+            }
+        }
         Ok(())
     }
 }

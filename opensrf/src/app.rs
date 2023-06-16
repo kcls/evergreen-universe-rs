@@ -36,6 +36,10 @@ pub trait ApplicationWorker: Any {
     ///
     /// Offers a chance to clean up any resources.
     fn worker_end(&mut self) -> Result<(), String>;
+
+    /// Called if the client sent a CONNECT but never sent a DISCONNECT
+    /// within the configured timeout.
+    fn keepalive_timeout(&mut self) -> Result<(), String>;
 }
 
 pub trait Application {

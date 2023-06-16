@@ -328,7 +328,9 @@ impl Translator {
         let mut param_list: Vec<String> = Vec::new();
         let mut param_index: usize = 1;
 
-        self.append_json_literal(
+        let mut query = format!("DELETE FROM {tablename} WHERE {} ", pkey_field.name());
+
+        query += &self.append_json_literal(
             &mut param_index,
             &mut param_list,
             pkey_field,
@@ -340,8 +342,6 @@ impl Translator {
         for p in param_list.iter() {
             params.push(p);
         }
-
-        let query = format!("DELETE FROM {tablename} WHERE {} = $1", pkey_field.name());
 
         log::debug!("delete() executing query: {query}; params=[{param_list:?}]");
 

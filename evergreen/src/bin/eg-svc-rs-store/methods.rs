@@ -17,8 +17,28 @@ use crate::app;
 /// These will form the basis (and possibly all) of our published methods.
 pub static METHODS: &[StaticMethod] = &[
     StaticMethod {
-        // Stub method for *.retrieve calls
-        // This is not directly published.
+        name: "transaction.begin",
+        desc: "Start a database transaction",
+        param_count: ParamCount::Zero,
+        handler: manage_xact,
+        params: &[],
+    },
+    StaticMethod {
+        name: "transaction.rollback",
+        desc: "Rollback a database transaction",
+        param_count: ParamCount::Zero,
+        handler: manage_xact,
+        params: &[],
+    },
+    StaticMethod {
+        name: "transaction.commit",
+        desc: "Commit a database transaction",
+        param_count: ParamCount::Zero,
+        handler: manage_xact,
+        params: &[],
+    },
+    // Stub method for *.retrieve calls. Not directly published.
+    StaticMethod {
         name: "retrieve-stub",
         desc: "Retrieve an IDL object by its primary key",
         param_count: ParamCount::Exactly(1),
@@ -30,9 +50,8 @@ pub static METHODS: &[StaticMethod] = &[
             desc: "Primary Key Value",
         }],
     },
+    // Stub method for *.delete calls.  Not directly published.
     StaticMethod {
-        // Stub method for *.delete calls
-        // This is not directly published.
         name: "delete-stub",
         desc: "Delete an IDL object by its primary key",
         param_count: ParamCount::Exactly(1),
@@ -46,13 +65,12 @@ pub static METHODS: &[StaticMethod] = &[
     },
 ];
 
-/// Get the IDL class info from the API call split into parts (by ".").
+/// Get the IDL class info from the API call split into parts by ".".
 ///
 /// Also verifies the API name has the correct number of parts.
 fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> Result<String, String> {
     let api_parts = apiname.split(".").collect::<Vec<&str>>();
 
-    // We know api_parts is
     if api_parts.len() != 6 {
         // Could potentially happen if an IDL class was not correctly
         // encoded in the IDL file.
@@ -115,4 +133,32 @@ pub fn delete(
     session.respond(count)
 }
 
-// TODO xact api's
+/// begin, commit, and rollback the transaction on our primary database
+/// connection.
+///
+/// "begin" will return Err() if a transaction is in progress.
+/// "commit" will return Err() if no transaction is in progress.
+pub fn manage_xact(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsStoreWorker::downcast(worker)?;
+    let db = worker.database();
+    let api = method.method();
+
+    if api.contains("begin") {
+        db.borrow_mut().xact_begin()?;
+    } else if api.contains("rollback") {
+        // Avoid warnings/errors on rollback if no transaction
+        // is in progress.
+        if db.borrow().in_transaction() {
+            db.borrow_mut().xact_rollback()?;
+        }
+    } else if api.contains("commit") {
+        // Returns Errif there is no transaction in progress
+        db.borrow_mut().xact_commit()?;
+    }
+
+    session.respond(true)
+}
