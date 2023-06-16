@@ -163,6 +163,10 @@ impl ApplicationWorker for RsPrivateWorker {
         log::debug!("Thread ending");
         Ok(())
     }
+
+    fn keepalive_timeout(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 fn main() {

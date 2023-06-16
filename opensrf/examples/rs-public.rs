@@ -160,6 +160,10 @@ impl ApplicationWorker for RsPublicWorker {
         log::debug!("Thread ending");
         Ok(())
     }
+
+    fn keepalive_timeout(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 fn main() {
