@@ -104,7 +104,6 @@ impl RsStoreApplication {
             .next()
             .unwrap();
 
-        log::info!("Registering: {}", begin.name()); // XXX
         methods.push(begin.into_method(APPNAME));
 
         let api = "transaction.rollback";
@@ -169,12 +168,6 @@ impl Application for RsStoreApplication {
         self.register_xact_methods(&mut methods);
 
         log::info!("{APPNAME} registered {} total methods", methods.len());
-        for m in methods
-            .iter()
-            .filter(|m| m.name().starts_with("open-ils.rs-store.transaction"))
-        {
-            log::info!("REGISTERED: {}", m.name());
-        }
 
         Ok(methods)
     }

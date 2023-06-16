@@ -147,15 +147,15 @@ pub fn manage_xact(
     let db = worker.database();
     let api = method.method();
 
-    if api.contains("begin") {
+    if api.contains(".begin") {
         db.borrow_mut().xact_begin()?;
-    } else if api.contains("rollback") {
+    } else if api.contains(".rollback") {
         // Avoid warnings/errors on rollback if no transaction
         // is in progress.
         if db.borrow().in_transaction() {
             db.borrow_mut().xact_rollback()?;
         }
-    } else if api.contains("commit") {
+    } else if api.contains(".commit") {
         // Returns Errif there is no transaction in progress
         db.borrow_mut().xact_commit()?;
     }
