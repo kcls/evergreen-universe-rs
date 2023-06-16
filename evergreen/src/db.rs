@@ -318,7 +318,6 @@ impl DatabaseConnection {
     }
 
     pub fn xact_commit(&mut self) -> Result<(), String> {
-        log::info!("COMMITTING TRANSACTION");
         if !self.in_transaction {
             return Err(format!("DatabaseConnection has no transaction to commit"))?;
         }
