@@ -1,5 +1,6 @@
 use super::client;
 use super::conf;
+use super::message;
 use super::method;
 use super::sclient;
 use std::any::Any;
@@ -40,6 +41,8 @@ pub trait ApplicationWorker: Any {
     /// Called if the client sent a CONNECT but never sent a DISCONNECT
     /// within the configured timeout.
     fn keepalive_timeout(&mut self) -> Result<(), String>;
+
+    fn api_call_error(&mut self, request: &message::Method, error: &str);
 }
 
 pub trait Application {

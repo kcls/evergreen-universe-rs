@@ -164,6 +164,8 @@ impl ApplicationWorker for RsPublicWorker {
     fn keepalive_timeout(&mut self) -> Result<(), String> {
         Ok(())
     }
+
+    fn api_call_error(&mut self, _request: &message::Method, _error: &str) {}
 }
 
 fn main() {

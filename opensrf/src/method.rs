@@ -69,7 +69,7 @@ pub enum ParamDataType {
     String,
     Number,
     Array,
-    Hash,
+    Object, // JsonValue::Object or other object-y thing
     Boolish,
     Scalar, // Not an Object or Array.
     Any,
@@ -81,7 +81,7 @@ impl fmt::Display for ParamDataType {
             ParamDataType::String => write!(f, "String"),
             ParamDataType::Number => write!(f, "Number"),
             ParamDataType::Array => write!(f, "Array"),
-            ParamDataType::Hash => write!(f, "Hash"),
+            ParamDataType::Object => write!(f, "Object"),
             ParamDataType::Boolish => write!(f, "Boolish"),
             ParamDataType::Scalar => write!(f, "Scalar"),
             ParamDataType::Any => write!(f, "Any"),

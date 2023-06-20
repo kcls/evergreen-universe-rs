@@ -376,8 +376,13 @@ impl Translator {
             .get_pkey_info(obj)
             .ok_or(format!("Object has no primary key field"))?;
 
-        let mut filter = json::JsonValue::new_object();
-        filter[pkey_field.name()] = pkey_value;
+        // See if we need to translate this pkey value into a JSON Number.
+        let numeric_pkey_op = self.try_translate_numeric(pkey_field, &pkey_value)?;
+        let pkey = numeric_pkey_op.as_ref().unwrap_or(&pkey_value);
+
+        let mut filter = JsonValue::new_object();
+        filter.insert(pkey_field.name(), pkey.clone()).unwrap(); // we know pkey_field is valid
+
         update.set_filter(filter);
 
         self.idl_class_update(&update)
@@ -427,11 +432,13 @@ impl Translator {
 
         log::debug!("update() executing query: {query}; params=[{param_list:?}]");
 
-        let query_res = self
-            .db
-            .borrow_mut()
-            .client()
-            .execute(&query[..], params.as_slice());
+        self.execute_one(&query, params.as_slice())
+    }
+
+    fn execute_one(&self, query: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, String> {
+        log::debug!("update() executing query: {query}; params=[{params:?}]");
+
+        let query_res = self.db.borrow_mut().client().execute(&query[..], params);
 
         match query_res {
             Ok(v) => {
@@ -489,24 +496,7 @@ impl Translator {
             params.push(p);
         }
 
-        log::debug!("delete() executing query: {query}; params=[{param_list:?}]");
-
-        let query_res = self
-            .db
-            .borrow_mut()
-            .client()
-            .execute(&query[..], params.as_slice());
-
-        match query_res {
-            Ok(v) => {
-                log::debug!("Deleted {v} rows");
-                Ok(v)
-            }
-            Err(e) => {
-                log::error!("DB query failed: error={e} query={query} param={params:?}");
-                Err(format!("DB query failed. See error logs"))
-            }
-        }
+        self.execute_one(&query, params.as_slice())
     }
 
     /// Search for IDL objects in the database.
@@ -862,7 +852,7 @@ impl Translator {
             let operand = key.to_uppercase();
 
             if !Translator::is_supported_operand(&operand) {
-                Err(format!("Unsupported operand: {operand}"))?;
+                Err(format!("Unsupported operand: {operand} : {obj}"))?;
             }
 
             sql += &format!(

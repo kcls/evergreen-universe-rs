@@ -439,14 +439,18 @@ impl Worker {
                 // TODO if these are unpacked at message create time,
                 // we could avoid the clone.  Not a huge deal since
                 // inbound params are typically small, but still.
+                //
+                // TODO we could verify at this point whether each
+                // paramater matches its documented ParamDataType.
                 unpacked_params.push(s.unpack(p.clone()));
             }
         }
         let request = message::Method::new(request.method(), unpacked_params);
 
-        if let Err(err) = (method.handler())(appworker, self.session_mut(), &request) {
+        if let Err(ref err) = (method.handler())(appworker, self.session_mut(), &request) {
             let msg = format!("{self} method {} failed with {err}", request.method());
             log::error!("{msg}");
+            appworker.api_call_error(&request, err);
             self.reply_server_error(&msg)?;
             Err(msg)?;
         }

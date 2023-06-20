@@ -3,6 +3,7 @@ use evergreen as eg;
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client::Client;
 use opensrf::conf;
+use opensrf::message;
 use opensrf::method::Method;
 use opensrf::sclient::HostSettings;
 use std::any::Any;
@@ -213,4 +214,6 @@ impl ApplicationWorker for RsPubWorker {
     fn keepalive_timeout(&mut self) -> Result<(), String> {
         Ok(())
     }
+
+    fn api_call_error(&mut self, _request: &message::Method, _error: &str) {}
 }

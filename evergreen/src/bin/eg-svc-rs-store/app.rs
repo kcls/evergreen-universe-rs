@@ -4,6 +4,7 @@ use evergreen as eg;
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client::Client;
 use opensrf::conf;
+use opensrf::message;
 use opensrf::method::Method;
 use opensrf::sclient::HostSettings;
 use std::any::Any;
@@ -68,6 +69,12 @@ impl RsStoreApplication {
             .next()
             .unwrap();
 
+        let update_stub = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq("update-stub"))
+            .next()
+            .unwrap();
+
         let delete_stub = methods::METHODS
             .iter()
             .filter(|m| m.name.eq("delete-stub"))
@@ -91,6 +98,13 @@ impl RsStoreApplication {
                         // RETRIEVE ---
                         let mut clone = retrieve_stub.into_method(APPNAME);
                         let apiname = format!("{APPNAME}.direct.{fieldmapper}.retrieve");
+                        clone.set_name(&apiname);
+                        log::trace!("Registering: {apiname}");
+                        methods.push(clone);
+
+                        // UPDATE ---
+                        let mut clone = update_stub.into_method(APPNAME);
+                        let apiname = format!("{APPNAME}.direct.{fieldmapper}.update");
                         clone.set_name(&apiname);
                         log::trace!("Registering: {apiname}");
                         methods.push(clone);
@@ -320,6 +334,8 @@ impl ApplicationWorker for RsStoreWorker {
     }
 
     fn keepalive_timeout(&mut self) -> Result<(), String> {
+        log::debug!("IDL worker timed out in keepalive");
+
         if let Some(ref mut db) = self.database {
             if db.borrow().in_transaction() {
                 log::info!("Rollback back DB session after keepalive timeout");
@@ -327,5 +343,16 @@ impl ApplicationWorker for RsStoreWorker {
             }
         }
         Ok(())
+    }
+
+    fn api_call_error(&mut self, _request: &message::Method, error: &str) {
+        log::debug!("API failed: {error}");
+
+        if let Some(ref mut db) = self.database {
+            if db.borrow().in_transaction() {
+                log::info!("Rollback back DB session after API call error");
+                db.borrow_mut().xact_rollback().ok();
+            }
+        }
     }
 }
