@@ -51,6 +51,23 @@ impl OrderBy {
     }
 }
 
+/// Models a request to create a set of IDL objects of a given class.
+pub struct IdlClassCreate {
+    pub classname: String,
+    // Outer Vec is our list of value collections.
+    // Inner list is a single set of values to create.
+    pub values: Vec<Vec<(String, JsonValue)>>,
+}
+
+impl IdlClassCreate {
+    pub fn new(classname: &str) -> Self {
+        IdlClassCreate {
+            classname: classname.to_string(),
+            values: vec![vec![]],
+        }
+    }
+}
+
 /// Models a request to update a set of values on a set of IDL objects
 /// of a given class.
 pub struct IdlClassUpdate {
@@ -210,19 +227,147 @@ impl Translator {
         }
     }
 
-    pub fn idl_object_update(&self, obj: &JsonValue) -> Result<u64, String> {
+    pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> Result<&idl::Class, String> {
         let classname = obj[idl::CLASSNAME_KEY]
             .as_str()
             .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
 
-        let class = self
-            .idl()
+        self.idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))?;
+            .ok_or(format!("No such IDL class: {classname}"))
+    }
 
-        let mut update = IdlClassUpdate::new(classname);
-        for field in class.real_fields() {
+    /// Create an IDL object in the database
+    ///
+    /// Returns the created value
+    pub fn create_idl_object(&self, obj: &JsonValue) -> Result<JsonValue, String> {
+        let idl_class = self.get_idl_class_from_object(obj)?;
+
+        let mut create = IdlClassCreate::new(idl_class.classname());
+        let values = &mut create.values[0]; // list of lists
+
+        for field in idl_class.real_fields() {
+            values.push((field.name().to_string(), obj[field.name()].clone()));
+        }
+
+        let values = self.idl_class_create(&create)?;
+
+        if let Some(v) = values.get(0) {
+            Ok(v.to_owned())
+        } else {
+            // Should encounter an error before we get here, but just
+            // to cover our bases.
+            Err(format!(
+                "Could not create new value for class: {}",
+                idl_class.classname()
+            ))
+        }
+    }
+
+    /// Create one or more IDL objects in the database.
+    ///
+    /// Returns the created rows.
+    pub fn idl_class_create(&self, create: &IdlClassCreate) -> Result<Vec<JsonValue>, String> {
+        if create.values.len() == 0 {
+            Err(format!("No values to create in idl_class_create()"))?;
+        }
+
+        if !self.db.borrow().in_transaction() {
+            Err(format!("idl_class_create() requires a transaction"))?;
+        }
+
+        let classname = &create.classname;
+
+        let idl_class = match self.idl().classes().get(classname) {
+            Some(c) => c,
+            None => Err(format!("No such IDL class: {classname}"))?,
+        };
+
+        let tablename = match idl_class.tablename() {
+            Some(t) => t,
+            None => Err(format!(
+                "Cannot query an IDL class that has no tablename: {classname}"
+            ))?,
+        };
+
+        let pkey_field = idl_class
+            .pkey()
+            .ok_or(format!("Cannot create rows that have no primary key"))?;
+
+        let mut query = format!("INSERT INTO {tablename} (");
+        let mut first = true;
+
+        // Add the column names
+        for field in idl_class.real_fields() {
+            if first {
+                first = false;
+            } else {
+                query += ", "
+            }
+            query += field.name();
+        }
+
+        query += ") VALUES ";
+
+        // Now add the sets of values to insert
+        first = true;
+        let mut param_index: usize = 1;
+        let mut param_list: Vec<String> = Vec::new();
+        for values in &create.values {
+            if first {
+                first = false;
+            } else {
+                query += ", "
+            }
+            query += &self.compile_class_create(
+                &idl_class,
+                &values,
+                &mut param_index,
+                &mut param_list,
+            )?;
+        }
+
+        // And finally, tell PG to return the primary keys just created.
+        query += &format!(" RETURNING {pkey_field}");
+
+        let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
+        for p in param_list.iter() {
+            params.push(p);
+        }
+
+        log::debug!("create() executing query: {query}; params=[{param_list:?}]");
+
+        let query_res = self
+            .db
+            .borrow_mut()
+            .client()
+            .query(&query[..], params.as_slice());
+
+        if let Err(ref e) = query_res {
+            log::error!("DB query failed: error={e} query={query} param={params:?}");
+            Err(format!("DB query failed. See error logs"))?;
+        }
+
+        let mut results: Vec<JsonValue> = Vec::new();
+        for row in query_res.unwrap() {
+            let pkey_value = self.col_value_to_json_value(&row, 0)?;
+            if let Some(pkv) = self.get_idl_object_by_pkey(idl_class.classname(), &pkey_value)? {
+                results.push(pkv);
+            } else {
+                Err(format!("Could not recover newly created value from the DB"))?;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Update one IDL object in the database.
+    pub fn update_idl_object(&self, obj: &JsonValue) -> Result<u64, String> {
+        let idl_class = self.get_idl_class_from_object(obj)?;
+
+        let mut update = IdlClassUpdate::new(idl_class.classname());
+        for field in idl_class.real_fields() {
             update.add_value(field.name(), &obj[field.name()]);
         }
 
@@ -238,7 +383,7 @@ impl Translator {
         self.idl_class_update(&update)
     }
 
-    /// Update an IDL object in the database.
+    /// Update one or more IDL objects in the database.
     ///
     /// Returns Result of the number of rows modified.
     pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<u64, String> {
@@ -246,11 +391,11 @@ impl Translator {
             Err(format!("No values to update in idl_class_update()"))?;
         }
 
-        let classname = &update.classname;
-
         if !self.db.borrow().in_transaction() {
             Err(format!("idl_class_update() requires a transaction"))?;
         }
+
+        let classname = &update.classname;
 
         let class = match self.idl().classes().get(classname) {
             Some(c) => c,
@@ -336,6 +481,7 @@ impl Translator {
             pkey_field,
             pkey,
             Some("="),
+            false,
         )?;
 
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
@@ -413,8 +559,9 @@ impl Translator {
             .client()
             .query(&query[..], params.as_slice());
 
-        if let Err(e) = query_res {
-            return Err(format!("DB query failed: {e}"));
+        if let Err(ref e) = query_res {
+            log::error!("DB query failed: error={e} query={query} param={params:?}");
+            Err(format!("DB query failed. See error logs"))?;
         }
 
         for row in query_res.unwrap() {
@@ -476,6 +623,41 @@ impl Translator {
         }
     }
 
+    /// Create the values lists of an SQL create command.
+    fn compile_class_create(
+        &self,
+        class: &idl::Class,
+        values: &Vec<(String, JsonValue)>,
+        param_index: &mut usize,
+        param_list: &mut Vec<String>,
+    ) -> Result<String, String> {
+        let mut sql = String::from("(");
+        let mut first = true;
+
+        for kvp in values {
+            let field = &kvp.0;
+            let value = &kvp.1;
+
+            let idl_field = class.get_real_field(field).ok_or(format!(
+                "No such real field '{field}' on class '{}'",
+                class.classname()
+            ))?;
+
+            if first {
+                first = false;
+            } else {
+                sql += ", ";
+            }
+
+            sql +=
+                &self.append_json_literal(param_index, param_list, idl_field, value, None, true)?;
+        }
+
+        sql += ")";
+
+        Ok(sql)
+    }
+
     /// Create the SET portion of an SQL update command.
     fn compile_class_update(
         &self,
@@ -499,13 +681,19 @@ impl Translator {
             if first {
                 first = false;
             } else {
-                sql += ",";
+                sql += ", ";
             }
 
             sql += &format!(" {field} ");
 
-            sql +=
-                &self.append_json_literal(param_index, param_list, idl_field, value, Some("="))?;
+            sql += &self.append_json_literal(
+                param_index,
+                param_list,
+                idl_field,
+                value,
+                Some("="),
+                false,
+            )?;
         }
 
         Ok(sql)
@@ -588,7 +776,8 @@ impl Translator {
                             param_list,
                             idl_field,
                             subq,
-                            Some("=")
+                            Some("="),
+                            false
                         )?
                     );
                 }
@@ -600,7 +789,8 @@ impl Translator {
                             param_list,
                             idl_field,
                             subq,
-                            Some("IS")
+                            Some("IS"),
+                            false
                         )?
                     );
                 }
@@ -622,9 +812,14 @@ impl Translator {
         idl_field: &idl::Field,
         obj: &JsonValue,
         operand: Option<&str>,
+        use_default: bool,
     ) -> Result<String, String> {
         if obj.is_object() || obj.is_array() {
             return Err(format!("Cannot format array/object as a literal: {obj:?}"));
+        }
+
+        if use_default && obj.is_null() {
+            return Ok(format!("DEFAULT"));
         }
 
         let opstr = match operand {
@@ -672,7 +867,14 @@ impl Translator {
 
             sql += &format!(
                 " {}",
-                self.append_json_literal(param_index, param_list, idl_field, val, Some(&operand))?
+                self.append_json_literal(
+                    param_index,
+                    param_list,
+                    idl_field,
+                    val,
+                    Some(&operand),
+                    false
+                )?
             );
         }
 
@@ -699,6 +901,7 @@ impl Translator {
                 idl_field,
                 val,
                 None,
+                false,
             )?);
         }
 

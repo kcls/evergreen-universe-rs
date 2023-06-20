@@ -63,6 +63,19 @@ pub static METHODS: &[StaticMethod] = &[
             desc: "Primary Key Value",
         }],
     },
+    // Stub method for *.create calls.  Not directly published.
+    StaticMethod {
+        name: "create-stub",
+        desc: "Celete an IDL object by its primary key",
+        param_count: ParamCount::Exactly(1),
+        handler: create,
+        params: &[StaticParam {
+            required: true,
+            name: "primary-key",
+            datatype: ParamDataType::Scalar,
+            desc: "Primary Key Value",
+        }],
+    },
 ];
 
 /// Get the IDL class info from the API call split into parts by ".".
@@ -130,6 +143,25 @@ pub fn delete(
     // This will fail if our database connection is not already
     // inside a transaction.
     let count = translator.delete_idl_object_by_pkey(&classname, pkey)?;
+    session.respond(count)
+}
+
+// open-ils.rs-store.direct.actor.user.delete
+pub fn create(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsStoreWorker::downcast(worker)?;
+    let idl = worker.env().idl().clone();
+    let obj = method.param(0);
+
+    let db = worker.database().clone();
+    let translator = Translator::new(idl.to_owned(), db);
+
+    // This will fail if our database connection is not already
+    // inside a transaction.
+    let count = translator.create_idl_object(&obj)?;
     session.respond(count)
 }
 

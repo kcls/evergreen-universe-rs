@@ -94,7 +94,7 @@ fn main() -> Result<(), String> {
 
     translator.xact_begin()?;
     org_mod["shortname"] = json::from("TEST NAME");
-    translator.idl_object_update(&org_mod)?;
+    translator.update_idl_object(&org_mod)?;
     translator.xact_commit()?;
 
     search.set_filter(json::object! {id: org["id"].clone()});
@@ -104,13 +104,20 @@ fn main() -> Result<(), String> {
 
     translator.xact_begin()?;
     org_mod["shortname"] = json::from(shortname);
-    translator.idl_object_update(&org_mod)?;
+    translator.update_idl_object(&org_mod)?;
     translator.xact_commit()?;
 
     search.set_filter(json::object! {id: org["id"].clone()});
     let results = translator.idl_class_search(&search)?;
     let org_updated = results.first().expect("Cannot find org unit");
     println!("org name updated to: {}", org_updated["shortname"]);
+
+    translator.xact_begin()?;
+    let mut cbt = ctx.idl().create("cbt").expect("Invalid IDL class");
+    cbt["name"] = json::from("A Billing Type");
+    cbt["owner"] = json::from(1);
+    translator.create_idl_object(&cbt)?;
+    translator.xact_rollback()?;
 
     Ok(())
 }

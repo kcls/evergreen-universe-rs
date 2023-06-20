@@ -56,6 +56,12 @@ impl RsStoreApplication {
     }
 
     fn register_auto_methods(&self, methods: &mut Vec<Method>) {
+        let create_stub = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq("create-stub"))
+            .next()
+            .unwrap();
+
         let retrieve_stub = methods::METHODS
             .iter()
             .filter(|m| m.name.eq("retrieve-stub"))
@@ -74,6 +80,13 @@ impl RsStoreApplication {
                 if ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store") {
                     if let Some(fm) = idl_class.fieldmapper() {
                         let fieldmapper = fm.replace("::", ".");
+
+                        // CREATE ---
+                        let mut clone = create_stub.into_method(APPNAME);
+                        let apiname = format!("{APPNAME}.direct.{fieldmapper}.create");
+                        clone.set_name(&apiname);
+                        log::trace!("Registering: {apiname}");
+                        methods.push(clone);
 
                         // RETRIEVE ---
                         let mut clone = retrieve_stub.into_method(APPNAME);
