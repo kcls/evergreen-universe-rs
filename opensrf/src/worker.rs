@@ -432,6 +432,18 @@ impl Worker {
             ));
         }
 
+        // De-serialize the inbound parameters.
+        let mut unpacked_params = Vec::new();
+        if let Some(s) = self.client.singleton().borrow().serializer() {
+            for p in request.params() {
+                // TODO if these are unpacked at message create time,
+                // we could avoid the clone.  Not a huge deal since
+                // inbound params are typically small, but still.
+                unpacked_params.push(s.unpack(p.clone()));
+            }
+        }
+        let request = message::Method::new(request.method(), unpacked_params);
+
         if let Err(err) = (method.handler())(appworker, self.session_mut(), &request) {
             let msg = format!("{self} method {} failed with {err}", request.method());
             log::error!("{msg}");
