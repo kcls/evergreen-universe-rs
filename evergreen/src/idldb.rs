@@ -196,21 +196,18 @@ impl Translator {
         classname: &str,
         pkey: &JsonValue,
     ) -> Result<Option<JsonValue>, String> {
-        let idl_class = match self.idl().classes().get(classname) {
-            Some(c) => c,
-            None => return Err(format!("No such IDL class: {classname}")),
-        };
+        let idl_class = self
+            .idl()
+            .classes()
+            .get(classname)
+            .ok_or(format!("No such IDL class: {classname}"))?;
 
-        let idl_field = idl_class
+        let pkey_field = idl_class
             .pkey_field()
             .ok_or(format!("Class {classname} has no primary key field"))?;
 
-        // See if we need to translate this pkey value into a JSON Number.
-        let numeric_pkey_op = self.try_translate_numeric(idl_field, pkey)?;
-        let pkey = numeric_pkey_op.as_ref().unwrap_or(pkey);
-
         let mut filter = JsonValue::new_object();
-        filter.insert(idl_field.name(), pkey.clone()).unwrap(); // we know pkey_field is valid
+        filter.insert(pkey_field.name(), pkey.clone()).unwrap();
 
         let mut search = IdlClassSearch::new(classname);
         search.set_filter(filter);
@@ -227,6 +224,7 @@ impl Translator {
         }
     }
 
+    /// Get the IDL Class representing to the provided object.
     pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> Result<&idl::Class, String> {
         let classname = obj[idl::CLASSNAME_KEY]
             .as_str()
@@ -279,17 +277,15 @@ impl Translator {
 
         let classname = &create.classname;
 
-        let idl_class = match self.idl().classes().get(classname) {
-            Some(c) => c,
-            None => Err(format!("No such IDL class: {classname}"))?,
-        };
+        let idl_class = self
+            .idl()
+            .classes()
+            .get(classname)
+            .ok_or(format!("No such IDL class: {classname}"))?;
 
-        let tablename = match idl_class.tablename() {
-            Some(t) => t,
-            None => Err(format!(
-                "Cannot query an IDL class that has no tablename: {classname}"
-            ))?,
-        };
+        let tablename = idl_class.tablename().ok_or(format!(
+            "Cannot query an IDL class that has no tablename: {classname}"
+        ))?;
 
         let pkey_field = idl_class
             .pkey()
@@ -345,10 +341,12 @@ impl Translator {
             .query(&query[..], params.as_slice());
 
         if let Err(ref e) = query_res {
-            log::error!("DB query failed: error={e} query={query} param={params:?}");
+            log::error!("DB Error: {e} query={query} param={params:?}");
             Err(format!("DB query failed. See error logs"))?;
         }
 
+        // Use the primary key values reported by PG to find the
+        // newly created rows.
         let mut results: Vec<JsonValue> = Vec::new();
         for row in query_res.unwrap() {
             let pkey_value = self.col_value_to_json_value(&row, 0)?;
@@ -376,12 +374,10 @@ impl Translator {
             .get_pkey_info(obj)
             .ok_or(format!("Object has no primary key field"))?;
 
-        // See if we need to translate this pkey value into a JSON Number.
-        let numeric_pkey_op = self.try_translate_numeric(pkey_field, &pkey_value)?;
-        let pkey = numeric_pkey_op.as_ref().unwrap_or(&pkey_value);
-
         let mut filter = JsonValue::new_object();
-        filter.insert(pkey_field.name(), pkey.clone()).unwrap(); // we know pkey_field is valid
+        filter
+            .insert(pkey_field.name(), pkey_value.clone())
+            .unwrap();
 
         update.set_filter(filter);
 
@@ -402,22 +398,21 @@ impl Translator {
 
         let classname = &update.classname;
 
-        let class = match self.idl().classes().get(classname) {
-            Some(c) => c,
-            None => Err(format!("No such IDL class: {classname}"))?,
-        };
+        let class = self
+            .idl()
+            .classes()
+            .get(classname)
+            .ok_or(format!("No such IDL class: {classname}"))?;
 
-        let tablename = match class.tablename() {
-            Some(t) => t,
-            None => Err(format!(
-                "Cannot query an IDL class that has no tablename: {classname}"
-            ))?,
-        };
+        let tablename = class.tablename().ok_or(format!(
+            "Cannot query an IDL class that has no tablename: {classname}"
+        ))?;
 
         let mut param_list: Vec<String> = Vec::new();
         let mut param_index: usize = 1;
         let updates =
             self.compile_class_update(&class, &update.values, &mut param_index, &mut param_list)?;
+
         let mut query = format!("UPDATE {tablename} {updates}");
 
         if let Some(filter) = update.filter() {
@@ -435,6 +430,7 @@ impl Translator {
         self.execute_one(&query, params.as_slice())
     }
 
+    /// Execute a single db command and return the number of rows affected.
     fn execute_one(&self, query: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, String> {
         log::debug!("update() executing query: {query}; params=[{params:?}]");
 
@@ -446,12 +442,15 @@ impl Translator {
                 Ok(v)
             }
             Err(e) => {
-                log::error!("DB query failed: error={e} query={query} param={params:?}");
+                log::error!("DB Error: {e} query={query} param={params:?}");
                 Err(format!("DB query failed. See error logs"))
             }
         }
     }
 
+    /// Delete one IDL object via its primary key.
+    ///
+    /// Returns a Result of the number of rows affected.
     pub fn delete_idl_object_by_pkey(
         &self,
         classname: &str,
@@ -461,17 +460,15 @@ impl Translator {
             Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
         }
 
-        let class = match self.idl().classes().get(classname) {
-            Some(c) => c,
-            None => Err(format!("No such IDL class: {classname}"))?,
-        };
+        let class = self
+            .idl()
+            .classes()
+            .get(classname)
+            .ok_or(format!("No such IDL class: {classname}"))?;
 
-        let tablename = match class.tablename() {
-            Some(t) => t,
-            None => Err(format!(
-                "Cannot query an IDL class that has no tablename: {classname}"
-            ))?,
-        };
+        let tablename = class.tablename().ok_or(format!(
+            "Cannot query an IDL class that has no tablename: {classname}"
+        ))?;
 
         let pkey_field = class
             .pkey_field()
@@ -500,6 +497,8 @@ impl Translator {
     }
 
     /// Search for IDL objects in the database.
+    ///
+    /// Returns a Vec of the found IDL objects.
     pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<JsonValue>, String> {
         let mut results: Vec<JsonValue> = Vec::new();
         let classname = &search.classname;
@@ -550,7 +549,7 @@ impl Translator {
             .query(&query[..], params.as_slice());
 
         if let Err(ref e) = query_res {
-            log::error!("DB query failed: error={e} query={query} param={params:?}");
+            log::error!("DB Error: {e} query={query} param={params:?}");
             Err(format!("DB query failed. See error logs"))?;
         }
 
@@ -854,6 +853,8 @@ impl Translator {
             if !Translator::is_supported_operand(&operand) {
                 Err(format!("Unsupported operand: {operand} : {obj}"))?;
             }
+
+            // TODO add support for NOT IN (...) here?
 
             sql += &format!(
                 " {}",
