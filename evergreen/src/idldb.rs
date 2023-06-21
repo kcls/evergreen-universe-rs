@@ -329,11 +329,7 @@ impl Translator {
 
         log::debug!("create() executing query: {query}; params=[{param_list:?}]");
 
-        let query_res = self
-            .db
-            .borrow_mut()
-            .client()
-            .query(&query[..], params.as_slice());
+        let query_res = self.db.borrow_mut().client().query(&query, &params);
 
         if let Err(ref e) = query_res {
             log::error!("DB Error: {e} query={query} param={params:?}");
@@ -343,13 +339,14 @@ impl Translator {
         // Use the primary key values reported by PG to find the
         // newly created rows.
         let mut results: Vec<JsonValue> = Vec::new();
+
         for row in query_res.unwrap() {
             let pkey_value = self.col_value_to_json_value(&row, 0)?;
-            if let Some(pkv) = self.get_idl_object_by_pkey(idl_class.classname(), &pkey_value)? {
-                results.push(pkv);
-            } else {
-                Err(format!("Could not recover newly created value from the DB"))?;
-            }
+
+            match self.get_idl_object_by_pkey(idl_class.classname(), &pkey_value)? {
+                Some(pkv) => results.push(pkv),
+                None => Err(format!("Could not recover newly created value from the DB"))?,
+            };
         }
 
         Ok(results)
@@ -422,14 +419,14 @@ impl Translator {
 
         log::debug!("update() executing query: {query}; params=[{param_list:?}]");
 
-        self.execute_one(&query, params.as_slice())
+        self.execute_one(&query, &params)
     }
 
     /// Execute a single db command and return the number of rows affected.
     fn execute_one(&self, query: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, String> {
         log::debug!("update() executing query: {query}; params=[{params:?}]");
 
-        let query_res = self.db.borrow_mut().client().execute(&query[..], params);
+        let query_res = self.db.borrow_mut().client().execute(query, params);
 
         match query_res {
             Ok(v) => {
@@ -488,7 +485,7 @@ impl Translator {
             params.push(p);
         }
 
-        self.execute_one(&query, params.as_slice())
+        self.execute_one(&query, &params)
     }
 
     /// Search for IDL objects in the database.
@@ -537,11 +534,7 @@ impl Translator {
             params.push(p);
         }
 
-        let query_res = self
-            .db
-            .borrow_mut()
-            .client()
-            .query(&query[..], params.as_slice());
+        let query_res = self.db.borrow_mut().client().query(&query, &params);
 
         if let Err(ref e) = query_res {
             log::error!("DB Error: {e} query={query} param={params:?}");
