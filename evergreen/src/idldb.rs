@@ -246,8 +246,8 @@ impl Translator {
         let mut create = IdlClassCreate::new(idl_class.classname());
         let values = &mut create.values[0]; // list of lists
 
-        for field in idl_class.real_fields_sorted() {
-            values.push((field.name().to_string(), obj[field.name()].clone()));
+        for name in idl_class.real_field_names_sorted() {
+            values.push((name.to_string(), obj[name].clone()));
         }
 
         let values = self.idl_class_create(&create)?;
@@ -295,12 +295,7 @@ impl Translator {
         let mut query = format!("INSERT INTO {tablename} (");
 
         // Add the column names
-        query += &idl_class
-            .real_fields_sorted()
-            .iter()
-            .map(|f| f.name())
-            .collect::<Vec<&str>>()
-            .join(", ");
+        query += &idl_class.real_field_names_sorted().join(", ");
 
         query += ") VALUES ";
 
@@ -357,8 +352,8 @@ impl Translator {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut update = IdlClassUpdate::new(idl_class.classname());
-        for field in idl_class.real_fields_sorted() {
-            update.add_value(field.name(), &obj[field.name()]);
+        for name in idl_class.real_field_names_sorted() {
+            update.add_value(name, &obj[name]);
         }
 
         let (pkey_field, pkey_value) = self
@@ -505,9 +500,9 @@ impl Translator {
             "Cannot query an IDL class that has no tablename: {classname}"
         ))?;
 
-        let select = self.compile_class_select(&class);
+        let columns = class.real_field_names_sorted().join(", ");
 
-        let mut query = format!("{select} FROM {tablename}");
+        let mut query = format!("SELECT {columns} FROM {tablename}");
 
         // Some parameters require binding within the DB statement.
         // Put them here.
@@ -645,8 +640,7 @@ impl Translator {
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> Result<String, String> {
-        let mut sql = String::from("SET");
-        let mut strings = Vec::new();
+        let mut parts = Vec::new();
 
         for kvp in values {
             let field = &kvp.0;
@@ -657,8 +651,8 @@ impl Translator {
                 class.classname()
             ))?;
 
-            strings.push(format!(
-                " {field} {}",
+            parts.push(format!(
+                "{field} {}",
                 self.append_json_literal(
                     param_index,
                     param_list,
@@ -670,22 +664,7 @@ impl Translator {
             ));
         }
 
-        sql += &strings.join(", ");
-
-        Ok(sql)
-    }
-
-    /// Create the SELECT clause for a search query.
-    fn compile_class_select(&self, class: &idl::Class) -> String {
-        let mut sql = String::from("SELECT");
-
-        for (name, field) in class.fields() {
-            if !field.is_virtual() {
-                sql += &format!(" {name},");
-            }
-        }
-
-        String::from(&sql[0..sql.len() - 1]) // Trim final ","
+        Ok(format!("SET {}", parts.join(", ")))
     }
 
     /// Create the limit/offset part of the query string.
@@ -880,7 +859,7 @@ impl Translator {
 
         let mut index = 0;
 
-        for (name, _) in class.fields().iter().filter(|(_, f)| !f.is_virtual()) {
+        for name in class.real_field_names_sorted() {
             obj[name] = self.col_value_to_json_value(row, index)?;
             index += 1;
         }

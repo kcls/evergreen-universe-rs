@@ -232,6 +232,13 @@ impl Class {
         fields
     }
 
+    /// Vec of non-virutal field names sorted alphabetically.
+    pub fn real_field_names_sorted(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.real_fields().iter().map(|f| f.name()).collect();
+        names.sort();
+        names
+    }
+
     pub fn has_real_field(&self, field: &str) -> bool {
         self.fields()
             .values()
