@@ -42,6 +42,12 @@ fn main() -> Result<(), String> {
         println!("org: {} {}\n", org["id"], org["shortname"]);
     }
 
+    search.set_filter(json::object! {"id": {"not in": [1, 2]}});
+
+    for org in translator.idl_class_search(&search)? {
+        println!("org: ID NOT IN: {} {}\n", org["id"], org["shortname"]);
+    }
+
     search.set_order_by(vec![OrderBy::new("name", OrderByDir::Asc)]);
 
     for org in translator.idl_class_search(&search)? {

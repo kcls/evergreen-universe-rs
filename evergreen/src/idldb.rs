@@ -14,7 +14,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 const SUPPORTED_OPERANDS: &[&'static str] = &[
-    "IS", "IS NOT", "LIKE", "ILIKE", "<", "<=", ">", ">=", "<>", "!=", "~", "=", "!~", "!~*", "~*",
+    "IS", "IS NOT", "IN", "NOT IN", "LIKE", "ILIKE", "<", "<=", ">", ">=", "<>", "!=", "~", "=",
+    "!~", "!~*", "~*",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -245,7 +246,7 @@ impl Translator {
         let mut create = IdlClassCreate::new(idl_class.classname());
         let values = &mut create.values[0]; // list of lists
 
-        for field in idl_class.real_fields() {
+        for field in idl_class.real_fields_sorted() {
             values.push((field.name().to_string(), obj[field.name()].clone()));
         }
 
@@ -292,37 +293,31 @@ impl Translator {
             .ok_or(format!("Cannot create rows that have no primary key"))?;
 
         let mut query = format!("INSERT INTO {tablename} (");
-        let mut first = true;
 
         // Add the column names
-        for field in idl_class.real_fields() {
-            if first {
-                first = false;
-            } else {
-                query += ", "
-            }
-            query += field.name();
-        }
+        query += &idl_class
+            .real_fields_sorted()
+            .iter()
+            .map(|f| f.name())
+            .collect::<Vec<&str>>()
+            .join(", ");
 
         query += ") VALUES ";
 
         // Now add the sets of values to insert
-        first = true;
         let mut param_index: usize = 1;
         let mut param_list: Vec<String> = Vec::new();
+        let mut strings: Vec<String> = Vec::new();
         for values in &create.values {
-            if first {
-                first = false;
-            } else {
-                query += ", "
-            }
-            query += &self.compile_class_create(
+            strings.push(self.compile_class_create(
                 &idl_class,
                 &values,
                 &mut param_index,
                 &mut param_list,
-            )?;
+            )?);
         }
+
+        query += &strings.join(", ");
 
         // And finally, tell PG to return the primary keys just created.
         query += &format!(" RETURNING {pkey_field}");
@@ -365,7 +360,7 @@ impl Translator {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut update = IdlClassUpdate::new(idl_class.classname());
-        for field in idl_class.real_fields() {
+        for field in idl_class.real_fields_sorted() {
             update.add_value(field.name(), &obj[field.name()]);
         }
 
@@ -621,7 +616,7 @@ impl Translator {
         param_list: &mut Vec<String>,
     ) -> Result<String, String> {
         let mut sql = String::from("(");
-        let mut first = true;
+        let mut strings = Vec::new();
 
         for kvp in values {
             let field = &kvp.0;
@@ -632,15 +627,17 @@ impl Translator {
                 class.classname()
             ))?;
 
-            if first {
-                first = false;
-            } else {
-                sql += ", ";
-            }
-
-            sql +=
-                &self.append_json_literal(param_index, param_list, idl_field, value, None, true)?;
+            strings.push(self.append_json_literal(
+                param_index,
+                param_list,
+                idl_field,
+                value,
+                None,
+                true,
+            )?);
         }
+
+        sql += &strings.join(", ");
 
         sql += ")";
 
@@ -656,7 +653,7 @@ impl Translator {
         param_list: &mut Vec<String>,
     ) -> Result<String, String> {
         let mut sql = String::from("SET");
-        let mut first = true;
+        let mut strings = Vec::new();
 
         for kvp in values {
             let field = &kvp.0;
@@ -667,23 +664,20 @@ impl Translator {
                 class.classname()
             ))?;
 
-            if first {
-                first = false;
-            } else {
-                sql += ", ";
-            }
-
-            sql += &format!(" {field} ");
-
-            sql += &self.append_json_literal(
-                param_index,
-                param_list,
-                idl_field,
-                value,
-                Some("="),
-                false,
-            )?;
+            strings.push(format!(
+                " {field} {}",
+                self.append_json_literal(
+                    param_index,
+                    param_list,
+                    idl_field,
+                    value,
+                    Some("="),
+                    false,
+                )?
+            ));
         }
+
+        sql += &strings.join(", ");
 
         Ok(sql)
     }
@@ -721,9 +715,7 @@ impl Translator {
             ));
         }
 
-        let mut sql = String::from(" WHERE");
-
-        let mut first = true;
+        let mut filters = Vec::new();
         for (field, subq) in filter.entries() {
             log::trace!("compile_class_filter adding filter on field: {field}");
 
@@ -732,61 +724,40 @@ impl Translator {
                 class.classname()
             ))?;
 
-            if first {
-                first = false;
-            } else {
-                sql += " AND";
-            }
-
-            sql += &format!(" {field}");
-
-            match subq {
-                JsonValue::Array(_) => {
-                    sql += &self.compile_class_filter_array(
-                        param_index,
-                        param_list,
-                        idl_field,
-                        &subq,
-                    )?;
-                }
+            let filter = match subq {
+                JsonValue::Array(_) => self.compile_class_filter_array(
+                    param_index,
+                    param_list,
+                    idl_field,
+                    &subq,
+                    "IN",
+                )?,
                 JsonValue::Object(_) => {
-                    sql += &self.compile_class_filter_object(
+                    self.compile_class_filter_object(param_index, param_list, idl_field, &subq)?
+                }
+                JsonValue::Number(_) | JsonValue::String(_) | JsonValue::Short(_) => self
+                    .append_json_literal(
                         param_index,
                         param_list,
                         idl_field,
-                        &subq,
-                    )?;
-                }
-                JsonValue::Number(_) | JsonValue::String(_) | JsonValue::Short(_) => {
-                    sql += &format!(
-                        " {}",
-                        self.append_json_literal(
-                            param_index,
-                            param_list,
-                            idl_field,
-                            subq,
-                            Some("="),
-                            false
-                        )?
-                    );
-                }
-                JsonValue::Boolean(_) | JsonValue::Null => {
-                    sql += &format!(
-                        " {}",
-                        self.append_json_literal(
-                            param_index,
-                            param_list,
-                            idl_field,
-                            subq,
-                            Some("IS"),
-                            false
-                        )?
-                    );
-                }
-            }
+                        subq,
+                        Some("="),
+                        false,
+                    )?,
+                JsonValue::Boolean(_) | JsonValue::Null => self.append_json_literal(
+                    param_index,
+                    param_list,
+                    idl_field,
+                    subq,
+                    Some("IS"),
+                    false,
+                )?,
+            };
+
+            filters.push(format!(" {field} {filter}"));
         }
 
-        Ok(sql)
+        Ok(format!(" WHERE {}", filters.join(" AND")))
     }
 
     /// Add a JSON literal (scalar) value to a query.
@@ -844,49 +815,59 @@ impl Translator {
         idl_field: &idl::Field,
         obj: &JsonValue,
     ) -> Result<String, String> {
-        let mut sql = String::new();
-
         // A filter object may only contain a single operand => value combo
-        if let Some((key, val)) = obj.entries().next() {
-            let operand = key.to_uppercase();
+        let (key, val) = obj
+            .entries()
+            .next()
+            .ok_or(format!("Invalid query object; {obj:?}"))?;
 
-            if !Translator::is_supported_operand(&operand) {
-                Err(format!("Unsupported operand: {operand} : {obj}"))?;
-            }
+        let operand = key.to_uppercase();
 
-            // TODO add support for NOT IN (...) here?
-
-            sql += &format!(
-                " {}",
-                self.append_json_literal(
-                    param_index,
-                    param_list,
-                    idl_field,
-                    val,
-                    Some(&operand),
-                    false
-                )?
-            );
+        if !Translator::is_supported_operand(&operand) {
+            Err(format!("Unsupported operand: {operand} : {obj}"))?;
         }
 
-        Ok(sql)
+        if val.is_array() {
+            // E.g. NOT IN (a, b, c, ...)
+
+            self.compile_class_filter_array(
+                param_index,
+                param_list,
+                idl_field,
+                val,
+                operand.as_str(),
+            )
+        } else {
+            self.append_json_literal(
+                param_index,
+                param_list,
+                idl_field,
+                val,
+                Some(&operand),
+                false,
+            )
+        }
     }
 
     /// Turn an array-based subquery into part of the WHERE AND.
     ///
-    /// This creates a SQL IN clause.
+    /// This creates a list of values to compare to, e.g. IN list.
     fn compile_class_filter_array(
         &self,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
         arr: &JsonValue,
+        operand: &str,
     ) -> Result<String, String> {
-        let mut sql = String::from(" IN (");
-        let mut strings: Vec<String> = Vec::new();
+        let operand = operand.to_uppercase();
+        if !Translator::is_supported_operand(&operand) {
+            Err(format!("Unsupported operand: {operand} : {arr}"))?;
+        }
 
+        let mut filters: Vec<String> = Vec::new();
         for val in arr.members() {
-            strings.push(self.append_json_literal(
+            filters.push(self.append_json_literal(
                 param_index,
                 param_list,
                 idl_field,
@@ -896,11 +877,7 @@ impl Translator {
             )?);
         }
 
-        sql += &strings.join(",");
-
-        sql += ")";
-
-        Ok(sql)
+        Ok(format!("{operand} ({})", filters.join(", ")))
     }
 
     /// Maps a PG row into an IDL-based JsonValue;
