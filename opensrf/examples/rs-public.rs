@@ -161,6 +161,10 @@ impl ApplicationWorker for RsPublicWorker {
         Ok(())
     }
 
+    fn end_session(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     fn keepalive_timeout(&mut self) -> Result<(), String> {
         Ok(())
     }

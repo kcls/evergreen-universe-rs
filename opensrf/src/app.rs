@@ -38,6 +38,11 @@ pub trait ApplicationWorker: Any {
     /// Offers a chance to clean up any resources.
     fn worker_end(&mut self) -> Result<(), String>;
 
+    /// Called for stateful sessions on DISCONNECT or keepliave timeout,
+    /// andcalled for stateless sessions (one-offs) after the single
+    /// request has completed.
+    fn end_session(&mut self) -> Result<(), String>;
+
     /// Called if the client sent a CONNECT but never sent a DISCONNECT
     /// within the configured timeout.
     fn keepalive_timeout(&mut self) -> Result<(), String>;

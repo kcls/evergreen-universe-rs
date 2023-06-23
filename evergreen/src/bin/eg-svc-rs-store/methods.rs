@@ -1,7 +1,4 @@
-//use eg::util;
-//use eg::settings::Settings;
-//use eg::idldb::{IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
-use eg::idldb::Translator;
+use eg::idldb::{IdlClassSearch, Translator};
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
@@ -61,6 +58,19 @@ pub static METHODS: &[StaticMethod] = &[
             name: "primary-key",
             datatype: ParamDataType::Scalar,
             desc: "Primary Key Value",
+        }],
+    },
+    // Stub method for *.search calls. Not directly published.
+    StaticMethod {
+        name: "search-stub",
+        desc: "search an IDL object by its primary key",
+        param_count: ParamCount::Exactly(1),
+        handler: search,
+        params: &[StaticParam {
+            required: true,
+            name: "query",
+            datatype: ParamDataType::Object,
+            desc: "Query Object",
         }],
     },
     // Stub method for *.update calls. Not directly published.
@@ -138,6 +148,30 @@ pub fn retrieve(
     }
 }
 
+// open-ils.rs-store.direct.actor.user.search
+pub fn search(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsStoreWorker::downcast(worker)?;
+    let idl = worker.env().idl().clone();
+    let classname = get_idl_class(&idl, method.method())?;
+
+    let db = worker.database().clone();
+    let translator = Translator::new(idl.to_owned(), db);
+
+    let query = method.param(0);
+    let mut search = IdlClassSearch::new(&classname);
+    search.set_filter(query.clone());
+
+    for value in translator.idl_class_search(&search)? {
+        session.respond(value)?;
+    }
+
+    Ok(())
+}
+
 // open-ils.rs-store.direct.actor.user.delete
 pub fn delete(
     worker: &mut Box<dyn ApplicationWorker>,
@@ -159,7 +193,7 @@ pub fn delete(
     session.respond(count)
 }
 
-// open-ils.rs-store.direct.actor.user.delete
+// open-ils.rs-store.direct.actor.user.create
 pub fn create(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
@@ -178,7 +212,7 @@ pub fn create(
     session.respond(count)
 }
 
-// open-ils.rs-store.direct.actor.user.delete
+// open-ils.rs-store.direct.actor.user.update
 pub fn update(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,

@@ -211,6 +211,10 @@ impl ApplicationWorker for RsPubWorker {
         Ok(())
     }
 
+    fn end_session(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     fn keepalive_timeout(&mut self) -> Result<(), String> {
         Ok(())
     }

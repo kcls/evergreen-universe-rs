@@ -249,6 +249,11 @@ impl Worker {
                 continue;
             }
 
+            if let Err(e) = appworker.end_session() {
+                log::error!("end_session() returned an error: {e}");
+                break;
+            }
+
             if let Err(e) = self.notify_state(WorkerState::Idle) {
                 // If we can't notify our parent, it means the parent
                 // thread is no longer running.  Get outta here.

@@ -69,6 +69,12 @@ impl RsStoreApplication {
             .next()
             .unwrap();
 
+        let search_stub = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq("search-stub"))
+            .next()
+            .unwrap();
+
         let update_stub = methods::METHODS
             .iter()
             .filter(|m| m.name.eq("update-stub"))
@@ -81,43 +87,60 @@ impl RsStoreApplication {
             .next()
             .unwrap();
 
-        for idl_class in self.idl.as_ref().unwrap().classes().values() {
-            if let Some(ctrl) = idl_class.controller() {
-                // For now, publish all of cstore's classes
-                if ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store") {
-                    if let Some(fm) = idl_class.fieldmapper() {
-                        let fieldmapper = fm.replace("::", ".");
-
-                        // CREATE ---
-                        let mut clone = create_stub.into_method(APPNAME);
-                        let apiname = format!("{APPNAME}.direct.{fieldmapper}.create");
-                        clone.set_name(&apiname);
-                        log::trace!("Registering: {apiname}");
-                        methods.push(clone);
-
-                        // RETRIEVE ---
-                        let mut clone = retrieve_stub.into_method(APPNAME);
-                        let apiname = format!("{APPNAME}.direct.{fieldmapper}.retrieve");
-                        clone.set_name(&apiname);
-                        log::trace!("Registering: {apiname}");
-                        methods.push(clone);
-
-                        // UPDATE ---
-                        let mut clone = update_stub.into_method(APPNAME);
-                        let apiname = format!("{APPNAME}.direct.{fieldmapper}.update");
-                        clone.set_name(&apiname);
-                        log::trace!("Registering: {apiname}");
-                        methods.push(clone);
-
-                        // DELETE ---
-                        let mut clone = delete_stub.into_method(APPNAME);
-                        let apiname = format!("{APPNAME}.direct.{fieldmapper}.delete");
-                        clone.set_name(&apiname);
-                        log::trace!("Registering: {apiname}");
-                        methods.push(clone);
-                    }
+        // List of fieldmapper values for all classes controlled by
+        // cstore (for now) and rs-store.
+        for fm in self
+            .idl
+            .as_ref()
+            .unwrap()
+            .classes()
+            .values()
+            .filter(|c| {
+                if let Some(ctrl) = c.controller() {
+                    ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store")
+                } else {
+                    false
                 }
-            }
+            })
+            .filter(|c| c.fieldmapper().is_some())
+            .map(|c| c.fieldmapper().unwrap())
+        {
+            let fieldmapper = fm.replace("::", ".");
+
+            // CREATE ---
+            let mut clone = create_stub.into_method(APPNAME);
+            let apiname = format!("{APPNAME}.direct.{fieldmapper}.create");
+            clone.set_name(&apiname);
+            log::trace!("Registering: {apiname}");
+            methods.push(clone);
+
+            // RETRIEVE ---
+            let mut clone = retrieve_stub.into_method(APPNAME);
+            let apiname = format!("{APPNAME}.direct.{fieldmapper}.retrieve");
+            clone.set_name(&apiname);
+            log::trace!("Registering: {apiname}");
+            methods.push(clone);
+
+            // SEARCH ---
+            let mut clone = search_stub.into_method(APPNAME);
+            let apiname = format!("{APPNAME}.direct.{fieldmapper}.search");
+            clone.set_name(&apiname);
+            log::trace!("Registering: {apiname}");
+            methods.push(clone);
+
+            // UPDATE ---
+            let mut clone = update_stub.into_method(APPNAME);
+            let apiname = format!("{APPNAME}.direct.{fieldmapper}.update");
+            clone.set_name(&apiname);
+            log::trace!("Registering: {apiname}");
+            methods.push(clone);
+
+            // DELETE ---
+            let mut clone = delete_stub.into_method(APPNAME);
+            let apiname = format!("{APPNAME}.direct.{fieldmapper}.delete");
+            clone.set_name(&apiname);
+            log::trace!("Registering: {apiname}");
+            methods.push(clone);
         }
 
         log::info!("{APPNAME} registered {} auto methods", methods.len());
@@ -335,10 +358,15 @@ impl ApplicationWorker for RsStoreWorker {
 
     fn keepalive_timeout(&mut self) -> Result<(), String> {
         log::debug!("IDL worker timed out in keepalive");
+        self.end_session()
+    }
 
+    fn end_session(&mut self) -> Result<(), String> {
+        // Alway rollback an active transaction if our client goes away
+        // or disconnects prematurely.
         if let Some(ref mut db) = self.database {
             if db.borrow().in_transaction() {
-                log::info!("Rollback back DB session after keepalive timeout");
+                log::info!("Rollback back DB transaction on end of session");
                 db.borrow_mut().xact_rollback()?;
             }
         }
@@ -347,12 +375,6 @@ impl ApplicationWorker for RsStoreWorker {
 
     fn api_call_error(&mut self, _request: &message::Method, error: &str) {
         log::debug!("API failed: {error}");
-
-        if let Some(ref mut db) = self.database {
-            if db.borrow().in_transaction() {
-                log::info!("Rollback back DB session after API call error");
-                db.borrow_mut().xact_rollback().ok();
-            }
-        }
+        self.end_session().ok(); // ignore additional errors
     }
 }

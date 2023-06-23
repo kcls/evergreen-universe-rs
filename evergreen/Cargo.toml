@@ -43,3 +43,8 @@ url = "2.3"
 
 [[example]]
 name = "basic-requests"
+
+[[bin]]
+# End-to-end test for open-ils.rs-store
+name = "rs-store-e2e"
+path = "src/bin/eg-svc-rs-store/rs-store-e2e.rs"
