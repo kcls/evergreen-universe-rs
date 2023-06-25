@@ -348,6 +348,10 @@ impl ApplicationWorker for RsStoreWorker {
         Ok(())
     }
 
+    fn worker_idle_wake(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Called after all requests are handled and the worker is
     /// shutting down.
     fn worker_end(&mut self) -> Result<(), String> {

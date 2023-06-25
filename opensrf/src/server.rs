@@ -130,6 +130,9 @@ impl Server {
     }
 
     fn spawn_threads(&mut self) {
+        if self.stopping.load(Ordering::Relaxed) {
+            return;
+        }
         while self.workers.len() < self.min_workers {
             self.spawn_one_thread();
         }
@@ -144,11 +147,13 @@ impl Server {
         let factory = self.app().worker_factory();
         let env = self.app().env();
         let host_settings = self.host_settings.clone();
+        let stopping = self.stopping.clone();
 
         log::trace!("server: spawning a new worker {worker_id}");
 
         let handle = thread::spawn(move || {
             Server::start_worker_thread(
+                stopping,
                 env,
                 host_settings,
                 factory,
@@ -170,6 +175,7 @@ impl Server {
     }
 
     fn start_worker_thread(
+        stopping: Arc<AtomicBool>,
         env: Box<dyn app::ApplicationEnv>,
         host_settings: Arc<HostSettings>,
         factory: app::ApplicationWorkerFactory,
@@ -186,6 +192,7 @@ impl Server {
             worker_id,
             config,
             host_settings,
+            stopping,
             methods,
             to_parent_tx,
         ) {
@@ -371,12 +378,16 @@ impl Server {
     }
 
     fn shutdown(&mut self) {
-        log::info!("{} shutting down", self.application.name());
+        log::info!(
+            "{} shutting down with {} active threads",
+            self.application.name(),
+            self.active_thread_count()
+        );
 
         let timer = util::Timer::new(SHUTDOWN_MAX_WAIT);
         let duration = Duration::from_secs(1);
 
-        while self.active_thread_count() > 0 && !timer.done() {
+        while !timer.done() && self.workers.len() > 0 {
             log::info!(
                 "Waiting for workers to finish in graceful shutdown; remaining={}",
                 timer.remaining()
@@ -391,6 +402,7 @@ impl Server {
 
         // Timer may have completed before all working threads reported
         // as finished.  Force-kill all of our threads at this point.
+        // Additionally, idle threads are all sitting in recv() on the
         std::process::exit(0);
     }
 
@@ -443,6 +455,10 @@ impl Server {
         let active = self.active_thread_count();
 
         log::trace!("server: workers idle={idle} active={active}");
+
+        if self.stopping.load(Ordering::Relaxed) {
+            return;
+        }
 
         if idle == 0 {
             if active < self.max_workers {

@@ -15,10 +15,14 @@ use super::session::ServerSession;
 use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time;
+
+// How often each worker wakes to check for shutdown signals, etc.
+const POLL_TIME: i32 = 5;
 
 /// Each worker thread is in one of these states.
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -48,6 +52,8 @@ pub struct Worker {
     service: String,
 
     config: Arc<conf::Config>,
+
+    stopping: Arc<AtomicBool>,
 
     // Settings from opensrf.settings
     host_settings: Arc<HostSettings>,
@@ -84,6 +90,7 @@ impl Worker {
         worker_id: u64,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
+        stopping: Arc<AtomicBool>,
         methods: Arc<HashMap<String, method::Method>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> Result<Worker, String> {
@@ -92,6 +99,7 @@ impl Worker {
         Ok(Worker {
             config,
             host_settings,
+            stopping,
             service,
             worker_id,
             methods,
@@ -184,7 +192,7 @@ impl Worker {
 
                 // Wait indefinitely for top-level service messages.
                 sent_to = &service_addr;
-                timeout = -1;
+                timeout = POLL_TIME;
             }
 
             log::trace!(
@@ -198,20 +206,21 @@ impl Worker {
                 .bus_mut()
                 .recv(timeout, Some(sent_to));
 
-            if let Err(e) = self.notify_state(WorkerState::Active) {
-                log::error!("{self} failed to notify parent of Active state. Exiting. {e}");
-                break;
-            }
+            // True if this wake cycle performed any tasks.
+            let mut work_occurred = false;
 
             match recv_op {
                 Err(e) => {
                     log::error!("{selfstr} recv() in listen produced an error: {e}");
 
-                    // If an error occurs here, we can get stuck in a tight
-                    // loop that's hard to break.  Add a sleep so we can
-                    // more easily control-c out of the loop.
+                    // There's a good chance an error in recv() means
+                    // the thread/system is unusable, so let the worker
+                    // exit.
+                    //
+                    // Avoid a tight thread respawn loop with a short pause.
                     thread::sleep(time::Duration::from_secs(1));
                     self.connected = false;
+                    break;
                 }
 
                 Ok(recv_op) => {
@@ -220,8 +229,15 @@ impl Worker {
                             // See if the caller failed to send a follow-up
                             // request within the keepalive timeout.
                             if self.connected {
+                                if let Err(e) = self.notify_state(WorkerState::Active) {
+                                    log::error!("{self} failed to notify parent of Active state. Exiting. {e}");
+                                    break;
+                                }
+
                                 log::warn!("{selfstr} timeout waiting on request while connected");
                                 self.connected = false;
+                                work_occurred = true;
+
                                 if let Err(e) =
                                     self.reply_with_status(MessageStatus::Timeout, "Timeout")
                                 {
@@ -233,10 +249,19 @@ impl Worker {
                         }
 
                         Some(msg) => {
+                            if let Err(e) = self.notify_state(WorkerState::Active) {
+                                log::error!(
+                                    "{self} failed to notify parent of Active state. Exiting. {e}"
+                                );
+                                break;
+                            }
+
                             if let Err(e) = self.handle_transport_message(&msg, &mut appworker) {
                                 log::error!("{selfstr} error handling message: {e}");
                                 self.connected = false;
                             }
+
+                            work_occurred = true;
                         }
                     }
                 }
@@ -249,29 +274,45 @@ impl Worker {
                 continue;
             }
 
-            if let Err(e) = appworker.end_session() {
-                log::error!("end_session() returned an error: {e}");
-                break;
+            if work_occurred {
+                // If we processed a message let the worker know a stateless
+                // request or stateful conversation has just completed.
+                if let Err(e) = appworker.end_session() {
+                    log::error!("end_session() returned an error: {e}");
+                    break;
+                }
+
+                if let Err(e) = self.notify_state(WorkerState::Idle) {
+                    // If we can't notify our parent, it means the parent
+                    // thread is no longer running.  Get outta here.
+                    log::error!("{selfstr} could not notify parent of Idle state. Exiting. {e}");
+                    break;
+                }
+            } else {
+                // Nothing interesting happened.
+                if let Err(e) = appworker.worker_idle_wake() {
+                    log::error!("worker_idle_wake() returned an error: {e}");
+                    break;
+                }
             }
 
-            if let Err(e) = self.notify_state(WorkerState::Idle) {
-                // If we can't notify our parent, it means the parent
-                // thread is no longer running.  Get outta here.
-                log::error!("{selfstr} could not notify parent of Idle state. Exiting. {e}");
+            // Did we get a shutdown signal?
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("{selfstr} received a stop signal");
                 break;
             }
 
             requests += 1;
         }
 
-        log::trace!("{self} exiting on max requests or early break");
-
-        if let Err(_) = self.notify_state(WorkerState::Done) {
-            log::error!("{self} failed to notify parent of Done state");
-        }
+        log::trace!("{self} exiting listen loop");
 
         if let Err(e) = appworker.worker_end() {
             log::error!("{selfstr} worker_end failed {e}");
+        }
+
+        if let Err(_) = self.notify_state(WorkerState::Done) {
+            log::error!("{self} failed to notify parent of Done state");
         }
 
         // Clear our worker-specific bus address of any lingering data.

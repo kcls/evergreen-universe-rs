@@ -159,6 +159,10 @@ impl ApplicationWorker for RsPrivateWorker {
         Ok(())
     }
 
+    fn worker_idle_wake(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     fn worker_end(&mut self) -> Result<(), String> {
         log::debug!("Thread ending");
         Ok(())

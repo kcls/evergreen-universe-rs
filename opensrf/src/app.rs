@@ -33,6 +33,14 @@ pub trait ApplicationWorker: Any {
     /// Called after absorb_env, but before any work occurs.
     fn worker_start(&mut self) -> Result<(), String>;
 
+    /// Called every time our worker wakes up to check for signals,
+    /// timeouts, etc.
+    ///
+    /// This method is only called when no other actions occur as
+    /// a result of waking up.  It's not called if there is a
+    /// shutdown signal, keepliave timeout, API request, etc.
+    fn worker_idle_wake(&mut self) -> Result<(), String>;
+
     /// Called after all work is done and the thread is going away.
     ///
     /// Offers a chance to clean up any resources.
