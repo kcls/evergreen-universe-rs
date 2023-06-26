@@ -19,8 +19,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Warn when there are fewer than this many idle threads
 const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
-const CHECK_COMMANDS_TIMEOUT: u64 = 1;
+/// How often do we wake to check for shutdown, etc. signals when
+/// no other activity is occurring.
+const IDLE_WAKE_TIME: u64 = 3;
+/// Max time in seconds to allow active workers to finish their tasks.
 const SHUTDOWN_MAX_WAIT: i32 = 30;
+const DEFAULT_MIN_WORKERS: usize = 1;
+const DEFAULT_MAX_WORKERS: usize = 30;
 
 #[derive(Debug)]
 pub struct WorkerThread {
@@ -51,7 +56,7 @@ impl Server {
 
         let config = match init::init() {
             Ok(c) => c,
-            Err(e) => panic!("Cannot start server for {}: {}", service, e),
+            Err(e) => Err(format!("Cannot start server for {service}: {e}"))?,
         };
 
         // We're done editing our Config. Wrap it in an Arc.
@@ -59,23 +64,23 @@ impl Server {
 
         let mut client = match Client::connect(config.clone()) {
             Ok(c) => c,
-            Err(e) => panic!("Server cannot connect to bus: {}", e),
+            Err(e) => Err(format!("Server cannot connect to bus: {e}"))?,
         };
 
         let host_settings = match SettingsClient::get_host_settings(&mut client, false) {
             Ok(s) => s,
-            Err(e) => panic!("Cannot fetch host setttings: {}", e),
+            Err(e) => Err(format!("Cannot fetch host setttings: {e}"))?,
         };
 
         let min_workers = host_settings
             .value(&format!("apps/{service}/unix_config/min_children"))
             .as_usize()
-            .unwrap_or(1);
+            .unwrap_or(DEFAULT_MIN_WORKERS);
 
         let max_workers = host_settings
             .value(&format!("apps/{service}/unix_config/max_children"))
             .as_usize()
-            .unwrap_or(20);
+            .unwrap_or(DEFAULT_MAX_WORKERS);
 
         // We have a single to-parent channel whose trasmitter is cloned
         // per thread.  Communication from worker threads to the parent
@@ -347,7 +352,7 @@ impl Server {
         self.spawn_threads();
         self.setup_signal_handlers()?;
 
-        let duration = Duration::from_secs(CHECK_COMMANDS_TIMEOUT);
+        let duration = Duration::from_secs(IDLE_WAKE_TIME);
 
         loop {
             // Wait for worker thread state updates
@@ -378,20 +383,23 @@ impl Server {
     }
 
     fn shutdown(&mut self) {
-        log::info!(
-            "{} shutting down with {} active threads",
-            self.application.name(),
-            self.active_thread_count()
-        );
-
         let timer = util::Timer::new(SHUTDOWN_MAX_WAIT);
         let duration = Duration::from_secs(1);
 
         while !timer.done() && self.workers.len() > 0 {
-            log::info!(
-                "Waiting for workers to finish in graceful shutdown; remaining={}",
-                timer.remaining()
+
+            let info = format!(
+                "{} shutdown: {} threads; {} active; time remaining {}",
+                self.application.name(),
+                self.workers.len(),
+                self.active_thread_count(),
+                timer.remaining(),
             );
+
+            // Nod to anyone control-C'ing from the command line.
+            println!("{info}...");
+
+            log::info!("{info}");
 
             if let Ok(evt) = self.to_parent_rx.recv_timeout(duration) {
                 self.handle_worker_event(&evt);
@@ -402,7 +410,6 @@ impl Server {
 
         // Timer may have completed before all working threads reported
         // as finished.  Force-kill all of our threads at this point.
-        // Additionally, idle threads are all sitting in recv() on the
         std::process::exit(0);
     }
 

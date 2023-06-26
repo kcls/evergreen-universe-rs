@@ -160,10 +160,11 @@ impl ApplicationWorker for RsPublicWorker {
         Ok(())
     }
 
-    fn worker_end(&mut self) -> Result<(), String> {
-        log::debug!("Thread ending");
+    fn start_session(&mut self) -> Result<(), String> {
         Ok(())
     }
+
+    fn api_call_error(&mut self, _request: &message::Method, _error: &str) {}
 
     fn end_session(&mut self) -> Result<(), String> {
         Ok(())
@@ -173,7 +174,10 @@ impl ApplicationWorker for RsPublicWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::Method, _error: &str) {}
+    fn worker_end(&mut self) -> Result<(), String> {
+        log::debug!("Thread ending");
+        Ok(())
+    }
 }
 
 fn main() {

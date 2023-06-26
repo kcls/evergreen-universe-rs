@@ -215,6 +215,10 @@ impl ApplicationWorker for RsPubWorker {
         Ok(())
     }
 
+    fn start_session(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     fn end_session(&mut self) -> Result<(), String> {
         Ok(())
     }

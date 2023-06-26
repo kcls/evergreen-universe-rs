@@ -18,6 +18,13 @@ use crate::methods;
 
 const APPNAME: &str = "open-ils.rs-store";
 
+/// If this worker instance has performed no tasks in this amount of
+/// time, disconnect our database connection and free up resources.
+/// Will reconnect as needed.
+/// A value of 0 disables the feature.
+/// TODO make this configurable.
+const IDLE_DISCONNECT_TIME: i32 = 300;
+
 /// Environment shared by all service workers.
 ///
 /// The environment is only mutable up until the point our
@@ -235,10 +242,18 @@ pub struct RsStoreWorker {
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, Method>>>,
     database: Option<Rc<RefCell<DatabaseConnection>>>,
+    last_work_timer: Option<opensrf::util::Timer>,
 }
 
 impl RsStoreWorker {
     pub fn new() -> Self {
+        let timer;
+        if IDLE_DISCONNECT_TIME > 0 {
+            timer = Some(opensrf::util::Timer::new(IDLE_DISCONNECT_TIME));
+        } else {
+            timer = None;
+        }
+
         RsStoreWorker {
             env: None,
             client: None,
@@ -246,6 +261,7 @@ impl RsStoreWorker {
             methods: None,
             host_settings: None,
             database: None,
+            last_work_timer: timer,
         }
     }
 
@@ -287,6 +303,25 @@ impl RsStoreWorker {
         self.database
             .as_ref()
             .expect("We have no database connection!")
+    }
+
+    pub fn setup_database(&mut self) -> Result<(), String> {
+        // TODO pull DB settings from host settings
+        let mut builder = DatabaseConnectionBuilder::new();
+
+        builder.set_application(&format!(
+            "{APPNAME}@{}(thread_{})",
+            self.config.as_ref().unwrap().hostname(),
+            opensrf::util::thread_id()
+        ));
+
+        log::info!("{APPNAME} connecting to database");
+
+        let mut db = builder.build();
+        db.connect()?;
+        self.database = Some(db.into_shared());
+
+        Ok(())
     }
 }
 
@@ -332,23 +367,23 @@ impl ApplicationWorker for RsStoreWorker {
     /// goes into its listen state.
     fn worker_start(&mut self) -> Result<(), String> {
         log::debug!("Thread starting");
-
-        // TODO pull DB settings from host settings
-        let mut builder = DatabaseConnectionBuilder::new();
-        builder.set_application(&format!(
-            "{APPNAME}@{}(thread_{})",
-            self.config.as_ref().unwrap().hostname(),
-            opensrf::util::thread_id()
-        ));
-
-        log::info!("{APPNAME} connecting to database");
-        let mut db = builder.build();
-        db.connect()?;
-        self.database = Some(db.into_shared());
-        Ok(())
+        self.setup_database()
     }
 
     fn worker_idle_wake(&mut self) -> Result<(), String> {
+        if self.database.is_some() {
+            if let Some(ref t) = self.last_work_timer {
+                if t.done() {
+                    log::debug!("Disconnecting DB on idle timeout");
+
+                    // Drop'ing the database connection will force it to
+                    // disconnect and cleanup
+                    // unwrap() -- if this fails, something is really wrong.
+                    std::mem::replace(&mut self.database, None).unwrap();
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -365,6 +400,17 @@ impl ApplicationWorker for RsStoreWorker {
         self.end_session()
     }
 
+    fn start_session(&mut self) -> Result<(), String> {
+        if let Some(ref mut t) = self.last_work_timer {
+            t.reset();
+        }
+        if self.database.is_none() {
+            return self.setup_database();
+        }
+
+        Ok(())
+    }
+
     fn end_session(&mut self) -> Result<(), String> {
         // Alway rollback an active transaction if our client goes away
         // or disconnects prematurely.
@@ -374,6 +420,12 @@ impl ApplicationWorker for RsStoreWorker {
                 db.borrow_mut().xact_rollback()?;
             }
         }
+
+        // Reset here so long-running sessions are counted as "work".
+        if let Some(ref mut t) = self.last_work_timer {
+            t.reset();
+        }
+
         Ok(())
     }
 

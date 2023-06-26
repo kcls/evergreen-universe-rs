@@ -22,7 +22,7 @@ use std::thread;
 use std::time;
 
 // How often each worker wakes to check for shutdown signals, etc.
-const POLL_TIME: i32 = 5;
+const IDLE_WAKE_TIME: i32 = 5;
 
 /// Each worker thread is in one of these states.
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -168,7 +168,7 @@ impl Worker {
 
         let mut requests: u32 = 0;
         let service_addr = ServiceAddress::new(&self.service).as_str().to_string();
-        let local_addr = self.client.address().as_str().to_string();
+        let my_addr = self.client.address().as_str().to_string();
 
         while requests < max_requests {
             let timeout: i32;
@@ -179,7 +179,7 @@ impl Worker {
                 // Listen for messages sent specifically to our bus
                 // address and only wait up to keeplive seconds for
                 // subsequent messages.
-                sent_to = &local_addr;
+                sent_to = &my_addr;
                 timeout = keepalive;
             } else {
                 // If we are not within a stateful conversation, clear
@@ -190,82 +190,20 @@ impl Worker {
                     break;
                 }
 
-                // Wait indefinitely for top-level service messages.
                 sent_to = &service_addr;
-                timeout = POLL_TIME;
+                timeout = IDLE_WAKE_TIME;
             }
 
-            log::trace!(
-                "{selfstr} calling recv() timeout={} sent_to={}",
-                timeout,
-                sent_to
-            );
-
-            let recv_op = self
-                .client_internal_mut()
-                .bus_mut()
-                .recv(timeout, Some(sent_to));
-
-            // True if this wake cycle performed any tasks.
-            let mut work_occurred = false;
-
-            match recv_op {
-                Err(e) => {
-                    log::error!("{selfstr} recv() in listen produced an error: {e}");
-
-                    // There's a good chance an error in recv() means
-                    // the thread/system is unusable, so let the worker
-                    // exit.
-                    //
-                    // Avoid a tight thread respawn loop with a short pause.
-                    thread::sleep(time::Duration::from_secs(1));
-                    self.connected = false;
-                    break;
-                }
-
-                Ok(recv_op) => {
-                    match recv_op {
-                        None => {
-                            // See if the caller failed to send a follow-up
-                            // request within the keepalive timeout.
-                            if self.connected {
-                                if let Err(e) = self.notify_state(WorkerState::Active) {
-                                    log::error!("{self} failed to notify parent of Active state. Exiting. {e}");
-                                    break;
-                                }
-
-                                log::warn!("{selfstr} timeout waiting on request while connected");
-                                self.connected = false;
-                                work_occurred = true;
-
-                                if let Err(e) =
-                                    self.reply_with_status(MessageStatus::Timeout, "Timeout")
-                                {
-                                    log::error!(
-                                        "server: could not reply with Timeout message: {e}"
-                                    );
-                                }
-                            }
-                        }
-
-                        Some(msg) => {
-                            if let Err(e) = self.notify_state(WorkerState::Active) {
-                                log::error!(
-                                    "{self} failed to notify parent of Active state. Exiting. {e}"
-                                );
-                                break;
-                            }
-
-                            if let Err(e) = self.handle_transport_message(&msg, &mut appworker) {
-                                log::error!("{selfstr} error handling message: {e}");
-                                self.connected = false;
-                            }
-
-                            work_occurred = true;
-                        }
+            // work_occurred will be true if we handled a message or
+            // had to address a stateful session timeout.
+            let (work_occurred, msg_handled) =
+                match self.handle_recv(&mut appworker, timeout, sent_to) {
+                    Ok(w) => w,
+                    Err(e) => {
+                        log::error!("Error in main loop error: {e}");
+                        break;
                     }
-                }
-            }
+                };
 
             // If we are connected, we remain Active and avoid counting
             // subsequent requests within this stateful converstation
@@ -275,21 +213,28 @@ impl Worker {
             }
 
             if work_occurred {
-                // If we processed a message let the worker know a stateless
+                // also true if msg_handled
+
+                // If we performed any work, let our worker know a stateless
                 // request or stateful conversation has just completed.
                 if let Err(e) = appworker.end_session() {
                     log::error!("end_session() returned an error: {e}");
                     break;
                 }
 
-                if let Err(e) = self.notify_state(WorkerState::Idle) {
-                    // If we can't notify our parent, it means the parent
-                    // thread is no longer running.  Get outta here.
-                    log::error!("{selfstr} could not notify parent of Idle state. Exiting. {e}");
+                if self.set_idle().is_err() {
                     break;
                 }
+
+                // Increment our message handled count if a message
+                // was handled.  Each connected session counts as 1
+                // "request".
+                if msg_handled {
+                    requests += 1;
+                }
             } else {
-                // Nothing interesting happened.
+                // Let the worker know we woke up and nothing interesting
+                // happened.
                 if let Err(e) = appworker.worker_idle_wake() {
                     log::error!("worker_idle_wake() returned an error: {e}");
                     break;
@@ -297,12 +242,11 @@ impl Worker {
             }
 
             // Did we get a shutdown signal?
+            // Only check this once we're done with any active session.
             if self.stopping.load(Ordering::Relaxed) {
                 log::info!("{selfstr} received a stop signal");
                 break;
             }
-
-            requests += 1;
         }
 
         log::trace!("{self} exiting listen loop");
@@ -311,12 +255,100 @@ impl Worker {
             log::error!("{selfstr} worker_end failed {e}");
         }
 
-        if let Err(_) = self.notify_state(WorkerState::Done) {
-            log::error!("{self} failed to notify parent of Done state");
-        }
+        self.notify_state(WorkerState::Done).ok(); // ignore errors
 
         // Clear our worker-specific bus address of any lingering data.
         self.reset().ok();
+    }
+
+    /// Call recv() on our message bus and process the response.
+    ///
+    /// Return value consists of (work_occurred, msg_handled).
+    fn handle_recv(
+        &mut self,
+        appworker: &mut Box<dyn app::ApplicationWorker>,
+        timeout: i32,
+        sent_to: &str,
+    ) -> Result<(bool, bool), String> {
+        let selfstr = format!("{self}");
+
+        let recv_result = self
+            .client_internal_mut()
+            .bus_mut()
+            .recv(timeout, Some(sent_to));
+
+        let msg_op = match recv_result {
+            Ok(o) => o,
+            Err(ref e) => {
+                // There's a good chance an error in recv() means the
+                // thread/system is unusable, so let the worker exit.
+                //
+                // Avoid a tight thread respawn loop with a short pause.
+                thread::sleep(time::Duration::from_secs(1));
+                Err(e)?
+            }
+        };
+
+        let tmsg = match msg_op {
+            Some(v) => v,
+            None => {
+                if !self.connected {
+                    // No new message to handle and no timeout to address.
+                    return Ok((false, false));
+                }
+
+                // Caller failed to send a message within the keepliave interval.
+                log::warn!("{selfstr} timeout waiting on request while connected");
+
+                self.set_active()?;
+
+                if let Err(e) = self.reply_with_status(MessageStatus::Timeout, "Timeout") {
+                    Err(format!("server: could not reply with Timeout message: {e}"))?;
+                }
+
+                return Ok((true, false)); // work occurred
+            }
+        };
+
+        self.set_active()?;
+
+        if !self.connected {
+            // Any message received in a non-connected state represents
+            // the start of a session.  For stateful convos, the
+            // current message will be a CONNECT.  Otherwise, it will
+            // be a one-off request.
+            appworker.start_session()?;
+        }
+
+        if let Err(e) = self.handle_transport_message(&tmsg, appworker) {
+            // An error within our worker's method handler is not enough
+            // to shut down the worker.  Log, force a disconnect on the
+            // session (if applicable) and move on.
+            log::error!("{selfstr} error handling message: {e}");
+            self.connected = false;
+        }
+
+        Ok((true, true)) // work occurred, message handled
+    }
+
+    fn set_active(&mut self) -> Result<(), String> {
+        if let Err(e) = self.notify_state(WorkerState::Active) {
+            Err(format!(
+                "{self} failed to notify parent of Active state. Exiting. {e}"
+            ))?;
+        }
+
+        Ok(())
+    }
+
+    fn set_idle(&mut self) -> Result<(), String> {
+        if let Err(e) = self.notify_state(WorkerState::Idle) {
+            Err(format!(
+                "{self} failed to notify parent of Idle state. Exiting. {e}"
+            ))?;
+        }
+
+        Ok(())
     }
 
     fn handle_transport_message(
