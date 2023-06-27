@@ -57,7 +57,9 @@ pub fn init_with_options(options: &InitOptions) -> Result<conf::Config, String> 
         if let Some(name) = options.appname.as_ref() {
             logger.set_application(name);
         }
-        logger.init().or_else(|e| Err(format!("Error initializing logger: {e}")))?;
+        logger
+            .init()
+            .or_else(|e| Err(format!("Error initializing logger: {e}")))?;
     }
 
     Ok(config)

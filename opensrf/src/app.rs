@@ -39,7 +39,9 @@ pub trait ApplicationWorker: Any {
     /// This method is only called when no other actions occur as
     /// a result of waking up.  It's not called if there is a
     /// shutdown signal, keepliave timeout, API request, etc.
-    fn worker_idle_wake(&mut self) -> Result<(), String>;
+    ///
+    /// * `connected` - True if we are in the middle of a stateful conversation.
+    fn worker_idle_wake(&mut self, connected: bool) -> Result<(), String>;
 
     /// Called after all work is done and the thread is going away.
     ///

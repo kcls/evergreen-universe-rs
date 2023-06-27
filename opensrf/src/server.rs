@@ -392,7 +392,6 @@ impl Server {
         let duration = Duration::from_secs(1);
 
         while !timer.done() && self.workers.len() > 0 {
-
             let info = format!(
                 "{} shutdown: {} threads; {} active; time remaining {}",
                 self.application.name(),

@@ -236,7 +236,7 @@ impl Worker {
             } else {
                 // Let the worker know we woke up and nothing interesting
                 // happened.
-                if let Err(e) = appworker.worker_idle_wake() {
+                if let Err(e) = appworker.worker_idle_wake(self.connected) {
                     log::error!("worker_idle_wake() returned an error: {e}");
                     break;
                 }

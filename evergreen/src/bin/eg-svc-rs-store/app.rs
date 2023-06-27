@@ -20,10 +20,11 @@ const APPNAME: &str = "open-ils.rs-store";
 
 /// If this worker instance has performed no tasks in this amount of
 /// time, disconnect our database connection and free up resources.
-/// Will reconnect as needed.
-/// A value of 0 disables the feature.
+/// Will reconnect when needed.  A value of 0 disables the feature.
 /// TODO make this configurable.
 const IDLE_DISCONNECT_TIME: i32 = 300;
+
+const DIRECT_METHODS: &[&str] = &["create", "retrieve", "search", "update", "delete"];
 
 /// Environment shared by all service workers.
 ///
@@ -63,45 +64,14 @@ impl RsStoreApplication {
         RsStoreApplication { idl: None }
     }
 
+    /// Register CRUD (and search) methods for classes we control.
     fn register_auto_methods(&self, methods: &mut Vec<Method>) {
-        let create_stub = methods::METHODS
-            .iter()
-            .filter(|m| m.name.eq("create-stub"))
-            .next()
-            .unwrap();
-
-        let retrieve_stub = methods::METHODS
-            .iter()
-            .filter(|m| m.name.eq("retrieve-stub"))
-            .next()
-            .unwrap();
-
-        let search_stub = methods::METHODS
-            .iter()
-            .filter(|m| m.name.eq("search-stub"))
-            .next()
-            .unwrap();
-
-        let update_stub = methods::METHODS
-            .iter()
-            .filter(|m| m.name.eq("update-stub"))
-            .next()
-            .unwrap();
-
-        let delete_stub = methods::METHODS
-            .iter()
-            .filter(|m| m.name.eq("delete-stub"))
-            .next()
-            .unwrap();
+        let classes = self.idl.as_ref().unwrap().classes().values();
 
         // List of fieldmapper values for all classes controlled by
-        // cstore (for now) and rs-store.
-        for fm in self
-            .idl
-            .as_ref()
-            .unwrap()
-            .classes()
-            .values()
+        // rs-store and (for now) cstore.
+        for fieldmapper in classes
+            .filter(|c| !c.is_virtual())
             .filter(|c| {
                 if let Some(ctrl) = c.controller() {
                     ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store")
@@ -111,43 +81,27 @@ impl RsStoreApplication {
             })
             .filter(|c| c.fieldmapper().is_some())
             .map(|c| c.fieldmapper().unwrap())
+            .map(|fm| fm.replace("::", "."))
         {
-            let fieldmapper = fm.replace("::", ".");
+            for mtype in DIRECT_METHODS {
+                // Each direct method type has a stub method defined
+                // in our list of StaticMethod's.  Use the stub as the
+                // basis for each auto-method.  The stubs themselves are
+                // not registered.
+                let stub = methods::METHODS
+                    .iter()
+                    .filter(|m| m.name.eq(&format!("{mtype}-stub")))
+                    .next()
+                    .unwrap(); // these are hard-coded to exist.
 
-            // CREATE ---
-            let mut clone = create_stub.into_method(APPNAME);
-            let apiname = format!("{APPNAME}.direct.{fieldmapper}.create");
-            clone.set_name(&apiname);
-            log::trace!("Registering: {apiname}");
-            methods.push(clone);
+                let mut clone = stub.into_method(APPNAME);
+                let apiname = format!("{APPNAME}.direct.{fieldmapper}.{mtype}");
 
-            // RETRIEVE ---
-            let mut clone = retrieve_stub.into_method(APPNAME);
-            let apiname = format!("{APPNAME}.direct.{fieldmapper}.retrieve");
-            clone.set_name(&apiname);
-            log::trace!("Registering: {apiname}");
-            methods.push(clone);
+                log::trace!("Registering: {apiname}");
 
-            // SEARCH ---
-            let mut clone = search_stub.into_method(APPNAME);
-            let apiname = format!("{APPNAME}.direct.{fieldmapper}.search");
-            clone.set_name(&apiname);
-            log::trace!("Registering: {apiname}");
-            methods.push(clone);
-
-            // UPDATE ---
-            let mut clone = update_stub.into_method(APPNAME);
-            let apiname = format!("{APPNAME}.direct.{fieldmapper}.update");
-            clone.set_name(&apiname);
-            log::trace!("Registering: {apiname}");
-            methods.push(clone);
-
-            // DELETE ---
-            let mut clone = delete_stub.into_method(APPNAME);
-            let apiname = format!("{APPNAME}.direct.{fieldmapper}.delete");
-            clone.set_name(&apiname);
-            log::trace!("Registering: {apiname}");
-            methods.push(clone);
+                clone.set_name(&apiname);
+                methods.push(clone);
+            }
         }
 
         log::info!("{APPNAME} registered {} auto methods", methods.len());
@@ -282,20 +236,6 @@ impl RsStoreWorker {
         }
     }
 
-    /// Ref to our OpenSRF client.
-    ///
-    /// Set during absorb_env()
-    pub fn client(&self) -> &Client {
-        self.client.as_ref().unwrap()
-    }
-
-    /// Mutable ref to our OpenSRF client.
-    ///
-    /// Set during absorb_env()
-    pub fn client_mut(&mut self) -> &mut Client {
-        self.client.as_mut().unwrap()
-    }
-
     /// Get a reference to our database connection.
     ///
     /// Panics if we have no connection.
@@ -370,7 +310,12 @@ impl ApplicationWorker for RsStoreWorker {
         self.setup_database()
     }
 
-    fn worker_idle_wake(&mut self) -> Result<(), String> {
+    fn worker_idle_wake(&mut self, connected: bool) -> Result<(), String> {
+        if connected {
+            // Avoid any idle database maintenance when we're mid-session.
+            return Ok(());
+        }
+
         if let Some(ref t) = self.last_work_timer {
             if t.done() {
                 if let Some(db) = self.database.take() {

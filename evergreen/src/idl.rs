@@ -173,6 +173,7 @@ pub struct Class {
     links: HashMap<String, Link>,
     tablename: Option<String>,
     controller: Option<String>,
+    is_virtual: bool,
 }
 
 impl Class {
@@ -212,6 +213,9 @@ impl Class {
 
     pub fn controller(&self) -> Option<&str> {
         self.controller.as_deref()
+    }
+    pub fn is_virtual(&self) -> bool {
+        self.is_virtual
     }
 
     /// Vec of non-virutal fields.
@@ -409,6 +413,11 @@ impl Parser {
             None => None,
         };
 
+        let is_virtual: bool = match node.attribute((OILS_NS_PERSIST, "virtual")) {
+            Some(i) => i == "true",
+            None => false,
+        };
+
         let mut class = Class {
             tablename,
             fieldmapper,
@@ -417,6 +426,7 @@ impl Parser {
             controller,
             classname: name.to_string(),
             label: label,
+            is_virtual,
             fields: HashMap::new(),
             links: HashMap::new(),
             pkey: None,

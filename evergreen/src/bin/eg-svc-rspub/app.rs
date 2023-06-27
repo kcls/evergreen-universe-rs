@@ -204,7 +204,7 @@ impl ApplicationWorker for RsPubWorker {
         Ok(())
     }
 
-    fn worker_idle_wake(&mut self) -> Result<(), String> {
+    fn worker_idle_wake(&mut self, _connected: bool) -> Result<(), String> {
         Ok(())
     }
 
