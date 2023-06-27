@@ -184,7 +184,7 @@ impl Worker {
             } else {
                 // If we are not within a stateful conversation, clear
                 // our bus data and message backlogs since any remaining
-                // is no longer relevant.
+                // data is no longer relevant.
                 if let Err(e) = self.reset() {
                     log::error!("{selfstr} could not reset {e}.  Exiting");
                     break;
@@ -215,7 +215,8 @@ impl Worker {
             if work_occurred {
                 // also true if msg_handled
 
-                // If we performed any work, let our worker know a stateless
+                // If we performed any work and we are outside of a
+                // keepalive loop, let our worker know a stateless
                 // request or stateful conversation has just completed.
                 if let Err(e) = appworker.end_session() {
                     log::error!("end_session() returned an error: {e}");
@@ -241,8 +242,9 @@ impl Worker {
                 }
             }
 
-            // Did we get a shutdown signal?
-            // Only check this once we're done with any active session.
+            // Did we get a shutdown signal?  Check this after
+            // "end_session()" so we don't interrupt a conversation to
+            // shutdown.
             if self.stopping.load(Ordering::Relaxed) {
                 log::info!("{selfstr} received a stop signal");
                 break;

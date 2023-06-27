@@ -815,7 +815,10 @@ impl Router {
 
 fn main() {
     // Prefer router-specific logging to the default client logging
-    let init_ops = init::InitOptions { skip_logging: true };
+    let init_ops = init::InitOptions {
+        skip_logging: true,
+        appname: Some(String::from("router")),
+    };
 
     let config = init::init_with_options(&init_ops).unwrap();
 

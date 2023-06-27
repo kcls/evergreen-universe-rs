@@ -829,7 +829,10 @@ impl Server {
 }
 
 fn main() {
-    let init_ops = init::InitOptions { skip_logging: true };
+    let init_ops = init::InitOptions {
+        skip_logging: true,
+        appname: Some(String::from("websockets")),
+    };
 
     let config = init::init_with_options(&init_ops).unwrap();
 

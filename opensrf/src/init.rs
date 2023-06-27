@@ -6,12 +6,15 @@ const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 
 pub struct InitOptions {
     pub skip_logging: bool,
+    // Application name to use with syslog.
+    pub appname: Option<String>,
 }
 
 impl InitOptions {
     pub fn new() -> InitOptions {
         InitOptions {
             skip_logging: false,
+            appname: None,
         }
     }
 }
@@ -50,9 +53,11 @@ pub fn init_with_options(options: &InitOptions) -> Result<conf::Config, String> 
     }
 
     if !options.skip_logging {
-        logging::Logger::new(config.client().logging())?
-            .init()
-            .or_else(|e| Err(format!("Error initializing logger: {e}")))?;
+        let mut logger = logging::Logger::new(config.client().logging())?;
+        if let Some(name) = options.appname.as_ref() {
+            logger.set_application(name);
+        }
+        logger.init().or_else(|e| Err(format!("Error initializing logger: {e}")))?;
     }
 
     Ok(config)

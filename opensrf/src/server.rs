@@ -54,7 +54,10 @@ impl Server {
     pub fn start(application: Box<dyn app::Application>) -> Result<(), String> {
         let service = application.name();
 
-        let config = match init::init() {
+        let mut options = init::InitOptions::new();
+        options.appname = Some(service.to_string());
+
+        let config = match init::init_with_options(&options) {
             Ok(c) => c,
             Err(e) => Err(format!("Cannot start server for {service}: {e}"))?,
         };
@@ -85,7 +88,9 @@ impl Server {
         // We have a single to-parent channel whose trasmitter is cloned
         // per thread.  Communication from worker threads to the parent
         // are synchronous so the parent always knows exactly how many
-        // threads are active.
+        // threads are active.  With a sync_channel queue size of 0,
+        // workers will block after posting their state events to
+        // the server until the server receives the event.
         let (tx, rx): (
             mpsc::SyncSender<WorkerStateEvent>,
             mpsc::Receiver<WorkerStateEvent>,

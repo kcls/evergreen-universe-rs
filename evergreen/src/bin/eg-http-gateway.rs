@@ -546,7 +546,10 @@ fn main() {
 
         // Skip logging so we can use the loging config in
         // the gateway() config instead.
-        osrf_ops: osrf::init::InitOptions { skip_logging: true },
+        osrf_ops: osrf::init::InitOptions {
+            skip_logging: true,
+            appname: Some(String::from("http-gateway")),
+        },
     };
 
     // Connect to OpenSRF, parse the IDL

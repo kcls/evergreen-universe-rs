@@ -315,7 +315,7 @@ impl RsStoreWorker {
             opensrf::util::thread_id()
         ));
 
-        log::info!("{APPNAME} connecting to database");
+        log::debug!("{APPNAME} connecting to database");
 
         let mut db = builder.build();
         db.connect()?;
@@ -371,15 +371,15 @@ impl ApplicationWorker for RsStoreWorker {
     }
 
     fn worker_idle_wake(&mut self) -> Result<(), String> {
-        if self.database.is_some() {
-            if let Some(ref t) = self.last_work_timer {
-                if t.done() {
+        if let Some(ref t) = self.last_work_timer {
+            if t.done() {
+                if let Some(db) = self.database.take() {
                     log::debug!("Disconnecting DB on idle timeout");
 
-                    // Drop'ing the database connection will force it to
-                    // disconnect and cleanup
-                    // unwrap() -- if this fails, something is really wrong.
-                    std::mem::replace(&mut self.database, None).unwrap();
+                    // drop()'ing the database will result in a disconnect.
+                    // drop() is not strictly necessary here, since the
+                    // variable goes out of scope, but it's nice for clarity.
+                    drop(db);
                 }
             }
         }
