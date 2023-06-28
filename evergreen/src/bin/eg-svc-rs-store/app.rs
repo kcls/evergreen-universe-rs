@@ -203,11 +203,9 @@ pub struct RsStoreWorker {
 
 impl RsStoreWorker {
     pub fn new() -> Self {
-        let timer;
+        let mut timer = None;
         if IDLE_DISCONNECT_TIME > 0 {
             timer = Some(opensrf::util::Timer::new(IDLE_DISCONNECT_TIME));
-        } else {
-            timer = None;
         }
 
         RsStoreWorker {
