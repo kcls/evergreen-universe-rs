@@ -68,17 +68,19 @@ impl RsStoreApplication {
     fn register_auto_methods(&self, methods: &mut Vec<Method>) {
         let classes = self.idl.as_ref().unwrap().classes().values();
 
-        // List of fieldmapper values for all classes controlled by
-        // rs-store and (for now) cstore.
+        // Filter function to find classes with the wanted controllers.
+        // Find classes controlled by our service and (for now) cstore.
+        let cfilter = |c: &&idl::Class| {
+            if let Some(ctrl) = c.controller() {
+                ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store")
+            } else {
+                false
+            }
+        };
+
         for fieldmapper in classes
             .filter(|c| !c.is_virtual())
-            .filter(|c| {
-                if let Some(ctrl) = c.controller() {
-                    ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store")
-                } else {
-                    false
-                }
-            })
+            .filter(cfilter)
             .filter(|c| c.fieldmapper().is_some())
             .map(|c| c.fieldmapper().unwrap())
             .map(|fm| fm.replace("::", "."))
@@ -158,7 +160,7 @@ impl Application for RsStoreApplication {
             .as_str()
             .ok_or(format!("No IDL path!"))?;
 
-        let idl = idl::Parser::parse_file(&idl_file)
+        let idl = idl::Parser::parse_file(idl_file)
             .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
 
         self.idl = Some(idl);
@@ -246,9 +248,39 @@ impl RsStoreWorker {
     }
 
     pub fn setup_database(&mut self) -> Result<(), String> {
-        // TODO pull DB settings from host settings
+        // Our builder will apply default values where none exist in
+        // settings or environment variables.
         let mut builder = DatabaseConnectionBuilder::new();
 
+        let path = format!("apps/{APPNAME}/app_settings/database");
+        let settings = self.host_settings.as_ref().unwrap().value(&path);
+
+        if let Some(user) = settings["user"].as_str() {
+            builder.set_user(user);
+        }
+
+        if let Some(host) = settings["host"].as_str() {
+            builder.set_host(host);
+        }
+
+        if let Some(port) = settings["port"].as_u16() {
+            builder.set_port(port);
+        }
+
+        // Support short and long forms of database name and password.
+        if let Some(db) = settings["db"].as_str() {
+            builder.set_database(db);
+        } else if let Some(db) = settings["database"].as_str() {
+            builder.set_database(db);
+        }
+
+        if let Some(db) = settings["pw"].as_str() {
+            builder.set_password(db);
+        } else if let Some(db) = settings["password"].as_str() {
+            builder.set_password(db);
+        }
+
+        // Build the application name with host and thread ID info.
         builder.set_application(&format!(
             "{APPNAME}@{}(thread_{})",
             self.config.as_ref().unwrap().hostname(),
