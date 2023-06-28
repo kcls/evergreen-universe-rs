@@ -36,7 +36,7 @@ pub fn calculate_penalties(
     let wanted_penalties: Vec<&JsonValue> =
         penalties.iter().filter(|p| p["id"].is_null()).collect();
 
-    //let mut trigger_events; // TODO
+    let mut trigger_events: Vec<(JsonValue, JsonValue, JsonValue)> = Vec::new();
 
     for pen_hash in wanted_penalties {
         let org_unit = number(&pen_hash["org_unit"]);
@@ -67,7 +67,14 @@ pub fn calculate_penalties(
             let new_pen = editor.idl().create_from("ausp", pen_hash.clone())?;
             editor.create(&new_pen)?;
 
-            // TODO collect standing penalty trigger info
+            // Track new penalties so we can fire related A/T events.
+            let csp_id = pen_hash["standing_penalty"].clone();
+
+            let csp = editor.retrieve("csp", csp_id)?
+                .ok_or(format!("DB returned an invalid csp id??"))?;
+
+            let evt_name = json::from(format!("penalty.{}", csp["name"]));
+            trigger_events.push((evt_name, new_pen, json::from(context_org)));
         }
     }
 
