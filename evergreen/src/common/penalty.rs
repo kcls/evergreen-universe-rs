@@ -29,7 +29,7 @@ pub fn calculate_penalties(
     // should have at the context org unit.
     let penalties = editor.json_query(query)?;
 
-    // TODO add only_penalties filtering...
+    let penalties = trim_to_wanted_penalties(editor, only_penalties, penalties)?;
 
     let mut existing_penalties: Vec<&JsonValue> =
         penalties.iter().filter(|p| !p["id"].is_null()).collect();
@@ -98,5 +98,20 @@ pub fn calculate_penalties(
     }
 
     Ok(())
+}
+
+fn trim_to_wanted_penalties(
+    editor: &mut Editor,
+    only_penalties: &[&str],
+    found_penalties: Vec<JsonValue>
+) -> Result<Vec<JsonValue>, String> {
+
+    if only_penalties.len() == 0 {
+        return Ok(found_penalties);
+    }
+
+    // TODO
+
+    Ok(found_penalties)
 }
 
