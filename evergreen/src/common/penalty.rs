@@ -101,7 +101,7 @@ pub fn calculate_penalties(
 }
 
 fn trim_to_wanted_penalties(
-    editor: &mut Editor,
+    _editor: &mut Editor,
     only_penalties: &[&str],
     found_penalties: Vec<JsonValue>,
 ) -> Result<Vec<JsonValue>, String> {

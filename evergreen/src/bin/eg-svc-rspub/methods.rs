@@ -1,4 +1,5 @@
 use eg::common::circ;
+use eg::common::penalty;
 use eg::common::user;
 use eg::editor::Editor;
 use eg::settings::Settings;
@@ -184,6 +185,32 @@ pub static METHODS: &[StaticMethod] = &[
                 name: "Circ ID",
                 datatype: ParamDataType::Number,
                 desc: "Circulation ID to lookup",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "user.penalties.update",
+        desc: "Update User Penalties",
+        param_count: ParamCount::Range(2, 3),
+        handler: update_penalties,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "User ID",
+                datatype: ParamDataType::Number,
+                desc: "User ID to Update",
+            },
+            StaticParam {
+                required: false,
+                name: "Only Penalties",
+                datatype: ParamDataType::Array,
+                desc: "Optionally limit to this list of penalties",
             },
         ],
     },
@@ -558,4 +585,55 @@ pub fn prev_renewal_chain_summary(
         &mut editor,
         util::json_int(&prev_circ[0]["id"])?,
     )?)
+}
+
+pub fn update_penalties(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsPubWorker::downcast(worker)?;
+    let authtoken = util::json_string(method.param(0))?;
+    let user_id = util::json_int(method.param(1))?;
+
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    let user = match editor.retrieve("au", user_id)? {
+        Some(u) => u,
+        None => return session.respond(editor.event()),
+    };
+
+    let mut context_org = util::json_int(&user["home_ou"])?;
+
+    if !editor.allowed("UPDATE_USER", Some(context_org))? {
+        return session.respond(editor.event());
+    }
+
+    if method.method().contains("_at_home") {
+        context_org = editor.requestor_ws_ou();
+    }
+
+    // See if the caller wants to limit the set of penalties that
+    // may be updated by this API call.
+    let mut only_penalties: Vec<&str> = Vec::new();
+    if let Some(arr) = method.params().get(2) {
+        // JsonValue::Array => Vec<&str>
+        only_penalties = arr
+            .members()
+            .filter(|p| p.is_string())
+            .map(|p| p.as_str().unwrap())
+            .collect::<Vec<&str>>();
+    }
+
+    editor.xact_begin()?;
+
+    penalty::calculate_penalties(&mut editor, user_id, context_org, only_penalties.as_slice())?;
+
+    editor.commit()?;
+
+    session.respond(1)
 }

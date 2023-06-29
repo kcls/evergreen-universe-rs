@@ -23,7 +23,6 @@ use evergreen as eg;
 const PROMPT: &str = "\x1b[1;32megsh# \x1b[0m";
 const HISTORY_FILE: &str = ".egsh_history";
 const SEPARATOR: &str = "---------------------------------------------------";
-const DEFAULT_REQUEST_TIMEOUT: i32 = 120;
 const DEFAULT_JSON_PRINT_DEPTH: u16 = 2;
 const DEFAULT_LOGIN_TYPE: &str = "temp";
 

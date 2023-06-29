@@ -94,11 +94,9 @@ impl Application for RsPubApplication {
 
         // Create Method objects from our static method definitions.
         for def in methods::METHODS.iter() {
+            log::info!("Registering method: {}", def.name());
             methods.push(def.into_method(APPNAME));
         }
-
-        // NOTE here is where additional, dynamically created methods
-        // could be appended.
 
         Ok(methods)
     }

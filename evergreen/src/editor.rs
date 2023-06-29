@@ -196,6 +196,13 @@ impl Editor {
         util::json_int(&self.requestor().unwrap()["id"]).unwrap()
     }
 
+    /// Org Unit ID of the requestor's workstation.
+    ///
+    /// Panics if requestor value is unset.
+    pub fn requestor_ws_ou(&self) -> i64 {
+        util::json_int(&self.requestor().unwrap()["ws_ou"]).unwrap()
+    }
+
     pub fn requestor(&self) -> Option<&json::JsonValue> {
         self.requestor.as_ref()
     }

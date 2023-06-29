@@ -488,6 +488,7 @@ impl Worker {
                 m.clone()
             }
             None => {
+                log::warn!("Method not found: {}", request.method());
                 return self.reply_with_status(
                     MessageStatus::MethodNotFound,
                     &format!("Method not found: {}", request.method()),

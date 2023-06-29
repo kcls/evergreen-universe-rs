@@ -1,6 +1,4 @@
 //! action_trigger bits
-use crate::editor::Editor;
-use crate::util;
 use json::JsonValue;
 use opensrf::client::Client;
 
