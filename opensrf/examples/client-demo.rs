@@ -14,7 +14,7 @@ fn main() -> Result<(), String> {
     let mut req = ses.request("opensrf.system.echo", params)?;
 
     // We anticipate multiple responses.  Collect them all!
-    while let Some(resp) = req.recv(60)? {
+    while let Some(resp) = req.recv()? {
         println!("Response: {}", resp.dump());
     }
 

@@ -12,7 +12,7 @@ fn main() -> Result<(), String> {
 
     let mut req = ses.request("opensrf.system.echo", vec!["howdy", "world"])?;
 
-    while let Some(txt) = req.recv(10)? {
+    while let Some(txt) = req.recv()? {
         println!("Echo returned: {txt:?}");
     }
 
@@ -45,7 +45,7 @@ fn main() -> Result<(), String> {
     // Manual request management example
     let mut req = ses.request(method, params)?;
 
-    while let Some(user) = req.recv(10)? {
+    while let Some(user) = req.recv()? {
         println!(
             "{} {} home_ou={}",
             user["id"], user["usrname"], user["home_ou"]["name"]
