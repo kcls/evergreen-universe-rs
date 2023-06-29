@@ -63,7 +63,7 @@ impl Request {
     pub fn first_with_timeout(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
         let mut resp: Option<JsonValue> = None;
         while !self.complete {
-            if let Some(r) = self.recv(timeout)? {
+            if let Some(r) = self.recv_with_timeout(timeout)? {
                 if resp.is_none() {
                     resp = Some(r);
                 } // else discard the non-first response.
@@ -73,15 +73,13 @@ impl Request {
         Ok(resp)
     }
 
-    // TODO change recv() to recv_with_timeout()
-
     /// Receive the next response to this Request
     ///
     /// timeout:
     ///     <0 == wait indefinitely
     ///      0 == do not wait/block
     ///     >0 == wait up to this many seconds for a reply.
-    pub fn recv(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
+    pub fn recv_with_timeout(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
         if self.complete {
             // If we are marked complete, it means we've read all the
             // replies, the last of which was a request-complete message.
@@ -112,8 +110,8 @@ impl Request {
         }
     }
 
-    pub fn recv_default(&mut self) -> Result<Option<JsonValue>, String> {
-        self.recv(DEFAULT_REQUEST_TIMEOUT)
+    pub fn recv(&mut self) -> Result<Option<JsonValue>, String> {
+        self.recv_with_timeout(DEFAULT_REQUEST_TIMEOUT)
     }
 }
 
@@ -588,7 +586,7 @@ impl Iterator for ResponseIterator {
     type Item = JsonValue;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.request.recv(DEFAULT_REQUEST_TIMEOUT) {
+        match self.request.recv() {
             Ok(op) => op,
             Err(e) => {
                 log::error!("ResponseIterator failed with {e}");

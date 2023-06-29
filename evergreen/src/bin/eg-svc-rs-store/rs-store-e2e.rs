@@ -12,7 +12,7 @@ fn main() -> Result<(), String> {
 
     // Start a transaction
     let mut req = ses.request("open-ils.rs-store.transaction.begin", None)?;
-    req.recv(10)?
+    req.recv()?
         .expect("transaction.begin should return a value");
 
     // Create a new billing type row.
@@ -22,7 +22,7 @@ fn main() -> Result<(), String> {
 
     req = ses.request("open-ils.rs-store.direct.config.billing_type.create", cbt)?;
     cbt = req
-        .recv(10)?
+        .recv()?
         .expect(".create should return the created object");
 
     println!("Created: {}", cbt.dump());
@@ -32,14 +32,14 @@ fn main() -> Result<(), String> {
         "open-ils.rs-store.direct.config.billing_type.retrieve",
         cbt["id"].clone(),
     )?;
-    cbt = req.recv(10)?.expect("retrieve should return a value");
+    cbt = req.recv()?.expect("retrieve should return a value");
 
     println!("Retrieve found: {}", cbt.dump());
 
     // Search for the new billing type by name
     let query = json::object! {name: CBT_NAME};
     req = ses.request("open-ils.rs-store.direct.config.billing_type.search", query)?;
-    cbt = req.recv(10)?.expect("search should return a value");
+    cbt = req.recv()?.expect("search should return a value");
 
     println!("Search found: {}", cbt.dump());
 
@@ -49,7 +49,7 @@ fn main() -> Result<(), String> {
         "open-ils.rs-store.direct.config.billing_type.update",
         cbt.clone(),
     )?;
-    let resp = req.recv(10)?.expect("update should return a value");
+    let resp = req.recv()?.expect("update should return a value");
 
     // 1 row should be affected
     if eg::util::json_int(&resp)? != 1 {
@@ -63,7 +63,7 @@ fn main() -> Result<(), String> {
         "open-ils.rs-store.direct.config.billing_type.delete",
         cbt["id"].clone(),
     )?;
-    let resp = req.recv(10)?.expect("delete should return a value");
+    let resp = req.recv()?.expect("delete should return a value");
 
     // 1 row should be affected
     if eg::util::json_int(&resp)? != 1 {
@@ -74,7 +74,7 @@ fn main() -> Result<(), String> {
 
     // Roll it back
     let mut req = ses.request("open-ils.rs-store.transaction.rollback", None)?;
-    req.recv(10)?
+    req.recv()?
         .expect("transaction.rollback should return a value");
 
     ses.disconnect()?; // this would also cause a rollback

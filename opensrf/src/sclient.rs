@@ -20,7 +20,7 @@ impl SettingsClient {
             vec![json::from(client.config().hostname()), json::from(force)],
         )?;
 
-        if let Some(s) = req.recv(SETTINGS_TIMEOUT)? {
+        if let Some(s) = req.recv_with_timeout(SETTINGS_TIMEOUT)? {
             Ok(HostSettings { settings: s })
         } else {
             Err(format!("Settings server returned no response!"))

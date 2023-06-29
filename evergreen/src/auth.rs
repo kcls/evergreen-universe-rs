@@ -148,7 +148,7 @@ impl AuthSession {
         let mut req = ses.request("open-ils.auth.session.delete", token)?;
         // We don't care so much about the response from logout,
         // only that the call completed OK.
-        req.recv(LOGIN_TIMEOUT)?;
+        req.recv_with_timeout(LOGIN_TIMEOUT)?;
         Ok(())
     }
 
@@ -160,7 +160,7 @@ impl AuthSession {
         let mut ses = client.session("open-ils.auth");
         let mut req = ses.request("open-ils.auth.login", params)?;
 
-        let json_val = match req.recv(LOGIN_TIMEOUT)? {
+        let json_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
             Some(v) => v,
             None => Err(format!("Login Timed Out"))?,
         };
@@ -179,7 +179,7 @@ impl AuthSession {
         let mut ses = client.session("open-ils.auth_internal");
         let mut req = ses.request("open-ils.auth_internal.session.create", params)?;
 
-        let json_val = match req.recv(LOGIN_TIMEOUT)? {
+        let json_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
             Some(v) => v,
             None => Err(format!("Login Timed Out"))?,
         };

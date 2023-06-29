@@ -528,7 +528,7 @@ impl Shell {
         let mut ses = self.ctx().client().session(args[0]);
         let mut req = ses.request(args[1], params)?;
 
-        while let Some(resp) = req.recv(DEFAULT_REQUEST_TIMEOUT)? {
+        while let Some(resp) = req.recv()? {
             self.print_json_record(&resp)?;
         }
 
