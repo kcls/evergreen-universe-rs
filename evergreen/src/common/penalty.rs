@@ -1,5 +1,6 @@
 //! Standing penalty utility functions
 use crate::util;
+use crate::common::trigger;
 use crate::editor::Editor;
 use json::JsonValue;
 
@@ -36,7 +37,7 @@ pub fn calculate_penalties(
     let wanted_penalties: Vec<&JsonValue> =
         penalties.iter().filter(|p| p["id"].is_null()).collect();
 
-    let mut trigger_events: Vec<(JsonValue, JsonValue, JsonValue)> = Vec::new();
+    let mut trigger_events: Vec<(String, JsonValue, i64)> = Vec::new();
 
     for pen_hash in wanted_penalties {
         let org_unit = number(&pen_hash["org_unit"]);
@@ -59,7 +60,7 @@ pub fn calculate_penalties(
             existing_penalties = existing_penalties
                 .iter()
                 .filter(|p| number(&p["id"]) != id)
-                .map(|p| *p) // these are &&JsonValue's
+                .map(|p| *p) // &&JsonValue
                 .collect();
 
         } else {
@@ -73,8 +74,8 @@ pub fn calculate_penalties(
             let csp = editor.retrieve("csp", csp_id)?
                 .ok_or(format!("DB returned an invalid csp id??"))?;
 
-            let evt_name = json::from(format!("penalty.{}", csp["name"]));
-            trigger_events.push((evt_name, new_pen, json::from(context_org)));
+            let evt_name = format!("penalty.{}", csp["name"]);
+            trigger_events.push((evt_name, new_pen, context_org));
         }
     }
 
@@ -84,7 +85,17 @@ pub fn calculate_penalties(
         editor.delete(&del_pen)?;
     }
 
-    // TODO fire trigger events
+    for events in trigger_events {
+        trigger::create_events_for_hook(
+            editor.client_mut(),
+            &events.0,  // hook name
+            &events.1,  // penalty object
+            events.2,   // org unit ID
+            None,       // granularity
+            None,       // user data
+            false       // block until complete
+        )?;
+    }
 
     Ok(())
 }

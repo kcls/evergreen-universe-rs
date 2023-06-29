@@ -73,6 +73,8 @@ impl Request {
         Ok(resp)
     }
 
+    // TODO change recv() to recv_with_timeout()
+
     /// Receive the next response to this Request
     ///
     /// timeout:
@@ -108,6 +110,10 @@ impl Request {
                 return Ok(None);
             }
         }
+    }
+
+    pub fn recv_default(&mut self) -> Result<Option<JsonValue>, String> {
+        self.recv(DEFAULT_REQUEST_TIMEOUT)
     }
 }
 

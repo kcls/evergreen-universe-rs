@@ -93,6 +93,10 @@ impl Editor {
         }
     }
 
+    pub fn client_mut(&mut self) -> &mut osrf::Client {
+        &mut self.client
+    }
+
     /// Create an editor with an existing authtoken
     pub fn with_auth(client: &osrf::Client, idl: &Arc<idl::Parser>, authtoken: &str) -> Self {
         let mut editor = Editor::new(client, idl);

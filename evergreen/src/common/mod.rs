@@ -2,3 +2,4 @@
 pub mod circ;
 pub mod user;
 pub mod penalty;
+pub mod trigger;
