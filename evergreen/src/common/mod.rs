@@ -1,5 +1,5 @@
 //! Shared, common utility functions
 pub mod circ;
-pub mod user;
 pub mod penalty;
 pub mod trigger;
+pub mod user;

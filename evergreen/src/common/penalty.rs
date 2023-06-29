@@ -1,7 +1,7 @@
 //! Standing penalty utility functions
-use crate::util;
 use crate::common::trigger;
 use crate::editor::Editor;
+use crate::util;
 use json::JsonValue;
 
 // Shortcut for unckecked int conversions for values that are known good.
@@ -15,9 +15,8 @@ pub fn calculate_penalties(
     editor: &mut Editor,
     user_id: i64,
     context_org: i64,
-    only_penalties: &[&str]
+    only_penalties: &[&str],
 ) -> Result<(), String> {
-
     let query = json::object! {
         from: [
             "actor.calculate_system_penalties",
@@ -44,13 +43,14 @@ pub fn calculate_penalties(
         let penalty = number(&pen_hash["standing_penalty"]);
 
         // Do we have this penalty already?
-        let existing = existing_penalties.iter()
-        .filter(|p| {
-            let e_org_unit = number(&p["org_unit"]);
-            let e_penalty = number(&p["standing_penalty"]);
-            org_unit == e_org_unit && penalty == e_penalty
-        })
-        .next();
+        let existing = existing_penalties
+            .iter()
+            .filter(|p| {
+                let e_org_unit = number(&p["org_unit"]);
+                let e_penalty = number(&p["standing_penalty"]);
+                org_unit == e_org_unit && penalty == e_penalty
+            })
+            .next();
 
         if let Some(epen) = existing {
             // We already have this penalty.  Remove it from the set of
@@ -62,7 +62,6 @@ pub fn calculate_penalties(
                 .filter(|p| number(&p["id"]) != id)
                 .map(|p| *p) // &&JsonValue
                 .collect();
-
         } else {
             // This is a new penalty.  Create it.
             let new_pen = editor.idl().create_from("ausp", pen_hash.clone())?;
@@ -71,7 +70,8 @@ pub fn calculate_penalties(
             // Track new penalties so we can fire related A/T events.
             let csp_id = pen_hash["standing_penalty"].clone();
 
-            let csp = editor.retrieve("csp", csp_id)?
+            let csp = editor
+                .retrieve("csp", csp_id)?
                 .ok_or(format!("DB returned an invalid csp id??"))?;
 
             let evt_name = format!("penalty.{}", csp["name"]);
@@ -88,12 +88,12 @@ pub fn calculate_penalties(
     for events in trigger_events {
         trigger::create_events_for_hook(
             editor.client_mut(),
-            &events.0,  // hook name
-            &events.1,  // penalty object
-            events.2,   // org unit ID
-            None,       // granularity
-            None,       // user data
-            false       // block until complete
+            &events.0, // hook name
+            &events.1, // penalty object
+            events.2,  // org unit ID
+            None,      // granularity
+            None,      // user data
+            false,     // block until complete
         )?;
     }
 
@@ -103,9 +103,8 @@ pub fn calculate_penalties(
 fn trim_to_wanted_penalties(
     editor: &mut Editor,
     only_penalties: &[&str],
-    found_penalties: Vec<JsonValue>
+    found_penalties: Vec<JsonValue>,
 ) -> Result<Vec<JsonValue>, String> {
-
     if only_penalties.len() == 0 {
         return Ok(found_penalties);
     }
@@ -114,4 +113,3 @@ fn trim_to_wanted_penalties(
 
     Ok(found_penalties)
 }
-
