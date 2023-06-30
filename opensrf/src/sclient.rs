@@ -4,7 +4,7 @@ use super::client::Client;
 use std::sync::Arc;
 use serde_json as json;
 
-const SETTINGS_TIMEOUT: i32 = 10;
+const SETTINGS_TIMEOUT: i64 = 10;
 
 pub struct SettingsClient;
 

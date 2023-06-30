@@ -6,6 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use serde_json as json;
 
 const DEFAULT_WAIT_TIME: u64 = 60; // 1 minute
 
@@ -51,7 +52,7 @@ impl BusWatch {
     /// buswatcher to recover from a potentially temporary bus
     /// connection error.  False if this is a clean shutdown.
     pub fn watch(&mut self) -> bool {
-        let mut obj = json::object! {};
+        let mut obj = json::json!({});
 
         loop {
             thread::sleep(Duration::from_secs(self.wait_time));
@@ -69,7 +70,7 @@ impl BusWatch {
                 continue;
             }
 
-            obj["stats"] = json::Value::new_object();
+            obj["stats"] = json::json!({});
 
             for key in keys.iter() {
                 match self.bus.llen(key) {
@@ -77,12 +78,12 @@ impl BusWatch {
                         // The list may have cleared in the time between the
                         // time we called keys() and llen().
                         if l > 0 {
-                            obj["stats"][key]["count"] = json::from(l);
+                            obj["stats"][key]["count"] = l.into();
                             // Uncomment this chunk to see the next opensrf
                             // message in the queue for this key as JSON.
                             if let Ok(list) = self.bus.lrange(key, 0, 1) {
                                 if let Some(s) = list.get(0) {
-                                    obj["stats"][key]["next_value"] = json::from(s.as_str());
+                                    obj["stats"][key]["next_value"] = s.as_str().into();
                                 }
                             }
                         }
@@ -96,7 +97,7 @@ impl BusWatch {
 
                 match self.bus.ttl(key) {
                     Ok(ttl) => {
-                        obj["stats"][key]["ttl"] = json::from(ttl);
+                        obj["stats"][key]["ttl"] = ttl.into();
                         if ttl == -1 {
                             log::debug!("Setting TTL for stale key {key}");
                             if let Err(e) = self.bus.set_key_timeout(key, self.ttl) {
@@ -111,9 +112,9 @@ impl BusWatch {
                 }
             }
 
-            obj["time"] = json::from(util::epoch_secs_str());
+            obj["time"] = util::epoch_secs_str().as_str().into();
 
-            log::info!("{}", obj.dump());
+            log::info!("{}", obj.to_string());
         }
     }
 }

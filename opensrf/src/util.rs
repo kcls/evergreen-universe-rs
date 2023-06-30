@@ -31,8 +31,8 @@ pub fn random_number(size: usize) -> String {
 
 /// Converts a JSON number or string to an isize if possible
 pub fn json_isize(value: &json::Value) -> Option<isize> {
-    if let Some(i) = value.as_isize() {
-        return Some(i);
+    if let Some(i) = value.as_i64() {
+        return Some(i as isize);
     } else if let Some(s) = value.as_str() {
         if let Ok(i2) = s.parse::<isize>() {
             return Some(i2);
@@ -44,8 +44,8 @@ pub fn json_isize(value: &json::Value) -> Option<isize> {
 
 /// Converts a JSON number or string to an usize if possible
 pub fn json_usize(value: &json::Value) -> Option<usize> {
-    if let Some(i) = value.as_usize() {
-        return Some(i);
+    if let Some(i) = value.as_u64() {
+        return Some(i as usize);
     } else if let Some(s) = value.as_str() {
         if let Ok(i2) = s.parse::<usize>() {
             return Some(i2);
@@ -59,14 +59,14 @@ pub struct Timer {
     /// Duration of this timer in seconds.
     /// Timer is "done" once this many seconds have passed
     /// since start_time.
-    duration: i32,
+    duration: i64,
 
     /// Moment this timer starts.
     start_time: Instant,
 }
 
 impl Timer {
-    pub fn new(duration: i32) -> Timer {
+    pub fn new(duration: i64) -> Timer {
         Timer {
             duration,
             start_time: Instant::now(),
@@ -77,8 +77,8 @@ impl Timer {
         self.start_time = Instant::now();
     }
 
-    pub fn remaining(&self) -> i32 {
-        self.duration - self.start_time.elapsed().as_secs() as i32
+    pub fn remaining(&self) -> i64 {
+        self.duration - self.start_time.elapsed().as_secs() as i64
     }
 
     pub fn done(&self) -> bool {

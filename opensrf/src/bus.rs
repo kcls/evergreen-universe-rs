@@ -88,7 +88,7 @@ impl Bus {
     /// The string will be whole, unparsed JSON string.
     fn recv_one_chunk(
         &mut self,
-        mut timeout: i32,
+        mut timeout: i64,
         recipient: Option<&str>,
     ) -> Result<Option<String>, String> {
         let recipient = match recipient {
@@ -143,7 +143,7 @@ impl Bus {
     /// the list pop times out or the pop is interrupted by a signal.
     fn recv_one_value(
         &mut self,
-        timeout: i32,
+        timeout: i64,
         recipient: Option<&str>,
     ) -> Result<Option<json::Value>, String> {
         let json_string = match self.recv_one_chunk(timeout, recipient)? {
@@ -174,7 +174,7 @@ impl Bus {
     ///     0 means do not block.
     pub fn recv_json_value(
         &mut self,
-        timeout: i32,
+        timeout: i64,
         recipient: Option<&str>,
     ) -> Result<Option<json::Value>, String> {
         let mut option: Option<json::Value>;
@@ -206,7 +206,7 @@ impl Bus {
                     if seconds < 0 {
                         return Ok(None);
                     }
-                    seconds -= now.elapsed().unwrap().as_secs() as i32;
+                    seconds -= now.elapsed().unwrap().as_secs() as i64;
                     continue;
                 }
                 _ => return Ok(option),
@@ -230,7 +230,7 @@ impl Bus {
     ///     bus address as the recipient.
     pub fn recv(
         &mut self,
-        timeout: i32,
+        timeout: i64,
         recipient: Option<&str>,
     ) -> Result<Option<TransportMessage>, String> {
         let json_op = self.recv_json_value(timeout, recipient)?;

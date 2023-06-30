@@ -17,8 +17,8 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
 
-const CONNECT_TIMEOUT: i32 = 10;
-pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
+const CONNECT_TIMEOUT: i64 = 10;
+pub const DEFAULT_REQUEST_TIMEOUT: i64 = 60;
 
 /// Response data propagated from a session to the calling Request.
 struct Response {
@@ -60,7 +60,7 @@ impl Request {
         self.first_with_timeout(DEFAULT_REQUEST_TIMEOUT)
     }
 
-    pub fn first_with_timeout(&mut self, timeout: i32) -> Result<Option<json::Value>, String> {
+    pub fn first_with_timeout(&mut self, timeout: i64) -> Result<Option<json::Value>, String> {
         let mut resp: Option<json::Value> = None;
         while !self.complete {
             if let Some(r) = self.recv_with_timeout(timeout)? {
@@ -79,7 +79,7 @@ impl Request {
     ///     <0 == wait indefinitely
     ///      0 == do not wait/block
     ///     >0 == wait up to this many seconds for a reply.
-    pub fn recv_with_timeout(&mut self, timeout: i32) -> Result<Option<json::Value>, String> {
+    pub fn recv_with_timeout(&mut self, timeout: i64) -> Result<Option<json::Value>, String> {
         if self.complete {
             // If we are marked complete, it means we've read all the
             // replies, the last of which was a request-complete message.
@@ -239,7 +239,7 @@ impl Session {
         }
     }
 
-    fn recv(&mut self, thread_trace: usize, timeout: i32) -> Result<Option<Response>, String> {
+    fn recv(&mut self, thread_trace: usize, timeout: i64) -> Result<Option<Response>, String> {
         let mut timer = util::Timer::new(timeout);
 
         loop {
@@ -696,7 +696,7 @@ impl ServerSession {
     where
         T: Into<json::Value>,
     {
-        let mut value = value;
+        let mut value = value.into();
         if let Some(s) = self.client.singleton().borrow().serializer() {
             value = s.pack(value);
         }

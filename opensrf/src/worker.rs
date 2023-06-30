@@ -22,7 +22,7 @@ use std::thread;
 use std::time;
 
 // How often each worker wakes to check for shutdown signals, etc.
-const IDLE_WAKE_TIME: i32 = 5;
+const IDLE_WAKE_TIME: i64 = 5;
 
 /// Each worker thread is in one of these states.
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -154,24 +154,24 @@ impl Worker {
             return;
         }
 
-        let max_requests: u32 = self
+        let max_requests: u64 = self
             .host_settings
             .value(&format!("apps/{}/unix_config/max_requests", self.service))
-            .as_u32()
+            .as_u64()
             .unwrap_or(5000);
 
-        let keepalive: i32 = self
+        let keepalive: i64 = self
             .host_settings
             .value(&format!("apps/{}/unix_config/keepalive", self.service))
-            .as_i32()
+            .as_i64()
             .unwrap_or(5);
 
-        let mut requests: u32 = 0;
+        let mut requests: u64 = 0;
         let service_addr = ServiceAddress::new(&self.service).as_str().to_string();
         let my_addr = self.client.address().as_str().to_string();
 
         while requests < max_requests {
-            let timeout: i32;
+            let timeout: i64;
             let sent_to: &str;
 
             if self.connected {
@@ -269,7 +269,7 @@ impl Worker {
     fn handle_recv(
         &mut self,
         appworker: &mut Box<dyn app::ApplicationWorker>,
-        timeout: i32,
+        timeout: i64,
         sent_to: &str,
     ) -> Result<(bool, bool), String> {
         let selfstr = format!("{self}");

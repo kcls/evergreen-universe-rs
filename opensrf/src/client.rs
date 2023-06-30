@@ -14,7 +14,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const DEFAULT_ROUTER_COMMAND_TIMEOUT: i32 = 10;
+const DEFAULT_ROUTER_COMMAND_TIMEOUT: i64 = 10;
 
 pub trait DataSerializer {
     fn pack(&self, value: json::Value) -> json::Value;

@@ -155,6 +155,7 @@ impl From<&json::Value> for ApiParams {
     }
 }
 
+/*
 impl From<&str> for ApiParams {
     fn from(v: &str) -> ApiParams {
         ApiParams::from(v)
@@ -208,6 +209,7 @@ impl From<usize> for ApiParams {
         ApiParams::from(v)
     }
 }
+*/
 
 impl From<Option<json::Value>> for ApiParams {
     fn from(v: Option<json::Value>) -> ApiParams {

@@ -24,10 +24,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use serde_json as json;
 
 /// How often do we wake from listening for messages and give shutdown
 /// signals a chance to propagate.
-const POLL_TIMEOUT: i32 = 5;
+const POLL_TIMEOUT: i64 = 5;
 
 /// A service instance.
 ///
@@ -60,10 +61,10 @@ impl ServiceInstance {
     }
 
     fn to_json_value(&self) -> json::Value {
-        json::object! {
-            address: json::from(self.address().as_str()),
-            register_time: json::from(self.register_time()),
-        }
+        json::json!({
+            "address": self.address().as_str(),
+            "register_time": self.register_time()
+        })
     }
 }
 
@@ -116,14 +117,15 @@ impl ServiceEntry {
     }
 
     fn to_json_value(&self) -> json::Value {
-        json::object! {
-            name: json::from(self.name()),
-            route_count: json::from(self.route_count),
-            controllers: json::from(
-                self.controllers().iter()
-                    .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
-            )
-        }
+        json::json!({
+            "name": self.name(),
+            "route_count": self.route_count,
+            "controllers":
+                self.controllers()
+                    .iter()
+                    .map(|s| s.to_json_value())
+                    .collect::<Vec<json::Value>>()
+        })
     }
 }
 
@@ -215,13 +217,12 @@ impl RouterDomain {
     }
 
     fn to_json_value(&self) -> json::Value {
-        json::object! {
-            domain: json::from(self.domain()),
-            route_count: json::from(self.route_count()),
-            services: json::from(self.services().iter()
+        json::json!({
+            "domain": self.domain(),
+            "route_count": self.route_count(),
+            "services": self.services().iter()
                 .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
-            )
-        }
+        })
     }
 
     /// Connect to the Redis instance on this domain.
@@ -331,13 +332,12 @@ impl Router {
     }
 
     fn to_json_value(&self) -> json::Value {
-        json::object! {
-            listen_address: json::from(self.listen_address.as_str()),
-            primary_domain: self.primary_domain().to_json_value(),
-            remote_domains: json::from(self.remote_domains().iter()
+        json::json!({
+            "listen_address": self.listen_address.as_str(),
+            "primary_domain": self.primary_domain().to_json_value(),
+            "remote_domains": self.remote_domains().iter()
                 .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
-            )
-        }
+        })
     }
 
     /// Find or create a new RouterDomain entry.
@@ -659,7 +659,7 @@ impl Router {
                 _ => {
                     return Err(format!(
                         "Router cannot process message: {}",
-                        tm.to_json_value().dump()
+                        tm.to_json_value().to_string()
                     ))
                 }
             };
@@ -715,7 +715,7 @@ impl Router {
                     .map(|s| s.name())
                     .collect();
 
-                Ok(json::from(names))
+                Ok(names.into())
             }
             _ => Err(format!("Router cannot handle api {}", m.method())),
         }
@@ -728,7 +728,7 @@ impl Router {
             None => {
                 return Err(format!(
                     "No router command present: {}",
-                    tm.to_json_value().dump()
+                    tm.to_json_value().to_string()
                 ));
             }
         };
@@ -750,7 +750,7 @@ impl Router {
             } else {
                 return Err(format!(
                     "Message has no router class: {}",
-                    tm.to_json_value().dump()
+                    tm.to_json_value().to_string()
                 ));
             }
         };
@@ -772,7 +772,7 @@ impl Router {
         log::debug!("Handling info router command : {router_command}");
 
         match router_command {
-            "summarize" => tm.set_router_reply(&self.to_json_value().dump()),
+            "summarize" => tm.set_router_reply(&self.to_json_value().to_string()),
             _ => {
                 return Err(format!("Unsupported router command: {router_command}"));
             }

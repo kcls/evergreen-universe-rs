@@ -3,6 +3,7 @@ use opensrf::util;
 use std::io::Write;
 use std::thread;
 use std::time::{Duration, Instant};
+use serde_json as json;
 
 use tungstenite as ws;
 use ws::protocol::Message;
@@ -86,30 +87,30 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     let echo = format!("Hello, World {count}");
     let echostr = echo.as_str();
 
-    let message = json::object! {
-        thread: util::random_number(12),
-        service: SERVICE,
-        osrf_msg: [{
-            __c: "osrfMessage",
-            __p: {
-                threadTrace:1,
-                type: "REQUEST",
-                locale: "en-US",
-                timezone: "America/New_York",
-                api_level: 1,
-                ingress: "opensrf",
-                payload:{
-                    __c: "osrfMethod",
-                    __p:{
-                        method: "opensrf.system.echo",
-                        params: [echostr],
+    let message = json::json!({
+        "thread": util::random_number(12),
+        "service": SERVICE,
+        "osrf_msg": [{
+            "__c": "osrfMessage",
+            "__p": {
+                "threadTrace":1,
+                "type": "REQUEST",
+                "locale": "en-US",
+                "timezone": "America/New_York",
+                "api_level": 1,
+                "ingress": "opensrf",
+                "payload":{
+                    "__c": "osrfMethod",
+                    "__p":{
+                        "method": "opensrf.system.echo",
+                        "params": [echostr],
                     }
                 }
             }
         }]
-    };
+    });
 
-    if let Err(e) = client.write_message(Message::text(message.dump())) {
+    if let Err(e) = client.write_message(Message::text(message.to_string())) {
         eprintln!("Error in send: {e}");
         return;
     }
@@ -123,7 +124,7 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     };
 
     if let Message::Text(text) = response {
-        let mut ws_msg = json::parse(&text).unwrap();
+        let mut ws_msg: json::Value = json::from_str(&text).unwrap();
         let mut osrf_list = ws_msg["osrf_msg"].take();
         let osrf_msg = osrf_list[0].take();
 

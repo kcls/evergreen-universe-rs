@@ -18,6 +18,7 @@ use std::thread::JoinHandle;
 use tungstenite as ws;
 use ws::protocol::Message as WebSocketMessage;
 use ws::protocol::WebSocket;
+use serde_json as json;
 
 /* Server spawns a new client session per connection.
  *
@@ -62,7 +63,7 @@ const MAX_ACTIVE_REQUESTS: usize = 8;
 /// NOTE: should we kick the client off at this point?
 const MAX_BACKLOG_SIZE: usize = 1000;
 
-const SHUTDOWN_POLL_INTERVAL: i32 = 3;
+const SHUTDOWN_POLL_INTERVAL: i64 = 3;
 
 /// ChannelMessage's are delivered to the main thread.  There are 2
 /// types: Inbound websocket request and Ooutbound opensrf response.
@@ -506,7 +507,7 @@ impl Session {
     /// Wrap a websocket request in an OpenSRF transport message and
     /// put on the OpenSRF bus for delivery.
     fn relay_to_osrf(&mut self, json_text: &str) -> Result<(), String> {
-        let mut wrapper = json::parse(json_text).or_else(|e| {
+        let mut wrapper: json::Value = json::from_str(json_text).or_else(|e| {
             Err(format!(
                 "{self} Cannot parse websocket message: {e} {json_text}"
             ))
@@ -554,13 +555,7 @@ impl Session {
 
         // msg_list is typically an array, but may be a single opensrf message.
         if !msg_list.is_array() {
-            let mut list = json::Value::new_array();
-
-            if let Err(e) = list.push(msg_list) {
-                Err(format!("{self} Error creating message list {e}"))?;
-            }
-
-            msg_list = list;
+            msg_list = json::Value::Array(vec![msg_list]);
         }
 
         let mut body_vec: Vec<message::Message> = Vec::new();
@@ -675,14 +670,14 @@ impl Session {
             }
         }
 
-        let mut obj = json::object! {
-            oxrf_xid: tm.osrf_xid(),
-            thread: tm.thread(),
-            osrf_msg: body
-        };
+        let mut obj = json::json!({
+            "oxrf_xid": tm.osrf_xid(),
+            "thread": tm.thread(),
+            "osrf_msg": body
+        });
 
         if transport_error {
-            obj["transport_error"] = json::from(true);
+            obj["transport_error"] = true;
         }
 
         let msg_json = obj.dump();
