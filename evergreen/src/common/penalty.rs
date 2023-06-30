@@ -1,6 +1,7 @@
 //! Standing penalty utility functions
 use crate::common::trigger;
 use crate::editor::Editor;
+use crate::settings::Settings;
 use crate::util;
 use json::JsonValue;
 
@@ -15,7 +16,7 @@ pub fn calculate_penalties(
     editor: &mut Editor,
     user_id: i64,
     context_org: i64,
-    only_penalties: &[&str],
+    only_penalties: Option<&Vec<JsonValue>>,
 ) -> Result<(), String> {
     let query = json::object! {
         from: [
@@ -28,11 +29,18 @@ pub fn calculate_penalties(
     // should have at the context org unit.
     let penalties = editor.json_query(query)?;
 
-    let penalties = trim_to_wanted_penalties(editor, only_penalties, penalties)?;
+    let penalties = trim_to_wanted_penalties(editor, context_org, only_penalties, penalties)?;
 
+    if penalties.len() == 0 {
+        // Nothing to change.
+        return Ok(());
+    }
+
+    // Applied penalties have a DB ID.
     let mut existing_penalties: Vec<&JsonValue> =
         penalties.iter().filter(|p| !p["id"].is_null()).collect();
 
+    // Penalties that should be applied do not have a DB ID.
     let wanted_penalties: Vec<&JsonValue> =
         penalties.iter().filter(|p| p["id"].is_null()).collect();
 
@@ -100,16 +108,80 @@ pub fn calculate_penalties(
     Ok(())
 }
 
+/// If the caller specifies a limited set of penalties to process,
+/// trim the calculated penalty set to those whose penalty types
+/// match the types specified in only_penalties.
 fn trim_to_wanted_penalties(
-    _editor: &mut Editor,
-    only_penalties: &[&str],
-    found_penalties: Vec<JsonValue>,
+    editor: &mut Editor,
+    context_org: i64,
+    only_penalties: Option<&Vec<JsonValue>>,
+    all_penalties: Vec<JsonValue>,
 ) -> Result<Vec<JsonValue>, String> {
+    let only_penalties = match only_penalties {
+        Some(op) => op,
+        None => return Ok(all_penalties),
+    };
+
     if only_penalties.len() == 0 {
-        return Ok(found_penalties);
+        return Ok(all_penalties);
     }
 
-    // TODO
+    // The set to limit may be specified as penalty type IDs or names.
+    let mut penalty_id_list: Vec<JsonValue> = Vec::new();
+    let mut penalty_name_list: Vec<JsonValue> = Vec::new();
 
-    Ok(found_penalties)
+    for pen in only_penalties {
+        if pen.is_number() {
+            penalty_id_list.push(pen.clone());
+        } else if pen.is_string() {
+            penalty_name_list.push(pen.clone());
+        }
+    }
+
+    if penalty_name_list.len() > 0 {
+        // Get penalty type IDs from their names.
+        let query = json::object! {"name": {"in": penalty_name_list.clone()}};
+        let penalty_types = editor.search("csp", query)?;
+        for ptype in penalty_types {
+            penalty_id_list.push(ptype["id"].clone());
+        }
+
+        // See if any of the named penalties have local overrides.
+        // If so, process them as well.
+        let mut settings = Settings::new(&editor);
+        settings.set_org_id(context_org);
+
+        let names: Vec<String> = penalty_name_list
+            .iter()
+            .map(|n| format!("circ.custom_penalty_override.{n}"))
+            .collect();
+
+        let names: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+
+        settings.fetch_values(names.as_slice())?; // precache
+
+        for name in names.iter() {
+            let pen_id = settings.get_value(name)?;
+            // Verify the org unit setting value is numerifiable.
+            if let Ok(n) = util::json_int(&pen_id) {
+                penalty_id_list.push(json::from(n));
+            }
+        }
+    }
+
+    // Trim our list of penalties to those whose IDs we have identified
+    // the caller is interested in.
+    let mut final_penalties: Vec<JsonValue> = Vec::new();
+    for pen in all_penalties {
+        if penalty_id_list
+            .iter()
+            .filter(|id| id == &&pen["standing_penalty"])
+            .next()
+            .is_some()
+        {
+            final_penalties.push(pen);
+        }
+    }
+
+    Ok(final_penalties)
 }

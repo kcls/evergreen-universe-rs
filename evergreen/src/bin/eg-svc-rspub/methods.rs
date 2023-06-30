@@ -210,7 +210,35 @@ pub static METHODS: &[StaticMethod] = &[
                 required: false,
                 name: "Only Penalties",
                 datatype: ParamDataType::Array,
-                desc: "Optionally limit to this list of penalties",
+                desc: "Optionally limit to this list of penalties.
+                    May be a list of strings (names) or numbers (IDs)",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "user.penalties.update_at_home",
+        desc: "Update User Penalties using Staff Context Org Unit",
+        param_count: ParamCount::Range(2, 3),
+        handler: update_penalties,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "User ID",
+                datatype: ParamDataType::Number,
+                desc: "User ID to Update",
+            },
+            StaticParam {
+                required: false,
+                name: "Only Penalties",
+                datatype: ParamDataType::Array,
+                desc: "Optionally limit to this list of penalties.
+                    May be a list of strings (names) or numbers (IDs)",
             },
         ],
     },
@@ -617,21 +645,17 @@ pub fn update_penalties(
         context_org = editor.requestor_ws_ou();
     }
 
-    // See if the caller wants to limit the set of penalties that
-    // may be updated by this API call.
-    let mut only_penalties: Vec<&str> = Vec::new();
-    if let Some(arr) = method.params().get(2) {
-        // JsonValue::Array => Vec<&str>
-        only_penalties = arr
-            .members()
-            .filter(|p| p.is_string())
-            .map(|p| p.as_str().unwrap())
-            .collect::<Vec<&str>>();
-    }
+    let only_penalties = match method.params().get(2) {
+        Some(op) => match op {
+            json::JsonValue::Array(arr) => Some(arr),
+            _ => None,
+        },
+        None => None,
+    };
 
     editor.xact_begin()?;
 
-    penalty::calculate_penalties(&mut editor, user_id, context_org, only_penalties.as_slice())?;
+    penalty::calculate_penalties(&mut editor, user_id, context_org, only_penalties)?;
 
     editor.commit()?;
 
