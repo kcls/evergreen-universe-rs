@@ -179,10 +179,6 @@ impl Editor {
         self.authtime
     }
 
-    fn has_session(&self) -> bool {
-        self.session.is_some()
-    }
-
     fn has_xact_id(&self) -> bool {
         self.xact_id.is_some()
     }
@@ -253,11 +249,19 @@ impl Editor {
         format!("{p}.{}", part)
     }
 
+    pub fn in_transaction(&self) -> bool {
+        if let Some(ref ses) = self.session {
+            ses.connected() && self.has_xact_id()
+        } else {
+            false
+        }
+    }
+
     /// Rollback a database transaction.
     ///
     /// This variation does not send a DISCONNECT to the connected worker.
     pub fn xact_rollback(&mut self) -> Result<(), String> {
-        if self.has_session() && self.has_xact_id() {
+        if self.in_transaction() {
             self.request_np(&self.app_method("transaction.rollback"))?;
         }
 
@@ -283,7 +287,7 @@ impl Editor {
     ///
     /// This variation does not send a DISCONNECT to the connected worker.
     pub fn xact_commit(&mut self) -> Result<(), String> {
-        if self.has_session() && self.has_xact_id() {
+        if self.in_transaction() {
             // We can take() the xact_id here because we're clearing
             // it below anyway.  This avoids a .to_string() as a way
             // to get around the mutable borrow from self.request().
