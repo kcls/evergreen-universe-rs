@@ -331,23 +331,23 @@ impl TransportMessage {
         let body: Vec<json::JsonValue> = self.body().iter().map(|b| b.to_json_value()).collect();
 
         let mut obj = json::object! {
-            to: json::from(self.to()),
-            from: json::from(self.from()),
-            thread: json::from(self.thread()),
-            osrf_xid: json::from(self.osrf_xid()),
+            to: self.to(),
+            from: self.from(),
+            thread: self.thread(),
+            osrf_xid: self.osrf_xid(),
             body: body,
         };
 
         if let Some(rc) = self.router_command() {
-            obj["router_command"] = json::from(rc);
+            obj["router_command"] = rc.into();
         }
 
         if let Some(rc) = self.router_class() {
-            obj["router_class"] = json::from(rc);
+            obj["router_class"] = rc.into();
         }
 
         if let Some(rc) = self.router_reply() {
-            obj["router_reply"] = json::from(rc);
+            obj["router_reply"] = rc.into();
         }
 
         obj
@@ -514,12 +514,12 @@ impl Message {
         let mtype: &str = self.mtype.into();
 
         let mut obj = json::object! {
-            threadTrace: json::from(self.thread_trace),
-            type: json::from(mtype),
-            locale: json::from(self.locale()),
-            timezone: json::from(self.timezone()),
-            api_level: json::from(self.api_level()),
-            ingress: json::from(self.ingress()),
+            threadTrace: self.thread_trace,
+            type: mtype,
+            locale: self.locale(),
+            timezone: self.timezone(),
+            api_level: self.api_level(),
+            ingress: self.ingress(),
         };
 
         match self.payload {
@@ -608,8 +608,8 @@ impl Result {
 
     pub fn to_json_value(&self) -> json::JsonValue {
         let obj = json::object! {
-            status: json::from(self.status_label()),
-            statusCode: json::from(self.status as isize),
+            status: self.status_label(),
+            statusCode: self.status as isize,
             content: self.content.clone(),
         };
 
@@ -670,8 +670,8 @@ impl Status {
 
     pub fn to_json_value(&self) -> json::JsonValue {
         let obj = json::object! {
-            status: json::from(self.status_label()),
-            statusCode: json::from(self.status as isize),
+            status: self.status_label(),
+            statusCode: self.status as isize,
         };
 
         super::classified::ClassifiedJson::classify(obj, &self.msg_class)
@@ -750,8 +750,8 @@ impl Method {
     /// Create a JsonValue from a Method
     pub fn to_json_value(&self) -> json::JsonValue {
         let obj = json::object! {
-            method: json::from(self.method()),
-            params: json::from(self.params().to_vec()),
+            method: self.method(),
+            params: self.params().to_vec(),
         };
 
         super::classified::ClassifiedJson::classify(obj, &self.msg_class)

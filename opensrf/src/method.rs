@@ -112,7 +112,7 @@ impl Param {
             required: self.required,
             datatype: self.datatype.to_string(),
             desc: match self.desc.as_ref() {
-                Some(d) => json::from(d.as_str()),
+                Some(d) => d.as_str().into(),
                 _ => json::JsonValue::Null,
             }
         }
@@ -257,7 +257,7 @@ impl Method {
             param_count: self.param_count().to_string(),
             params: pa,
             desc: match self.desc() {
-                Some(d) => json::from(d),
+                Some(d) => d.into(),
                 _ => json::JsonValue::Null,
             }
         }
