@@ -554,7 +554,7 @@ impl Session {
 
         // msg_list is typically an array, but may be a single opensrf message.
         if !msg_list.is_array() {
-            let mut list = json::JsonValue::new_array();
+            let mut list = json::Value::new_array();
 
             if let Err(e) = list.push(msg_list) {
                 Err(format!("{self} Error creating message list {e}"))?;
@@ -643,7 +643,7 @@ impl Session {
     fn relay_to_websocket(&mut self, tm: message::TransportMessage) -> Result<(), String> {
         let msg_list = tm.body();
 
-        let mut body = json::JsonValue::new_array();
+        let mut body = json::Value::new_array();
         let mut transport_error = false;
 
         for msg in msg_list.iter() {

@@ -1,11 +1,11 @@
 use chrono::prelude::*;
 use chrono::DateTime;
-use json::JsonValue;
+use json::Value;
 
 /// We support a variety of true-ish values.
 ///
 /// True if the value is a non-zero number, a string that starts with
-/// "t/T", or a JsonValue::Bool(true).  False otherwise.
+/// "t/T", or a json::Value::Bool(true).  False otherwise.
 ///
 /// ```
 /// assert!(!evergreen::util::json_bool(&json::from(vec!["true"])));
@@ -14,7 +14,7 @@ use json::JsonValue;
 /// assert!(!evergreen::util::json_bool(&json::from(0i8)));
 /// assert!(!evergreen::util::json_bool(&json::from(false)));
 /// ```
-pub fn json_bool(value: &JsonValue) -> bool {
+pub fn json_bool(value: &json::Value) -> bool {
     if let Some(n) = value.as_i64() {
         n != 0
     } else if let Some(n) = value.as_f64() {
@@ -33,7 +33,7 @@ pub fn json_bool(value: &JsonValue) -> bool {
 /// Returns an error if the value cannot be numerified.
 ///
 /// ```
-/// assert!(evergreen::util::json_float(&json::JsonValue::new_array()).is_err());
+/// assert!(evergreen::util::json_float(&json::Value::new_array()).is_err());
 ///
 /// let res = evergreen::util::json_float(&json::from("1.2"));
 /// assert_eq!(res.unwrap(), 1.2);
@@ -41,7 +41,7 @@ pub fn json_bool(value: &JsonValue) -> bool {
 /// let res = evergreen::util::json_float(&json::from(0));
 /// assert_eq!(res.unwrap(), 0.0);
 /// ```
-pub fn json_float(value: &JsonValue) -> Result<f64, String> {
+pub fn json_float(value: &json::Value) -> Result<f64, String> {
     if let Some(n) = value.as_f64() {
         return Ok(n);
     } else if let Some(s) = value.as_str() {
@@ -56,7 +56,7 @@ pub fn json_float(value: &JsonValue) -> Result<f64, String> {
 ///
 /// Returns an error if the value cannot be numerified.
 /// ```
-/// let res = evergreen::util::json_int(&json::JsonValue::new_array());
+/// let res = evergreen::util::json_int(&json::Value::new_array());
 /// assert!(res.is_err());
 ///
 /// let res = evergreen::util::json_int(&json::from("-11"));
@@ -64,7 +64,7 @@ pub fn json_float(value: &JsonValue) -> Result<f64, String> {
 ///
 /// let res = evergreen::util::json_int(&json::from(12));
 /// assert_eq!(res.unwrap(), 12);
-pub fn json_int(value: &JsonValue) -> Result<i64, String> {
+pub fn json_int(value: &json::Value) -> Result<i64, String> {
     if let Some(n) = value.as_i64() {
         return Ok(n);
     } else if let Some(s) = value.as_str() {
@@ -79,7 +79,7 @@ pub fn json_int(value: &JsonValue) -> Result<i64, String> {
 ///
 /// Will coerce numeric values into strings.  Return Err if the
 /// value is not a string or number.
-pub fn json_string(value: &JsonValue) -> Result<String, String> {
+pub fn json_string(value: &json::Value) -> Result<String, String> {
     if let Some(s) = value.as_str() {
         Ok(s.to_string())
     } else if value.is_number() {

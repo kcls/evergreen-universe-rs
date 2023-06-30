@@ -1,14 +1,14 @@
 //! action_trigger bits
-use json::JsonValue;
+use json::Value;
 use opensrf::client::Client;
 
 pub fn create_events_for_hook(
     client: &mut Client,
     hook: &str,
-    obj: &JsonValue,
+    obj: &json::Value,
     org_id: i64,
     granularity: Option<&str>,
-    user_data: Option<&JsonValue>,
+    user_data: Option<&json::Value>,
     wait: bool,
 ) -> Result<(), String> {
     let mut ses = client.session("open-ils.trigger");
@@ -20,7 +20,7 @@ pub fn create_events_for_hook(
         granularity,
         match user_data {
             Some(d) => d.clone(),
-            None => JsonValue::Null,
+            None => json::Value::Null,
         },
     ];
 

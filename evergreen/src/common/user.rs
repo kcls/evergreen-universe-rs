@@ -3,7 +3,7 @@ use crate::editor::Editor;
 use crate::idl;
 use crate::util;
 use crate::util::json_int;
-use json::JsonValue;
+use json::Value;
 use md5;
 
 pub const PW_TYPE_MAIN: &str = "main";
@@ -96,7 +96,7 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> Result<Vec<
 }
 
 /// Returns counts of items out, overdue, etc. for a user.
-pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> {
+pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> Result<json::Value, String> {
     match e.retrieve("ocirccount", user_id)? {
         Some(mut c) => {
             c["total_out"] = json::from(json_int(&c["out"])? + json_int(&c["overdue"])?);
@@ -118,7 +118,7 @@ pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> Result<JsonValue, S
 }
 
 /// Returns a summary of fines owed by a user
-pub fn fines_summary(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> {
+pub fn fines_summary(e: &mut Editor, user_id: i64) -> Result<json::Value, String> {
     let mut fines_list = e.search("mous", json::object! {usr: user_id})?;
 
     if let Some(mut fines) = fines_list.pop() {
@@ -136,14 +136,14 @@ pub fn fines_summary(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> 
 }
 
 /// Returns a total/ready hold counts for a user.
-pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> {
+pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> Result<json::Value, String> {
     let query = json::object! {
         select: {ahr: ["pickup_lib", "current_shelf_lib", "behind_desk"]},
         from: "ahr",
         where: {
             usr: user_id,
-            fulfillment_time: JsonValue::Null,
-            cancel_time: JsonValue::Null,
+            fulfillment_time: json::Value::Null,
+            cancel_time: json::Value::Null,
         }
     };
 

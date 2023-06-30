@@ -1,7 +1,7 @@
 use crate::constants as C;
 /// Evergreen sample data tools
 use crate::editor::Editor;
-use json::JsonValue;
+use json::Value;
 
 pub const ACN_CREATOR: i64 = 1;
 pub const ACN_RECORD: i64 = 1;
@@ -47,7 +47,7 @@ impl SampleData {
         }
     }
 
-    pub fn create_default_acn(&self, e: &mut Editor) -> Result<JsonValue, String> {
+    pub fn create_default_acn(&self, e: &mut Editor) -> Result<json::Value, String> {
         let seed = json::object! {
             creator: self.acn_creator,
             editor: self.acn_creator,
@@ -62,7 +62,7 @@ impl SampleData {
         e.create(&acn)
     }
 
-    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> Result<JsonValue, String> {
+    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> Result<json::Value, String> {
         let seed = json::object! {
             call_number: acn_id,
             creator: self.acn_creator,
@@ -106,7 +106,7 @@ impl SampleData {
     }
 
     /// Create default user with a default card.
-    pub fn create_default_au(&self, e: &mut Editor) -> Result<JsonValue, String> {
+    pub fn create_default_au(&self, e: &mut Editor) -> Result<json::Value, String> {
         let seed = json::object! {
             profile: self.au_profile,
             usrname: self.au_barcode.to_string(),
@@ -145,7 +145,7 @@ impl SampleData {
             // Purge the user, attached card, and any other data
             // linked to the user.
             let query = json::object! {
-                from: ["actor.usr_delete", ac["usr"].clone(), json::JsonValue::Null]
+                from: ["actor.usr_delete", ac["usr"].clone(), json::Value::Null]
             };
 
             e.json_query(query)?;

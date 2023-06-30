@@ -6,7 +6,7 @@ use std::fmt;
 pub struct EgEvent {
     code: isize,
     textcode: String,
-    payload: json::JsonValue, // json::JsonValue::Null if empty
+    payload: json::Value, // json::Value::Null if empty
     desc: Option<String>,
     debug: Option<String>,
     note: Option<String>,
@@ -37,7 +37,7 @@ impl fmt::Display for EgEvent {
     }
 }
 
-impl From<&EgEvent> for json::JsonValue {
+impl From<&EgEvent> for json::Value {
     fn from(evt: &EgEvent) -> Self {
         let mut obj = json::object! {
             code: evt.code(),
@@ -77,7 +77,7 @@ impl EgEvent {
         EgEvent {
             code: 0,
             textcode: textcode.to_string(),
-            payload: json::JsonValue::Null,
+            payload: json::Value::Null,
             desc: None,
             debug: None,
             note: None,
@@ -89,7 +89,7 @@ impl EgEvent {
         }
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> json::Value {
         self.into()
     }
 
@@ -109,7 +109,7 @@ impl EgEvent {
         &self.textcode
     }
 
-    pub fn payload(&self) -> &json::JsonValue {
+    pub fn payload(&self) -> &json::Value {
         &self.payload
     }
 
@@ -145,7 +145,7 @@ impl EgEvent {
         &self.org
     }
 
-    /// Parses a JsonValue and optionally returns an EgEvent.
+    /// Parses a json::Value and optionally returns an EgEvent.
     ///
     /// ```
     /// use json;
@@ -171,7 +171,7 @@ impl EgEvent {
     /// let evt_op = EgEvent::parse(&jv2);
     /// assert!(evt_op.is_none());
     /// ```
-    pub fn parse(jv: &json::JsonValue) -> Option<EgEvent> {
+    pub fn parse(jv: &json::Value) -> Option<EgEvent> {
         if !jv.is_object() {
             return None;
         }

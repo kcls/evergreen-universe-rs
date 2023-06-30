@@ -30,7 +30,7 @@ pub fn random_number(size: usize) -> String {
 }
 
 /// Converts a JSON number or string to an isize if possible
-pub fn json_isize(value: &json::JsonValue) -> Option<isize> {
+pub fn json_isize(value: &json::Value) -> Option<isize> {
     if let Some(i) = value.as_isize() {
         return Some(i);
     } else if let Some(s) = value.as_str() {
@@ -43,7 +43,7 @@ pub fn json_isize(value: &json::JsonValue) -> Option<isize> {
 }
 
 /// Converts a JSON number or string to an usize if possible
-pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
+pub fn json_usize(value: &json::Value) -> Option<usize> {
     if let Some(i) = value.as_usize() {
         return Some(i);
     } else if let Some(s) = value.as_str() {

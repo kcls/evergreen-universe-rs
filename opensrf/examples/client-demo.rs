@@ -28,7 +28,7 @@ fn main() -> Result<(), String> {
         .send_recv_one("opensrf.settings", "opensrf.system.echo", value)?
         .unwrap();
 
-    // Client responses are json::JsonValue's
+    // Client responses are json::Value's
     let resp_str = response.as_str().unwrap();
 
     assert_eq!(resp_str, value);

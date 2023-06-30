@@ -183,7 +183,7 @@ impl Session {
 
         log::debug!("{self} Checkout of {item_barcode} returned: {resp}");
 
-        let event = if let json::JsonValue::Array(list) = resp {
+        let event = if let json::Value::Array(list) = resp {
             list[0].to_owned()
         } else {
             resp

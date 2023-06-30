@@ -114,7 +114,7 @@ impl GatewayHandler {
         // arrive from opensrf instead of saving them all into
         // an array and writing the array.
 
-        let array = json::JsonValue::Array(replies);
+        let array = json::Value::Array(replies);
         let data = array.dump();
         let length = format!("Content-length: {}", data.as_bytes().len());
 
@@ -144,7 +144,7 @@ impl GatewayHandler {
     fn relay_to_osrf(
         &mut self,
         request: &mut ParsedGatewayRequest,
-    ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
+    ) -> Result<Vec<json::Value>, json::Value> {
         let recipient = osrf::addr::ServiceAddress::new(&request.service);
 
         // Send every request to the router on our gateway domain.
@@ -167,7 +167,7 @@ impl GatewayHandler {
 
         self.bus().send_to(&tm, router.as_str())?;
 
-        let mut replies: Vec<json::JsonValue> = Vec::new();
+        let mut replies: Vec<json::Value> = Vec::new();
 
         loop {
             // A request can result in any number of response messages.
@@ -196,8 +196,8 @@ impl GatewayHandler {
         format: &GatewayRequestFormat,
         complete: &mut bool,
         tm: osrf::message::TransportMessage,
-    ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
-        let mut replies: Vec<json::JsonValue> = Vec::new();
+    ) -> Result<Vec<json::Value>, json::Value> {
+        let mut replies: Vec<json::Value> = Vec::new();
 
         for resp in tm.body().iter() {
             if let osrf::message::Payload::Result(resp) = resp.payload() {
@@ -240,9 +240,9 @@ impl GatewayHandler {
     /// Used to support the RawSlim format.  Useful since raw JSON
     /// versions of Fieldmapper/IDL objects often have lots of null
     /// values, especially with virtual fields.
-    fn scrub_nulls(&self, mut value: json::JsonValue) -> json::JsonValue {
+    fn scrub_nulls(&self, mut value: json::Value) -> json::Value {
         if value.is_object() {
-            let mut hash = json::JsonValue::new_object();
+            let mut hash = json::Value::new_object();
             loop {
                 let key = match value.entries().next() {
                     Some((k, _)) => k.to_owned(),
@@ -257,7 +257,7 @@ impl GatewayHandler {
 
             hash
         } else if value.is_array() {
-            let mut arr = json::JsonValue::new_array();
+            let mut arr = json::Value::new_array();
             while value.len() > 0 {
                 let scrubbed = self.scrub_nulls(value.array_remove(0));
                 if !scrubbed.is_null() {
@@ -358,7 +358,7 @@ impl GatewayHandler {
 
         let mut method: Option<String> = None;
         let mut service: Option<String> = None;
-        let mut params: Vec<json::JsonValue> = Vec::new();
+        let mut params: Vec<json::Value> = Vec::new();
         let mut format = GatewayRequestFormat::Fieldmapper;
 
         // Pack GET and POST params into a single iterator.

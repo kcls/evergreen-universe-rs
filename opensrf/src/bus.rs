@@ -144,7 +144,7 @@ impl Bus {
         &mut self,
         timeout: i32,
         recipient: Option<&str>,
-    ) -> Result<Option<json::JsonValue>, String> {
+    ) -> Result<Option<json::Value>, String> {
         let json_string = match self.recv_one_chunk(timeout, recipient)? {
             Some(s) => s,
             None => {
@@ -175,8 +175,8 @@ impl Bus {
         &mut self,
         timeout: i32,
         recipient: Option<&str>,
-    ) -> Result<Option<json::JsonValue>, String> {
-        let mut option: Option<json::JsonValue>;
+    ) -> Result<Option<json::Value>, String> {
+        let mut option: Option<json::Value>;
 
         if timeout == 0 {
             // See if any data is ready now

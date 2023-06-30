@@ -14,7 +14,7 @@ chrono = "0.4.19"
 log = "0.4.17"
 getopts = "0.2.21"
 deunicode = "1.3.2"
-json = { version = "0.12.4", optional = true }
+serde_json = "1.0.99"
 
 [[example]]
 name = "sip2-client"

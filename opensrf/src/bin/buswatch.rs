@@ -69,7 +69,7 @@ impl BusWatch {
                 continue;
             }
 
-            obj["stats"] = json::JsonValue::new_object();
+            obj["stats"] = json::Value::new_object();
 
             for key in keys.iter() {
                 match self.bus.llen(key) {

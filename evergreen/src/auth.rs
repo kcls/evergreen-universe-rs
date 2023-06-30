@@ -77,7 +77,7 @@ impl AuthLoginArgs {
         self.workstation.as_deref()
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> json::Value {
         let lt: &str = self.login_type().into();
 
         let mut jv = json::object! {
@@ -115,7 +115,7 @@ impl AuthInternalLoginArgs {
         }
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> json::Value {
         let lt: &str = (&self.login_type).into();
 
         let mut jv = json::object! {
@@ -189,7 +189,7 @@ impl AuthSession {
 
     fn handle_auth_response(
         workstation: &Option<String>,
-        response: &json::JsonValue,
+        response: &json::Value,
     ) -> Result<Option<AuthSession>, String> {
         let evt = match event::EgEvent::parse(&response) {
             Some(e) => e,

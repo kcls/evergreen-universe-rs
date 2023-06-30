@@ -59,7 +59,7 @@ impl ServiceInstance {
         self.register_time
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
+    fn to_json_value(&self) -> json::Value {
         json::object! {
             address: json::from(self.address().as_str()),
             register_time: json::from(self.register_time()),
@@ -115,13 +115,13 @@ impl ServiceEntry {
         }
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
+    fn to_json_value(&self) -> json::Value {
         json::object! {
             name: json::from(self.name()),
             route_count: json::from(self.route_count),
             controllers: json::from(
                 self.controllers().iter()
-                    .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
+                    .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
             )
         }
     }
@@ -214,12 +214,12 @@ impl RouterDomain {
         }
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
+    fn to_json_value(&self) -> json::Value {
         json::object! {
             domain: json::from(self.domain()),
             route_count: json::from(self.route_count()),
             services: json::from(self.services().iter()
-                .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
+                .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
             )
         }
     }
@@ -330,12 +330,12 @@ impl Router {
         &self.remote_domains
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
+    fn to_json_value(&self) -> json::Value {
         json::object! {
             listen_address: json::from(self.listen_address.as_str()),
             primary_domain: self.primary_domain().to_json_value(),
             remote_domains: json::from(self.remote_domains().iter()
-                .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
+                .map(|s| s.to_json_value()).collect::<Vec<json::Value>>()
             )
         }
     }
@@ -703,7 +703,7 @@ impl Router {
     fn process_router_api_request(
         &mut self,
         m: &message::Method,
-    ) -> Result<json::JsonValue, String> {
+    ) -> Result<json::Value, String> {
         match m.method() {
             "opensrf.router.info.class.list" => {
                 // Caller wants a list of service names

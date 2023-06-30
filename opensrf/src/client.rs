@@ -6,7 +6,7 @@ use super::params::ApiParams;
 use super::session::ResponseIterator;
 use super::session::SessionHandle;
 use super::util;
-use json::JsonValue;
+use json::Value;
 use log::{info, trace};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -17,8 +17,8 @@ use std::sync::Arc;
 const DEFAULT_ROUTER_COMMAND_TIMEOUT: i32 = 10;
 
 pub trait DataSerializer {
-    fn pack(&self, value: JsonValue) -> JsonValue;
-    fn unpack(&self, value: JsonValue) -> JsonValue;
+    fn pack(&self, value: json::Value) -> json::Value;
+    fn unpack(&self, value: json::Value) -> json::Value;
 }
 
 /// Generally speaking, we only need 1 ClientSingleton per thread (hence
@@ -40,7 +40,7 @@ pub struct ClientSingleton {
     /// processed by any sessions.
     backlog: Vec<message::TransportMessage>,
 
-    /// If present, JsonValue's will be passed through its pack() and
+    /// If present, json::Value's will be passed through its pack() and
     /// unpack() methods before/after data hits the network.
     serializer: Option<Arc<dyn DataSerializer>>,
 }
@@ -166,7 +166,7 @@ impl ClientSingleton {
         router_command: &str,
         router_class: Option<&str>,
         await_reply: bool,
-    ) -> Result<Option<JsonValue>, String> {
+    ) -> Result<Option<json::Value>, String> {
         let addr = RouterAddress::new(domain);
 
         // Always use the address of our primary Bus
@@ -307,7 +307,7 @@ impl Client {
         command: &str,
         router_class: Option<&str>,
         await_reply: bool,
-    ) -> Result<Option<JsonValue>, String> {
+    ) -> Result<Option<json::Value>, String> {
         self.singleton().borrow_mut().send_router_command(
             domain,
             command,
@@ -343,7 +343,7 @@ impl Client {
         service: &str,
         method: &str,
         params: T,
-    ) -> Result<Option<JsonValue>, String>
+    ) -> Result<Option<json::Value>, String>
     where
         T: Into<ApiParams>,
     {

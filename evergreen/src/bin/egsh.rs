@@ -344,7 +344,7 @@ impl Shell {
         }
     }
 
-    fn _check_for_event(&mut self, v: &json::JsonValue) -> Result<(), String> {
+    fn _check_for_event(&mut self, v: &json::Value) -> Result<(), String> {
         if let Some(evt) = event::EgEvent::parse(v) {
             if !evt.success() {
                 return Err(format!("Non-SUCCESS event returned: {evt}"));
@@ -498,7 +498,7 @@ impl Shell {
     fn send_request(&mut self, args: &[&str]) -> Result<(), String> {
         self.args_min_length(args, 2)?;
 
-        let mut params: Vec<json::JsonValue> = Vec::new();
+        let mut params: Vec<json::Value> = Vec::new();
 
         // Use the serde_json stream parser to read the parameters.
         let data = args[2..].join(" ");
@@ -510,7 +510,7 @@ impl Shell {
                 Err(e) => Err(format!("Cannot parse params: {data} {e}"))?,
             };
 
-            // Translate the serde_json::Value into a json::JsonValue.
+            // Translate the serde_json::Value into a json::Value.
             let p_str = match serde_json::to_string(&p) {
                 Ok(s) => s,
                 Err(e) => Err(format!("Error stringifying: {e}"))?,
@@ -642,8 +642,8 @@ impl Shell {
         // TODO: support paging in the UI?
         search.set_pager(util::Pager::new(100, 0));
 
-        let mut filter = json::JsonValue::new_object();
-        let mut subfilter = json::JsonValue::new_object();
+        let mut filter = json::Value::new_object();
+        let mut subfilter = json::Value::new_object();
         subfilter[operand] = value;
         filter[fieldname] = subfilter;
 
@@ -662,7 +662,7 @@ impl Shell {
         Ok(())
     }
 
-    fn print_json_record(&mut self, obj: &json::JsonValue) -> Result<(), String> {
+    fn print_json_record(&mut self, obj: &json::Value) -> Result<(), String> {
         self.result_count += 1;
 
         println!("{SEPARATOR}");
@@ -674,7 +674,7 @@ impl Shell {
         Ok(())
     }
 
-    fn print_idl_object(&mut self, obj: &json::JsonValue) -> Result<(), String> {
+    fn print_idl_object(&mut self, obj: &json::Value) -> Result<(), String> {
         self.result_count += 1;
 
         let classname = obj[idl::CLASSNAME_KEY]

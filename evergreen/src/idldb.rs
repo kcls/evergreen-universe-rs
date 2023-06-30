@@ -4,7 +4,7 @@ use super::idl;
 use super::util;
 use super::util::Pager;
 use chrono::prelude::*;
-use json::JsonValue;
+use json::Value;
 use pg::types::ToSql;
 use postgres as pg;
 use rust_decimal::Decimal;
@@ -57,7 +57,7 @@ pub struct IdlClassCreate {
     pub classname: String,
     // Outer Vec is our list of value collections.
     // Inner list is a single set of values to create.
-    pub values: Vec<Vec<(String, JsonValue)>>,
+    pub values: Vec<Vec<(String, json::Value)>>,
 }
 
 impl IdlClassCreate {
@@ -73,8 +73,8 @@ impl IdlClassCreate {
 /// of a given class.
 pub struct IdlClassUpdate {
     pub classname: String,
-    pub values: Vec<(String, JsonValue)>,
-    pub filter: Option<JsonValue>,
+    pub values: Vec<(String, json::Value)>,
+    pub filter: Option<json::Value>,
 }
 
 impl IdlClassUpdate {
@@ -89,19 +89,19 @@ impl IdlClassUpdate {
         self.values = Vec::new();
         self.filter = None;
     }
-    pub fn values(&self) -> &Vec<(String, JsonValue)> {
+    pub fn values(&self) -> &Vec<(String, json::Value)> {
         &self.values
     }
 
-    pub fn add_value(&mut self, field: &str, value: &JsonValue) {
+    pub fn add_value(&mut self, field: &str, value: &json::Value) {
         self.values.push((field.to_string(), value.clone()));
     }
 
-    pub fn filter(&self) -> &Option<JsonValue> {
+    pub fn filter(&self) -> &Option<json::Value> {
         &self.filter
     }
 
-    pub fn set_filter(&mut self, f: JsonValue) {
+    pub fn set_filter(&mut self, f: json::Value) {
         self.filter = Some(f);
     }
 }
@@ -109,7 +109,7 @@ impl IdlClassUpdate {
 /// Models a request to search for a set of IDL objects of a given class.
 pub struct IdlClassSearch {
     pub classname: String,
-    pub filter: Option<JsonValue>,
+    pub filter: Option<json::Value>,
     pub order_by: Option<Vec<OrderBy>>,
     pub pager: Option<Pager>,
 }
@@ -128,11 +128,11 @@ impl IdlClassSearch {
         &self.classname
     }
 
-    pub fn filter(&self) -> &Option<JsonValue> {
+    pub fn filter(&self) -> &Option<json::Value> {
         &self.filter
     }
 
-    pub fn set_filter(&mut self, f: JsonValue) {
+    pub fn set_filter(&mut self, f: json::Value) {
         self.filter = Some(f);
     }
 
@@ -195,8 +195,8 @@ impl Translator {
     pub fn get_idl_object_by_pkey(
         &self,
         classname: &str,
-        pkey: &JsonValue,
-    ) -> Result<Option<JsonValue>, String> {
+        pkey: &json::Value,
+    ) -> Result<Option<json::Value>, String> {
         let idl_class = self
             .idl()
             .classes()
@@ -207,7 +207,7 @@ impl Translator {
             .pkey_field()
             .ok_or(format!("Class {classname} has no primary key field"))?;
 
-        let mut filter = JsonValue::new_object();
+        let mut filter = json::Value::new_object();
         filter.insert(pkey_field.name(), pkey.clone()).unwrap();
 
         let mut search = IdlClassSearch::new(classname);
@@ -226,7 +226,7 @@ impl Translator {
     }
 
     /// Get the IDL Class representing to the provided object.
-    pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> Result<&idl::Class, String> {
+    pub fn get_idl_class_from_object(&self, obj: &json::Value) -> Result<&idl::Class, String> {
         let classname = obj[idl::CLASSNAME_KEY]
             .as_str()
             .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
@@ -240,7 +240,7 @@ impl Translator {
     /// Create an IDL object in the database
     ///
     /// Returns the created value
-    pub fn create_idl_object(&self, obj: &JsonValue) -> Result<JsonValue, String> {
+    pub fn create_idl_object(&self, obj: &json::Value) -> Result<json::Value, String> {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut create = IdlClassCreate::new(idl_class.classname());
@@ -267,7 +267,7 @@ impl Translator {
     /// Create one or more IDL objects in the database.
     ///
     /// Returns the created rows.
-    pub fn idl_class_create(&self, create: &IdlClassCreate) -> Result<Vec<JsonValue>, String> {
+    pub fn idl_class_create(&self, create: &IdlClassCreate) -> Result<Vec<json::Value>, String> {
         if create.values.len() == 0 {
             Err(format!("No values to create in idl_class_create()"))?;
         }
@@ -333,7 +333,7 @@ impl Translator {
 
         // Use the primary key values reported by PG to find the
         // newly created rows.
-        let mut results: Vec<JsonValue> = Vec::new();
+        let mut results: Vec<json::Value> = Vec::new();
 
         for row in query_res.unwrap() {
             let pkey_value = self.col_value_to_json_value(&row, 0)?;
@@ -348,7 +348,7 @@ impl Translator {
     }
 
     /// Update one IDL object in the database.
-    pub fn update_idl_object(&self, obj: &JsonValue) -> Result<u64, String> {
+    pub fn update_idl_object(&self, obj: &json::Value) -> Result<u64, String> {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut update = IdlClassUpdate::new(idl_class.classname());
@@ -361,7 +361,7 @@ impl Translator {
             .get_pkey_info(obj)
             .ok_or(format!("Object has no primary key field"))?;
 
-        let mut filter = JsonValue::new_object();
+        let mut filter = json::Value::new_object();
         filter
             .insert(pkey_field.name(), pkey_value.clone())
             .unwrap();
@@ -441,7 +441,7 @@ impl Translator {
     pub fn delete_idl_object_by_pkey(
         &self,
         classname: &str,
-        pkey: &JsonValue,
+        pkey: &json::Value,
     ) -> Result<u64, String> {
         if !self.db.borrow().in_transaction() {
             Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
@@ -486,8 +486,8 @@ impl Translator {
     /// Search for IDL objects in the database.
     ///
     /// Returns a Vec of the found IDL objects.
-    pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<JsonValue>, String> {
-        let mut results: Vec<JsonValue> = Vec::new();
+    pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<json::Value>, String> {
+        let mut results: Vec<json::Value> = Vec::new();
         let classname = &search.classname;
 
         let class = self
@@ -573,8 +573,8 @@ impl Translator {
     fn try_translate_numeric(
         &self,
         idl_field: &idl::Field,
-        value: &JsonValue,
-    ) -> Result<Option<JsonValue>, String> {
+        value: &json::Value,
+    ) -> Result<Option<json::Value>, String> {
         if !value.is_string() {
             return Ok(None);
         }
@@ -599,7 +599,7 @@ impl Translator {
     fn compile_class_create(
         &self,
         class: &idl::Class,
-        values: &Vec<(String, JsonValue)>,
+        values: &Vec<(String, json::Value)>,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> Result<String, String> {
@@ -636,7 +636,7 @@ impl Translator {
     fn compile_class_update(
         &self,
         class: &idl::Class,
-        values: &Vec<(String, JsonValue)>,
+        values: &Vec<(String, json::Value)>,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> Result<String, String> {
@@ -676,7 +676,7 @@ impl Translator {
     fn compile_class_filter(
         &self,
         class: &idl::Class,
-        filter: &JsonValue,
+        filter: &json::Value,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> Result<String, String> {
@@ -697,17 +697,17 @@ impl Translator {
             ))?;
 
             let filter = match subq {
-                JsonValue::Array(_) => self.compile_class_filter_array(
+                json::Value::Array(_) => self.compile_class_filter_array(
                     param_index,
                     param_list,
                     idl_field,
                     &subq,
                     "IN",
                 )?,
-                JsonValue::Object(_) => {
+                json::Value::Object(_) => {
                     self.compile_class_filter_object(param_index, param_list, idl_field, &subq)?
                 }
-                JsonValue::Number(_) | JsonValue::String(_) | JsonValue::Short(_) => self
+                json::Value::Number(_) | json::Value::String(_) | json::Value::Short(_) => self
                     .append_json_literal(
                         param_index,
                         param_list,
@@ -716,7 +716,7 @@ impl Translator {
                         Some("="),
                         false,
                     )?,
-                JsonValue::Boolean(_) | JsonValue::Null => self.append_json_literal(
+                json::Value::Boolean(_) | json::Value::Null => self.append_json_literal(
                     param_index,
                     param_list,
                     idl_field,
@@ -742,7 +742,7 @@ impl Translator {
         param_index: &mut usize,
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
-        obj: &JsonValue,
+        obj: &json::Value,
         operand: Option<&str>,
         use_default: bool,
     ) -> Result<String, String> {
@@ -765,7 +765,7 @@ impl Translator {
 
         // Track String parameters so we can use query binding on the
         // them in the final query.  All other types, being derived
-        // from JsonValue, have a known shape and size (number/bool/null),
+        // from json::Value, have a known shape and size (number/bool/null),
         // so query binding is less critical from a sql-injection
         // perspective.
         if obj.is_string() {
@@ -785,7 +785,7 @@ impl Translator {
         param_index: &mut usize,
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
-        obj: &JsonValue,
+        obj: &json::Value,
     ) -> Result<String, String> {
         // A filter object may only contain a single operand => value combo
         let (key, val) = obj
@@ -829,7 +829,7 @@ impl Translator {
         param_index: &mut usize,
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
-        arr: &JsonValue,
+        arr: &json::Value,
         operand: &str,
     ) -> Result<String, String> {
         let operand = operand.to_uppercase();
@@ -852,9 +852,9 @@ impl Translator {
         Ok(format!("{operand} ({})", filters.join(", ")))
     }
 
-    /// Maps a PG row into an IDL-based JsonValue;
-    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> Result<JsonValue, String> {
-        let mut obj = JsonValue::new_object();
+    /// Maps a PG row into an IDL-based json::Value;
+    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> Result<json::Value, String> {
+        let mut obj = json::Value::new_object();
         obj[idl::CLASSNAME_KEY] = json::from(class.classname());
 
         let mut index = 0;
@@ -867,12 +867,12 @@ impl Translator {
         Ok(obj)
     }
 
-    /// Translate a PG-typed row value into a JsonValue
-    fn col_value_to_json_value(&self, row: &pg::Row, index: usize) -> Result<JsonValue, String> {
+    /// Translate a PG-typed row value into a json::Value
+    fn col_value_to_json_value(&self, row: &pg::Row, index: usize) -> Result<json::Value, String> {
         let col_type = row.columns().get(index).map(|c| c.type_().name()).unwrap();
 
         match col_type {
-            // JsonValue has From<Option<T>>
+            // json::Value has From<Option<T>>
             "bool" => {
                 let v: Option<bool> = row.get(index);
                 Ok(json::from(v))
@@ -881,7 +881,7 @@ impl Translator {
                 let v: Option<pg_interval::Interval> = row.get(index);
                 let s = match v {
                     Some(val) => val.to_postgres(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(json::Value::Null),
                 };
                 Ok(json::from(s))
             }
@@ -893,7 +893,7 @@ impl Translator {
                 let v: Option<chrono::NaiveDate> = row.get(index);
                 let s = match v {
                     Some(val) => val.format("%F").to_string(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(json::Value::Null),
                 };
                 Ok(json::from(s))
             }
@@ -901,7 +901,7 @@ impl Translator {
                 let v: Option<chrono::DateTime<Utc>> = row.get(index);
                 let s = match v {
                     Some(val) => val.format("%FT%T%z").to_string(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(json::Value::Null),
                 };
                 Ok(json::from(s))
             }
@@ -929,10 +929,10 @@ impl Translator {
                 let decimal: Option<Decimal> = row.get(index);
                 match decimal {
                     Some(d) => Ok(json::from(d.to_string())),
-                    None => Ok(JsonValue::Null),
+                    None => Ok(json::Value::Null),
                 }
             }
-            "tsvector" => Ok(JsonValue::Null),
+            "tsvector" => Ok(json::Value::Null),
             _ => Err(format!("Unsupported column type: {col_type}")),
         }
     }

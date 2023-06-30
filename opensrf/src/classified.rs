@@ -4,19 +4,19 @@ const JSON_CLASS_KEY: &str = "__c";
 const JSON_PAYLOAD_KEY: &str = "__p";
 
 pub struct ClassifiedJson {
-    json: json::JsonValue,
+    json: json::Value,
     class: String,
 }
 
 impl ClassifiedJson {
-    pub fn json(&self) -> &json::JsonValue {
+    pub fn json(&self) -> &json::Value {
         &self.json
     }
 
     /// Returns the JSON value stored in the ClassifiedJson struct,
-    /// replacing the value with JsonValue::Null;
-    pub fn take_json(&mut self) -> json::JsonValue {
-        std::mem::replace(&mut self.json, json::JsonValue::Null)
+    /// replacing the value with json::Value::Null;
+    pub fn take_json(&mut self) -> json::Value {
+        std::mem::replace(&mut self.json, json::Value::Null)
     }
 
     /// Returns the class name / hint value for the classified object.
@@ -35,15 +35,15 @@ impl ClassifiedJson {
     /// assert_eq!(obj["__p"][1].as_u8().unwrap(), 2u8);
     /// ```
     ///
-    pub fn classify(json: json::JsonValue, class: &str) -> json::JsonValue {
-        let mut hash = json::JsonValue::new_object();
+    pub fn classify(json: json::Value, class: &str) -> json::Value {
+        let mut hash = json::Value::new_object();
         hash.insert(JSON_CLASS_KEY, class).ok();
         hash.insert(JSON_PAYLOAD_KEY, json).ok();
 
         hash
     }
 
-    pub fn can_declassify(obj: &json::JsonValue) -> bool {
+    pub fn can_declassify(obj: &json::Value) -> bool {
         obj.is_object()
             && obj.has_key(JSON_CLASS_KEY)
             && obj.has_key(JSON_PAYLOAD_KEY)
@@ -63,7 +63,7 @@ impl ClassifiedJson {
     /// assert_eq!(value.class(), "abc");
     /// assert_eq!(value.json()[1].as_u8().unwrap(), 2u8);
     /// ```
-    pub fn declassify(mut obj: json::JsonValue) -> Option<ClassifiedJson> {
+    pub fn declassify(mut obj: json::Value) -> Option<ClassifiedJson> {
         if ClassifiedJson::can_declassify(&obj) {
             Some(ClassifiedJson {
                 class: obj[JSON_CLASS_KEY].as_str().unwrap().to_owned(),

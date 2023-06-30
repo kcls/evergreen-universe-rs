@@ -3,12 +3,12 @@ use crate::common::trigger;
 use crate::editor::Editor;
 use crate::settings::Settings;
 use crate::util;
-use json::JsonValue;
+use json::Value;
 
 // Shortcut for unckecked int conversions for values that are known good.
-// We coul compare JsonValue's directly, but there's a chance a number may be
+// We coul compare json::Value's directly, but there's a chance a number may be
 // transferred as a JSON String, so turn them into numbers for conformity.
-fn number(v: &JsonValue) -> i64 {
+fn number(v: &json::Value) -> i64 {
     util::json_int(v).unwrap()
 }
 
@@ -16,7 +16,7 @@ pub fn calculate_penalties(
     editor: &mut Editor,
     user_id: i64,
     context_org: i64,
-    only_penalties: Option<&Vec<JsonValue>>,
+    only_penalties: Option<&Vec<json::Value>>,
 ) -> Result<(), String> {
     let query = json::object! {
         from: [
@@ -37,14 +37,14 @@ pub fn calculate_penalties(
     }
 
     // Applied penalties have a DB ID.
-    let mut existing_penalties: Vec<&JsonValue> =
+    let mut existing_penalties: Vec<&json::Value> =
         penalties.iter().filter(|p| !p["id"].is_null()).collect();
 
     // Penalties that should be applied do not have a DB ID.
-    let wanted_penalties: Vec<&JsonValue> =
+    let wanted_penalties: Vec<&json::Value> =
         penalties.iter().filter(|p| p["id"].is_null()).collect();
 
-    let mut trigger_events: Vec<(String, JsonValue, i64)> = Vec::new();
+    let mut trigger_events: Vec<(String, json::Value, i64)> = Vec::new();
 
     for pen_hash in wanted_penalties {
         let org_unit = number(&pen_hash["org_unit"]);
@@ -68,7 +68,7 @@ pub fn calculate_penalties(
             existing_penalties = existing_penalties
                 .iter()
                 .filter(|p| number(&p["id"]) != id)
-                .map(|p| *p) // &&JsonValue
+                .map(|p| *p) // &&json::Value
                 .collect();
         } else {
             // This is a new penalty.  Create it.
@@ -114,9 +114,9 @@ pub fn calculate_penalties(
 fn trim_to_wanted_penalties(
     editor: &mut Editor,
     context_org: i64,
-    only_penalties: Option<&Vec<JsonValue>>,
-    all_penalties: Vec<JsonValue>,
-) -> Result<Vec<JsonValue>, String> {
+    only_penalties: Option<&Vec<json::Value>>,
+    all_penalties: Vec<json::Value>,
+) -> Result<Vec<json::Value>, String> {
     let only_penalties = match only_penalties {
         Some(op) => op,
         None => return Ok(all_penalties),
@@ -127,8 +127,8 @@ fn trim_to_wanted_penalties(
     }
 
     // The set to limit may be specified as penalty type IDs or names.
-    let mut penalty_id_list: Vec<JsonValue> = Vec::new();
-    let mut penalty_name_list: Vec<JsonValue> = Vec::new();
+    let mut penalty_id_list: Vec<json::Value> = Vec::new();
+    let mut penalty_name_list: Vec<json::Value> = Vec::new();
 
     for pen in only_penalties {
         if pen.is_number() {
@@ -171,7 +171,7 @@ fn trim_to_wanted_penalties(
 
     // Trim our list of penalties to those whose IDs we have identified
     // the caller is interested in.
-    let mut final_penalties: Vec<JsonValue> = Vec::new();
+    let mut final_penalties: Vec<json::Value> = Vec::new();
     for pen in all_penalties {
         if penalty_id_list
             .iter()

@@ -2,13 +2,13 @@
 //! Primarily uses the 'actor.get_cascade_setting()' DB function.
 use crate::editor::Editor;
 use crate::util;
-use json::JsonValue;
+use json::Value;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
 use std::time::Instant;
 
-const JSON_NULL: JsonValue = JsonValue::Null;
+const JSON_NULL: json::Value = json::Value::Null;
 
 // Setting names consist only of letters, numbers, unders, and dots.
 // This is crucial since the names are encoded as an SQL TEXT[] parameter
@@ -89,13 +89,13 @@ impl SettingContext {
     pub fn workstation_id(&self) -> &Option<i64> {
         &self.workstation_id
     }
-    pub fn org_id_json(&self) -> JsonValue {
+    pub fn org_id_json(&self) -> json::Value {
         self.org_id.map(json::from).unwrap_or(JSON_NULL)
     }
-    pub fn user_id_json(&self) -> JsonValue {
+    pub fn user_id_json(&self) -> json::Value {
         self.user_id.map(json::from).unwrap_or(JSON_NULL)
     }
-    pub fn workstation_id_json(&self) -> JsonValue {
+    pub fn workstation_id_json(&self) -> json::Value {
         self.workstation_id.map(json::from).unwrap_or(JSON_NULL)
     }
 
@@ -115,12 +115,12 @@ impl SettingContext {
 /// it's stored in.
 #[derive(Debug)]
 pub struct SettingEntry {
-    value: JsonValue,
+    value: json::Value,
     lookup_time: Instant,
 }
 
 impl SettingEntry {
-    pub fn value(&self) -> &JsonValue {
+    pub fn value(&self) -> &json::Value {
         &self.value
     }
     pub fn lookup_time(&self) -> &Instant {
@@ -199,7 +199,7 @@ impl Settings {
     /// Returns a setting value using the default context.
     ///
     /// Returns JSON null if no setting exists.
-    pub fn get_value(&mut self, name: &str) -> Result<&JsonValue, String> {
+    pub fn get_value(&mut self, name: &str) -> Result<&json::Value, String> {
         // Clone needed here because get_context_value mutably borrows
         // self a number of times.
         self.get_context_value(&self.default_context.clone(), name)
@@ -210,7 +210,7 @@ impl Settings {
         &mut self,
         context: &SettingContext,
         name: &str,
-    ) -> Result<&JsonValue, String> {
+    ) -> Result<&json::Value, String> {
         let hash = match self.cache.get(context) {
             Some(h) => h,
             None => {
@@ -232,7 +232,7 @@ impl Settings {
         Err(format!("Unable to pull value from cache for {name}"))
     }
 
-    pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&JsonValue> {
+    pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&json::Value> {
         let hash = match self.cache.get_mut(context) {
             Some(h) => h,
             None => return None,
@@ -316,14 +316,14 @@ impl Settings {
     fn store_setting_value(
         &mut self,
         context: &SettingContext,
-        setting: &JsonValue,
+        setting: &json::Value,
     ) -> Result<(), String> {
         let value = match setting["value"].as_str() {
             Some(v) => match json::parse(v) {
                 Ok(vv) => vv,
                 Err(e) => Err(format!("Cannot parse setting value: {e}"))?,
             },
-            None => JsonValue::Null,
+            None => json::Value::Null,
         };
 
         let name = setting["name"]

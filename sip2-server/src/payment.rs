@@ -127,7 +127,7 @@ impl Session {
     /// a viable choice.
     fn compile_one_xact(
         &mut self,
-        user: &json::JsonValue,
+        user: &json::Value,
         xact_id: i64,
         pay_amount: f64,
         result: &mut PaymentResult,
@@ -156,7 +156,7 @@ impl Session {
     /// Find transactions to pay
     fn compile_multi_xacts(
         &mut self,
-        user: &json::JsonValue,
+        user: &json::Value,
         pay_amount: f64,
         result: &mut PaymentResult,
     ) -> Result<Vec<(i64, f64)>, String> {
@@ -222,7 +222,7 @@ impl Session {
     /// Send payment data to the server for processing.
     fn apply_payments(
         &mut self,
-        user: &json::JsonValue,
+        user: &json::Value,
         result: &mut PaymentResult,
         pay_type: &str,
         terminal_xact_op: &Option<String>,
