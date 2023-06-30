@@ -2,6 +2,7 @@
 ///
 use super::client::Client;
 use std::sync::Arc;
+use serde_json as json;
 
 const SETTINGS_TIMEOUT: i32 = 10;
 
@@ -14,11 +15,9 @@ impl SettingsClient {
     /// any caching.
     pub fn get_host_settings(client: &Client, force: bool) -> Result<HostSettings, String> {
         let mut ses = client.session("opensrf.settings");
+        let params = json::json!([client.config().hostname(), force]);
 
-        let mut req = ses.request(
-            "opensrf.settings.host_config.get",
-            vec![json::from(client.config().hostname()), json::from(force)],
-        )?;
+        let mut req = ses.request("opensrf.settings.host_config.get", params)?;
 
         if let Some(s) = req.recv_with_timeout(SETTINGS_TIMEOUT)? {
             Ok(HostSettings { settings: s })

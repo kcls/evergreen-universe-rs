@@ -4,6 +4,7 @@ use super::message::TransportMessage;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::fmt;
 use std::time;
+use serde_json as json;
 
 /// Manages the Redis connection.
 pub struct Bus {
@@ -154,7 +155,7 @@ impl Bus {
 
         log::trace!("{self} read json from the bus: {json_string}");
 
-        match json::parse(&json_string) {
+        match json::from_str(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),
             Err(err_msg) => {
                 return Err(format!("Error parsing JSON: {:?}", err_msg));
@@ -248,7 +249,7 @@ impl Bus {
     /// Sends a TransportMessage to the specified ClientAddress, regardless
     /// of what value is in the msg.to() field.
     pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), String> {
-        let json_str = msg.to_json_value().dump();
+        let json_str = msg.to_json_value().to_string();
 
         log::trace!("send() writing chunk to={}: {}", recipient, json_str);
 

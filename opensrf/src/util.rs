@@ -1,4 +1,4 @@
-use json;
+use serde_json as json;
 use rand::Rng;
 use std::thread;
 use std::time::{Instant, SystemTime};

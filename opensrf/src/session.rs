@@ -10,7 +10,7 @@ use super::message::Status;
 use super::message::TransportMessage;
 use super::params::ApiParams;
 use super::util;
-use json::Value;
+use serde_json as json;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::VecDeque;
@@ -323,7 +323,7 @@ impl Session {
 
                 // Compile the collected JSON chunks into a single value,
                 // which is the final response value.
-                value = json::parse(&buf)
+                value = json::from_str(&buf)
                     .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
 
                 log::trace!("Partial message is now complete");
@@ -542,7 +542,7 @@ impl SessionHandle {
 
     /// Issue a new API call and return the Request
     ///
-    /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json::object!{a: "b"}]
+    /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json!({"a": "b"})]
     pub fn request<T>(&mut self, method: &str, params: T) -> Result<Request, String>
     where
         T: Into<ApiParams>,
@@ -696,7 +696,7 @@ impl ServerSession {
     where
         T: Into<json::Value>,
     {
-        let mut value = json::from(value);
+        let mut value = value;
         if let Some(s) = self.client.singleton().borrow().serializer() {
             value = s.pack(value);
         }

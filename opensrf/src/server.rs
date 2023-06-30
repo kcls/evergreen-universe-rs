@@ -77,12 +77,14 @@ impl Server {
 
         let min_workers = host_settings
             .value(&format!("apps/{service}/unix_config/min_children"))
-            .as_usize()
+            .as_u64()
+            .map(|v| v as usize)
             .unwrap_or(DEFAULT_MIN_WORKERS);
 
         let max_workers = host_settings
             .value(&format!("apps/{service}/unix_config/max_children"))
-            .as_usize()
+            .as_u64()
+            .map(|v| v as usize)
             .unwrap_or(DEFAULT_MAX_WORKERS);
 
         // We have a single to-parent channel whose trasmitter is cloned

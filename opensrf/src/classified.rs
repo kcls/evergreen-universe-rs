@@ -1,4 +1,5 @@
 /// Encode / Decode JSON values with class names
+use serde_json as json;
 
 const JSON_CLASS_KEY: &str = "__c";
 const JSON_PAYLOAD_KEY: &str = "__p";
@@ -35,19 +36,18 @@ impl ClassifiedJson {
     /// assert_eq!(obj["__p"][1].as_u8().unwrap(), 2u8);
     /// ```
     ///
-    pub fn classify(json: json::Value, class: &str) -> json::Value {
-        let mut hash = json::Value::new_object();
-        hash.insert(JSON_CLASS_KEY, class).ok();
-        hash.insert(JSON_PAYLOAD_KEY, json).ok();
+    pub fn classify(payload: json::Value, class: &str) -> json::Value {
+        let mut hash = json::json!({});
+        hash[JSON_CLASS_KEY] = class.into();
+        hash[JSON_PAYLOAD_KEY] = payload;
 
         hash
     }
 
     pub fn can_declassify(obj: &json::Value) -> bool {
         obj.is_object()
-            && obj.has_key(JSON_CLASS_KEY)
-            && obj.has_key(JSON_PAYLOAD_KEY)
             && obj[JSON_CLASS_KEY].is_string()
+            && !obj[JSON_PAYLOAD_KEY].is_null()
     }
 
     /// Turns a json value into a ClassifiedJson if it's a hash

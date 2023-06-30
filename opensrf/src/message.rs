@@ -1,5 +1,6 @@
 use super::util;
 use std::fmt;
+use serde_json as json;
 
 const DEFAULT_LOCALE: &str = "en-US";
 const DEFAULT_TIMEZONE: &str = "America/New_York";
@@ -330,24 +331,24 @@ impl TransportMessage {
     pub fn to_json_value(&self) -> json::Value {
         let body: Vec<json::Value> = self.body().iter().map(|b| b.to_json_value()).collect();
 
-        let mut obj = json::object! {
-            to: json::from(self.to()),
-            from: json::from(self.from()),
-            thread: json::from(self.thread()),
-            osrf_xid: json::from(self.osrf_xid()),
-            body: body,
-        };
+        let mut obj = json::json!({
+            "to": self.to(),
+            "from": self.from(),
+            "thread": self.thread(),
+            "osrf_xid": self.osrf_xid(),
+            "body": body,
+        });
 
         if let Some(rc) = self.router_command() {
-            obj["router_command"] = json::from(rc);
+            obj["router_command"] = rc.into();
         }
 
         if let Some(rc) = self.router_class() {
-            obj["router_class"] = json::from(rc);
+            obj["router_class"] = rc.into();
         }
 
         if let Some(rc) = self.router_reply() {
-            obj["router_reply"] = json::from(rc);
+            obj["router_reply"] = rc.into();
         }
 
         obj
@@ -446,7 +447,7 @@ impl Message {
         let thread_trace = match util::json_usize(&msg_hash["threadTrace"]) {
             Some(tt) => tt,
             None => {
-                log::warn!("Message contains invalid threadTrace: {}", msg_hash.dump());
+                log::warn!("Message contains invalid threadTrace: {}", msg_hash.to_string());
                 return None;
             }
         };
@@ -478,8 +479,8 @@ impl Message {
             msg.set_ingress(ing);
         }
 
-        if let Some(al) = msg_hash["api_level"].as_u8() {
-            msg.set_api_level(al);
+        if let Some(al) = msg_hash["api_level"].as_u64() {
+            msg.set_api_level(al as u8);
         }
 
         Some(msg)
@@ -513,14 +514,14 @@ impl Message {
     pub fn to_json_value(&self) -> json::Value {
         let mtype: &str = self.mtype.into();
 
-        let mut obj = json::object! {
-            threadTrace: json::from(self.thread_trace),
-            type: json::from(mtype),
-            locale: json::from(self.locale()),
-            timezone: json::from(self.timezone()),
-            api_level: json::from(self.api_level()),
-            ingress: json::from(self.ingress()),
-        };
+        let mut obj = json::json!({
+            "threadTrace": self.thread_trace,
+            "type": mtype,
+            "locale": self.locale(),
+            "timezone": self.timezone(),
+            "api_level": self.api_level(),
+            "ingress": self.ingress(),
+        });
 
         match self.payload {
             // Avoid adding the "payload" key for non-payload messages.
@@ -587,7 +588,7 @@ impl Result {
         let code = match util::json_isize(&msg_hash["statusCode"]) {
             Some(tt) => tt,
             None => {
-                log::warn!("Result has invalid status code {}", msg_hash.dump());
+                log::warn!("Result has invalid status code {}", msg_hash.to_string());
                 return None;
             }
         };
@@ -607,11 +608,11 @@ impl Result {
     }
 
     pub fn to_json_value(&self) -> json::Value {
-        let obj = json::object! {
-            status: json::from(self.status_label()),
-            statusCode: json::from(self.status as isize),
-            content: self.content.clone(),
-        };
+        let obj = json::json!({
+            "status": self.status_label(),
+            "statusCode": self.status as isize,
+            "content": self.content.clone(),
+        });
 
         super::classified::ClassifiedJson::classify(obj, &self.msg_class)
     }
@@ -654,7 +655,7 @@ impl Status {
         let code = match util::json_isize(&msg_hash["statusCode"]) {
             Some(tt) => tt,
             None => {
-                log::warn!("Status has invalid status code {}", msg_hash.dump());
+                log::warn!("Status has invalid status code {}", msg_hash.to_string());
                 return None;
             }
         };
@@ -669,10 +670,10 @@ impl Status {
     }
 
     pub fn to_json_value(&self) -> json::Value {
-        let obj = json::object! {
-            status: json::from(self.status_label()),
-            statusCode: json::from(self.status as isize),
-        };
+        let obj = json::json!({
+            "status": self.status_label(),
+            "statusCode": self.status as isize,
+        });
 
         super::classified::ClassifiedJson::classify(obj, &self.msg_class)
     }
@@ -749,10 +750,10 @@ impl Method {
 
     /// Create a json::Value from a Method
     pub fn to_json_value(&self) -> json::Value {
-        let obj = json::object! {
-            method: json::from(self.method()),
-            params: json::from(self.params().to_vec()),
-        };
+        let obj = json::json!({
+            "method": self.method(),
+            "params": self.params().to_vec(),
+        });
 
         super::classified::ClassifiedJson::classify(obj, &self.msg_class)
     }

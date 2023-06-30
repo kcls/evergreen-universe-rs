@@ -1,5 +1,5 @@
 use super::client::Client;
-use json::Value;
+use serde_json as json;
 
 /// Generic container for translating various data types into a Vec<json::Value>.
 ///
@@ -74,7 +74,7 @@ impl From<Vec<json::Value>> for ApiParams {
 impl From<&Vec<&str>> for ApiParams {
     fn from(v: &Vec<&str>) -> ApiParams {
         ApiParams {
-            params: v.iter().map(|j| json::from(*j)).collect(),
+            params: v.iter().map(|j| (*j).into()).collect(),
         }
     }
 }
@@ -88,7 +88,7 @@ impl From<Vec<&str>> for ApiParams {
 impl From<&Vec<u8>> for ApiParams {
     fn from(v: &Vec<u8>) -> ApiParams {
         ApiParams {
-            params: v.iter().map(|j| json::from(*j)).collect(),
+            params: v.iter().map(|j| (*j).into()).collect(),
         }
     }
 }
@@ -102,7 +102,7 @@ impl From<Vec<u8>> for ApiParams {
 impl From<&Vec<i64>> for ApiParams {
     fn from(v: &Vec<i64>) -> ApiParams {
         ApiParams {
-            params: v.iter().map(|j| json::from(*j)).collect(),
+            params: v.iter().map(|j| (*j).into()).collect(),
         }
     }
 }
@@ -116,7 +116,7 @@ impl From<Vec<i64>> for ApiParams {
 impl From<&Vec<u64>> for ApiParams {
     fn from(v: &Vec<u64>) -> ApiParams {
         ApiParams {
-            params: v.iter().map(|j| json::from(*j)).collect(),
+            params: v.iter().map(|j| (*j).into()).collect(),
         }
     }
 }
@@ -130,7 +130,7 @@ impl From<Vec<u64>> for ApiParams {
 impl From<&Vec<String>> for ApiParams {
     fn from(v: &Vec<String>) -> ApiParams {
         ApiParams {
-            params: v.iter().map(|s| json::from(s.as_str())).collect(),
+            params: v.iter().map(|s| s.as_str().into()).collect(),
         }
     }
 }
@@ -157,55 +157,55 @@ impl From<&json::Value> for ApiParams {
 
 impl From<&str> for ApiParams {
     fn from(v: &str) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<String> for ApiParams {
     fn from(v: String) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<i32> for ApiParams {
     fn from(v: i32) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<i64> for ApiParams {
     fn from(v: i64) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<u32> for ApiParams {
     fn from(v: u32) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<u64> for ApiParams {
     fn from(v: u64) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<u8> for ApiParams {
     fn from(v: u8) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<i8> for ApiParams {
     fn from(v: i8) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 
 impl From<usize> for ApiParams {
     fn from(v: usize) -> ApiParams {
-        ApiParams::from(json::from(v))
+        ApiParams::from(v)
     }
 }
 

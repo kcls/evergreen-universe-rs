@@ -462,7 +462,7 @@ impl Worker {
                 request
                     .params()
                     .iter()
-                    .map(|p| p.dump())
+                    .map(|p| p.to_string())
                     .collect::<Vec<_>>()
                     .join(", "),
             );

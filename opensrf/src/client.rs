@@ -6,7 +6,7 @@ use super::params::ApiParams;
 use super::session::ResponseIterator;
 use super::session::SessionHandle;
 use super::util;
-use json::Value;
+use serde_json as json;
 use log::{info, trace};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -195,7 +195,7 @@ impl ClientSingleton {
         // send is one option, but pretty heavy-handed.
         match self.bus.recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
             Some(tm) => match tm.router_reply() {
-                Some(reply) => match json::parse(reply) {
+                Some(reply) => match json::from_str(reply) {
                     Ok(jv) => Ok(Some(jv)),
                     Err(e) => Err(format!(
                         "Router command {} return unparseable content: {} {}",
