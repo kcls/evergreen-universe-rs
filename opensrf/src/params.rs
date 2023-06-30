@@ -54,6 +54,61 @@ impl ApiParams {
     }
 }
 
+impl From<&str> for ApiParams {
+    fn from(v: &str) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<String> for ApiParams {
+    fn from(v: String) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<i32> for ApiParams {
+    fn from(v: i32) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<i64> for ApiParams {
+    fn from(v: i64) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<u32> for ApiParams {
+    fn from(v: u32) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<u64> for ApiParams {
+    fn from(v: u64) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<u8> for ApiParams {
+    fn from(v: u8) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<i8> for ApiParams {
+    fn from(v: i8) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+impl From<usize> for ApiParams {
+    fn from(v: usize) -> ApiParams {
+        ApiParams::from(json::from(v))
+    }
+}
+
+
 impl From<Vec<JsonValue>> for ApiParams {
     fn from(v: Vec<JsonValue>) -> ApiParams {
         ApiParams { params: v }
