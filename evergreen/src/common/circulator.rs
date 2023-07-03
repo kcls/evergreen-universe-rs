@@ -6,23 +6,28 @@ use json::JsonValue;
 use std::collections::HashMap;
 use std::fmt;
 
+/// Context and shared methods for circulation actions.
+///
+/// Innards are 'pub' since the impl's are spread across multiple files.
 pub struct Circulator {
-    editor: Editor,
-    settings: Settings,
-    exit_early: bool,
-    circ_lib: i64,
-    events: Vec<EgEvent>,
-    copy: Option<JsonValue>,
-    circ: Option<JsonValue>,
-    patron: Option<JsonValue>,
-    is_noncat: bool,
-    options: HashMap<String, JsonValue>,
+    pub editor: Editor,
+    pub settings: Settings,
+    pub exit_early: bool,
+    pub circ_lib: i64,
+    pub events: Vec<EgEvent>,
+    pub copy: Option<JsonValue>,
+    pub circ: Option<JsonValue>,
+    pub patron: Option<JsonValue>,
+    pub transit: Option<JsonValue>,
+    pub is_noncat: bool,
+    pub options: HashMap<String, JsonValue>,
 }
 
 impl fmt::Display for Circulator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut patron_barcode = String::from("<unset>");
-        let mut copy_barcode = String::from("<unset>");
+        let mut patron_barcode = String::from("null");
+        let mut copy_barcode = String::from("null");
+        let mut copy_status = -1;
 
         if let Some(p) = &self.patron {
             if let Some(bc) = &p["card"]["barcode"].as_str() {
@@ -33,6 +38,9 @@ impl fmt::Display for Circulator {
         if let Some(c) = &self.copy {
             if let Some(bc) = &c["barcode"].as_str() {
                 copy_barcode = bc.to_string()
+            }
+            if let Ok(s) = util::json_int(&c["status"]) {
+                copy_status = s;
             }
         }
 
@@ -66,8 +74,16 @@ impl Circulator {
             circ: None,
             copy: None,
             patron: None,
+            transit: None,
             is_noncat: false,
         })
+    }
+
+    /// Unchecked copy access method.
+    ///
+    /// Panics if copy is unset.
+    pub fn copy(&self) -> &JsonValue {
+        self.copy.as_ref().unwrap()
     }
 
     /// Allows the caller to recover the original editor object after
@@ -96,13 +112,17 @@ impl Circulator {
 
     /// Returns Result so we can cause early exit on methods.
     pub fn exit_on_event_code(&mut self, code: &str) -> Result<(), String> {
-        self.events.push(EgEvent::new(code));
+        self.add_event_code(code);
         self.exit_early = true;
         Err(format!("Bailing on event: {code}"))
     }
 
+    pub fn add_event_code(&mut self, code: &str) {
+        self.events.push(EgEvent::new(code));
+    }
+
     /// Search for the copy in question
-    fn load_copy(&mut self) -> Result<(), String> {
+    fn load_copy(&mut self, mut maybe_copy_id: Option<JsonValue>) -> Result<(), String> {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
@@ -111,8 +131,17 @@ impl Circulator {
             }
         };
 
-        if let Some(copy_id) = self.options.get("copy_id") {
-            let query = json::object! {id: copy_id.clone()};
+        // Guessing there's a oneline for this kind of thing.
+        let copy_id_op = match maybe_copy_id {
+            Some(id) => Some(id),
+            None => match self.options.get("copy_id") {
+                Some(id2) => Some(id2.clone()),
+                None => None,
+            }
+        };
+
+        if let Some(copy_id) = copy_id_op {
+            let query = json::object! {id: copy_id};
 
             if let Some(copy) = self.editor.retrieve_with_ops("acp", query, copy_flesh)? {
                 self.copy = Some(copy.to_owned());
@@ -214,11 +243,54 @@ impl Circulator {
             self.circ_lib = util::json_int(cl)?;
         }
 
+        self.settings.set_org_id(self.circ_lib);
         self.is_noncat = util::json_bool_op(self.options.get("is_noncat"));
 
-        self.load_copy()?;
+        self.load_copy(None)?;
         self.load_patron()?;
 
         Ok(())
     }
+
+    /// Updates our copy object in place, returning a ref to the
+    /// newly created value.
+    pub fn update_copy(&mut self) -> Result<&JsonValue, String> {
+        if self.copy.is_none() {
+            Err(format!("update_copy() has no copy to update"))?;
+        }
+
+        let copy = self.copy.take().unwrap();
+        let id = copy["id"].clone();
+
+        // TODO perform the update
+
+        self.load_copy(Some(id))?;
+        Ok(self.copy.as_ref().unwrap())
+    }
+
+/*
+sub update_copy {
+    my $self = shift;
+    my $copy = $self->copy;
+
+    my $stat = $copy->status if ref $copy->status;
+    my $loc = $copy->location if ref $copy->location;
+    my $circ_lib = $copy->circ_lib if ref $copy->circ_lib;
+
+    $copy->status($stat->id) if $stat;
+    $copy->location($loc->id) if $loc;
+    $copy->circ_lib($circ_lib->id) if $circ_lib;
+    $copy->editor($self->editor->requestor->id);
+    $copy->edit_date('now');
+    $copy->age_protect($copy->age_protect->id) if ref $copy->age_protect;
+
+    return $self->bail_on_events($self->editor->event)
+        unless $self->editor->update_asset_copy($self->copy);
+
+    $copy->status($U->copy_status($copy->status));
+    $copy->location($loc) if $loc;
+    $copy->circ_lib($circ_lib) if $circ_lib;
+}
+*/
+
 }

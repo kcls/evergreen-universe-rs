@@ -211,25 +211,19 @@ impl Settings {
         context: &SettingContext,
         name: &str,
     ) -> Result<&JsonValue, String> {
-        let hash = match self.cache.get(context) {
-            Some(h) => h,
-            None => {
-                self.cache.insert(context.clone(), HashMap::new());
-                self.cache.get(context).unwrap()
-            }
-        };
+        if self.cache.get(context).is_none() {
+            self.cache.insert(context.clone(), HashMap::new());
+        }
 
-        if !hash.contains_key(name) {
+        if self.get_cached_value(context, name).is_none() {
+            // No value in the cache.  Fetch it.
             self.fetch_context_values(context, &[name])?;
         }
 
-        if let Some(v) = self.get_cached_value(context, name) {
-            return Ok(v);
-        }
-
-        // Should never get here since fetch_values() above will
-        // cache the fetched value.
-        Err(format!("Unable to pull value from cache for {name}"))
+        // fetch_context_values guarantees a value is applied
+        // for this setting in the cache (defaulting to json null).
+        self.get_cached_value(context, name)
+            .ok_or(format!("Setting value missing from cache"))
     }
 
     pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&JsonValue> {
