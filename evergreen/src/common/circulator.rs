@@ -17,7 +17,6 @@ pub struct Circulator {
 }
 
 impl Circulator {
-
     /// Create a new Circulator.
     ///
     ///
@@ -39,6 +38,17 @@ impl Circulator {
             patron: None,
             is_noncat: false,
         })
+    }
+
+    /// Allows the caller to recover the original editor object after
+    /// the circ action has completed.  With this, the caller
+    /// can commit the transaction.
+    ///
+    /// For code simplicity, replace the value with a cloned Editor
+    /// instead of storing the Editor as an Option.
+    pub fn take_editor(&mut self) -> Editor {
+        let new_e = self.editor.clone();
+        std::mem::replace(&mut self.editor, new_e)
     }
 
     /// Returns Result so we can cause early exit on methods.
