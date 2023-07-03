@@ -1,4 +1,3 @@
-use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
 use eg::idl;
 use evergreen as eg;
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
@@ -8,9 +7,7 @@ use opensrf::message;
 use opensrf::method::Method;
 use opensrf::sclient::HostSettings;
 use std::any::Any;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
 // Import our local methods module.
@@ -116,7 +113,6 @@ pub struct RsCircWorker {
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, Method>>>,
-    database: Option<Rc<RefCell<DatabaseConnection>>>,
 }
 
 impl RsCircWorker {
@@ -127,7 +123,6 @@ impl RsCircWorker {
             config: None,
             methods: None,
             host_settings: None,
-            database: None,
         }
     }
 
@@ -200,7 +195,7 @@ impl ApplicationWorker for RsCircWorker {
         Ok(())
     }
 
-    fn worker_idle_wake(&mut self, connected: bool) -> Result<(), String> {
+    fn worker_idle_wake(&mut self, _connected: bool) -> Result<(), String> {
         Ok(())
     }
 

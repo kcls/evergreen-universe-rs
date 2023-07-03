@@ -108,7 +108,6 @@ impl From<usize> for ApiParams {
     }
 }
 
-
 impl From<Vec<JsonValue>> for ApiParams {
     fn from(v: Vec<JsonValue>) -> ApiParams {
         ApiParams { params: v }

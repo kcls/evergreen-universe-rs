@@ -1,15 +1,13 @@
-use eg::idldb::{IdlClassSearch, Translator};
-use eg::editor::Editor;
 use eg::common::circulator::Circulator;
+use eg::editor::Editor;
 use eg::util;
 use evergreen as eg;
+use json;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
 use opensrf::method::{ParamCount, ParamDataType, StaticMethod, StaticParam};
 use opensrf::session::ServerSession;
-use std::sync::Arc;
 use std::collections::HashMap;
-use json;
 
 // Import our local app module
 use crate::app;
@@ -17,29 +15,26 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethod] = &[
-    StaticMethod {
-        name: "checkin",
-        desc: "Checkin a copy",
-        param_count: ParamCount::Exactly(2),
-        handler: checkin,
-        params: &[
-            StaticParam {
-                required: true,
-                name: "authtoken",
-                datatype: ParamDataType::String,
-                desc: "Authentication Toaken",
-            },
-            StaticParam {
-                required: true,
-                name: "options",
-                datatype: ParamDataType::Object,
-                desc: "Optoins including copy_barcode, etc.", // TODO expand
-            }
-        ],
-    },
-];
-
+pub static METHODS: &[StaticMethod] = &[StaticMethod {
+    name: "checkin",
+    desc: "Checkin a copy",
+    param_count: ParamCount::Exactly(2),
+    handler: checkin,
+    params: &[
+        StaticParam {
+            required: true,
+            name: "authtoken",
+            datatype: ParamDataType::String,
+            desc: "Authentication Toaken",
+        },
+        StaticParam {
+            required: true,
+            name: "options",
+            datatype: ParamDataType::Object,
+            desc: "Optoins including copy_barcode, etc.", // TODO expand
+        },
+    ],
+}];
 
 pub fn checkin(
     worker: &mut Box<dyn ApplicationWorker>,
@@ -68,24 +63,29 @@ pub fn checkin(
         return session.respond(editor.event());
     }
 
-    editor.xact_begin()?;
+    // Circulator requires us to
     let mut circulator = Circulator::new(editor, options)?;
+    circulator.begin()?;
+
+    if let Err(e) = circulator.init() {
+        circulator.rollback()?;
+        return Err(format!("Checkin init failed: {e}"));
+    }
+
+    // TODO
+    session.respond(format!("Circulator: {circulator}"))?;
 
     let result = circulator.checkin();
 
-    // We're done checking in, recover our Editor.
-    let mut editor = circulator.take_editor();
-
     if let Err(e) = result {
-        log::error!("Checkin failed: {e}");
-        editor.xact_rollback()?;
-    } else {
-
-        // TODO Ask the circulator to collect a pile of return
-        // data and return it here.
-
-        editor.xact_commit()?;
+        circulator.rollback()?;
+        return Err(e);
     }
+
+    // TODO Ask the circulator to collect a pile of return
+    // data, then commit, then return the collected data.
+
+    circulator.commit()?;
 
     Ok(())
 }

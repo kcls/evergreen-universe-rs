@@ -7,17 +7,14 @@ pub struct CheckinResult {
 
 impl CheckinResult {
     fn new() -> CheckinResult {
-        CheckinResult {
-            events: Vec::new(),
-        }
+        CheckinResult { events: Vec::new() }
     }
 }
 
 impl Circulator {
     pub fn checkin(&mut self) -> Result<CheckinResult, String> {
-        let mut result = CheckinResult::new();
+        let result = CheckinResult::new();
 
         Ok(result)
     }
 }
-
