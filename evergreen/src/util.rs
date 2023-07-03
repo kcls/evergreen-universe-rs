@@ -28,6 +28,15 @@ pub fn json_bool(value: &JsonValue) -> bool {
     }
 }
 
+/// Same as json_bool, but value is wrapped in an Option.
+pub fn json_bool_op(op: Option<&JsonValue>) -> bool {
+    if let Some(v) = op {
+        json_bool(v)
+    } else {
+        false
+    }
+}
+
 /// Translate a number-ish thing into a float.
 ///
 /// Returns an error if the value cannot be numerified.
