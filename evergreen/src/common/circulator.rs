@@ -46,8 +46,8 @@ impl fmt::Display for Circulator {
 
         write!(
             f,
-            "Circulator copy={} patron={}",
-            copy_barcode, patron_barcode
+            "Circulator copy={} copy_status={} patron={}",
+            copy_barcode, patron_barcode, copy_status
         )
     }
 }
@@ -122,7 +122,7 @@ impl Circulator {
     }
 
     /// Search for the copy in question
-    fn load_copy(&mut self, mut maybe_copy_id: Option<JsonValue>) -> Result<(), String> {
+    fn load_copy(&mut self, maybe_copy_id: Option<JsonValue>) -> Result<(), String> {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
@@ -252,45 +252,26 @@ impl Circulator {
         Ok(())
     }
 
-    /// Updates our copy object in place, returning a ref to the
-    /// newly created value.
-    pub fn update_copy(&mut self) -> Result<&JsonValue, String> {
-        if self.copy.is_none() {
-            Err(format!("update_copy() has no copy to update"))?;
+    /// Update our copy with the values provided.
+    ///
+    /// * `changes` - a JSON Object with key/value copy attributes to update.
+    pub fn update_copy(&mut self, changes: JsonValue) -> Result<&JsonValue, String> {
+        let mut copy = match self.copy.take() {
+            Some(c) => c,
+            None => Err(format!("We have no copy to update"))?,
+        };
+
+        for (k, v) in changes.entries() {
+            copy[k] = v.to_owned();
         }
 
-        let copy = self.copy.take().unwrap();
+        self.editor.update(&copy)?;
+
         let id = copy["id"].clone();
 
-        // TODO perform the update
-
+        // Load the updated copy with the usual fleshing.
         self.load_copy(Some(id))?;
+
         Ok(self.copy.as_ref().unwrap())
     }
-
-/*
-sub update_copy {
-    my $self = shift;
-    my $copy = $self->copy;
-
-    my $stat = $copy->status if ref $copy->status;
-    my $loc = $copy->location if ref $copy->location;
-    my $circ_lib = $copy->circ_lib if ref $copy->circ_lib;
-
-    $copy->status($stat->id) if $stat;
-    $copy->location($loc->id) if $loc;
-    $copy->circ_lib($circ_lib->id) if $circ_lib;
-    $copy->editor($self->editor->requestor->id);
-    $copy->edit_date('now');
-    $copy->age_protect($copy->age_protect->id) if ref $copy->age_protect;
-
-    return $self->bail_on_events($self->editor->event)
-        unless $self->editor->update_asset_copy($self->copy);
-
-    $copy->status($U->copy_status($copy->status));
-    $copy->location($loc) if $loc;
-    $copy->circ_lib($circ_lib) if $circ_lib;
-}
-*/
-
 }

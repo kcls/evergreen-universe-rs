@@ -50,9 +50,8 @@ impl Circulator {
 
         if json_int(&self.copy()["status"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
             log::warn!("{self} Copy has an open transit, but incorrect status");
-            let mut copy = self.copy.as_mut().unwrap();
-            copy["status"] = json::from(C::EG_COPY_STATUS_IN_TRANSIT);
-            self.update_copy()?;
+            let changes = json::object! {status: C::EG_COPY_STATUS_IN_TRANSIT};
+            self.update_copy(changes)?;
         }
 
         self.transit = Some(transit.to_owned());
@@ -60,9 +59,13 @@ impl Circulator {
         Ok(())
     }
 
+    /// If a copy goes into transit and is then checked in before the
+    /// transit checkin interval has expired, push an event onto the
+    /// overridable events list.
     fn check_transit_checkin_interval(&mut self) -> Result<(), String> {
 
         if json_int(&self.copy()["status"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
+            // We only care about in-transit items.
             return Ok(());
         }
 
@@ -70,6 +73,20 @@ impl Circulator {
 
         if interval.is_null() {
             // No checkin interval defined.
+            return Ok(());
+        }
+
+        let transit = match self.transit.as_ref() {
+            Some(t) => t,
+            None => {
+                log::warn!("Copy has in-transit status but no matching transit!");
+                return Ok(());
+            }
+        };
+
+        if transit["source"] == transit["dest"] {
+            // Checkin interval does not apply to transits that aren't
+            // actually going anywhere.
             return Ok(());
         }
 
