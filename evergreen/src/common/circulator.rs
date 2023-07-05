@@ -16,7 +16,7 @@ pub struct Circulator {
     pub circ_lib: i64,
     pub events: Vec<EgEvent>,
     pub copy: Option<JsonValue>,
-    pub circ: Option<JsonValue>,
+    pub open_circ: Option<JsonValue>,
     pub patron: Option<JsonValue>,
     pub transit: Option<JsonValue>,
     pub is_noncat: bool,
@@ -75,7 +75,7 @@ impl Circulator {
             circ_lib,
             exit_early: false,
             events: Vec::new(),
-            circ: None,
+            open_circ: None,
             copy: None,
             patron: None,
             transit: None,
@@ -141,7 +141,7 @@ impl Circulator {
             None => match self.options.get("copy_id") {
                 Some(id2) => Some(id2.clone()),
                 None => None,
-            }
+            },
         };
 
         if let Some(copy_id) = copy_id_op {
@@ -169,6 +169,29 @@ impl Circulator {
                 } else {
                     self.exit_on_event_code("ASSET_COPY_NOT_FOUND")?;
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Find an open circulation linked to our copy if possible.
+    fn load_open_circ(&mut self) -> Result<(), String> {
+        if self.open_circ.is_some() {
+            log::info!("{self} found an open circulation");
+            // May have been set in load_patron()
+            return Ok(());
+        }
+
+        if let Some(copy) = self.copy.as_ref() {
+            let query = json::object! {
+                target_copy: copy["id"].clone(),
+                checkin_time: JsonValue::Null,
+            };
+
+            if let Some(circ) = self.editor.search("circ", query)?.first() {
+                self.open_circ = Some(circ.to_owned());
+                log::info!("{self} found an open circulation");
             }
         }
 
@@ -235,7 +258,7 @@ impl Circulator {
                 circ["usr"] = patron["id"].clone();
 
                 self.patron = Some(patron);
-                self.circ = Some(circ);
+                self.open_circ = Some(circ);
             }
         }
 
@@ -252,6 +275,7 @@ impl Circulator {
 
         self.load_copy(None)?;
         self.load_patron()?;
+        self.load_open_circ()?;
 
         Ok(())
     }

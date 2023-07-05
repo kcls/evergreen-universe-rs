@@ -1,19 +1,16 @@
-use crate::constants as C;
-use crate::util::{json_int, json_bool, json_bool_op, json_string};
 use crate::common::circulator::Circulator;
-use crate::event::EgEvent;
+use crate::constants as C;
 use crate::date;
-use chrono::{Local, Duration};
+use crate::event::EgEvent;
+use crate::util::{json_float, json_bool, json_bool_op, json_int, json_string};
+use crate::settings;
+use chrono::{Duration, Local};
 use json::JsonValue;
 use std::collections::HashSet;
 
-const CHECKIN_ORG_SETTINGS: &[&str] = &[
-   "circ.transit.min_checkin_interval"
-];
-
+const CHECKIN_ORG_SETTINGS: &[&str] = &["circ.transit.min_checkin_interval"];
 
 impl Circulator {
-
     pub fn checkin(&mut self) -> Result<(), String> {
         self.action = Some(String::from("checkin"));
 
@@ -25,7 +22,8 @@ impl Circulator {
             // Never attempt to capture holds with a deleted copy.
             // TODO maybe move this closer to where it matters and/or
             // avoid needing to set the option?
-            self.options.insert(String::from("capture"), json::from("nocapture"));
+            self.options
+                .insert(String::from("capture"), json::from("nocapture"));
         }
 
         // Pre-cache some setting values.
@@ -34,6 +32,8 @@ impl Circulator {
         self.fix_broken_transit_status()?;
         self.check_transit_checkin_interval()?;
         self.checkin_retarget_holds()?;
+        self.cancel_transit_if_circ_exists()?;
+        self.set_dont_change_lost_zero()?;
 
         Ok(())
     }
@@ -41,7 +41,6 @@ impl Circulator {
     /// Load the open transit and make sure our copy is in the right
     /// status if there's a matching transit.
     fn fix_broken_transit_status(&mut self) -> Result<(), String> {
-
         let query = json::object! {
             target_copy: self.copy()["id"].clone(),
             dest_recv_time: JsonValue::Null,
@@ -70,19 +69,19 @@ impl Circulator {
     /// transit checkin interval has expired, push an event onto the
     /// overridable events list.
     fn check_transit_checkin_interval(&mut self) -> Result<(), String> {
-
         if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
             // We only care about in-transit items.
             return Ok(());
         }
 
-        let interval = self.settings.get_value("circ.transit.min_checkin_interval")?;
+        let interval = self
+            .settings
+            .get_value("circ.transit.min_checkin_interval")?;
 
         if interval.is_null() {
             // No checkin interval defined.
             return Ok(());
         }
-
 
         let transit = match self.transit.as_ref() {
             Some(t) => t,
@@ -121,7 +120,10 @@ impl Circulator {
     /// until, say, overnight.
     fn checkin_retarget_holds(&mut self) -> Result<(), String> {
         let retarget_mode = match self.options.get("retarget_mode") {
-            Some(r) => match r.as_str() {Some(s) => s, None => ""},
+            Some(r) => match r.as_str() {
+                Some(s) => s,
+                None => "",
+            },
             None => "",
         };
 
@@ -130,7 +132,10 @@ impl Circulator {
         }
 
         let capture = match self.options.get("capture") {
-            Some(c) => match c.as_str() {Some(s) => s, None => ""}
+            Some(c) => match c.as_str() {
+                Some(s) => s,
+                None => "",
+            },
             None => "",
         };
 
@@ -142,8 +147,7 @@ impl Circulator {
         let copy_id = json_int(&copy["id"])?;
 
         let is_precat =
-            json_bool_op(self.options.get("is_precat")) ||
-            json_int(&copy["call_number"])? == -1;
+            json_bool_op(self.options.get("is_precat")) || json_int(&copy["call_number"])? == -1;
 
         if is_precat {
             return Ok(());
@@ -171,18 +175,23 @@ impl Circulator {
         }
 
         // By default, we only care about in-process items.
-        if !retarget_mode.contains(".all") &&
-            json_int(&copy["status"]["id"])? != C::EG_COPY_STATUS_IN_PROCESS as i64 {
+        if !retarget_mode.contains(".all")
+            && json_int(&copy["status"]["id"])? != C::EG_COPY_STATUS_IN_PROCESS as i64
+        {
             return Ok(());
         }
 
         let query = json::object! {target_copy: json::from(copy_id)};
         let parts = self.editor.search("acpm", query)?;
-        let parts = parts.into_iter().map(|p| json_int(&p["id"]).unwrap()).collect::<HashSet<_>>();
+        let parts = parts
+            .into_iter()
+            .map(|p| json_int(&p["id"]).unwrap())
+            .collect::<HashSet<_>>();
 
         // Get the list of potentially retargetable holds
-        // NOTE reporter.hold_request_record does not get updated
-        // when items/call numbers are transferred to another call number / record.
+        // TODO reporter.hold_request_record is not currently updated
+        // when items/call numbers are transferred to another call
+        // number / record.
         let query = json::object! {
             select: {
                 ahr: [
@@ -262,7 +271,7 @@ impl Circulator {
             let results = self.editor.client_mut().send_recv_one(
                 "open-ils.hold-targeter",
                 "open-ils.hold-targeter.target",
-                query
+                query,
             )?;
 
             if let Some(result) = results {
@@ -276,4 +285,72 @@ impl Circulator {
         return Ok(());
     }
 
+    /// If have both an open circulation and an open transit,
+    /// cancel the transit.
+    fn cancel_transit_if_circ_exists(&mut self) -> Result<(), String> {
+        if self.open_circ.is_none() {
+            return Ok(());
+        }
+
+        if let Some(transit) = self.transit.as_ref() {
+            log::info!("{self} copy is both checked out and in transit.  Canceling transit");
+
+            // TODO once transit.abort is migrated to Rust, this call should
+            // happen within the same transaction.
+            self.editor.client_mut().send_recv_one(
+                "open-ils.circ",
+                "open-ils.circ.transit.abort",
+                json::object! {transitid: transit["id"].clone()},
+            )?;
+
+            self.transit = None;
+        }
+
+        Ok(())
+    }
+
+    /// Decides if we need to avoid certain LOST / LO processing for
+    /// transactions that have a zero balance.
+    fn set_dont_change_lost_zero(&mut self) -> Result<(), String> {
+        let copy_status = json_int(&self.copy()["status"]["id"])?;
+
+        match copy_status as i16 {
+            C::EG_COPY_STATUS_LOST
+            | C::EG_COPY_STATUS_LOST_AND_PAID
+            | C::EG_COPY_STATUS_LONG_OVERDUE => {
+                // Found a copy me may want to work on,
+            }
+            _ => return Ok(()), // copy is not relevant
+        }
+
+        // LOST fine settings are controlled by the copy's circ lib, not
+        // the the circulation's
+        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
+        let mut set_ctx = settings::SettingContext::new();
+        set_ctx.set_org_id(copy_circ_lib);
+        let value = self.settings.get_context_value(
+            &set_ctx, "circ.checkin.lost_zero_balance.do_not_change")?;
+
+        let mut dont_change = json_bool(&value);
+
+        if dont_change {
+            // Org setting says not to change.
+            // Make sure no balance is owed, or the setting is meaningless.
+
+            if let Some(circ) = self.open_circ.as_ref() {
+                let maybe_mbts = self.editor.retrieve("mbts", circ["id"].clone())?;
+                if let Some(mbts) = maybe_mbts {
+                    if json_float(&mbts["balance_owed"])? != 0.0 {
+                        dont_change = false;
+                    }
+                }
+            }
+        }
+
+        if dont_change {
+            self.options.insert(String::from("dont_change_lost_zero"), json::from(true));
+        }
+
+        Ok(())
+    }
 }
