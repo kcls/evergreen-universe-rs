@@ -1,10 +1,11 @@
 use crate::constants as C;
-use crate::util::{json_int, json_bool, json_string};
+use crate::util::{json_int, json_bool, json_bool_op, json_string};
 use crate::common::circulator::Circulator;
 use crate::event::EgEvent;
 use crate::date;
 use chrono::{Local, Duration};
 use json::JsonValue;
+use std::collections::HashSet;
 
 const CHECKIN_ORG_SETTINGS: &[&str] = &[
    "circ.transit.min_checkin_interval"
@@ -14,12 +15,16 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
 impl Circulator {
 
     pub fn checkin(&mut self) -> Result<(), String> {
+        self.action = Some(String::from("checkin"));
+
         if self.copy.is_none() {
             self.exit_on_event_code("ASSET_COPY_NOT_FOUND")?;
         }
 
         if json_bool(&self.copy()["deleted"]) {
             // Never attempt to capture holds with a deleted copy.
+            // TODO maybe move this closer to where it matters and/or
+            // avoid needing to set the option?
             self.options.insert(String::from("capture"), json::from("nocapture"));
         }
 
@@ -28,10 +33,10 @@ impl Circulator {
 
         self.fix_broken_transit_status()?;
         self.check_transit_checkin_interval()?;
+        self.checkin_retarget_holds()?;
 
         Ok(())
     }
-
 
     /// Load the open transit and make sure our copy is in the right
     /// status if there's a matching transit.
@@ -50,7 +55,7 @@ impl Circulator {
             None => return Ok(()),
         };
 
-        if json_int(&self.copy()["status"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
+        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
             log::warn!("{self} Copy has an open transit, but incorrect status");
             let changes = json::object! {status: C::EG_COPY_STATUS_IN_TRANSIT};
             self.update_copy(changes)?;
@@ -66,7 +71,7 @@ impl Circulator {
     /// overridable events list.
     fn check_transit_checkin_interval(&mut self) -> Result<(), String> {
 
-        if json_int(&self.copy()["status"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
+        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
             // We only care about in-transit items.
             return Ok(());
         }
@@ -109,4 +114,166 @@ impl Circulator {
 
         Ok(())
     }
+
+    /// Retarget local holds that might wish to use our copy as
+    /// a target.  Useful if the copy is going from a non-holdable
+    /// to a holdable status and the hold targeter may not run
+    /// until, say, overnight.
+    fn checkin_retarget_holds(&mut self) -> Result<(), String> {
+        let retarget_mode = match self.options.get("retarget_mode") {
+            Some(r) => match r.as_str() {Some(s) => s, None => ""},
+            None => "",
+        };
+
+        if !retarget_mode.contains("retarget") {
+            return Ok(());
+        }
+
+        let capture = match self.options.get("capture") {
+            Some(c) => match c.as_str() {Some(s) => s, None => ""}
+            None => "",
+        };
+
+        if capture.eq("nocapture") {
+            return Ok(());
+        }
+
+        let copy = self.copy();
+        let copy_id = json_int(&copy["id"])?;
+
+        let is_precat =
+            json_bool_op(self.options.get("is_precat")) ||
+            json_int(&copy["call_number"])? == -1;
+
+        if is_precat {
+            return Ok(());
+        }
+
+        if json_int(&copy["circ_lib"])? != self.circ_lib {
+            // We only care about "our" copies.
+            return Ok(());
+        }
+
+        if !json_bool(&copy["holdable"]) {
+            return Ok(());
+        }
+
+        if json_bool(&copy["deleted"]) {
+            return Ok(());
+        }
+
+        if !json_bool(&copy["status"]["holdable"]) {
+            return Ok(());
+        }
+
+        if !json_bool(&copy["location"]["holdable"]) {
+            return Ok(());
+        }
+
+        // By default, we only care about in-process items.
+        if !retarget_mode.contains(".all") &&
+            json_int(&copy["status"]["id"])? != C::EG_COPY_STATUS_IN_PROCESS as i64 {
+            return Ok(());
+        }
+
+        let query = json::object! {target_copy: json::from(copy_id)};
+        let parts = self.editor.search("acpm", query)?;
+        let parts = parts.into_iter().map(|p| json_int(&p["id"]).unwrap()).collect::<HashSet<_>>();
+
+        // Get the list of potentially retargetable holds
+        // NOTE reporter.hold_request_record does not get updated
+        // when items/call numbers are transferred to another call number / record.
+        let query = json::object! {
+            select: {
+                ahr: [
+                    "id",
+                    "target",
+                    "hold_type",
+                    "cut_in_line",
+                    "request_time",
+                    "selection_depth"
+                ],
+                pgt: ["hold_priority"]
+            },
+            from: {
+                ahr: {
+                    rhrr: {},
+                    au: {
+                        pgt: {}
+                    }
+                }
+            },
+            where: {
+               fulfillment_time: JsonValue::Null,
+               cancel_time: JsonValue::Null,
+               frozen: "f",
+               pickup_lib: self.circ_lib,
+            },
+            order_by: [
+                {class: "pgt", field: "hold_priority"},
+                {class: "ahr", field: "cut_in_line",
+                    direction: "desc", transform: "coalesce", params: vec!["f"]},
+                {class: "ahr", field: "selection_depth", direction: "desc"},
+                {class: "ahr", field: "request_time"}
+            ]
+        };
+
+        let hold_data = self.editor.json_query(query)?;
+        for hold in hold_data.iter() {
+            let target = json_int(&hold["target"])?;
+            let hold_type = hold["hold_type"].as_str().unwrap();
+
+            // Copy-level hold that points to a different copy.
+            if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
+                if target != copy_id {
+                    continue;
+                }
+            }
+
+            // Volume-level hold for a different volume
+            if hold_type.eq("V") {
+                if target != json_int(&self.copy()["call_number"]["id"])? {
+                    continue;
+                }
+            }
+
+            if parts.len() > 0 {
+                // We have parts
+                if hold_type.eq("T") {
+                    continue;
+                } else if hold_type.eq("P") {
+                    // Skip part holds for parts that are related to our copy
+                    if !parts.contains(&target) {
+                        continue;
+                    }
+                }
+            } else if hold_type.eq("P") {
+                // We have no parts, skip part-type holds
+                continue;
+            }
+
+            // We've ruled out a lot of basic scenarios.  Now ask the
+            // hold targeter to take over.
+            let query = json::object! {
+                hold: hold["id"].clone(),
+                find_copy: copy_id,
+            };
+
+            let results = self.editor.client_mut().send_recv_one(
+                "open-ils.hold-targeter",
+                "open-ils.hold-targeter.target",
+                query
+            )?;
+
+            if let Some(result) = results {
+                if json_bool(&result["found_copy"]) {
+                    log::info!("checkin_retarget_holds() successfully targeted a hold");
+                    break;
+                }
+            }
+        }
+
+        return Ok(());
+    }
+
 }

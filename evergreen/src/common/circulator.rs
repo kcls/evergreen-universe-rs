@@ -21,6 +21,8 @@ pub struct Circulator {
     pub transit: Option<JsonValue>,
     pub is_noncat: bool,
     pub options: HashMap<String, JsonValue>,
+    /// Action string for logging / debugging
+    pub action: Option<String>,
 }
 
 impl fmt::Display for Circulator {
@@ -39,15 +41,17 @@ impl fmt::Display for Circulator {
             if let Some(bc) = &c["barcode"].as_str() {
                 copy_barcode = bc.to_string()
             }
-            if let Ok(s) = util::json_int(&c["status"]) {
+            if let Ok(s) = util::json_int(&c["status"]["id"]) {
                 copy_status = s;
             }
         }
 
+        let action = self.action.as_deref().unwrap_or("none");
+
         write!(
             f,
-            "Circulator copy={} copy_status={} patron={}",
-            copy_barcode, patron_barcode, copy_status
+            "Circulator action={} copy={} copy_status={} patron={}",
+            action, copy_barcode, patron_barcode, copy_status
         )
     }
 }
@@ -76,6 +80,7 @@ impl Circulator {
             patron: None,
             transit: None,
             is_noncat: false,
+            action: None,
         })
     }
 
@@ -126,8 +131,7 @@ impl Circulator {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
-                acp: ["call_number", "parts", "floating"],
-                acn: ["record"], // TODO do we really need the whole record?
+                acp: ["status", "call_number", "parts", "floating", "location"]
             }
         };
 
