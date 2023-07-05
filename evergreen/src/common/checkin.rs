@@ -1,7 +1,9 @@
 use crate::constants as C;
-use crate::util::{json_int, json_bool};
+use crate::util::{json_int, json_bool, json_string};
 use crate::common::circulator::Circulator;
 use crate::event::EgEvent;
+use crate::date;
+use chrono::{Local, Duration};
 use json::JsonValue;
 
 const CHECKIN_ORG_SETTINGS: &[&str] = &[
@@ -76,6 +78,7 @@ impl Circulator {
             return Ok(());
         }
 
+
         let transit = match self.transit.as_ref() {
             Some(t) => t,
             None => {
@@ -88,6 +91,20 @@ impl Circulator {
             // Checkin interval does not apply to transits that aren't
             // actually going anywhere.
             return Ok(());
+        }
+
+        // Coerce the interval into a string just in case it arrived as a number.
+        let interval = json_string(&interval)?;
+
+        let seconds = date::interval_to_seconds(&interval)?;
+        // source_send_time is a known non-null string value.
+        let send_time_str = transit["source_send_time"].as_str().unwrap();
+
+        let send_time = date::parse_datetime(send_time_str)?;
+        let horizon = send_time + Duration::seconds(seconds);
+
+        if horizon > Local::now() {
+            self.add_event_code("TRANSIT_CHECKIN_INTERVAL_BLOCK");
         }
 
         Ok(())

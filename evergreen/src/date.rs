@@ -1,4 +1,4 @@
-use chrono::{Duration, DateTime, Utc, Months};
+use chrono::{Duration, DateTime, Months, Local};
 
 /// Turn an interval string into a number of seconds.
 ///
@@ -23,8 +23,8 @@ pub fn interval_to_seconds(interval: &str) -> Result<i64, String> {
     let parts = interval.split(" ").collect::<Vec<&str>>();
     let partcount = parts.len();
 
-    let start = Utc::now();
-    let mut date = Utc::now();
+    let start = Local::now();
+    let mut date = Local::now();
     let mut counter = 0;
 
     loop {
@@ -70,7 +70,7 @@ pub fn interval_to_seconds(interval: &str) -> Result<i64, String> {
     Ok(duration.num_seconds())
 }
 
-fn add_hms(part: &str, mut date: DateTime<Utc>) -> Result<DateTime<Utc>, String> {
+fn add_hms(part: &str, mut date: DateTime<Local>) -> Result<DateTime<Local>, String> {
     let errstr = || format!("Invalid/unsupported hh::mm::ss string: {part}") ;
     let time_parts = part.split(":").collect::<Vec<&str>>();
 
@@ -90,4 +90,8 @@ fn add_hms(part: &str, mut date: DateTime<Utc>) -> Result<DateTime<Utc>, String>
     Ok(date)
 }
 
+pub fn parse_datetime(dt: &str) -> Result<DateTime<Local>, String> {
+    dt.parse::<DateTime<Local>>()
+        .or_else(|e| Err(format!("Could not parse datetime string: {e} {dt}")))
+}
 
