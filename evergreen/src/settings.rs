@@ -205,6 +205,13 @@ impl Settings {
         self.get_context_value(&self.default_context.clone(), name)
     }
 
+    /// Shortcut for get_context_value with an org unit ID set.
+    pub fn get_value_at_org(&mut self, name: &str, org_id: i64) -> Result<&JsonValue, String> {
+        let mut ctx = SettingContext::new();
+        ctx.set_org_id(org_id);
+        self.get_context_value(&ctx, name)
+    }
+
     /// Returns a setting value for the provided context.
     pub fn get_context_value(
         &mut self,

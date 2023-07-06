@@ -20,15 +20,21 @@ pub struct Circulator {
     pub patron: Option<JsonValue>,
     pub transit: Option<JsonValue>,
     pub is_noncat: bool,
+    pub changes_applied: bool,
+
+    /// Storage for the large list of circulation API flags that we
+    /// don't explicitly defined elsewhere in this struct.
     pub options: HashMap<String, JsonValue>,
+
     /// Action string for logging / debugging
     pub action: Option<String>,
 }
 
 impl fmt::Display for Circulator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut patron_barcode = String::from("null");
-        let mut copy_barcode = String::from("null");
+        let empty = "null";
+        let mut patron_barcode = String::from(empty);
+        let mut copy_barcode = String::from(empty);
         let mut copy_status = -1;
 
         if let Some(p) = &self.patron {
@@ -46,7 +52,7 @@ impl fmt::Display for Circulator {
             }
         }
 
-        let action = self.action.as_deref().unwrap_or("none");
+        let action = self.action.as_deref().unwrap_or(empty);
 
         write!(
             f,
@@ -80,13 +86,14 @@ impl Circulator {
             patron: None,
             transit: None,
             is_noncat: false,
+            changes_applied: false,
             action: None,
         })
     }
 
-    /// Unchecked copy access method.
+    /// Unchecked copy getter.
     ///
-    /// Panics if copy is unset.
+    /// Panics if copy is None.
     pub fn copy(&self) -> &JsonValue {
         self.copy.as_ref().unwrap()
     }
@@ -301,5 +308,20 @@ impl Circulator {
         self.load_copy(Some(id))?;
 
         Ok(self.copy.as_ref().unwrap())
+    }
+
+    pub fn set_option_true(&mut self, name: &str) {
+        self.options.insert(name.to_string(), json::from(true));
+    }
+
+    /// Get the value for a boolean option.
+    ///
+    /// Returns false if the value is unset or non-bool-ish.
+    pub fn get_option_bool(&self, name: &str) -> bool {
+        if let Some(op) = self.options.get(name) {
+            util::json_bool(op)
+        } else {
+            false
+        }
     }
 }

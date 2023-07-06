@@ -7,10 +7,10 @@ pub const ACN_CREATOR: i64 = 1;
 pub const ACN_RECORD: i64 = 1;
 pub const ACN_LABEL: &str = "_EG_TEST_";
 pub const ACN_LABEL_CLASS: i64 = 1; // Generic
-pub const ACP_STATUS: i16 = C::EG_COPY_STATUS_AVAILABLE;
+pub const ACP_STATUS: i64 = C::EG_COPY_STATUS_AVAILABLE;
 pub const ACP_BARCODE: &str = "_EG_TEST_";
-pub const ACP_LOAN_DURATION: i16 = C::OILS_CIRC_DURATION_NORMAL;
-pub const ACP_FINE_LEVEL: i16 = C::OILS_CIRC_FINE_LEVEL_MEDIUM;
+pub const ACP_LOAN_DURATION: i64 = C::OILS_CIRC_DURATION_NORMAL;
+pub const ACP_FINE_LEVEL: i64 = C::OILS_CIRC_FINE_LEVEL_MEDIUM;
 pub const AOU_ID: i64 = 4;
 pub const AOU_SHORTNAME: &str = "BR1";
 

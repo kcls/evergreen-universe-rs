@@ -2,13 +2,15 @@ use crate::common::circulator::Circulator;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
-use crate::util::{json_float, json_bool, json_bool_op, json_int, json_string};
-use crate::settings;
+use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
 use chrono::{Duration, Local};
 use json::JsonValue;
 use std::collections::HashSet;
 
-const CHECKIN_ORG_SETTINGS: &[&str] = &["circ.transit.min_checkin_interval"];
+const CHECKIN_ORG_SETTINGS: &[&str] = &[
+    "circ.transit.min_checkin_interval",
+    "circ.transit.suppress_hold",
+];
 
 impl Circulator {
     pub fn checkin(&mut self) -> Result<(), String> {
@@ -34,6 +36,13 @@ impl Circulator {
         self.checkin_retarget_holds()?;
         self.cancel_transit_if_circ_exists()?;
         self.set_dont_change_lost_zero()?;
+        self.set_can_float()?;
+        self.do_inventory_update()?;
+
+        if self.check_is_on_holds_shelf()? {
+            // Item is resting cozily on the holds shelf. Leave it be.
+            return Ok(());
+        }
 
         Ok(())
     }
@@ -54,7 +63,7 @@ impl Circulator {
             None => return Ok(()),
         };
 
-        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
+        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT {
             log::warn!("{self} Copy has an open transit, but incorrect status");
             let changes = json::object! {status: C::EG_COPY_STATUS_IN_TRANSIT};
             self.update_copy(changes)?;
@@ -69,7 +78,7 @@ impl Circulator {
     /// transit checkin interval has expired, push an event onto the
     /// overridable events list.
     fn check_transit_checkin_interval(&mut self) -> Result<(), String> {
-        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT as i64 {
+        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT {
             // We only care about in-transit items.
             return Ok(());
         }
@@ -176,7 +185,7 @@ impl Circulator {
 
         // By default, we only care about in-process items.
         if !retarget_mode.contains(".all")
-            && json_int(&copy["status"]["id"])? != C::EG_COPY_STATUS_IN_PROCESS as i64
+            && json_int(&copy["status"]["id"])? != C::EG_COPY_STATUS_IN_PROCESS
         {
             return Ok(());
         }
@@ -314,7 +323,7 @@ impl Circulator {
     fn set_dont_change_lost_zero(&mut self) -> Result<(), String> {
         let copy_status = json_int(&self.copy()["status"]["id"])?;
 
-        match copy_status as i16 {
+        match copy_status {
             C::EG_COPY_STATUS_LOST
             | C::EG_COPY_STATUS_LOST_AND_PAID
             | C::EG_COPY_STATUS_LONG_OVERDUE => {
@@ -323,13 +332,12 @@ impl Circulator {
             _ => return Ok(()), // copy is not relevant
         }
 
-        // LOST fine settings are controlled by the copy's circ lib, not
-        // the the circulation's
-        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
-        let mut set_ctx = settings::SettingContext::new();
-        set_ctx.set_org_id(copy_circ_lib);
-        let value = self.settings.get_context_value(
-            &set_ctx, "circ.checkin.lost_zero_balance.do_not_change")?;
+        // LOST fine settings are controlled by the copy's circ lib,
+        // not the circulation's
+        let value = self.settings.get_value_at_org(
+            "circ.checkin.lost_zero_balance.do_not_change",
+            json_int(&self.copy()["circ_lib"])?,
+        )?;
 
         let mut dont_change = json_bool(&value);
 
@@ -338,17 +346,171 @@ impl Circulator {
             // Make sure no balance is owed, or the setting is meaningless.
 
             if let Some(circ) = self.open_circ.as_ref() {
-                let maybe_mbts = self.editor.retrieve("mbts", circ["id"].clone())?;
-                if let Some(mbts) = maybe_mbts {
-                    if json_float(&mbts["balance_owed"])? != 0.0 {
-                        dont_change = false;
-                    }
+                if let Some(mbts) = self.editor.retrieve("mbts", circ["id"].clone())? {
+                    dont_change = json_float(&mbts["balance_owed"])? == 0.0;
                 }
             }
         }
 
         if dont_change {
-            self.options.insert(String::from("dont_change_lost_zero"), json::from(true));
+            self.set_option_true("dont_change_lost_zero");
+        }
+
+        Ok(())
+    }
+
+    /// Determines of our copy is eligible for floating.
+    fn set_can_float(&mut self) -> Result<(), String> {
+        let float_id = &self.copy()["floating"];
+
+        if float_id.is_null() {
+            // Copy is not configured to float
+            return Ok(());
+        }
+
+        // Copy can float.  Can it float here?
+
+        let float_group = self.editor.retrieve("cfg", float_id.clone())?.unwrap(); // foreign key
+
+        let query = json::object! {
+            from: [
+                "evergreen.can_float",
+                float_group["id"].clone(),
+                self.copy()["circ_lib"].clone(),
+                self.circ_lib
+            ]
+        };
+
+        if let Some(resp) = self.editor.json_query(query)?.first() {
+            if json_bool(&resp["evergreen.can_float"]) {
+                self.set_option_true("can_float");
+            }
+        }
+
+        Ok(())
+    }
+
+    fn do_inventory_update(&mut self) -> Result<(), String> {
+        if !self.get_option_bool("do_inventory_update") {
+            return Ok(());
+        }
+
+        if json_int(&self.copy()["circ_lib"])? != self.circ_lib
+            && !self.get_option_bool("can_float")
+        {
+            // Item is not home and cannot float
+            return Ok(());
+        }
+
+        // Create a new copy inventory row.
+        let aci = json::object! {
+            inventory_date: "now",
+            inventory_workstation: self.editor.requestor_ws_id(),
+            copy: self.copy()["id"].clone(),
+        };
+
+        self.changes_applied = true;
+
+        self.editor.create(&aci).map(|_| ()) // don't need the result.
+    }
+
+    fn check_is_on_holds_shelf(&mut self) -> Result<bool, String> {
+        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_ON_HOLDS_SHELF {
+            return Ok(false);
+        }
+
+        let copy_id = json_int(&self.copy()["id"])?;
+
+        if self.get_option_bool("clear_expired") {
+            // Clear shelf-expired holds for this copy.
+            // TODO run in the same transaction once ported to Rust.
+
+            let params = json::array![
+                self.editor.authtoken(),
+                self.circ_lib,
+                self.copy()["id"].clone(),
+            ];
+
+            self.editor.client_mut().send_recv_one(
+                "open-ils.circ",
+                "open-ils.circ.hold.clear_shelf.process",
+                params,
+            )?;
+        }
+
+        // What hold are we on the shelf for?
+        let query = json::object! {
+            current_copy: copy_id,
+            capture_time: {"!=": JsonValue::Null},
+            fulfillment_time: JsonValue::Null,
+            cancel_time: JsonValue::Null,
+        };
+
+        let holds = self.editor.search("ahr", query)?;
+        if holds.len() == 0 {
+            log::warn!("{self} Copy on holds shelf but there is no hold");
+            self.reshelve_copy(false)?;
+            return Ok(false);
+        }
+
+        let hold = holds[0].to_owned();
+        let pickup_lib = json_int(&hold["pickup_lib"])?;
+
+        log::info!("{self} we found a captured, un-fulfilled hold");
+
+        if pickup_lib != self.circ_lib && !self.get_option_bool("hold_as_transit") {
+            let suppress_here = self.settings.get_value("circ.transit.suppress_hold")?;
+
+            let suppress_here = match json_string(&suppress_here) {
+                Ok(s) => s,
+                Err(_) => String::from(""),
+            };
+
+            let suppress_there = self
+                .settings
+                .get_value_at_org("circ.transit.suppress_hold", pickup_lib)?;
+
+            let suppress_there = match json_string(&suppress_there) {
+                Ok(s) => s,
+                Err(_) => String::from(""),
+            };
+
+            if suppress_here == suppress_there && suppress_here != "" {
+                log::info!("{self} hold is within transit suppress group: {suppress_here}");
+                self.set_option_true("fake_hold_dest");
+                return Ok(true);
+            }
+        }
+
+        if pickup_lib == self.circ_lib && !self.get_option_bool("hold_as_transit") {
+            log::info!("{self} hold is for here");
+            return Ok(true);
+        }
+
+        log::info!("{self} hold is not for here");
+        self.options.insert(String::from("remote_hold"), hold);
+
+        Ok(false)
+    }
+
+    fn reshelve_copy(&mut self, force: bool) -> Result<(), String> {
+        let force = force || self.get_option_bool("force");
+
+        let status = json_int(&self.copy()["status"]["id"])?;
+
+        let next_status = match self.options.get("next_copy_status") {
+            Some(s) => json_int(&s)?,
+            None => C::EG_COPY_STATUS_RESHELVING,
+        };
+
+        if force
+            || (status != C::EG_COPY_STATUS_ON_HOLDS_SHELF
+                && status != C::EG_COPY_STATUS_CATALOGING
+                && status != C::EG_COPY_STATUS_IN_TRANSIT
+                && status != next_status)
+        {
+            self.update_copy(json::object! {status: json::from(next_status)})?;
+            self.changes_applied = true;
         }
 
         Ok(())

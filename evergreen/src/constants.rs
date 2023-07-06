@@ -3,32 +3,32 @@
 // ---------------------------------------------------------------------
 // Copy Statuses
 // ---------------------------------------------------------------------
-pub const EG_COPY_STATUS_AVAILABLE: i16 = 0;
-pub const EG_COPY_STATUS_CHECKED_OUT: i16 = 1;
-pub const EG_COPY_STATUS_BINDERY: i16 = 2;
-pub const EG_COPY_STATUS_LOST: i16 = 3;
-pub const EG_COPY_STATUS_MISSING: i16 = 4;
-pub const EG_COPY_STATUS_IN_PROCESS: i16 = 5;
-pub const EG_COPY_STATUS_IN_TRANSIT: i16 = 6;
-pub const EG_COPY_STATUS_RESHELVING: i16 = 7;
-pub const EG_COPY_STATUS_ON_HOLDS_SHELF: i16 = 8;
-pub const EG_COPY_STATUS_ON_ORDER: i16 = 9;
-pub const EG_COPY_STATUS_ILL: i16 = 10;
-pub const EG_COPY_STATUS_CATALOGING: i16 = 11;
-pub const EG_COPY_STATUS_RESERVES: i16 = 12;
-pub const EG_COPY_STATUS_DISCARD: i16 = 13;
-pub const EG_COPY_STATUS_DAMAGED: i16 = 14;
-pub const EG_COPY_STATUS_ON_RESV_SHELF: i16 = 15;
-pub const EG_COPY_STATUS_LONG_OVERDUE: i16 = 16;
-pub const EG_COPY_STATUS_LOST_AND_PAID: i16 = 17;
-pub const EG_COPY_STATUS_CANCELED_TRANSIT: i16 = 18;
+pub const EG_COPY_STATUS_AVAILABLE: i64 = 0;
+pub const EG_COPY_STATUS_CHECKED_OUT: i64 = 1;
+pub const EG_COPY_STATUS_BINDERY: i64 = 2;
+pub const EG_COPY_STATUS_LOST: i64 = 3;
+pub const EG_COPY_STATUS_MISSING: i64 = 4;
+pub const EG_COPY_STATUS_IN_PROCESS: i64 = 5;
+pub const EG_COPY_STATUS_IN_TRANSIT: i64 = 6;
+pub const EG_COPY_STATUS_RESHELVING: i64 = 7;
+pub const EG_COPY_STATUS_ON_HOLDS_SHELF: i64 = 8;
+pub const EG_COPY_STATUS_ON_ORDER: i64 = 9;
+pub const EG_COPY_STATUS_ILL: i64 = 10;
+pub const EG_COPY_STATUS_CATALOGING: i64 = 11;
+pub const EG_COPY_STATUS_RESERVES: i64 = 12;
+pub const EG_COPY_STATUS_DISCARD: i64 = 13;
+pub const EG_COPY_STATUS_DAMAGED: i64 = 14;
+pub const EG_COPY_STATUS_ON_RESV_SHELF: i64 = 15;
+pub const EG_COPY_STATUS_LONG_OVERDUE: i64 = 16;
+pub const EG_COPY_STATUS_LOST_AND_PAID: i64 = 17;
+pub const EG_COPY_STATUS_CANCELED_TRANSIT: i64 = 18;
 
-pub const OILS_CIRC_DURATION_SHORT: i16 = 1;
-pub const OILS_CIRC_DURATION_NORMAL: i16 = 2;
-pub const OILS_CIRC_DURATION_EXTENDED: i16 = 3;
-pub const OILS_CIRC_FINE_LEVEL_LOW: i16 = 1;
-pub const OILS_CIRC_FINE_LEVEL_MEDIUM: i16 = 2;
-pub const OILS_CIRC_FINE_LEVEL_HIGH: i16 = 3;
+pub const OILS_CIRC_DURATION_SHORT: i64 = 1;
+pub const OILS_CIRC_DURATION_NORMAL: i64 = 2;
+pub const OILS_CIRC_DURATION_EXTENDED: i64 = 3;
+pub const OILS_CIRC_FINE_LEVEL_LOW: i64 = 1;
+pub const OILS_CIRC_FINE_LEVEL_MEDIUM: i64 = 2;
+pub const OILS_CIRC_FINE_LEVEL_HIGH: i64 = 3;
 
 // ---------------------------------------------------------------------
 // Hold Types
