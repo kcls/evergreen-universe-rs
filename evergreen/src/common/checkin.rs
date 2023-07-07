@@ -44,7 +44,8 @@ impl Circulator {
 
         if json_bool(&self.copy()["deleted"]) {
             // Never attempt to capture holds with a deleted copy.
-            self.options.insert(String::from("capture"), json::from("nocapture"));
+            self.options
+                .insert(String::from("capture"), json::from("nocapture"));
         }
 
         Ok(())

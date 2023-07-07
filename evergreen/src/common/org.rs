@@ -8,7 +8,7 @@ fn org_relations_query(
     editor: &mut Editor,
     org_id: i64,
     transform: &str,
-    depth: Option<i64>
+    depth: Option<i64>,
 ) -> Result<Vec<i64>, String> {
     let mut query = json::object! {
         select: {
@@ -44,10 +44,6 @@ pub fn descendants(editor: &mut Editor, org_id: i64) -> Result<Vec<i64>, String>
     org_relations_query(editor, org_id, "actor.org_unit_descendants", None)
 }
 
-pub fn full_path(
-    editor: &mut Editor,
-    org_id: i64,
-    depth: Option<i64>
-) -> Result<Vec<i64>, String> {
+pub fn full_path(editor: &mut Editor, org_id: i64, depth: Option<i64>) -> Result<Vec<i64>, String> {
     org_relations_query(editor, org_id, "actor.org_unit_full_path", depth)
 }

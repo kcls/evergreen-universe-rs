@@ -1,15 +1,13 @@
+use crate::common::org;
 use crate::editor::Editor;
 use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
-use crate::common::org;
 use json::JsonValue;
 use std::collections::HashMap;
 use std::fmt;
 
-const COPY_FLESH: &[&str] = &[
-    "status", "call_number", "parts", "floating", "location"
-];
+const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "location"];
 
 /// Context and shared methods for circulation actions.
 ///
@@ -210,9 +208,9 @@ impl Circulator {
             from: ["asset.copy_state", copy_id]
         })?;
 
-        if let Some(resp) = list.get(0) { // should always be a value.
-            self.copy_state =
-                resp["asset.copy_state"].as_str().map(|s| s.to_string());
+        if let Some(resp) = list.get(0) {
+            // should always be a value.
+            self.copy_state = resp["asset.copy_state"].as_str().map(|s| s.to_string());
         };
 
         Ok(())
@@ -257,7 +255,6 @@ impl Circulator {
         let mut wanted_types = Vec::new();
 
         while let Some(atype) = alert_types.pop() {
-
             // Filter on "only at circ lib"
             if util::json_bool(&atype["at_circ"]) {
                 let at_circ_orgs = org::descendants(&mut self.editor, copy_circ_lib)?;
@@ -288,7 +285,10 @@ impl Circulator {
             wanted_types.push(atype);
         }
 
-        log::info!("{self} settled on {} final copy alert types", wanted_types.len());
+        log::info!(
+            "{self} settled on {} final copy alert types",
+            wanted_types.len()
+        );
 
         Ok(())
     }

@@ -621,10 +621,13 @@ impl Parser {
     /// scalar primary key value of the linked object (real fields)
     /// or null (virtual fields).
     pub fn de_flesh_object(&self, obj: &mut json::JsonValue) -> Result<(), String> {
-        let cname = obj[CLASSNAME_KEY].as_str()
+        let cname = obj[CLASSNAME_KEY]
+            .as_str()
             .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
 
-        let idl_class = self.classes.get(cname)
+        let idl_class = self
+            .classes
+            .get(cname)
             .ok_or(format!("Not an IDL class: {cname}"))?;
 
         for (name, field) in idl_class.fields().iter() {
@@ -640,8 +643,11 @@ impl Parser {
                     } else {
                         // This is a real IDL field fleshed with an object
                         // that does not have a primary key value.
-                        Err(format!("Cannot de-flesh.
-                            Linked object has no primary key: {}", value.dump()))?;
+                        Err(format!(
+                            "Cannot de-flesh.
+                            Linked object has no primary key: {}",
+                            value.dump()
+                        ))?;
                     }
                 }
             }
