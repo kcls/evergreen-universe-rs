@@ -72,9 +72,6 @@ pub fn checkin(
         return Err(format!("Checkin init failed: {e}"));
     }
 
-    // TODO
-    session.respond(format!("Circulator: {circulator}"))?;
-
     let result = circulator.checkin();
 
     if let Err(e) = result {

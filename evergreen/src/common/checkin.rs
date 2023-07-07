@@ -32,6 +32,8 @@ impl Circulator {
             return Ok(());
         }
 
+        self.load_copy_alerts(&["CHECKOUT"])?;
+
         Ok(())
     }
 

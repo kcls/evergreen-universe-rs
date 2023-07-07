@@ -2,6 +2,7 @@ use crate::editor::Editor;
 use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
+use crate::common::org;
 use json::JsonValue;
 use std::collections::HashMap;
 use std::fmt;
@@ -27,6 +28,9 @@ pub struct Circulator {
     pub transit: Option<JsonValue>,
     pub is_noncat: bool,
     pub changes_applied: bool,
+
+    /// This one comes up in a variety of places.
+    pub is_renewal: bool,
 
     /// Storage for the large list of circulation API flags that we
     /// don't explicitly defined elsewhere in this struct.
@@ -94,6 +98,7 @@ impl Circulator {
             patron: None,
             transit: None,
             is_noncat: false,
+            is_renewal: false,
             changes_applied: false,
             action: None,
         })
@@ -195,7 +200,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn load_copy_alerts(&mut self) -> Result<(), String> {
+    pub fn load_copy_alerts(&mut self, events: &[&str]) -> Result<(), String> {
         let copy_id = match self.copy_id {
             Some(i) => i,
             None => return Ok(()),
@@ -209,6 +214,81 @@ impl Circulator {
             self.copy_state =
                 resp["asset.copy_state"].as_str().map(|s| s.to_string());
         };
+
+        Ok(())
+    }
+
+    ///
+    fn generate_system_copy_alerts(&mut self, events: &[&str]) -> Result<(), String> {
+        // System events need event types to focus on.
+        if events.len() == 0 {
+            return Ok(());
+        }
+
+        // Value set in load_copy_alerts()
+        let copy_state = self.copy_state.as_deref().unwrap();
+
+        // Avoid creating system copy alerts for "NORMAL" copies.
+        if copy_state.eq("NORMAL") {
+            return Ok(());
+        }
+
+        let copy_circ_lib = util::json_int(&self.copy()["circ_lib"])?;
+
+        let query = json::object! {
+            org: org::full_path(&mut self.editor, self.circ_lib, None)?
+        };
+
+        // actor.copy_alert_suppress
+        let suppressions = self.editor.search("acas", query)?;
+
+        let alert_orgs = org::ancestors(&mut self.editor, self.circ_lib)?;
+
+        let query = json::object! {
+            "active": "t",
+            "scope_org": alert_orgs,
+            "event": events,
+            "state": copy_state,
+            "-or": [{"in_renew": self.is_renewal}, {"in_renew": JsonValue::Null}]
+        };
+
+        // config.copy_alert_type
+        let mut alert_types = self.editor.search("ccat", query)?;
+        let mut wanted_types = Vec::new();
+
+        while let Some(atype) = alert_types.pop() {
+
+            // Filter on "only at circ lib"
+            if util::json_bool(&atype["at_circ"]) {
+                let at_circ_orgs = org::descendants(&mut self.editor, copy_circ_lib)?;
+
+                if util::json_bool(&atype["invert_location"]) {
+                    if at_circ_orgs.contains(&self.circ_lib) {
+                        continue;
+                    }
+                } else if !at_circ_orgs.contains(&self.circ_lib) {
+                    continue;
+                }
+            }
+
+            // filter on "only at owning lib"
+            if util::json_bool(&atype["at_owning"]) {
+                let owner = util::json_int(&self.copy()["call_number"]["owning_lib"])?;
+                let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
+
+                if util::json_bool(&atype["invert_location"]) {
+                    if at_owner_orgs.contains(&self.circ_lib) {
+                        continue;
+                    }
+                } else if !at_owner_orgs.contains(&self.circ_lib) {
+                    continue;
+                }
+            }
+
+            wanted_types.push(atype);
+        }
+
+        log::info!("{self} settled on {} final copy alert types", wanted_types.len());
 
         Ok(())
     }
@@ -255,12 +335,7 @@ impl Circulator {
             }
         } else if let Some(patron_barcode) = self.options.get("patron_barcode") {
             let query = json::object! {barcode: patron_barcode.clone()};
-            let flesh = json::object! {
-                flesh: 1,
-                flesh_fields: {
-                    "ac": ["usr"]
-                }
-            };
+            let flesh = json::object! {flesh: 1, flesh_fields: {"ac": ["usr"]}};
 
             if let Some(card) = self.editor.search_with_ops("ac", query, flesh)?.first() {
                 let mut card = card.to_owned();
@@ -313,7 +388,6 @@ impl Circulator {
 
         self.load_copy()?;
         self.load_patron()?;
-        self.load_copy_alerts()?;
         self.load_open_circ()?;
 
         Ok(())
@@ -342,13 +416,14 @@ impl Circulator {
         Ok(self.copy.as_ref().unwrap())
     }
 
+    /// Set a free-text option value to true.
     pub fn set_option_true(&mut self, name: &str) {
         self.options.insert(name.to_string(), json::from(true));
     }
 
     /// Get the value for a boolean option.
     ///
-    /// Returns false if the value is unset or non-bool-ish.
+    /// Returns false if the value is unset or false-ish.
     pub fn get_option_bool(&self, name: &str) -> bool {
         if let Some(op) = self.options.get(name) {
             util::json_bool(op)

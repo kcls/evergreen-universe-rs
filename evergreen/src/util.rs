@@ -1,6 +1,7 @@
 use chrono::prelude::*;
 use chrono::DateTime;
 use json::JsonValue;
+use std::collections::HashSet;
 
 /// We support a variety of true-ish values.
 ///
@@ -115,6 +116,32 @@ pub fn json_string(value: &JsonValue) -> Result<String, String> {
 pub fn parse_pg_date(pg_iso_date: &str) -> Result<DateTime<FixedOffset>, String> {
     DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
         .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}")))
+}
+
+/// Turns a PG array string (e.g. '{1,23,456}') into a uniq list of ints.
+///
+/// ```
+/// let mut res = evergreen::util::pg_unpack_int_array("{1,23,NULL,23,456}");
+/// res.sort();
+/// assert_eq!(res, vec![1,23,456]);
+/// ```
+///
+pub fn pg_unpack_int_array(array: &str) -> Vec<i64> {
+    array
+        .replace("{", "")
+        .replace("}", "")
+        .split(",")
+        .filter_map(|s| {
+            // We only care about int-ish things.
+            match s.parse::<i64>() {
+                Ok(i) => Some(i),
+                Err(_) => None,
+            }
+        })
+        .collect::<HashSet<i64>>() // uniquify
+        .iter()
+        .map(|v| *v) // &i64
+        .collect::<Vec<i64>>()
 }
 
 #[derive(Debug, Clone, PartialEq)]
