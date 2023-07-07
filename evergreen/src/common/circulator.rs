@@ -7,6 +7,7 @@ use json::JsonValue;
 use std::collections::HashMap;
 use std::fmt;
 
+/// These copy fields are assumed to be fleshed throughout.
 const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "location"];
 
 /// Context and shared methods for circulation actions.
@@ -213,6 +214,8 @@ impl Circulator {
             self.copy_state = resp["asset.copy_state"].as_str().map(|s| s.to_string());
         };
 
+        self.generate_system_copy_alerts(events)?;
+
         Ok(())
     }
 
@@ -289,6 +292,40 @@ impl Circulator {
             "{self} settled on {} final copy alert types",
             wanted_types.len()
         );
+
+        for mut atype in wanted_types {
+            if let Some(ns) = atype["next_status"].as_str() {
+                if suppressions.iter().any(|v| &v["alert_type"] == &atype["id"]) {
+                    atype["next_status"] = JsonValue::new_array();
+                } else {
+                    atype["next_status"] = json::from(util::pg_unpack_int_array(ns));
+                }
+            }
+
+            let alert = json::object! {
+                alert_type: atype["id"].clone(),
+                copy: self.copy_id.unwrap(),
+                temp: "t",
+                create_staff: self.editor.requestor_id(),
+                create_time: "now",
+                ack_staff: self.editor.requestor_id(),
+                ack_time: "now",
+            };
+
+            let alert = self.editor.idl().create_from("aca", alert)?;
+            let mut alert = self.editor.create(&alert)?;
+
+            alert["alert_type"] = atype.clone(); // flesh
+
+            if let Some(stat) = atype["next_status"].members().next() {
+                // The Perl version tracks all of the next statuses,
+                // but only ever uses the first.  Just track the first.
+                self.options.insert("next_copy_status".to_string(), stat.clone());
+            }
+
+            // TODO
+
+        }
 
         Ok(())
     }
