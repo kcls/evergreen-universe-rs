@@ -6,6 +6,10 @@ use json::JsonValue;
 use std::collections::HashMap;
 use std::fmt;
 
+const COPY_FLESH: &[&str] = &[
+    "status", "call_number", "parts", "floating", "location"
+];
+
 /// Context and shared methods for circulation actions.
 ///
 /// Innards are 'pub' since the impl's are spread across multiple files.
@@ -16,6 +20,8 @@ pub struct Circulator {
     pub circ_lib: i64,
     pub events: Vec<EgEvent>,
     pub copy: Option<JsonValue>,
+    pub copy_id: Option<i64>,
+    pub copy_state: Option<String>,
     pub open_circ: Option<JsonValue>,
     pub patron: Option<JsonValue>,
     pub transit: Option<JsonValue>,
@@ -83,6 +89,8 @@ impl Circulator {
             events: Vec::new(),
             open_circ: None,
             copy: None,
+            copy_id: None,
+            copy_state: None,
             patron: None,
             transit: None,
             is_noncat: false,
@@ -134,19 +142,20 @@ impl Circulator {
     }
 
     /// Search for the copy in question
-    fn load_copy(&mut self, maybe_copy_id: Option<JsonValue>) -> Result<(), String> {
+    fn load_copy(&mut self) -> Result<(), String> {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
-                acp: ["status", "call_number", "parts", "floating", "location"]
+                acp: COPY_FLESH
             }
         };
 
-        // Guessing there's a oneline for this kind of thing.
-        let copy_id_op = match maybe_copy_id {
+        // If we have loaded our item before, we can reload it directly
+        // via its ID.
+        let copy_id_op = match self.copy_id {
             Some(id) => Some(id),
             None => match self.options.get("copy_id") {
-                Some(id2) => Some(id2.clone()),
+                Some(id2) => Some(util::json_int(&id2)?),
                 None => None,
             },
         };
@@ -178,6 +187,28 @@ impl Circulator {
                 }
             }
         }
+
+        if let Some(c) = self.copy.as_ref() {
+            self.copy_id = Some(util::json_int(&c["id"])?);
+        }
+
+        Ok(())
+    }
+
+    fn load_copy_alerts(&mut self) -> Result<(), String> {
+        let copy_id = match self.copy_id {
+            Some(i) => i,
+            None => return Ok(()),
+        };
+
+        let list = self.editor.json_query(json::object! {
+            from: ["asset.copy_state", copy_id]
+        })?;
+
+        if let Some(resp) = list.get(0) { // should always be a value.
+            self.copy_state =
+                resp["asset.copy_state"].as_str().map(|s| s.to_string());
+        };
 
         Ok(())
     }
@@ -280,8 +311,9 @@ impl Circulator {
         self.settings.set_org_id(self.circ_lib);
         self.is_noncat = util::json_bool_op(self.options.get("is_noncat"));
 
-        self.load_copy(None)?;
+        self.load_copy()?;
         self.load_patron()?;
+        self.load_copy_alerts()?;
         self.load_open_circ()?;
 
         Ok(())
@@ -300,12 +332,12 @@ impl Circulator {
             copy[k] = v.to_owned();
         }
 
+        self.editor.idl().de_flesh_object(&mut copy)?;
+
         self.editor.update(&copy)?;
 
-        let id = copy["id"].clone();
-
         // Load the updated copy with the usual fleshing.
-        self.load_copy(Some(id))?;
+        self.load_copy()?;
 
         Ok(self.copy.as_ref().unwrap())
     }

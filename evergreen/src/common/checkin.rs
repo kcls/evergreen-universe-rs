@@ -1,7 +1,6 @@
 use crate::common::circulator::Circulator;
 use crate::constants as C;
 use crate::date;
-use crate::event::EgEvent;
 use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
 use chrono::{Duration, Local};
 use json::JsonValue;
@@ -16,21 +15,10 @@ impl Circulator {
     pub fn checkin(&mut self) -> Result<(), String> {
         self.action = Some(String::from("checkin"));
 
-        if self.copy.is_none() {
-            self.exit_on_event_code("ASSET_COPY_NOT_FOUND")?;
-        }
-
-        if json_bool(&self.copy()["deleted"]) {
-            // Never attempt to capture holds with a deleted copy.
-            // TODO maybe move this closer to where it matters and/or
-            // avoid needing to set the option?
-            self.options
-                .insert(String::from("capture"), json::from("nocapture"));
-        }
-
         // Pre-cache some setting values.
         self.settings.fetch_values(CHECKIN_ORG_SETTINGS)?;
 
+        self.basic_copy_checks()?;
         self.fix_broken_transit_status()?;
         self.check_transit_checkin_interval()?;
         self.checkin_retarget_holds()?;
@@ -42,6 +30,19 @@ impl Circulator {
         if self.check_is_on_holds_shelf()? {
             // Item is resting cozily on the holds shelf. Leave it be.
             return Ok(());
+        }
+
+        Ok(())
+    }
+
+    fn basic_copy_checks(&mut self) -> Result<(), String> {
+        if self.copy.is_none() {
+            self.exit_on_event_code("ASSET_COPY_NOT_FOUND")?;
+        }
+
+        if json_bool(&self.copy()["deleted"]) {
+            // Never attempt to capture holds with a deleted copy.
+            self.options.insert(String::from("capture"), json::from("nocapture"));
         }
 
         Ok(())
@@ -153,7 +154,7 @@ impl Circulator {
         }
 
         let copy = self.copy();
-        let copy_id = json_int(&copy["id"])?;
+        let copy_id = self.copy_id.unwrap();
 
         let is_precat =
             json_bool_op(self.options.get("is_precat")) || json_int(&copy["call_number"])? == -1;
@@ -419,7 +420,7 @@ impl Circulator {
             return Ok(false);
         }
 
-        let copy_id = json_int(&self.copy()["id"])?;
+        let copy_id = self.copy_id.unwrap();
 
         if self.get_option_bool("clear_expired") {
             // Clear shelf-expired holds for this copy.
