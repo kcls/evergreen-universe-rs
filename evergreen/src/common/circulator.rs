@@ -23,6 +23,7 @@ const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
     &["LOST_AND_PAID\tCHECKOUT", "COPY_NOT_AVAILABLE", "OPEN_CIRCULATION_EXISTS"]
 ];
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum CircOp {
     Checkout,
     Checkin,
@@ -42,6 +43,7 @@ impl fmt::Display for CircOp {
 }
 
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Overrides {
     All,
     Events(Vec<String>),
@@ -65,6 +67,7 @@ pub struct Circulator {
     pub is_noncat: bool,
     pub changes_applied: bool,
     pub system_copy_alerts: Vec<JsonValue>,
+    pub user_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
     pub override_args: Option<Overrides>,
     pub circ_op: CircOp,
@@ -132,6 +135,7 @@ impl Circulator {
             is_noncat: false,
             changes_applied: false,
             system_copy_alerts: Vec::new(),
+            user_copy_alerts: Vec::new(),
             is_override: false,
             override_args: None,
             circ_op: CircOp::Other,
@@ -251,6 +255,112 @@ impl Circulator {
 
         self.generate_system_copy_alerts(events)?;
         // add_overrides_from_system_copy_alerts() called within above.
+        self.collect_user_copy_alerts()?;
+        Ok(())
+    }
+
+    fn collect_user_copy_alerts(&mut self) -> Result<(), String> {
+        if self.copy.is_none() {
+            return Ok(());
+        }
+
+        let query = json::object! {
+            copy: self.copy_id.unwrap(), // if have copy, have id.
+            ack_time: JsonValue::Null,
+        };
+
+        let flesh = json::object! {
+            flesh: 1,
+            flesh_fields: {aca: ["alert_type"]}
+        };
+
+        for alert in self.editor.search_with_ops("aca", query, flesh)? {
+            self.user_copy_alerts.push(alert.to_owned());
+        }
+
+        Ok(())
+    }
+
+    fn filter_user_copy_alerts(&mut self) -> Result<(), String> {
+        if self.user_copy_alerts.len() == 0 {
+            return Ok(());
+        }
+
+        let query = json::object! {
+            org: org::full_path(&mut self.editor, self.circ_lib, None)?
+        };
+
+        // actor.copy_alert_suppress
+        let suppressions = self.editor.search("acas", query)?;
+        let copy_circ_lib = util::json_int(&self.copy()["circ_lib"])?;
+
+        let mut wanted_alerts = Vec::new();
+
+        for alert in self.user_copy_alerts.drain(0..) {
+            let atype = &alert["alert_type"];
+
+            // Does this alert type only apply to renewals?
+            let wants_renew = util::json_bool(&atype["in_renew"]);
+
+            // Verify the alert type event matches what is currently happening.
+            if self.circ_op == CircOp::Renew {
+                if !wants_renew {
+                    continue;
+                }
+            } else {
+                if wants_renew {
+                    continue;
+                }
+                if let Some(event) = atype["event"].as_str() {
+                    if event.eq("CHECKOUT") && self.circ_op != CircOp::Checkout {
+                        continue;
+                    }
+                    if event.eq("CHECKIN") && self.circ_op != CircOp::Checkin {
+                        continue;
+                    }
+                }
+            }
+
+            // Verify this alert type is not locally suppressed.
+            if suppressions.iter().any(|a| a["alert_type"] == atype["id"]) {
+                continue;
+            }
+
+            // TODO below mimics generate_system_copy_alerts - refactor?
+
+            // Filter on "only at circ lib"
+            if util::json_bool(&atype["at_circ"]) {
+                let at_circ_orgs = org::descendants(&mut self.editor, copy_circ_lib)?;
+
+                if util::json_bool(&atype["invert_location"]) {
+                    if at_circ_orgs.contains(&self.circ_lib) {
+                        continue;
+                    }
+                } else if !at_circ_orgs.contains(&self.circ_lib) {
+                    continue;
+                }
+            }
+
+            // filter on "only at owning lib"
+            if util::json_bool(&atype["at_owning"]) {
+                let owner = util::json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
+                let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
+
+                if util::json_bool(&atype["invert_location"]) {
+                    if at_owner_orgs.contains(&self.circ_lib) {
+                        continue;
+                    }
+                } else if !at_owner_orgs.contains(&self.circ_lib) {
+                    continue;
+                }
+            }
+
+            // The Perl code unnests the alert type's next_status value
+            // here, but I have not yet found where it uses it.
+            wanted_alerts.push(alert);
+        }
+
+        self.user_copy_alerts = wanted_alerts;
 
         Ok(())
     }
@@ -281,10 +391,7 @@ impl Circulator {
 
         let alert_orgs = org::ancestors(&mut self.editor, self.circ_lib)?;
 
-        let is_renewal = match self.circ_op {
-            CircOp::Renew => true,
-            _ => false,
-        };
+        let is_renewal = self.circ_op == CircOp::Renew;
 
         let query = json::object! {
             "active": "t",
