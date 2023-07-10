@@ -1,6 +1,6 @@
 use crate::editor::Editor;
 use crate::util;
-use json::JsonValue;
+use json;
 
 /// Apply a variety of DB transforms to an org unit and return
 /// the calculated org unit IDs.

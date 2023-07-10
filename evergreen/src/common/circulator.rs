@@ -55,12 +55,10 @@ pub enum Overrides {
 pub struct Circulator {
     pub editor: Editor,
     pub settings: Settings,
-    pub exit_early: bool,
     pub circ_lib: i64,
     pub events: Vec<EgEvent>,
     pub copy: Option<JsonValue>,
     pub copy_id: Option<i64>,
-    pub copy_state: Option<String>,
     pub open_circ: Option<JsonValue>,
     pub patron: Option<JsonValue>,
     pub transit: Option<JsonValue>,
@@ -124,12 +122,10 @@ impl Circulator {
             settings,
             options,
             circ_lib,
-            exit_early: false,
             events: Vec::new(),
             open_circ: None,
             copy: None,
             copy_id: None,
-            copy_state: None,
             patron: None,
             transit: None,
             is_noncat: false,
@@ -173,15 +169,20 @@ impl Circulator {
         self.editor.rollback()
     }
 
-    /// Returns Result so we can cause early exit on methods.
-    pub fn exit_on_event_code(&mut self, code: &str) -> Result<(), String> {
+    /// Used for events that stop processing, i.e. cannot be overridden.
+    pub fn exit_now_on_event_code(&mut self, code: &str) -> Result<(), String> {
         self.add_event_code(code);
-        self.exit_early = true;
         Err(format!("Bailing on event: {code}"))
     }
 
+    /// Add a potentially overridable event to our events list (by code).
     pub fn add_event_code(&mut self, code: &str) {
-        self.events.push(EgEvent::new(code));
+        self.add_event(EgEvent::new(code));
+    }
+
+    /// Add a potentially overridable event to our events list.
+    pub fn add_event(&mut self, evt: EgEvent) {
+        self.events.push(evt);
     }
 
     /// Search for the copy in question
@@ -209,7 +210,7 @@ impl Circulator {
             if let Some(copy) = self.editor.retrieve_with_ops("acp", query, copy_flesh)? {
                 self.copy = Some(copy.to_owned());
             } else {
-                self.exit_on_event_code("ASSET_COPY_NOT_FOUND")?;
+                self.exit_now_on_event_code("ASSET_COPY_NOT_FOUND")?;
             }
         } else if let Some(copy_barcode) = self.options.get("copy_barcode") {
             // Non-cataloged items are assumed to not exist.
@@ -226,7 +227,7 @@ impl Circulator {
                 {
                     self.copy = Some(copy.to_owned());
                 } else {
-                    self.exit_on_event_code("ASSET_COPY_NOT_FOUND")?;
+                    self.exit_now_on_event_code("ASSET_COPY_NOT_FOUND")?;
                 }
             }
         }
@@ -238,28 +239,7 @@ impl Circulator {
         Ok(())
     }
 
-    pub fn load_copy_alerts(&mut self, events: &[&str]) -> Result<(), String> {
-        let copy_id = match self.copy_id {
-            Some(i) => i,
-            None => return Ok(()),
-        };
-
-        let list = self.editor.json_query(json::object! {
-            from: ["asset.copy_state", copy_id]
-        })?;
-
-        if let Some(resp) = list.get(0) {
-            // should always be a value.
-            self.copy_state = resp["asset.copy_state"].as_str().map(|s| s.to_string());
-        };
-
-        self.generate_system_copy_alerts(events)?;
-        // add_overrides_from_system_copy_alerts() called within above.
-        self.collect_user_copy_alerts()?;
-        Ok(())
-    }
-
-    fn collect_user_copy_alerts(&mut self) -> Result<(), String> {
+    pub fn load_user_copy_alerts(&mut self) -> Result<(), String> {
         if self.copy.is_none() {
             return Ok(());
         }
@@ -278,7 +258,7 @@ impl Circulator {
             self.user_copy_alerts.push(alert.to_owned());
         }
 
-        Ok(())
+        self.filter_user_copy_alerts()
     }
 
     fn filter_user_copy_alerts(&mut self) -> Result<(), String> {
@@ -326,7 +306,7 @@ impl Circulator {
                 continue;
             }
 
-            // TODO below mimics generate_system_copy_alerts - refactor?
+            // TODO below mimics load_system_copy_alerts - refactor?
 
             // Filter on "only at circ lib"
             if util::json_bool(&atype["at_circ"]) {
@@ -366,14 +346,29 @@ impl Circulator {
     }
 
     ///
-    fn generate_system_copy_alerts(&mut self, events: &[&str]) -> Result<(), String> {
-        // System events need event types to focus on.
-        if events.len() == 0 {
-            return Ok(());
-        }
+    pub fn load_system_copy_alerts(&mut self) -> Result<(), String> {
+        let copy_id = match self.copy_id {
+            Some(i) => i,
+            None => return Ok(()),
+        };
 
-        // Value set in load_copy_alerts()
-        let copy_state = self.copy_state.as_deref().unwrap();
+        // System events need event types to focus on.
+        let events: &[&str] = if self.circ_op == CircOp::Renew {
+            &["CHECKOUT", "CHECKIN"]
+        } else if self.circ_op == CircOp::Checkout {
+            &["CHECKOUT"]
+        } else if self.circ_op == CircOp::Checkin {
+            &["CHECKIN"]
+        } else {
+            return Ok(());
+        };
+
+        let list = self.editor.json_query(json::object! {
+            from: ["asset.copy_state", copy_id]
+        })?;
+
+        // Every copy as a copy state
+        let copy_state = list[0].as_str().unwrap();
 
         // Avoid creating system copy alerts for "NORMAL" copies.
         if copy_state.eq("NORMAL") {
@@ -391,14 +386,14 @@ impl Circulator {
 
         let alert_orgs = org::ancestors(&mut self.editor, self.circ_lib)?;
 
-        let is_renewal = self.circ_op == CircOp::Renew;
+        let is_renew_filter = if self.circ_op == CircOp::Renew { "t" } else { "f" };
 
         let query = json::object! {
             "active": "t",
             "scope_org": alert_orgs,
             "event": events,
             "state": copy_state,
-            "-or": [{"in_renew": is_renewal}, {"in_renew": JsonValue::Null}]
+            "-or": [{"in_renew": is_renew_filter}, {"in_renew": JsonValue::Null}]
         };
 
         // config.copy_alert_type
@@ -539,6 +534,31 @@ impl Circulator {
         Ok(())
     }
 
+    /// Assumes new-style alerts are supported.
+    pub fn check_copy_alerts(&mut self) -> Result<(), String> {
+
+        let mut alert_on = Vec::new();
+        for alert in self.user_copy_alerts.iter() {
+            alert_on.push(alert.clone());
+        }
+
+        for alert in self.system_copy_alerts.iter() {
+            alert_on.push(alert.clone());
+        }
+
+        if alert_on.len() > 0 {
+            // We have new-style alerts to reports.
+            let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
+            evt.set_payload(json::from(alert_on));
+            self.add_event(evt);
+        }
+
+        // TODO
+
+
+        Ok(())
+    }
+
     /// Find an open circulation linked to our copy if possible.
     fn load_open_circ(&mut self) -> Result<(), String> {
         if self.open_circ.is_some() {
@@ -577,7 +597,7 @@ impl Circulator {
             if let Some(patron) = self.editor.retrieve_with_ops("au", patron_id, flesh)? {
                 self.patron = Some(patron.to_owned());
             } else {
-                self.exit_on_event_code("ACTOR_USER_NOT_FOUND")?;
+                self.exit_now_on_event_code("ACTOR_USER_NOT_FOUND")?;
             }
         } else if let Some(patron_barcode) = self.options.get("patron_barcode") {
             let query = json::object! {barcode: patron_barcode.clone()};
@@ -590,7 +610,7 @@ impl Circulator {
                 card["usr"] = patron["id"].clone(); // de-flesh card->user
                 patron["card"] = card; // flesh user->card
             } else {
-                self.exit_on_event_code("ACTOR_USER_NOT_FOUND")?;
+                self.exit_now_on_event_code("ACTOR_USER_NOT_FOUND")?;
             }
         } else if let Some(ref copy) = self.copy {
             // See if we can find the circulation / patron related

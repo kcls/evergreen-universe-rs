@@ -112,6 +112,9 @@ impl EgEvent {
     pub fn payload(&self) -> &json::JsonValue {
         &self.payload
     }
+    pub fn set_payload(&mut self, payload: json::JsonValue) {
+        self.payload = payload
+    }
 
     pub fn desc(&self) -> Option<&str> {
         self.desc.as_deref()

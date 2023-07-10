@@ -32,14 +32,16 @@ impl Circulator {
             return Ok(());
         }
 
-        self.load_copy_alerts(&["CHECKOUT"])?;
+        self.load_system_copy_alerts()?;
+        self.load_user_copy_alerts()?;
+        self.check_copy_alerts()?;
 
         Ok(())
     }
 
     fn basic_copy_checks(&mut self) -> Result<(), String> {
         if self.copy.is_none() {
-            self.exit_on_event_code("ASSET_COPY_NOT_FOUND")?;
+            self.exit_now_on_event_code("ASSET_COPY_NOT_FOUND")?;
         }
 
         if json_bool(&self.copy()["deleted"]) {
