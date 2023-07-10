@@ -1,4 +1,4 @@
-use crate::common::circulator::Circulator;
+use crate::common::circulator::{CircOp, Circulator};
 use crate::constants as C;
 use crate::date;
 use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
@@ -13,7 +13,7 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
 
 impl Circulator {
     pub fn checkin(&mut self) -> Result<(), String> {
-        self.action = Some(String::from("checkin"));
+        self.circ_op = CircOp::Checkin;
 
         // Pre-cache some setting values.
         self.settings.fetch_values(CHECKIN_ORG_SETTINGS)?;

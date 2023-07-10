@@ -4,11 +4,48 @@ use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
 use json::JsonValue;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::fmt;
 
 /// These copy fields are assumed to be fleshed throughout.
 const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "location"];
+
+/// Map of some newer override event types to simplified legacy override codes .
+/// First entry in each sub-array is the newer event, followed by one or more
+/// legacy event types.
+const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
+    &["CLAIMSRETURNED\tCHECKOUT", "CIRC_CLAIMS_RETURNED"],
+    &["CLAIMSRETURNED\tCHECKIN", "CIRC_CLAIMS_RETURNED"],
+    &["LOST\tCHECKOUT", "OPEN_CIRCULATION_EXISTS"],
+    &["LONGOVERDUE\tCHECKOUT", "OPEN_CIRCULATION_EXISTS"],
+    &["MISSING\tCHECKOUT", "COPY_NOT_AVAILABLE"],
+    &["DAMAGED\tCHECKOUT", "COPY_NOT_AVAILABLE"],
+    &["LOST_AND_PAID\tCHECKOUT", "COPY_NOT_AVAILABLE", "OPEN_CIRCULATION_EXISTS"]
+];
+
+pub enum CircOp {
+    Checkout,
+    Checkin,
+    Renew,
+    Other,
+}
+
+impl fmt::Display for CircOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::Checkout => write!(f, "checkout"),
+            Self::Checkin => write!(f, "checkin"),
+            Self::Renew => write!(f, "renew"),
+            Self::Other => write!(f, "other"),
+        }
+    }
+}
+
+
+pub enum Overrides {
+    All,
+    Events(Vec<String>),
+}
 
 /// Context and shared methods for circulation actions.
 ///
@@ -27,16 +64,14 @@ pub struct Circulator {
     pub transit: Option<JsonValue>,
     pub is_noncat: bool,
     pub changes_applied: bool,
-
-    /// This one comes up in a variety of places.
-    pub is_renewal: bool,
+    pub system_copy_alerts: Vec<JsonValue>,
+    pub is_override: bool,
+    pub override_args: Option<Overrides>,
+    pub circ_op: CircOp,
 
     /// Storage for the large list of circulation API flags that we
     /// don't explicitly defined elsewhere in this struct.
     pub options: HashMap<String, JsonValue>,
-
-    /// Action string for logging / debugging
-    pub action: Option<String>,
 }
 
 impl fmt::Display for Circulator {
@@ -61,12 +96,10 @@ impl fmt::Display for Circulator {
             }
         }
 
-        let action = self.action.as_deref().unwrap_or(empty);
-
         write!(
             f,
             "Circulator action={} copy={} copy_status={} patron={}",
-            action, copy_barcode, patron_barcode, copy_status
+            self.circ_op, copy_barcode, patron_barcode, copy_status
         )
     }
 }
@@ -97,9 +130,11 @@ impl Circulator {
             patron: None,
             transit: None,
             is_noncat: false,
-            is_renewal: false,
             changes_applied: false,
-            action: None,
+            system_copy_alerts: Vec::new(),
+            is_override: false,
+            override_args: None,
+            circ_op: CircOp::Other,
         })
     }
 
@@ -215,6 +250,7 @@ impl Circulator {
         };
 
         self.generate_system_copy_alerts(events)?;
+        // add_overrides_from_system_copy_alerts() called within above.
 
         Ok(())
     }
@@ -245,12 +281,17 @@ impl Circulator {
 
         let alert_orgs = org::ancestors(&mut self.editor, self.circ_lib)?;
 
+        let is_renewal = match self.circ_op {
+            CircOp::Renew => true,
+            _ => false,
+        };
+
         let query = json::object! {
             "active": "t",
             "scope_org": alert_orgs,
             "event": events,
             "state": copy_state,
-            "-or": [{"in_renew": self.is_renewal}, {"in_renew": JsonValue::Null}]
+            "-or": [{"in_renew": is_renewal}, {"in_renew": JsonValue::Null}]
         };
 
         // config.copy_alert_type
@@ -293,6 +334,8 @@ impl Circulator {
             wanted_types.len()
         );
 
+        let mut auto_override_conditions = HashSet::new();
+
         for mut atype in wanted_types {
             if let Some(ns) = atype["next_status"].as_str() {
                 if suppressions.iter().any(|v| &v["alert_type"] == &atype["id"]) {
@@ -323,8 +366,67 @@ impl Circulator {
                 self.options.insert("next_copy_status".to_string(), stat.clone());
             }
 
-            // TODO
+            if suppressions.iter().any(|a| a["alert_type"] == atype["id"]) {
+                auto_override_conditions.insert(
+                    format!("{}\t{}", atype["state"], atype["event"]));
+            } else {
+                self.system_copy_alerts.push(alert);
+            }
+        }
 
+        self.add_overrides_from_system_copy_alerts(auto_override_conditions)
+    }
+
+    fn add_overrides_from_system_copy_alerts(&mut self, conditions: HashSet<String>) -> Result<(), String> {
+
+        for condition in conditions.iter() {
+            let map = match COPY_ALERT_OVERRIDES.iter().filter(|m| m[0].eq(condition)).next() {
+                Some(m) => m,
+                None => continue,
+            };
+
+            self.is_override = true;
+            let mut checkin_required = false;
+
+            for copy_override in &map[1..] {
+                if let Some(ov_args) = &mut self.override_args {
+
+                    // Only track specific events if we are not overriding "All".
+                    if let Overrides::Events(ev) = ov_args {
+                        ev.push(copy_override.to_string());
+                    }
+                }
+
+                if copy_override.ne(&"OPEN_CIRCULATION_EXISTS") {
+                    continue;
+                }
+
+                // Special handling for lsot/long-overdue circs
+
+                let setting = match condition.split("\t").next().unwrap() {
+                    "LOST" | "LOST_AND_PAID" =>
+                        "circ.copy_alerts.forgive_fines_on_lost_checkin",
+                    "LONGOVERDUE" =>
+                        "circ.copy_alerts.forgive_fines_on_long_overdue_checkin",
+                    _ => continue,
+                };
+
+                if util::json_bool(self.settings.get_value(setting)?) {
+                    self.set_option_true("void_overdues");
+                }
+
+                self.set_option_true("noop");
+                checkin_required = true;
+            }
+
+            // If we are mid-checkout (not checkin or renew), force
+            // a checkin here (which will be no-op) so the item can be
+            // reset before the checkout resumes.
+            if let CircOp::Checkout = self.circ_op {
+                if checkin_required {
+                    self.checkin()?;
+                }
+            }
         }
 
         Ok(())
