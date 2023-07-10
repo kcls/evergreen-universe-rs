@@ -553,8 +553,21 @@ impl Circulator {
             self.add_event(evt);
         }
 
-        // TODO
+        // No new-style alerts.  See if the copy itself has one.
+        if self.circ_op == CircOp::Renew {
+            return Ok(());
+        }
 
+        if self.copy.is_none() {
+            // Don't think this is possible here, but BSTS.
+            return Ok(());
+        }
+
+        if let Some(msg) = self.copy()["alert_message"].as_str() {
+            let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
+            evt.set_payload(json::from(msg));
+            self.add_event(evt);
+        }
 
         Ok(())
     }
