@@ -232,10 +232,17 @@ impl Editor {
     }
 
     /// Rollback the active transaction, disconnect from the worker,
-    /// and return the last_event value.
-    pub fn die_event(&mut self) -> Result<Option<&EgEvent>, String> {
+    /// and return a stringified variant of the last event.
+    ///
+    /// The raw event can still be accessed via self.last_event().
+    pub fn die_event(&mut self) -> Result<(), String> {
         self.rollback()?;
-        Ok(self.last_event())
+        Err(
+            match self.last_event() {
+                Some(e) => format!("{e}"),
+                None => String::from("NO_EVENT"),
+            }
+        )
     }
 
     /// Rollback the active transaction and disconnect from the worker.

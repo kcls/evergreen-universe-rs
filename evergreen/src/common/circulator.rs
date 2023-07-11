@@ -536,6 +536,9 @@ impl Circulator {
 
     /// Assumes new-style alerts are supported.
     pub fn check_copy_alerts(&mut self) -> Result<(), String> {
+        if self.copy.is_none() {
+            return Ok(());
+        }
 
         let mut alert_on = Vec::new();
         for alert in self.user_copy_alerts.iter() {
@@ -551,15 +554,11 @@ impl Circulator {
             let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
             evt.set_payload(json::from(alert_on));
             self.add_event(evt);
+            return Ok(());
         }
 
         // No new-style alerts.  See if the copy itself has one.
         if self.circ_op == CircOp::Renew {
-            return Ok(());
-        }
-
-        if self.copy.is_none() {
-            // Don't think this is possible here, but BSTS.
             return Ok(());
         }
 

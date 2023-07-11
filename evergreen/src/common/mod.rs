@@ -1,4 +1,5 @@
 //! Shared, common utility functions
+pub mod billing;
 pub mod checkin;
 pub mod circ;
 pub mod circulator;

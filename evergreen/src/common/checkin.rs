@@ -1,4 +1,6 @@
 use crate::common::circulator::{CircOp, Circulator};
+use crate::common::billing;
+use crate::event::EgEvent;
 use crate::constants as C;
 use crate::date;
 use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
@@ -11,7 +13,9 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
     "circ.transit.suppress_hold",
 ];
 
+/// Checkin
 impl Circulator {
+
     pub fn checkin(&mut self) -> Result<(), String> {
         self.circ_op = CircOp::Checkin;
 
@@ -35,6 +39,10 @@ impl Circulator {
         self.load_system_copy_alerts()?;
         self.load_user_copy_alerts()?;
         self.check_copy_alerts()?;
+
+        // check_checkin_copy_status() // superseded by new copy alerts
+        self.check_claims_returned();
+        self.check_circ_deposit(false)?;
 
         Ok(())
     }
@@ -69,9 +77,9 @@ impl Circulator {
             None => return Ok(()),
         };
 
-        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT {
+        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_IN_TRANSIT {
             log::warn!("{self} Copy has an open transit, but incorrect status");
-            let changes = json::object! {status: C::EG_COPY_STATUS_IN_TRANSIT};
+            let changes = json::object! {status: C::COPY_STATUS_IN_TRANSIT};
             self.update_copy(changes)?;
         }
 
@@ -84,7 +92,7 @@ impl Circulator {
     /// transit checkin interval has expired, push an event onto the
     /// overridable events list.
     fn check_transit_checkin_interval(&mut self) -> Result<(), String> {
-        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_IN_TRANSIT {
+        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_IN_TRANSIT {
             // We only care about in-transit items.
             return Ok(());
         }
@@ -191,7 +199,7 @@ impl Circulator {
 
         // By default, we only care about in-process items.
         if !retarget_mode.contains(".all")
-            && json_int(&copy["status"]["id"])? != C::EG_COPY_STATUS_IN_PROCESS
+            && json_int(&copy["status"]["id"])? != C::COPY_STATUS_IN_PROCESS
         {
             return Ok(());
         }
@@ -330,9 +338,9 @@ impl Circulator {
         let copy_status = json_int(&self.copy()["status"]["id"])?;
 
         match copy_status {
-            C::EG_COPY_STATUS_LOST
-            | C::EG_COPY_STATUS_LOST_AND_PAID
-            | C::EG_COPY_STATUS_LONG_OVERDUE => {
+            C::COPY_STATUS_LOST
+            | C::COPY_STATUS_LOST_AND_PAID
+            | C::COPY_STATUS_LONG_OVERDUE => {
                 // Found a copy me may want to work on,
             }
             _ => return Ok(()), // copy is not relevant
@@ -421,7 +429,7 @@ impl Circulator {
     }
 
     fn check_is_on_holds_shelf(&mut self) -> Result<bool, String> {
-        if json_int(&self.copy()["status"]["id"])? != C::EG_COPY_STATUS_ON_HOLDS_SHELF {
+        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
             return Ok(false);
         }
 
@@ -506,17 +514,62 @@ impl Circulator {
 
         let next_status = match self.options.get("next_copy_status") {
             Some(s) => json_int(&s)?,
-            None => C::EG_COPY_STATUS_RESHELVING,
+            None => C::COPY_STATUS_RESHELVING,
         };
 
         if force
-            || (status != C::EG_COPY_STATUS_ON_HOLDS_SHELF
-                && status != C::EG_COPY_STATUS_CATALOGING
-                && status != C::EG_COPY_STATUS_IN_TRANSIT
+            || (status != C::COPY_STATUS_ON_HOLDS_SHELF
+                && status != C::COPY_STATUS_CATALOGING
+                && status != C::COPY_STATUS_IN_TRANSIT
                 && status != next_status)
         {
             self.update_copy(json::object! {status: json::from(next_status)})?;
             self.changes_applied = true;
+        }
+
+        Ok(())
+    }
+
+    fn check_claims_returned(&mut self) {
+        if let Some(circ) = self.open_circ.as_ref() {
+            if let Some(sf) = circ["stop_fines"].as_str() {
+                if sf == "CLAIMSRETURNED" {
+                    self.add_event_code("CIRC_CLAIMS_RETURNED");
+                }
+            }
+        }
+    }
+
+    fn check_circ_deposit(&mut self, void: bool) -> Result<(), String> {
+        let circ_id = match self.open_circ.as_ref() {
+            Some(c) => c["id"].clone(),
+            None => return Ok(()),
+        };
+
+        let query = json::object! {
+            btype: C::BTYPE_DEPOSIT,
+            voided: "f",
+            xact: circ_id,
+        };
+
+        let results = self.editor.search("mb", query)?;
+        let deposit = match results.first() {
+            Some(d) => d,
+            None => return Ok(()),
+        };
+
+        if void {
+            // Caller suggests we void.  Verify settings allow it.
+
+            if json_bool(self.settings.get_value("circ.void_item_deposit")?) {
+                let bill_id = json_int(&deposit["id"])?;
+                billing::void_bills(&mut self.editor, &[bill_id], Some("DEPOSIT ITEM RETURNED"))?;
+            }
+
+        } else {
+            let mut evt = EgEvent::new("ITEM_DEPOSIT_PAID");
+            evt.set_payload(deposit.to_owned());
+            self.add_event(evt);
         }
 
         Ok(())
