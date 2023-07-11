@@ -560,7 +560,6 @@ impl Circulator {
 
         if void {
             // Caller suggests we void.  Verify settings allow it.
-
             if json_bool(self.settings.get_value("circ.void_item_deposit")?) {
                 let bill_id = json_int(&deposit["id"])?;
                 billing::void_bills(&mut self.editor, &[bill_id], Some("DEPOSIT ITEM RETURNED"))?;

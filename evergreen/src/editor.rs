@@ -210,6 +210,14 @@ impl Editor {
         self.requestor.as_ref()
     }
 
+    /// Returns Err if no requestor value is set.
+    pub fn has_requestor(&self) -> Result<(), String> {
+        self.requestor
+            .as_ref()
+            .map(|_| ())
+            .ok_or(format!("Editor requestor is unset"))
+    }
+
     pub fn set_requestor(&mut self, r: &json::JsonValue) {
         self.requestor = Some(r.clone())
     }
