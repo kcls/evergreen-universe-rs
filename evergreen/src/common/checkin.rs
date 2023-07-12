@@ -576,17 +576,54 @@ impl Circulator {
     }
 
     fn checkin_handle_circ(&mut self) -> Result<(), String> {
-        let open_circ = self.open_circ.as_ref().unwrap();
-
         if self.get_option_bool("claims_never_checked_out") {
+            let xact_start = &self.open_circ.as_ref().unwrap()["xact_start"];
             self.options
-                .insert("backdate".to_string(), open_circ["xact_start"].clone());
+                .insert("backdate".to_string(), xact_start.clone());
         }
 
         if self.options.contains_key("backdate") {
             self.checkin_compile_backdate()?;
         }
 
+        let circ = self.open_circ.as_mut().unwrap();
+        circ["checkin_time"] = self
+            .options
+            .get("backdate")
+            .map(|bd| bd.clone())
+            .unwrap_or(json::from("now"));
+
+        circ["checkin_scan_time"] = json::from("now");
+        circ["checkin_staff"] = json::from(self.editor.requestor_id());
+        circ["checkin_lib"] = json::from(self.circ_lib);
+        circ["checkin_workstation"] = json::from(self.editor.requestor_ws_id());
+
+        let copy_status = json_int(&self.copy()["status"]["id"])?;
+        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
+
+        match copy_status {
+            C::COPY_STATUS_LOST | C::COPY_STATUS_LOST_AND_PAID => self.checkin_handle_lost()?,
+            C::COPY_STATUS_LONG_OVERDUE => self.checkin_handle_long_overdue()?,
+            C::COPY_STATUS_MISSING => {
+                if copy_circ_lib == self.circ_lib {
+                    self.reshelve_copy(true)?
+                } else {
+                    log::info!("{self} leaving copy in missing status on remote checkin");
+                }
+            }
+            _ => self.reshelve_copy(true)?,
+        }
+
+        Ok(())
+    }
+
+    fn checkin_handle_lost(&mut self) -> Result<(), String> {
+        // TODO
+        Ok(())
+    }
+
+    fn checkin_handle_long_overdue(&mut self) -> Result<(), String> {
+        // TODO
         Ok(())
     }
 
