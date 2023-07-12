@@ -10,11 +10,11 @@ use std::collections::HashSet;
 pub fn void_bills(
     editor: &mut Editor,
     billing_ids: &[i64], // money.billing.id
-    maybe_note: Option<&str>
+    maybe_note: Option<&str>,
 ) -> Result<(), String> {
     editor.has_requestor()?;
 
-    let mut bills = editor.search("mb", json::object!{"id": billing_ids})?;
+    let mut bills = editor.search("mb", json::object! {"id": billing_ids})?;
     let mut penalty_users: HashSet<(i64, i64)> = HashSet::new();
 
     if bills.len() == 0 {
@@ -22,12 +22,10 @@ pub fn void_bills(
     }
 
     for mut bill in bills.drain(0..) {
-
         if util::json_bool(&bill["voided"]) {
             log::debug!("Billing {} already voided.  Skipping", bill["id"]);
             continue;
         }
-
 
         let xact = editor.retrieve("mbt", bill["xact"].clone())?;
         let xact = match xact {
@@ -94,7 +92,6 @@ pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> Result<(), String> 
             xact["xact_finish"] = json::from("now");
             return editor.update(&xact);
         }
-
     } else if !xact_open {
         // Transaction closed but money or refund still owed.
 
@@ -108,10 +105,8 @@ pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> Result<(), String> 
     Ok(())
 }
 
-
 /// Returns the context org unit ID for a transaction (by ID).
 pub fn xact_org(editor: &mut Editor, xact_id: i64) -> Result<i64, String> {
-
     // There's a view for that!
     // money.billable_xact_summary_location_view
     if let Some(sum) = editor.retrieve("mbtslv", xact_id)? {
@@ -120,5 +115,3 @@ pub fn xact_org(editor: &mut Editor, xact_id: i64) -> Result<i64, String> {
         Err(format!("No Such Transaction: {xact_id}"))
     }
 }
-
-

@@ -4,7 +4,7 @@ use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
 use json::JsonValue;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// These copy fields are assumed to be fleshed throughout.
@@ -20,7 +20,11 @@ const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
     &["LONGOVERDUE\tCHECKOUT", "OPEN_CIRCULATION_EXISTS"],
     &["MISSING\tCHECKOUT", "COPY_NOT_AVAILABLE"],
     &["DAMAGED\tCHECKOUT", "COPY_NOT_AVAILABLE"],
-    &["LOST_AND_PAID\tCHECKOUT", "COPY_NOT_AVAILABLE", "OPEN_CIRCULATION_EXISTS"]
+    &[
+        "LOST_AND_PAID\tCHECKOUT",
+        "COPY_NOT_AVAILABLE",
+        "OPEN_CIRCULATION_EXISTS",
+    ],
 ];
 
 #[derive(Debug, PartialEq, Clone)]
@@ -41,7 +45,6 @@ impl fmt::Display for CircOp {
         }
     }
 }
-
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Overrides {
@@ -331,7 +334,8 @@ impl Circulator {
 
             // filter on "only at owning lib"
             if util::json_bool(&atype["at_owning"]) {
-                let owner = util::json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
+                let owner =
+                    util::json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
                 let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
 
                 if util::json_bool(&atype["invert_location"]) {
@@ -394,7 +398,11 @@ impl Circulator {
 
         let alert_orgs = org::ancestors(&mut self.editor, self.circ_lib)?;
 
-        let is_renew_filter = if self.circ_op == CircOp::Renew { "t" } else { "f" };
+        let is_renew_filter = if self.circ_op == CircOp::Renew {
+            "t"
+        } else {
+            "f"
+        };
 
         let query = json::object! {
             "active": "t",
@@ -448,7 +456,10 @@ impl Circulator {
 
         for mut atype in wanted_types {
             if let Some(ns) = atype["next_status"].as_str() {
-                if suppressions.iter().any(|v| &v["alert_type"] == &atype["id"]) {
+                if suppressions
+                    .iter()
+                    .any(|v| &v["alert_type"] == &atype["id"])
+                {
                     atype["next_status"] = JsonValue::new_array();
                 } else {
                     atype["next_status"] = json::from(util::pg_unpack_int_array(ns));
@@ -473,12 +484,12 @@ impl Circulator {
             if let Some(stat) = atype["next_status"].members().next() {
                 // The Perl version tracks all of the next statuses,
                 // but only ever uses the first.  Just track the first.
-                self.options.insert("next_copy_status".to_string(), stat.clone());
+                self.options
+                    .insert("next_copy_status".to_string(), stat.clone());
             }
 
             if suppressions.iter().any(|a| a["alert_type"] == atype["id"]) {
-                auto_override_conditions.insert(
-                    format!("{}\t{}", atype["state"], atype["event"]));
+                auto_override_conditions.insert(format!("{}\t{}", atype["state"], atype["event"]));
             } else {
                 self.system_copy_alerts.push(alert);
             }
@@ -487,10 +498,16 @@ impl Circulator {
         self.add_overrides_from_system_copy_alerts(auto_override_conditions)
     }
 
-    fn add_overrides_from_system_copy_alerts(&mut self, conditions: HashSet<String>) -> Result<(), String> {
-
+    fn add_overrides_from_system_copy_alerts(
+        &mut self,
+        conditions: HashSet<String>,
+    ) -> Result<(), String> {
         for condition in conditions.iter() {
-            let map = match COPY_ALERT_OVERRIDES.iter().filter(|m| m[0].eq(condition)).next() {
+            let map = match COPY_ALERT_OVERRIDES
+                .iter()
+                .filter(|m| m[0].eq(condition))
+                .next()
+            {
                 Some(m) => m,
                 None => continue,
             };
@@ -500,7 +517,6 @@ impl Circulator {
 
             for copy_override in &map[1..] {
                 if let Some(ov_args) = &mut self.override_args {
-
                     // Only track specific events if we are not overriding "All".
                     if let Overrides::Events(ev) = ov_args {
                         ev.push(copy_override.to_string());
@@ -514,10 +530,8 @@ impl Circulator {
                 // Special handling for lsot/long-overdue circs
 
                 let setting = match condition.split("\t").next().unwrap() {
-                    "LOST" | "LOST_AND_PAID" =>
-                        "circ.copy_alerts.forgive_fines_on_lost_checkin",
-                    "LONGOVERDUE" =>
-                        "circ.copy_alerts.forgive_fines_on_long_overdue_checkin",
+                    "LOST" | "LOST_AND_PAID" => "circ.copy_alerts.forgive_fines_on_lost_checkin",
+                    "LONGOVERDUE" => "circ.copy_alerts.forgive_fines_on_long_overdue_checkin",
                     _ => continue,
                 };
 
@@ -770,11 +784,11 @@ impl Circulator {
         }
 
         if self.failed_events.len() > 0 {
-
-            Err(format!("Exiting early on failed events: {:?}", self.failed_events))
-
+            Err(format!(
+                "Exiting early on failed events: {:?}",
+                self.failed_events
+            ))
         } else {
-
             // If all is well and we encountered a SUCCESS event, keep
             // it in place so it can ultimately be returned to the caller.
             if let Some(evt) = success {

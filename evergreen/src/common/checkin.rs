@@ -1,8 +1,8 @@
-use crate::common::circulator::{CircOp, Circulator};
 use crate::common::billing;
-use crate::event::EgEvent;
+use crate::common::circulator::{CircOp, Circulator};
 use crate::constants as C;
 use crate::date;
+use crate::event::EgEvent;
 use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
 use json::JsonValue;
@@ -15,7 +15,6 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
 
 /// Checkin
 impl Circulator {
-
     pub fn checkin(&mut self) -> Result<(), String> {
         self.circ_op = CircOp::Checkin;
 
@@ -343,9 +342,7 @@ impl Circulator {
         let copy_status = json_int(&self.copy()["status"]["id"])?;
 
         match copy_status {
-            C::COPY_STATUS_LOST
-            | C::COPY_STATUS_LOST_AND_PAID
-            | C::COPY_STATUS_LONG_OVERDUE => {
+            C::COPY_STATUS_LOST | C::COPY_STATUS_LOST_AND_PAID | C::COPY_STATUS_LONG_OVERDUE => {
                 // Found a copy me may want to work on,
             }
             _ => return Ok(()), // copy is not relevant
@@ -569,7 +566,6 @@ impl Circulator {
                 let bill_id = json_int(&deposit["id"])?;
                 billing::void_bills(&mut self.editor, &[bill_id], Some("DEPOSIT ITEM RETURNED"))?;
             }
-
         } else {
             let mut evt = EgEvent::new("ITEM_DEPOSIT_PAID");
             evt.set_payload(deposit.to_owned());
@@ -583,7 +579,8 @@ impl Circulator {
         let open_circ = self.open_circ.as_ref().unwrap();
 
         if self.get_option_bool("claims_never_checked_out") {
-            self.options.insert("backdate".to_string(), open_circ["xact_start"].clone());
+            self.options
+                .insert("backdate".to_string(), open_circ["xact_start"].clone());
         }
 
         if self.options.contains_key("backdate") {
@@ -599,12 +596,15 @@ impl Circulator {
     fn checkin_compile_backdate(&mut self) -> Result<(), String> {
         let duedate = match self.open_circ.as_ref() {
             Some(circ) => circ["due_date"]
-                .as_str().ok_or(format!("{self} circ has no due date?"))?,
+                .as_str()
+                .ok_or(format!("{self} circ has no due date?"))?,
             None => return Ok(()),
         };
 
         let backdate = match self.options.get("backdate") {
-            Some(bd) => bd.as_str().ok_or(format!("{self} bad backdate value: {bd}"))?,
+            Some(bd) => bd
+                .as_str()
+                .ok_or(format!("{self} bad backdate value: {bd}"))?,
             None => return Ok(()),
         };
 
@@ -613,20 +613,24 @@ impl Circulator {
         let orig_date = date::parse_datetime(duedate)?;
         let mut new_date = date::parse_datetime(backdate)?;
 
-        new_date = new_date.with_hour(orig_date.hour())
+        new_date = new_date
+            .with_hour(orig_date.hour())
             .ok_or(format!("Could not set backdate hours"))?;
 
-        new_date = new_date.with_minute(orig_date.minute())
+        new_date = new_date
+            .with_minute(orig_date.minute())
             .ok_or(format!("Could not set backdate minutes"))?;
 
         if new_date > Local::now() {
             log::info!("{self} ignoring future backdate: {new_date}");
             self.options.remove("backdate");
         } else {
-            self.options.insert("backdate".to_string(), json::from(date::to_iso8601(&new_date)));
+            self.options.insert(
+                "backdate".to_string(),
+                json::from(date::to_iso8601(&new_date)),
+            );
         }
 
         Ok(())
     }
 }
-
