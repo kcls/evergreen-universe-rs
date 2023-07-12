@@ -90,7 +90,13 @@ fn add_hms(part: &str, mut date: DateTime<Local>) -> Result<DateTime<Local>, Str
     Ok(date)
 }
 
+/// Parse an ISO date string.
 pub fn parse_datetime(dt: &str) -> Result<DateTime<Local>, String> {
     dt.parse::<DateTime<Local>>()
         .or_else(|e| Err(format!("Could not parse datetime string: {e} {dt}")))
+}
+
+/// Turn a DateTime into the kind of date string we like in these parts.
+pub fn to_iso8601(dt: &DateTime<Local>) -> String {
+    dt.format("%FT%T%z").to_string()
 }

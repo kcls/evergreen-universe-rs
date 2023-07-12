@@ -56,7 +56,6 @@ pub struct Circulator {
     pub editor: Editor,
     pub settings: Settings,
     pub circ_lib: i64,
-    pub events: Vec<EgEvent>,
     pub copy: Option<JsonValue>,
     pub copy_id: Option<i64>,
     pub open_circ: Option<JsonValue>,
@@ -65,10 +64,18 @@ pub struct Circulator {
     pub is_noncat: bool,
     pub changes_applied: bool,
     pub system_copy_alerts: Vec<JsonValue>,
-    pub user_copy_alerts: Vec<JsonValue>,
+    pub runtime_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
-    pub override_args: Option<Overrides>,
     pub circ_op: CircOp,
+
+    pub override_args: Option<Overrides>,
+
+    /// Events that need to be addressed.
+    pub events: Vec<EgEvent>,
+
+    /// Override failures are tracked here so they can all be returned
+    /// to the caller.
+    pub failed_events: Vec<EgEvent>,
 
     /// Storage for the large list of circulation API flags that we
     /// don't explicitly defined elsewhere in this struct.
@@ -131,9 +138,10 @@ impl Circulator {
             is_noncat: false,
             changes_applied: false,
             system_copy_alerts: Vec::new(),
-            user_copy_alerts: Vec::new(),
+            runtime_copy_alerts: Vec::new(),
             is_override: false,
             override_args: None,
+            failed_events: Vec::new(),
             circ_op: CircOp::Other,
         })
     }
@@ -239,7 +247,7 @@ impl Circulator {
         Ok(())
     }
 
-    pub fn load_user_copy_alerts(&mut self) -> Result<(), String> {
+    pub fn load_runtime_copy_alerts(&mut self) -> Result<(), String> {
         if self.copy.is_none() {
             return Ok(());
         }
@@ -255,14 +263,14 @@ impl Circulator {
         };
 
         for alert in self.editor.search_with_ops("aca", query, flesh)? {
-            self.user_copy_alerts.push(alert.to_owned());
+            self.runtime_copy_alerts.push(alert.to_owned());
         }
 
-        self.filter_user_copy_alerts()
+        self.filter_runtime_copy_alerts()
     }
 
-    fn filter_user_copy_alerts(&mut self) -> Result<(), String> {
-        if self.user_copy_alerts.len() == 0 {
+    fn filter_runtime_copy_alerts(&mut self) -> Result<(), String> {
+        if self.runtime_copy_alerts.len() == 0 {
             return Ok(());
         }
 
@@ -276,7 +284,7 @@ impl Circulator {
 
         let mut wanted_alerts = Vec::new();
 
-        for alert in self.user_copy_alerts.drain(0..) {
+        for alert in self.runtime_copy_alerts.drain(0..) {
             let atype = &alert["alert_type"];
 
             // Does this alert type only apply to renewals?
@@ -340,7 +348,7 @@ impl Circulator {
             wanted_alerts.push(alert);
         }
 
-        self.user_copy_alerts = wanted_alerts;
+        self.runtime_copy_alerts = wanted_alerts;
 
         Ok(())
     }
@@ -541,7 +549,7 @@ impl Circulator {
         }
 
         let mut alert_on = Vec::new();
-        for alert in self.user_copy_alerts.iter() {
+        for alert in self.runtime_copy_alerts.iter() {
             alert_on.push(alert.clone());
         }
 
@@ -707,6 +715,73 @@ impl Circulator {
             util::json_bool(op)
         } else {
             false
+        }
+    }
+
+    /// Attempts to override any events we have collected so far.
+    ///
+    /// Returns Err to exit early if any events exist that cannot
+    /// be overridden either becuase we are not actively overriding
+    /// or because an override permission check fails.
+    pub fn try_override_events(&mut self) -> Result<(), String> {
+        if self.events.len() == 0 {
+            return Ok(());
+        }
+
+        // If we have a success event, keep it for returning later.
+        let mut success: Option<EgEvent> = None;
+        let selfstr = format!("{self}");
+
+        for evt in self.events.drain(0..) {
+            if evt.textcode() == "SUCCESS" {
+                success = Some(evt);
+                continue;
+            }
+
+            if !self.is_override || self.override_args.is_none() {
+                self.failed_events.push(evt);
+                continue;
+            }
+
+            let oargs = self.override_args.as_ref().unwrap(); // verified above
+
+            // Asked to override specific event types.  See if this
+            // event type matches.
+            if let Overrides::Events(v) = oargs {
+                if !v.iter().map(|s| s.as_str()).any(|s| s == evt.textcode()) {
+                    self.failed_events.push(evt);
+                    continue;
+                }
+            }
+
+            let perm = format!("{}.override", evt.textcode());
+            log::info!("{selfstr} attempting to override: {perm}");
+
+            // Override permissions are all global
+            if !self.editor.allowed(&perm, None)? {
+                if let Some(e) = self.editor.last_event() {
+                    // Track the permission failure as the event to return.
+                    self.failed_events.push(e.clone());
+                } else {
+                    // Should not get here.
+                    self.failed_events.push(evt);
+                }
+            }
+        }
+
+        if self.failed_events.len() > 0 {
+
+            Err(format!("Exiting early on failed events: {:?}", self.failed_events))
+
+        } else {
+
+            // If all is well and we encountered a SUCCESS event, keep
+            // it in place so it can ultimately be returned to the caller.
+            if let Some(evt) = success {
+                self.events = vec![evt];
+            };
+
+            Ok(())
         }
     }
 }
