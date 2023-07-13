@@ -595,7 +595,7 @@ impl Circulator {
         circ["checkin_workstation"] = json::from(self.editor.requestor_ws_id());
 
         let copy_status = self.copy_status();
-        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
+        let copy_circ_lib = self.copy_circ_lib();
 
         match copy_status {
             C::COPY_STATUS_LOST | C::COPY_STATUS_LOST_AND_PAID => self.checkin_handle_lost()?,
@@ -646,14 +646,77 @@ impl Circulator {
     ) -> Result<(), String> {
 
         // Lost / Long-Overdue settings are based on the copy circ lib.
-        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
-
+        let copy_circ_lib = self.copy_circ_lib();
         let max_return = self.settings.get_value_at_org(ous_max_return, copy_circ_lib)?;
+        let mut too_late = false;
+
+        if let Some(max) = max_return.as_str() {
+            let interval = date::interval_to_seconds(&max)?;
+
+            let last_activity = self.circ_last_billing_activity(ous_use_last_activity)?;
+            let last_activity = date::parse_datetime(&last_activity)?;
+
+            let last_chance = last_activity + Duration::seconds(interval);
+            too_late = last_chance > Local::now();
+        }
+
+        if too_late {
+            log::info!("{self} check-in of lost/lo item exceeds max
+                return interval.  skipping fine/fee voiding, etc.");
+
+        } else if self.get_option_bool("dont_change_lost_zero") {
+            log::info!("{self} check-in of lost/lo item having a balance
+                of zero, skipping fine/fee voiding and reinstatement.");
+
+        } else {
+            log::info!("{self} check-in of lost/lo item is within the
+                max return interval (or no interval is defined).  Proceeding
+                with fine/fee voiding, etc.");
+
+            self.set_option_true("needs_lost_bill_handling");
+        }
 
         // TODO
 
-
         Ok(())
+    }
+
+    /// Last billing activity is last payment time, last billing time, or the
+    /// circ due date.
+    ///
+    /// If the relevant "use last activity" org unit setting is
+    /// false/unset, then last billing activity is always the due date.
+    ///
+    /// Panics if self.open_circ is None.
+    fn circ_last_billing_activity(&mut self, maybe_setting: Option<&str>) -> Result<String, String> {
+        let copy_circ_lib = self.copy_circ_lib();
+        let circ = self.open_circ.as_ref().unwrap();
+
+        // due_date is a required string field.
+        let due_date = circ["due_date"].as_str().unwrap();
+
+        let setting = match maybe_setting {
+            Some(s) => s,
+            None => return Ok(due_date.to_string()),
+        };
+
+        let use_activity = self.settings.get_value_at_org(setting, copy_circ_lib)?;
+
+        if !json_bool(use_activity) {
+            return Ok(due_date.to_string());
+        }
+
+        if let Some(mbts) = self.editor.retrieve("mbts", circ["id"].clone())? {
+            if let Some(last_payment) = mbts["last_payment_ts"].as_str() {
+                return Ok(last_payment.to_string());
+            }
+            if let Some(last_billing) = mbts["last_billing_ts"].as_str() {
+                return Ok(last_billing.to_string());
+            }
+        }
+
+        // No billing activity.  Fall back to due date.
+        Ok(due_date.to_string())
     }
 
     /// Compiles the exact backdate value.
