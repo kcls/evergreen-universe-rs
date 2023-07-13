@@ -81,7 +81,7 @@ impl Circulator {
             None => return Ok(()),
         };
 
-        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_IN_TRANSIT {
+        if self.copy_status() != C::COPY_STATUS_IN_TRANSIT {
             log::warn!("{self} Copy has an open transit, but incorrect status");
             let changes = json::object! {status: C::COPY_STATUS_IN_TRANSIT};
             self.update_copy(changes)?;
@@ -96,7 +96,7 @@ impl Circulator {
     /// transit checkin interval has expired, push an event onto the
     /// overridable events list.
     fn check_transit_checkin_interval(&mut self) -> Result<(), String> {
-        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_IN_TRANSIT {
+        if self.copy_status() != C::COPY_STATUS_IN_TRANSIT {
             // We only care about in-transit items.
             return Ok(());
         }
@@ -202,9 +202,7 @@ impl Circulator {
         }
 
         // By default, we only care about in-process items.
-        if !retarget_mode.contains(".all")
-            && json_int(&copy["status"]["id"])? != C::COPY_STATUS_IN_PROCESS
-        {
+        if !retarget_mode.contains(".all") && self.copy_status() != C::COPY_STATUS_IN_PROCESS {
             return Ok(());
         }
 
@@ -339,9 +337,7 @@ impl Circulator {
     /// Decides if we need to avoid certain LOST / LO processing for
     /// transactions that have a zero balance.
     fn set_dont_change_lost_zero(&mut self) -> Result<(), String> {
-        let copy_status = json_int(&self.copy()["status"]["id"])?;
-
-        match copy_status {
+        match self.copy_status() {
             C::COPY_STATUS_LOST | C::COPY_STATUS_LOST_AND_PAID | C::COPY_STATUS_LONG_OVERDUE => {
                 // Found a copy me may want to work on,
             }
@@ -431,7 +427,7 @@ impl Circulator {
     }
 
     fn check_is_on_holds_shelf(&mut self) -> Result<bool, String> {
-        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
+        if self.copy_status() != C::COPY_STATUS_ON_HOLDS_SHELF {
             return Ok(false);
         }
 
@@ -512,7 +508,7 @@ impl Circulator {
     fn reshelve_copy(&mut self, force: bool) -> Result<(), String> {
         let force = force || self.get_option_bool("force");
 
-        let status = json_int(&self.copy()["status"]["id"])?;
+        let status = self.copy_status();
 
         let next_status = match self.options.get("next_copy_status") {
             Some(s) => json_int(&s)?,
@@ -598,7 +594,7 @@ impl Circulator {
         circ["checkin_lib"] = json::from(self.circ_lib);
         circ["checkin_workstation"] = json::from(self.editor.requestor_ws_id());
 
-        let copy_status = json_int(&self.copy()["status"]["id"])?;
+        let copy_status = self.copy_status();
         let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
 
         match copy_status {
@@ -618,12 +614,45 @@ impl Circulator {
     }
 
     fn checkin_handle_lost(&mut self) -> Result<(), String> {
-        // TODO
-        Ok(())
+        log::info!("{self} processing LOST checkin...");
+
+        let billing_options = json::object! {
+            ous_void_item_cost: "circ.void_lost_on_checkin",
+            ous_void_proc_fee: "circ.void_lost_proc_fee_on_checkin",
+            ous_restore_overdue: "circ.restore_overdue_on_lost_return",
+            void_cost_btype: C::BTYPE_LOST_MATERIALS,
+            void_fee_btype: C::BTYPE_LOST_MATERIALS_PROCESSING_FEE,
+        };
+
+        self.options.insert("lost_or_lo_billing_options".to_string(), billing_options);
+
+        self.checkin_handle_lost_or_long_overdue(
+            "circ.max_accept_return_of_lost",
+            "circ.lost_immediately_available",
+            None // ous_use_last_activity not supported for LOST
+        )
     }
 
     fn checkin_handle_long_overdue(&mut self) -> Result<(), String> {
         // TODO
+        Ok(())
+    }
+
+    fn checkin_handle_lost_or_long_overdue(
+        &mut self,
+        ous_max_return: &str,
+        ous_immediately_available: &str,
+        ous_use_last_activity: Option<&str>
+    ) -> Result<(), String> {
+
+        // Lost / Long-Overdue settings are based on the copy circ lib.
+        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
+
+        let max_return = self.settings.get_value_at_org(ous_max_return, copy_circ_lib)?;
+
+        // TODO
+
+
         Ok(())
     }
 

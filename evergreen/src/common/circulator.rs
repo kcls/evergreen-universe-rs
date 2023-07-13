@@ -3,6 +3,7 @@ use crate::editor::Editor;
 use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
+use crate::util::{json_bool, json_bool_op, json_int};
 use json::JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -102,7 +103,7 @@ impl fmt::Display for Circulator {
             if let Some(bc) = &c["barcode"].as_str() {
                 copy_barcode = bc.to_string()
             }
-            if let Ok(s) = util::json_int(&c["status"]["id"]) {
+            if let Ok(s) = json_int(&c["status"]["id"]) {
                 copy_status = s;
             }
         }
@@ -154,6 +155,20 @@ impl Circulator {
     /// Panics if copy is None.
     pub fn copy(&self) -> &JsonValue {
         self.copy.as_ref().unwrap()
+    }
+
+    /// Returns the copy status ID if we have a copy, -1 otherwise.
+    pub fn copy_status(&self) -> i64 {
+        // status is universally fleshed.
+        if let Some(c) = self.copy.as_ref() {
+            if let Ok(i) = json_int(&c["status"]["id"]) {
+                i
+            } else {
+                -1
+            }
+        } else {
+            -1
+        }
     }
 
     /// Allows the caller to recover the original editor object after
@@ -210,7 +225,7 @@ impl Circulator {
         let copy_id_op = match self.copy_id {
             Some(id) => Some(id),
             None => match self.options.get("copy_id") {
-                Some(id2) => Some(util::json_int(&id2)?),
+                Some(id2) => Some(json_int(&id2)?),
                 None => None,
             },
         };
@@ -244,7 +259,7 @@ impl Circulator {
         }
 
         if let Some(c) = self.copy.as_ref() {
-            self.copy_id = Some(util::json_int(&c["id"])?);
+            self.copy_id = Some(json_int(&c["id"])?);
         }
 
         Ok(())
@@ -283,7 +298,7 @@ impl Circulator {
 
         // actor.copy_alert_suppress
         let suppressions = self.editor.search("acas", query)?;
-        let copy_circ_lib = util::json_int(&self.copy()["circ_lib"])?;
+        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
 
         let mut wanted_alerts = Vec::new();
 
@@ -291,7 +306,7 @@ impl Circulator {
             let atype = &alert["alert_type"];
 
             // Does this alert type only apply to renewals?
-            let wants_renew = util::json_bool(&atype["in_renew"]);
+            let wants_renew = json_bool(&atype["in_renew"]);
 
             // Verify the alert type event matches what is currently happening.
             if self.circ_op == CircOp::Renew {
@@ -320,10 +335,10 @@ impl Circulator {
             // TODO below mimics load_system_copy_alerts - refactor?
 
             // Filter on "only at circ lib"
-            if util::json_bool(&atype["at_circ"]) {
+            if json_bool(&atype["at_circ"]) {
                 let at_circ_orgs = org::descendants(&mut self.editor, copy_circ_lib)?;
 
-                if util::json_bool(&atype["invert_location"]) {
+                if json_bool(&atype["invert_location"]) {
                     if at_circ_orgs.contains(&self.circ_lib) {
                         continue;
                     }
@@ -333,12 +348,12 @@ impl Circulator {
             }
 
             // filter on "only at owning lib"
-            if util::json_bool(&atype["at_owning"]) {
+            if json_bool(&atype["at_owning"]) {
                 let owner =
-                    util::json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
+                    json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
                 let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
 
-                if util::json_bool(&atype["invert_location"]) {
+                if json_bool(&atype["invert_location"]) {
                     if at_owner_orgs.contains(&self.circ_lib) {
                         continue;
                     }
@@ -387,7 +402,7 @@ impl Circulator {
             return Ok(());
         }
 
-        let copy_circ_lib = util::json_int(&self.copy()["circ_lib"])?;
+        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
 
         let query = json::object! {
             org: org::full_path(&mut self.editor, self.circ_lib, None)?
@@ -418,10 +433,10 @@ impl Circulator {
 
         while let Some(atype) = alert_types.pop() {
             // Filter on "only at circ lib"
-            if util::json_bool(&atype["at_circ"]) {
+            if json_bool(&atype["at_circ"]) {
                 let at_circ_orgs = org::descendants(&mut self.editor, copy_circ_lib)?;
 
-                if util::json_bool(&atype["invert_location"]) {
+                if json_bool(&atype["invert_location"]) {
                     if at_circ_orgs.contains(&self.circ_lib) {
                         continue;
                     }
@@ -431,11 +446,11 @@ impl Circulator {
             }
 
             // filter on "only at owning lib"
-            if util::json_bool(&atype["at_owning"]) {
-                let owner = util::json_int(&self.copy()["call_number"]["owning_lib"])?;
+            if json_bool(&atype["at_owning"]) {
+                let owner = json_int(&self.copy()["call_number"]["owning_lib"])?;
                 let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
 
-                if util::json_bool(&atype["invert_location"]) {
+                if json_bool(&atype["invert_location"]) {
                     if at_owner_orgs.contains(&self.circ_lib) {
                         continue;
                     }
@@ -535,7 +550,7 @@ impl Circulator {
                     _ => continue,
                 };
 
-                if util::json_bool(self.settings.get_value(setting)?) {
+                if json_bool(self.settings.get_value(setting)?) {
                     self.set_option_true("void_overdues");
                 }
 
@@ -680,11 +695,11 @@ impl Circulator {
 
     pub fn init(&mut self) -> Result<(), String> {
         if let Some(cl) = self.options.get("circ_lib") {
-            self.circ_lib = util::json_int(cl)?;
+            self.circ_lib = json_int(cl)?;
         }
 
         self.settings.set_org_id(self.circ_lib);
-        self.is_noncat = util::json_bool_op(self.options.get("is_noncat"));
+        self.is_noncat = json_bool_op(self.options.get("is_noncat"));
 
         self.load_copy()?;
         self.load_patron()?;
@@ -726,7 +741,7 @@ impl Circulator {
     /// Returns false if the value is unset or false-ish.
     pub fn get_option_bool(&self, name: &str) -> bool {
         if let Some(op) = self.options.get(name) {
-            util::json_bool(op)
+            json_bool(op)
         } else {
             false
         }
