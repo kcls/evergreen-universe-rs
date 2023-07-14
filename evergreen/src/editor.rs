@@ -563,6 +563,7 @@ impl Editor {
         Ok(())
     }
 
+    /// Returns the newly created object.
     pub fn create(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, String> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for CREATE"))?;

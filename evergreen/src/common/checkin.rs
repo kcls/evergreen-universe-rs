@@ -44,7 +44,7 @@ impl Circulator {
         self.check_circ_deposit(false)?;
         self.try_override_events()?;
 
-        if self.open_circ.is_some() {
+        if self.circ.is_some() {
             self.checkin_handle_circ()?;
         } // todo
 
@@ -313,7 +313,7 @@ impl Circulator {
     /// If have both an open circulation and an open transit,
     /// cancel the transit.
     fn cancel_transit_if_circ_exists(&mut self) -> Result<(), String> {
-        if self.open_circ.is_none() {
+        if self.circ.is_none() {
             return Ok(());
         }
 
@@ -357,7 +357,7 @@ impl Circulator {
             // Org setting says not to change.
             // Make sure no balance is owed, or the setting is meaningless.
 
-            if let Some(circ) = self.open_circ.as_ref() {
+            if let Some(circ) = self.circ.as_ref() {
                 if let Some(mbts) = self.editor.retrieve("mbts", circ["id"].clone())? {
                     dont_change = json_float(&mbts["balance_owed"])? == 0.0;
                 }
@@ -529,7 +529,7 @@ impl Circulator {
     }
 
     fn check_claims_returned(&mut self) {
-        if let Some(circ) = self.open_circ.as_ref() {
+        if let Some(circ) = self.circ.as_ref() {
             if let Some(sf) = circ["stop_fines"].as_str() {
                 if sf == "CLAIMSRETURNED" {
                     self.add_event_code("CIRC_CLAIMS_RETURNED");
@@ -539,7 +539,7 @@ impl Circulator {
     }
 
     fn check_circ_deposit(&mut self, void: bool) -> Result<(), String> {
-        let circ_id = match self.open_circ.as_ref() {
+        let circ_id = match self.circ.as_ref() {
             Some(c) => c["id"].clone(),
             None => return Ok(()),
         };
@@ -573,7 +573,7 @@ impl Circulator {
 
     fn checkin_handle_circ(&mut self) -> Result<(), String> {
         if self.get_option_bool("claims_never_checked_out") {
-            let xact_start = &self.open_circ.as_ref().unwrap()["xact_start"];
+            let xact_start = &self.circ.as_ref().unwrap()["xact_start"];
             self.options
                 .insert("backdate".to_string(), xact_start.clone());
         }
@@ -582,7 +582,10 @@ impl Circulator {
             self.checkin_compile_backdate()?;
         }
 
-        let circ = self.open_circ.as_mut().unwrap();
+        let copy_status = self.copy_status();
+        let copy_circ_lib = self.copy_circ_lib();
+
+        let circ = self.circ.as_mut().unwrap();
         circ["checkin_time"] = self
             .options
             .get("backdate")
@@ -594,11 +597,9 @@ impl Circulator {
         circ["checkin_lib"] = json::from(self.circ_lib);
         circ["checkin_workstation"] = json::from(self.editor.requestor_ws_id());
 
-        let copy_status = self.copy_status();
-        let copy_circ_lib = self.copy_circ_lib();
-
         match copy_status {
-            C::COPY_STATUS_LOST | C::COPY_STATUS_LOST_AND_PAID => self.checkin_handle_lost()?,
+            C::COPY_STATUS_LOST => self.checkin_handle_lost()?,
+            C::COPY_STATUS_LOST_AND_PAID => self.checkin_handle_lost()?,
             C::COPY_STATUS_LONG_OVERDUE => self.checkin_handle_long_overdue()?,
             C::COPY_STATUS_MISSING => {
                 if copy_circ_lib == self.circ_lib {
@@ -608,6 +609,57 @@ impl Circulator {
                 }
             }
             _ => self.reshelve_copy(true)?,
+        }
+
+        if !self.get_option_bool("dont_change_lost_zero") {
+            // Caller has not requested we leave well enough alone, i.e.
+            // if an item was lost and paid, it's eligible to be re-opened
+            // for additional billing.
+
+            if self.get_option_bool("claims_never_checked_out") {
+                let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
+                circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
+
+            } else if copy_status == C::COPY_STATUS_LOST {
+                // Note copy_status refers to the status of the copy
+                // before self.checkin_handle_lost() was called.
+
+                if self.get_option_bool("circ.lost.generate_overdue_on_checkin") {
+                    // As with Perl, this setting is based on the
+                    // runtime circ lib instead of the copy circ lib.
+
+                    // If this circ was LOST and we are configured to
+                    // generate overdue fines for lost items on checkin
+                    // (to fill the gap between mark lost time and when
+                    // the fines would have naturally stopped), then
+                    // clear stop_fines so the fine generator can work.
+                    let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
+                    circ["stop_fines"] = JsonValue::Null;
+                }
+            }
+
+            self.handle_checkin_fines()?;
+        }
+
+        self.check_circ_deposit(true)?;
+
+        // Set xact_finish as needed and update the circ in the DB.
+        if let Some(sum) =
+            self.editor.retrieve("mbts", self.circ.as_ref().unwrap()["id"].clone())? {
+            let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
+            if json_float(&sum["balance_owed"])? == 0.0 {
+                circ["xact_finish"] = json::from("now");
+            } else {
+                circ["xact_finish"] = JsonValue::Null;
+            }
+        }
+
+        self.editor.update(self.circ.as_ref().unwrap())?;
+
+        // Get a post-save version of the circ to pick up any in-DB changes.
+        let circ_id = self.circ.as_ref().unwrap()["id"].clone();
+        if let Some(c) = self.editor.retrieve("circ", circ_id)? {
+            self.circ = Some(c);
         }
 
         Ok(())
@@ -634,8 +686,22 @@ impl Circulator {
     }
 
     fn checkin_handle_long_overdue(&mut self) -> Result<(), String> {
-        // TODO
-        Ok(())
+        let billing_options = json::object! {
+            is_longoverdue: true,
+            ous_void_item_cost: "circ.void_longoverdue_on_checkin",
+            ous_void_proc_fee: "circ.void_longoverdue_proc_fee_on_checkin",
+            ous_restore_overdue: "circ.restore_overdue_on_longoverdue_return",
+            void_cost_btype: C::BTYPE_LONG_OVERDUE_MATERIALS,
+            void_fee_btype: C::BTYPE_LONG_OVERDUE_MATERIALS_PROCESSING_FEE,
+        };
+
+        self.options.insert("lost_or_lo_billing_options".to_string(), billing_options);
+
+        self.checkin_handle_lost_or_long_overdue(
+            "circ.max_accept_return_of_longoverdue",
+            "circ.longoverdue_immediately_available",
+            Some("circ.longoverdue.use_last_activity_date_on_return"),
+        )
     }
 
     fn checkin_handle_lost_or_long_overdue(
@@ -676,9 +742,27 @@ impl Circulator {
             self.set_option_true("needs_lost_bill_handling");
         }
 
-        // TODO
+        if self.circ_lib == copy_circ_lib {
+            // Lost/longoverdue item is home and processed.
+            // Treat like a normal checkin from this point on.
+            return self.reshelve_copy(true);
+        }
 
-        Ok(())
+        // Item is not home.  Does it go right back into rotation?
+        let available_now = json_bool(
+            self.settings.get_value_at_org(
+                ous_immediately_available, copy_circ_lib
+            )?
+        );
+
+        if available_now {
+            // Item status does not need to be retained.
+            // Put the item back into gen-pop.
+            self.reshelve_copy(true)
+        } else {
+            log::info!("{self}: leaving lost/longoverdue copy status in place on checkin");
+            Ok(())
+        }
     }
 
     /// Last billing activity is last payment time, last billing time, or the
@@ -687,10 +771,10 @@ impl Circulator {
     /// If the relevant "use last activity" org unit setting is
     /// false/unset, then last billing activity is always the due date.
     ///
-    /// Panics if self.open_circ is None.
+    /// Panics if self.circ is None.
     fn circ_last_billing_activity(&mut self, maybe_setting: Option<&str>) -> Result<String, String> {
         let copy_circ_lib = self.copy_circ_lib();
-        let circ = self.open_circ.as_ref().unwrap();
+        let circ = self.circ.as_ref().unwrap();
 
         // due_date is a required string field.
         let due_date = circ["due_date"].as_str().unwrap();
@@ -721,9 +805,9 @@ impl Circulator {
 
     /// Compiles the exact backdate value.
     ///
-    /// Assumes open_circ and options.backdate are set.
+    /// Assumes circ and options.backdate are set.
     fn checkin_compile_backdate(&mut self) -> Result<(), String> {
-        let duedate = match self.open_circ.as_ref() {
+        let duedate = match self.circ.as_ref() {
             Some(circ) => circ["due_date"]
                 .as_str()
                 .ok_or(format!("{self} circ has no due date?"))?,
@@ -759,6 +843,86 @@ impl Circulator {
                 json::from(date::to_iso8601(&new_date)),
             );
         }
+
+        Ok(())
+    }
+
+
+    fn handle_checkin_fines(&mut self) -> Result<(), String> {
+        if self.circ.is_some() {
+            self.handle_circ_checkin_fines()?;
+        } else if self.reservation.is_some() {
+            self.handle_reservation_checkin_fines()?;
+        } else {
+            log::info!("{self} we have no transaction to generate fines for");
+        }
+
+        Ok(())
+    }
+
+    fn handle_circ_checkin_fines(&mut self) -> Result<(), String> {
+
+        if let Some(ops) = self.options.get("lost_or_lo_billing_options") {
+            if !self.get_option_bool("void_overdues") {
+                if let Some(setting) = ops["ous_restore_overdue"].as_str() {
+                    if json_bool(self.settings.get_value_at_org(setting, self.copy_circ_lib())?) {
+                        self.checkin_handle_lost_or_lo_now_found_restore_od(false)?;
+                    }
+                }
+            }
+        }
+
+        todo!()
+    }
+
+    fn handle_reservation_checkin_fines(&mut self) -> Result<(), String> {
+        todo!()
+    }
+
+
+    fn checkin_handle_lost_or_lo_now_found_restore_od(
+        &mut self,
+        is_longoverdue: bool
+    ) -> Result<(), String> {
+
+        let circ = self.circ.as_ref().unwrap();
+        let circ_id = json_int(&circ["id"])?;
+
+        let query = json::object! {xact: circ_id, btype: C::BTYPE_OVERDUE_MATERIALS};
+        let ops = json::object! {"order_by": {"mb": "billing_ts desc"}};
+        let overdues = self.editor.search_with_ops("mb", query, ops)?;
+
+        if overdues.len() == 0 {
+            log::info!("{self} no overdues to reinstate on lost/lo checkin");
+            return Ok(());
+        }
+
+        let void_max = json_float(&circ["max_fine"])?;
+        let mut void_amount = 0.0;
+
+        let billing_ids: Vec<JsonValue> = overdues.iter().map(|b| b["id"].clone()).collect();
+        let voids = self.editor.search("maa", json::object! {"billing": billing_ids})?;
+
+        if voids.len() > 0 {
+            // Overdues adjusted via account adjustment
+            for void in voids.iter() {
+                void_amount += json_float(&void["amount"])?;
+            }
+        } else {
+            // Overdues voided the old-fashioned way, i.e. voided.
+            for bill in overdues.iter() {
+                if json_bool(&bill["voided"]) {
+                    void_amount += json_float(&bill["amount"])?;
+                }
+            }
+        }
+
+        if void_amount == 0.0 {
+            log::info!("{self} voided overdues amounted to $0.00.  Nothing to restore");
+            return Ok(());
+        }
+
+
 
         Ok(())
     }

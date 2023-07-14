@@ -17,14 +17,14 @@ const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "loc
 const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
     &["CLAIMSRETURNED\tCHECKOUT", "CIRC_CLAIMS_RETURNED"],
     &["CLAIMSRETURNED\tCHECKIN", "CIRC_CLAIMS_RETURNED"],
-    &["LOST\tCHECKOUT", "OPEN_CIRCULATION_EXISTS"],
-    &["LONGOVERDUE\tCHECKOUT", "OPEN_CIRCULATION_EXISTS"],
+    &["LOST\tCHECKOUT", "circULATION_EXISTS"],
+    &["LONGOVERDUE\tCHECKOUT", "circULATION_EXISTS"],
     &["MISSING\tCHECKOUT", "COPY_NOT_AVAILABLE"],
     &["DAMAGED\tCHECKOUT", "COPY_NOT_AVAILABLE"],
     &[
         "LOST_AND_PAID\tCHECKOUT",
         "COPY_NOT_AVAILABLE",
-        "OPEN_CIRCULATION_EXISTS",
+        "circULATION_EXISTS",
     ],
 ];
 
@@ -62,7 +62,8 @@ pub struct Circulator {
     pub circ_lib: i64,
     pub copy: Option<JsonValue>,
     pub copy_id: Option<i64>,
-    pub open_circ: Option<JsonValue>,
+    pub circ: Option<JsonValue>,
+    pub reservation: Option<JsonValue>,
     pub patron: Option<JsonValue>,
     pub transit: Option<JsonValue>,
     pub is_noncat: bool,
@@ -134,7 +135,8 @@ impl Circulator {
             options,
             circ_lib,
             events: Vec::new(),
-            open_circ: None,
+            circ: None,
+            reservation: None,
             copy: None,
             copy_id: None,
             patron: None,
@@ -544,7 +546,7 @@ impl Circulator {
                     }
                 }
 
-                if copy_override.ne(&"OPEN_CIRCULATION_EXISTS") {
+                if copy_override.ne(&"circULATION_EXISTS") {
                     continue;
                 }
 
@@ -567,7 +569,7 @@ impl Circulator {
             // If we are mid-checkout (not checkin or renew), force
             // a checkin here (which will be no-op) so the item can be
             // reset before the checkout resumes.
-            if let CircOp::Checkout = self.circ_op {
+            if CircOp::Checkout == self.circ_op {
                 if checkin_required {
                     self.checkin()?;
                 }
@@ -615,8 +617,8 @@ impl Circulator {
     }
 
     /// Find an open circulation linked to our copy if possible.
-    fn load_open_circ(&mut self) -> Result<(), String> {
-        if self.open_circ.is_some() {
+    fn load_circ(&mut self) -> Result<(), String> {
+        if self.circ.is_some() {
             log::info!("{self} found an open circulation");
             // May have been set in load_patron()
             return Ok(());
@@ -629,7 +631,7 @@ impl Circulator {
             };
 
             if let Some(circ) = self.editor.search("circ", query)?.first() {
-                self.open_circ = Some(circ.to_owned());
+                self.circ = Some(circ.to_owned());
                 log::info!("{self} found an open circulation");
             }
         }
@@ -692,7 +694,7 @@ impl Circulator {
                 circ["usr"] = patron["id"].clone();
 
                 self.patron = Some(patron);
-                self.open_circ = Some(circ);
+                self.circ = Some(circ);
             }
         }
 
@@ -709,7 +711,7 @@ impl Circulator {
 
         self.load_copy()?;
         self.load_patron()?;
-        self.load_open_circ()?;
+        self.load_circ()?;
 
         Ok(())
     }

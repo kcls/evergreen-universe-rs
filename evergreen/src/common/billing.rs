@@ -5,6 +5,7 @@ use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
 use std::collections::HashSet;
+use json::JsonValue;
 
 /// Void a list of billings.
 pub fn void_bills(
@@ -115,3 +116,38 @@ pub fn xact_org(editor: &mut Editor, xact_id: i64) -> Result<i64, String> {
         Err(format!("No Such Transaction: {xact_id}"))
     }
 }
+
+/// Creates and returns the newly created money.billing.
+pub fn create_bill(
+    editor: &mut Editor,
+    amount: f64,
+    btype_id: i64,
+    btype_label: &str,
+    xact_id: i64,
+    maybe_note: Option<&str>,
+    period_start: &str,
+    period_end: &str,
+) -> Result<JsonValue, String> {
+    log::info!("System is charging ${amount} [btype={btype_id}:{btype_label}] on xact {xact_id}");
+
+    let note = maybe_note.unwrap_or("SYSTEM GENERATED");
+
+    let bill = json::object! {
+        "xact": xact_id,
+        "amount": amount,
+        "period_start": period_start,
+        "period_end": period_end,
+        "billing_type": btype_label,
+        "btype": btype_id,
+        "note": note,
+    };
+
+    let bill = editor.idl().create_from("mb", bill)?;
+    editor.create(&bill)
+}
+
+
+pub fn generate_fines(editor: &mut Editor, xact_ids: &[i64]) -> Result<(), String> {
+    todo!()
+}
+
