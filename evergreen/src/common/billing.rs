@@ -203,11 +203,38 @@ pub fn void_or_zero_bills_of_type(
     Ok(())
 }
 
+/// Assumes all bills are linked to the same transaction.
 pub fn adjust_bills_to_zero(
     editor: &mut Editor,
     bill_ids: &[i64],
     note: &str,
 ) -> Result<(), String> {
+    let bills = editor.search("mb", json::object! {"id": bill_ids})?;
+    if bills.len() == 0 {
+        return Ok(());
+    }
+
+    let xact_id = util::json_int(&bills[0]["xact"])?;
+
+    let flesh = json::object! {
+        "flesh": 2,
+        "flesh_fields": {
+            "mbt": ["grocery", "circulation"],
+            "circ": ["target_copy"]
+        }
+    };
+
+    let mbt = editor.retrieve_with_ops("mbt", xact_id, flesh)?
+        .expect("Billing has no transaction?");
+
+    let grocery = &mbt["grocery"];
+    let circulation = &mbt["circulation"];
+
+    /*
+
+
+    */
+
     Ok(())
 }
 
@@ -218,12 +245,12 @@ pub fn xact_has_payment_within(
 ) -> Result<bool, String> {
     let query = json::object! {
         "xact": xact_id,
-        "payment_type": json::object! {"!=": "account_adjustment"}
+        "payment_type": {"!=": "account_adjustment"}
     };
 
     let ops = json::object! {
         "limit": 1,
-        "order_by": json::object! {"mp": "payment_ts DESC"}
+        "order_by": {"mp": "payment_ts DESC"}
     };
 
     let last_payment = editor.search_with_ops("mp", query, ops)?;
