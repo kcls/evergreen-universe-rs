@@ -619,7 +619,6 @@ impl Circulator {
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
                 circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
-
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -644,8 +643,10 @@ impl Circulator {
         self.check_circ_deposit(true)?;
 
         // Set xact_finish as needed and update the circ in the DB.
-        if let Some(sum) =
-            self.editor.retrieve("mbts", self.circ.as_ref().unwrap()["id"].clone())? {
+        if let Some(sum) = self
+            .editor
+            .retrieve("mbts", self.circ.as_ref().unwrap()["id"].clone())?
+        {
             let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
             if json_float(&sum["balance_owed"])? == 0.0 {
                 circ["xact_finish"] = json::from("now");
@@ -676,12 +677,13 @@ impl Circulator {
             void_fee_btype: C::BTYPE_LOST_MATERIALS_PROCESSING_FEE,
         };
 
-        self.options.insert("lost_or_lo_billing_options".to_string(), billing_options);
+        self.options
+            .insert("lost_or_lo_billing_options".to_string(), billing_options);
 
         self.checkin_handle_lost_or_long_overdue(
             "circ.max_accept_return_of_lost",
             "circ.lost_immediately_available",
-            None // ous_use_last_activity not supported for LOST
+            None, // ous_use_last_activity not supported for LOST
         )
     }
 
@@ -695,7 +697,8 @@ impl Circulator {
             void_fee_btype: C::BTYPE_LONG_OVERDUE_MATERIALS_PROCESSING_FEE,
         };
 
-        self.options.insert("lost_or_lo_billing_options".to_string(), billing_options);
+        self.options
+            .insert("lost_or_lo_billing_options".to_string(), billing_options);
 
         self.checkin_handle_lost_or_long_overdue(
             "circ.max_accept_return_of_longoverdue",
@@ -708,12 +711,13 @@ impl Circulator {
         &mut self,
         ous_max_return: &str,
         ous_immediately_available: &str,
-        ous_use_last_activity: Option<&str>
+        ous_use_last_activity: Option<&str>,
     ) -> Result<(), String> {
-
         // Lost / Long-Overdue settings are based on the copy circ lib.
         let copy_circ_lib = self.copy_circ_lib();
-        let max_return = self.settings.get_value_at_org(ous_max_return, copy_circ_lib)?;
+        let max_return = self
+            .settings
+            .get_value_at_org(ous_max_return, copy_circ_lib)?;
         let mut too_late = false;
 
         if let Some(max) = max_return.as_str() {
@@ -727,17 +731,21 @@ impl Circulator {
         }
 
         if too_late {
-            log::info!("{self} check-in of lost/lo item exceeds max
-                return interval.  skipping fine/fee voiding, etc.");
-
+            log::info!(
+                "{self} check-in of lost/lo item exceeds max
+                return interval.  skipping fine/fee voiding, etc."
+            );
         } else if self.get_option_bool("dont_change_lost_zero") {
-            log::info!("{self} check-in of lost/lo item having a balance
-                of zero, skipping fine/fee voiding and reinstatement.");
-
+            log::info!(
+                "{self} check-in of lost/lo item having a balance
+                of zero, skipping fine/fee voiding and reinstatement."
+            );
         } else {
-            log::info!("{self} check-in of lost/lo item is within the
+            log::info!(
+                "{self} check-in of lost/lo item is within the
                 max return interval (or no interval is defined).  Proceeding
-                with fine/fee voiding, etc.");
+                with fine/fee voiding, etc."
+            );
 
             self.set_option_true("needs_lost_bill_handling");
         }
@@ -750,9 +758,8 @@ impl Circulator {
 
         // Item is not home.  Does it go right back into rotation?
         let available_now = json_bool(
-            self.settings.get_value_at_org(
-                ous_immediately_available, copy_circ_lib
-            )?
+            self.settings
+                .get_value_at_org(ous_immediately_available, copy_circ_lib)?,
         );
 
         if available_now {
@@ -772,7 +779,10 @@ impl Circulator {
     /// false/unset, then last billing activity is always the due date.
     ///
     /// Panics if self.circ is None.
-    fn circ_last_billing_activity(&mut self, maybe_setting: Option<&str>) -> Result<String, String> {
+    fn circ_last_billing_activity(
+        &mut self,
+        maybe_setting: Option<&str>,
+    ) -> Result<String, String> {
         let copy_circ_lib = self.copy_circ_lib();
         let circ = self.circ.as_ref().unwrap();
 
@@ -847,7 +857,6 @@ impl Circulator {
         Ok(())
     }
 
-
     fn handle_checkin_fines(&mut self) -> Result<(), String> {
         if self.circ.is_some() {
             self.handle_circ_checkin_fines()?;
@@ -869,7 +878,10 @@ impl Circulator {
         if let Some(ops) = self.options.get("lost_or_lo_billing_options") {
             if !self.get_option_bool("void_overdues") {
                 if let Some(setting) = ops["ous_restore_overdue"].as_str() {
-                    if json_bool(self.settings.get_value_at_org(setting, self.copy_circ_lib())?) {
+                    if json_bool(
+                        self.settings
+                            .get_value_at_org(setting, self.copy_circ_lib())?,
+                    ) {
                         self.checkin_handle_lost_or_lo_now_found_restore_od(false)?;
                     }
                 }
@@ -880,7 +892,6 @@ impl Circulator {
 
         // Set stop_fines and stop_fines_time on our open circulation.
         if circ["stop_fines"].is_null() {
-
             let stop_fines = if self.circ_op == CircOp::Renew {
                 "RENEW"
             } else if self.get_option_bool("claims_never_checked_out") {
@@ -914,11 +925,10 @@ impl Circulator {
         todo!()
     }
 
-
     /// Restore voided/adjusted overdue fines on lost/long-overdue return.
     fn checkin_handle_lost_or_lo_now_found_restore_od(
         &mut self,
-        is_longoverdue: bool
+        is_longoverdue: bool,
     ) -> Result<(), String> {
         let circ = self.circ.as_ref().unwrap();
         let circ_id = json_int(&circ["id"])?;
@@ -932,14 +942,20 @@ impl Circulator {
             return Ok(());
         }
 
-        let tag = if is_longoverdue { "LONGOVERRDUE" } else { "LOST" };
+        let tag = if is_longoverdue {
+            "LONGOVERRDUE"
+        } else {
+            "LOST"
+        };
         log::info!("{self} re-instating {} pre-{tag} overdues", overdues.len());
 
         let void_max = json_float(&circ["max_fine"])?;
         let mut void_amount = 0.0;
 
         let billing_ids: Vec<JsonValue> = overdues.iter().map(|b| b["id"].clone()).collect();
-        let voids = self.editor.search("maa", json::object! {"billing": billing_ids})?;
+        let voids = self
+            .editor
+            .search("maa", json::object! {"billing": billing_ids})?;
 
         if voids.len() > 0 {
             // Overdues adjusted via account adjustment

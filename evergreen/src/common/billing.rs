@@ -1,13 +1,13 @@
 use crate::common::org;
 use crate::common::penalty;
+use crate::date;
 use crate::editor::Editor;
 use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
-use crate::date;
-use std::collections::HashSet;
-use json::JsonValue;
 use chrono::{Duration, Local};
+use json::JsonValue;
+use std::collections::HashSet;
 
 /// Void a list of billings.
 pub fn void_bills(
@@ -153,7 +153,7 @@ pub fn void_or_zero_bills_of_type(
     xact_id: i64,
     context_org: i64,
     btype_id: i64,
-    for_note: &str
+    for_note: &str,
 ) -> Result<(), String> {
     log::info!("Void/Zero Bills for xact={xact_id} and btype={btype_id}");
 
@@ -170,12 +170,11 @@ pub fn void_or_zero_bills_of_type(
         .map(|b| util::json_int(&b["id"]).expect("Billing has invalid id?"))
         .collect();
 
-    let prohibit_neg_balance =
-        util::json_bool(
-            settings.get_value_at_org("bill.prohibit_negative_balance_on_lost", context_org)?
-        ) || util::json_bool(
-            settings.get_value_at_org("bill.prohibit_negative_balance_default", context_org)?
-        );
+    let prohibit_neg_balance = util::json_bool(
+        settings.get_value_at_org("bill.prohibit_negative_balance_on_lost", context_org)?,
+    ) || util::json_bool(
+        settings.get_value_at_org("bill.prohibit_negative_balance_default", context_org)?,
+    );
 
     let mut neg_balance_interval =
         settings.get_value_at_org("bill.negative_balance_interval_on_lost", context_org)?;
@@ -193,10 +192,9 @@ pub fn void_or_zero_bills_of_type(
     if prohibit_neg_balance && !has_refundable {
         let note = format!("System: ADJUSTED {for_note}");
         adjust_bills_to_zero(editor, bill_ids.as_slice(), &note)?;
-
     } else {
         // TODO
-            /*
+        /*
             $result = $class->void_bills($e, $billids, "System: VOIDED $for_note");
         }
         */
@@ -205,13 +203,28 @@ pub fn void_or_zero_bills_of_type(
     Ok(())
 }
 
-pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -> Result<(), String> {
+pub fn adjust_bills_to_zero(
+    editor: &mut Editor,
+    bill_ids: &[i64],
+    note: &str,
+) -> Result<(), String> {
     Ok(())
 }
 
-pub fn xact_has_payment_within(editor: &mut Editor, xact_id: i64, interval: &str) -> Result<bool, String> {
-    let query = json::object! {"xact": xact_id, "payment_type": json::object! {"!=": "account_adjustment"}};
-    let ops = json::object! {"limit": 1, "order_by": json::object! {"mp": "payment_ts DESC"}};
+pub fn xact_has_payment_within(
+    editor: &mut Editor,
+    xact_id: i64,
+    interval: &str,
+) -> Result<bool, String> {
+    let query = json::object! {
+        "xact": xact_id,
+        "payment_type": json::object! {"!=": "account_adjustment"}
+    };
+
+    let ops = json::object! {
+        "limit": 1,
+        "order_by": json::object! {"mp": "payment_ts DESC"}
+    };
 
     let last_payment = editor.search_with_ops("mp", query, ops)?;
 
@@ -221,6 +234,7 @@ pub fn xact_has_payment_within(editor: &mut Editor, xact_id: i64, interval: &str
 
     let payment = &last_payment[0];
     let intvl_secs = date::interval_to_seconds(interval)?;
+
     // Every payment has a payment_ts value
     let payment_ts = date::parse_datetime(&payment["payment_ts"].as_str().unwrap())?;
     let max_time = payment_ts + Duration::seconds(intvl_secs);
@@ -228,8 +242,6 @@ pub fn xact_has_payment_within(editor: &mut Editor, xact_id: i64, interval: &str
     Ok(max_time > Local::now())
 }
 
-
 pub fn generate_fines(editor: &mut Editor, xact_ids: &[i64]) -> Result<(), String> {
     todo!()
 }
-

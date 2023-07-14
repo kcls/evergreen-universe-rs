@@ -156,24 +156,29 @@ impl Circulator {
     ///
     /// Panics if copy is None.
     pub fn copy(&self) -> &JsonValue {
-        self.copy.as_ref().expect("{self} self.copy() requires a copy")
+        self.copy
+            .as_ref()
+            .expect("{self} self.copy() requires a copy")
     }
 
     /// Returns the copy status ID.
     ///
     /// Panics if we have no copy.
     pub fn copy_status(&self) -> i64 {
-        let copy = self.copy.as_ref()
+        let copy = self
+            .copy
+            .as_ref()
             .expect("{self} copy required for copy_status()");
-        json_int(&copy["status"]["id"])
-            .expect("{self} invalid fleshed copy status value")
+        json_int(&copy["status"]["id"]).expect("{self} invalid fleshed copy status value")
     }
 
     /// Returns the copy circ lib ID.
     ///
     /// Panics if we have no copy.
     pub fn copy_circ_lib(&self) -> i64 {
-        let copy = self.copy.as_ref()
+        let copy = self
+            .copy
+            .as_ref()
             .expect("{self} copy required for copy_circ_lib()");
 
         json_int(&copy["circ_lib"]).expect("{self} invlid copy circ lib")
@@ -357,8 +362,7 @@ impl Circulator {
 
             // filter on "only at owning lib"
             if json_bool(&atype["at_owning"]) {
-                let owner =
-                    json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
+                let owner = json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
                 let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
 
                 if json_bool(&atype["invert_location"]) {
