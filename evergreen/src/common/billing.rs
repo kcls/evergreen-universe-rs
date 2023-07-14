@@ -125,8 +125,8 @@ pub fn create_bill(
     btype_label: &str,
     xact_id: i64,
     maybe_note: Option<&str>,
-    period_start: &str,
-    period_end: &str,
+    period_start: Option<&str>,
+    period_end: Option<&str>,
 ) -> Result<JsonValue, String> {
     log::info!("System is charging ${amount} [btype={btype_id}:{btype_label}] on xact {xact_id}");
 

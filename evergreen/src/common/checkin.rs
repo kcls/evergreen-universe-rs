@@ -857,11 +857,15 @@ impl Circulator {
             log::info!("{self} we have no transaction to generate fines for");
         }
 
+        if !self.get_option_bool("needs_lost_bill_handling") {
+            // No lost/lo billing work required.  All done.
+            return Ok(());
+        }
+
         Ok(())
     }
 
     fn handle_circ_checkin_fines(&mut self) -> Result<(), String> {
-
         if let Some(ops) = self.options.get("lost_or_lo_billing_options") {
             if !self.get_option_bool("void_overdues") {
                 if let Some(setting) = ops["ous_restore_overdue"].as_str() {
@@ -872,6 +876,37 @@ impl Circulator {
             }
         }
 
+        let circ = self.circ.as_ref().unwrap();
+
+        // Set stop_fines and stop_fines_time on our open circulation.
+        if circ["stop_fines"].is_null() {
+
+            let stop_fines = if self.circ_op == CircOp::Renew {
+                "RENEW"
+            } else if self.get_option_bool("claims_never_checked_out") {
+                "CLAIMSNEVERCHECKEDOUT"
+            } else {
+                "CHECKIN"
+            };
+
+            let stop_fines = json::from(stop_fines);
+
+            let stop_fines_time = match self.options.get("backdate") {
+                Some(bd) => bd.clone(),
+                None => json::from("now"),
+            };
+
+            let circ = self.circ.as_mut().unwrap();
+
+            circ["stop_fines"] = stop_fines;
+            circ["stop_fines_time"] = stop_fines_time;
+
+            self.editor.update(circ)?;
+
+            // Update our copy to get in-DB changes.
+            self.circ = self.editor.retrieve("circ", circ["id"].clone())?;
+        }
+
         todo!()
     }
 
@@ -880,11 +915,11 @@ impl Circulator {
     }
 
 
+    /// Restore voided/adjusted overdue fines on lost/long-overdue return.
     fn checkin_handle_lost_or_lo_now_found_restore_od(
         &mut self,
         is_longoverdue: bool
     ) -> Result<(), String> {
-
         let circ = self.circ.as_ref().unwrap();
         let circ_id = json_int(&circ["id"])?;
 
@@ -896,6 +931,9 @@ impl Circulator {
             log::info!("{self} no overdues to reinstate on lost/lo checkin");
             return Ok(());
         }
+
+        let tag = if is_longoverdue { "LONGOVERRDUE" } else { "LOST" };
+        log::info!("{self} re-instating {} pre-{tag} overdues", overdues.len());
 
         let void_max = json_float(&circ["max_fine"])?;
         let mut void_amount = 0.0;
@@ -922,7 +960,30 @@ impl Circulator {
             return Ok(());
         }
 
+        if void_amount > void_max {
+            void_amount = void_max;
+        }
 
+        // We have at least one overdue
+        let first_od = overdues.first().unwrap();
+        let last_od = overdues.last().unwrap();
+
+        let btype_label = first_od["billing_type"].as_str().unwrap(); // required field
+        let period_start = first_od["period_start"].as_str();
+        let period_end = last_od["period_end"].as_str();
+
+        let note = format!("System: {tag} RETURNED - OVERDUES REINSTATED");
+
+        billing::create_bill(
+            &mut self.editor,
+            void_amount,
+            C::BTYPE_OVERDUE_MATERIALS,
+            btype_label,
+            circ_id,
+            Some(&note),
+            period_start,
+            period_end,
+        )?;
 
         Ok(())
     }
