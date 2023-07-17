@@ -1,5 +1,5 @@
-use crate::common::org;
 use crate::common::penalty;
+use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
 use crate::event::EgEvent;
@@ -229,12 +229,10 @@ pub fn adjust_bills_to_zero(
         .retrieve_with_ops("mbt", xact_id, flesh)?
         .expect("Billing has no transaction?");
 
-    let grocery = &mbt["grocery"];
-    let circulation = &mbt["circulation"];
     let user_id = json_int(&mbt["usr"])?;
     let mut bill_maps = bill_payment_map_for_xact(editor, xact_id)?;
 
-    let mut xact_total = match bill_maps
+    let xact_total = match bill_maps
         .iter()
         .map(|m| json_float(&m.bill["amount"]).unwrap())
         .reduce(|a, b| a + b)
@@ -433,7 +431,7 @@ pub fn bill_payment_map_for_xact(
     // largest payments.
     let mut used_payments: HashSet<i64> = HashSet::new();
     for payment in payments.iter() {
-        let mut map = match maps
+        let map = match maps
             .iter_mut()
             .filter(|m| {
                 m.bill["amount"] == payment["amount"]
@@ -530,6 +528,101 @@ pub fn xact_has_payment_within(
     Ok(payment_dt > window_start)
 }
 
-pub fn generate_fines(editor: &mut Editor, xact_ids: &[i64]) -> Result<(), String> {
+pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> Result<(), String> {
     todo!()
+}
+
+pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> Result<(), String> {
+    let circ = editor
+        .retrieve("circ", circ_id)?
+        .ok_or(format!("No such circulation: {circ_id}"))?;
+
+    generate_fines_for_xact(
+        editor,
+        circ_id,
+        circ["due_date"].as_str().unwrap(),
+        json_int(&circ["target_copy"])?,
+        json_int(&circ["circ_lib"])?,
+        json_float(&circ["recurring_fine"])?,
+        circ["fine_interval"].as_str().unwrap(),
+        json_float(&circ["max_fine"])?,
+        circ["grace_period"].as_str(),
+    )
+}
+
+pub fn generate_fines_for_xact(
+    editor: &mut Editor,
+    xact_id: i64,
+    due_date: &str,
+    target_copy: i64,
+    circ_lib: i64,
+    recurring_fine: f64,
+    fine_interval: &str,
+    max_fine: f64,
+    grace_period: Option<&str>,
+) -> Result<(), String> {
+    let fine_interval = date::interval_to_seconds(fine_interval)?;
+    let grace_period = date::interval_to_seconds(grace_period.unwrap_or("0s"))?;
+
+    if fine_interval == 0 || recurring_fine * 100.0 == 0.0 || max_fine * 100.0 == 0.0 {
+        log::info!(
+            "Fine generator skipping transaction {xact_id}
+            due to 0 fine interval, 0 fine rate, or 0 max fine."
+        );
+        return Ok(());
+    }
+
+    // TODO add the bit about reservation time zone offsets
+
+    let query = json::object! {
+        "xact": xact_id,
+        "btype": C::BTYPE_OVERDUE_MATERIALS,
+    };
+
+    let ops = json::object! {
+        "flesh": 1,
+        "flesh_fields": {"mb": ["adjustments"]},
+        "order_by": {"mb": "billing_ts DESC"},
+    };
+
+    let fines = editor.search_with_ops("mb", query, ops)?;
+    let mut current_fine_total = 0.0;
+    for fine in fines.iter() {
+        if !json_bool(&fine["voided"]) {
+            current_fine_total += json_float(&fine["amount"])? * 100.0;
+        }
+        for adj in fine["adjustments"].members() {
+            if !json_bool(&adj["voided"]) {
+                current_fine_total -= json_float(&adj["amount"])? * 100.0;
+            }
+        }
+    }
+
+    log::info!(
+        "Fine total for transaction {xact_id} is {:.2}",
+        current_fine_total / 100.0
+    );
+
+    // Determine the billing period of the next fine to generate
+    // based on the billing time of the most recent fine *which
+    // occurred after the current due date*.  Otherwise, when a
+    // due date changes, the fine generator will back-fill billings
+    // for a period of time where the item was not technically overdue.
+    let fines: Vec<JsonValue> = fines
+        .iter()
+        .filter(|f| f["billing_ts"].as_str().unwrap() > due_date)
+        .map(|f| f.to_owned())
+        .collect();
+
+    // First fine in the list (if we have one) will be the most recent.
+    let last_fine_dt = match fines.get(0) {
+        Some(f) => date::parse_datetime(&f["billing_ts"].as_str().unwrap())?,
+        None => {
+            // $grace_period = extend_grace_period($class,
+            // $c->$circ_lib_method,$c->$due_date_method,$grace_period,undef,$hoo{$c->$circ_lib_method});
+            date::parse_datetime(due_date)?
+        }
+    };
+
+    Ok(())
 }

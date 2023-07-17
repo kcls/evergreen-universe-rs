@@ -878,12 +878,14 @@ impl Circulator {
             }
             None => match self.reservation.as_ref() {
                 Some(r) => json_int(&r["id"])?,
-                None => Err(format!("{self} we have no transaction to generate fines for"))?,
-            }
+                None => Err(format!(
+                    "{self} we have no transaction to generate fines for"
+                ))?,
+            },
         };
         if is_circ {
             if self.circ.as_ref().unwrap()["stop_fines"].is_null() {
-                billing::generate_fines(&mut self.editor, &[xact_id])?;
+                billing::generate_fines_for_circ(&mut self.editor, xact_id)?;
 
                 // Update our copy of the circ after billing changes,
                 // which may apply a stop_fines value.
@@ -891,9 +893,8 @@ impl Circulator {
             }
 
             self.set_circ_stop_fines()?;
-
         } else {
-            billing::generate_fines(&mut self.editor, &[xact_id])?;
+            billing::generate_fines_for_resv(&mut self.editor, xact_id)?;
         }
 
         if !self.get_option_bool("needs_lost_bill_handling") {
@@ -1001,10 +1002,6 @@ impl Circulator {
         self.circ = self.editor.retrieve("circ", circ["id"].clone())?;
 
         Ok(())
-    }
-
-    fn handle_reservation_checkin_fines(&mut self) -> Result<(), String> {
-        todo!()
     }
 
     /// Restore voided/adjusted overdue fines on lost/long-overdue return.
