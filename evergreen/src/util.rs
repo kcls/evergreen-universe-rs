@@ -165,3 +165,15 @@ impl Pager {
         self.offset = 0
     }
 }
+
+/// Subtract value b from value a while compensating for common floating
+/// point math problems.
+pub fn fpdiff(a: f64, b: f64) -> f64 {
+    ((a * 100.00) - (b * 100.00)) / 100.00
+}
+
+/// Add value b to value a while  compensating for common floating point
+/// math problems.
+pub fn fpsum(a: f64, b: f64) -> f64 {
+    ((a * 100.00) + (b * 100.00)) / 100.00
+}

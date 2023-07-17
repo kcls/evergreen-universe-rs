@@ -5,8 +5,10 @@ use crate::editor::Editor;
 use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
+use crate::util::{json_bool, json_float, json_int};
 use chrono::{Duration, Local};
 use json::JsonValue;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 
 /// Void a list of billings.
@@ -25,7 +27,7 @@ pub fn void_bills(
     }
 
     for mut bill in bills.drain(0..) {
-        if util::json_bool(&bill["voided"]) {
+        if json_bool(&bill["voided"]) {
             log::debug!("Billing {} already voided.  Skipping", bill["id"]);
             continue;
         }
@@ -36,9 +38,9 @@ pub fn void_bills(
             None => return editor.die_event(),
         };
 
-        let xact_org = xact_org(editor, util::json_int(&xact["id"])?)?;
-        let xact_user = util::json_int(&xact["usr"])?;
-        let xact_id = util::json_int(&xact["id"])?;
+        let xact_org = xact_org(editor, json_int(&xact["id"])?)?;
+        let xact_user = json_int(&xact["usr"])?;
+        let xact_id = json_int(&xact["id"])?;
 
         penalty_users.insert((xact_user, xact_org));
 
@@ -83,7 +85,7 @@ pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> Result<(), String> 
         None => true,
     };
 
-    let zero_owed = util::json_float(&mbts["balance_owed"])? == 0.0;
+    let zero_owed = json_float(&mbts["balance_owed"])? == 0.0;
     let xact_open = xact["xact_finish"].is_null();
 
     if zero_owed {
@@ -113,13 +115,13 @@ pub fn xact_org(editor: &mut Editor, xact_id: i64) -> Result<i64, String> {
     // There's a view for that!
     // money.billable_xact_summary_location_view
     if let Some(sum) = editor.retrieve("mbtslv", xact_id)? {
-        util::json_int(&sum["billing_location"])
+        json_int(&sum["billing_location"])
     } else {
         Err(format!("No Such Transaction: {xact_id}"))
     }
 }
 
-/// Creates and returns the newly created money.billing.
+/// Creates and returns a newly created money.billing.
 pub fn create_bill(
     editor: &mut Editor,
     amount: f64,
@@ -148,6 +150,8 @@ pub fn create_bill(
     editor.create(&bill)
 }
 
+/// Void a set of bills (by type) for a transaction or apply
+/// adjustments to zero the bills, depending on settings, etc.
 pub fn void_or_zero_bills_of_type(
     editor: &mut Editor,
     xact_id: i64,
@@ -167,12 +171,14 @@ pub fn void_or_zero_bills_of_type(
 
     let bill_ids: Vec<i64> = bills
         .iter()
-        .map(|b| util::json_int(&b["id"]).expect("Billing has invalid id?"))
+        .map(|b| json_int(&b["id"]).expect("Billing has invalid id?"))
         .collect();
 
-    let prohibit_neg_balance = util::json_bool(
+    // "lost" settings are checked first for backwards compat /
+    // consistency with Perl.
+    let prohibit_neg_balance = json_bool(
         settings.get_value_at_org("bill.prohibit_negative_balance_on_lost", context_org)?,
-    ) || util::json_bool(
+    ) || json_bool(
         settings.get_value_at_org("bill.prohibit_negative_balance_default", context_org)?,
     );
 
@@ -191,16 +197,11 @@ pub fn void_or_zero_bills_of_type(
 
     if prohibit_neg_balance && !has_refundable {
         let note = format!("System: ADJUSTED {for_note}");
-        adjust_bills_to_zero(editor, bill_ids.as_slice(), &note)?;
+        adjust_bills_to_zero(editor, bill_ids.as_slice(), &note)
     } else {
-        // TODO
-        /*
-            $result = $class->void_bills($e, $billids, "System: VOIDED $for_note");
-        }
-        */
+        let note = format!("System: VOIDED {for_note}");
+        void_bills(editor, bill_ids.as_slice(), Some(&note))
     }
-
-    Ok(())
 }
 
 /// Assumes all bills are linked to the same transaction.
@@ -214,7 +215,7 @@ pub fn adjust_bills_to_zero(
         return Ok(());
     }
 
-    let xact_id = util::json_int(&bills[0]["xact"])?;
+    let xact_id = json_int(&bills[0]["xact"])?;
 
     let flesh = json::object! {
         "flesh": 2,
@@ -224,20 +225,218 @@ pub fn adjust_bills_to_zero(
         }
     };
 
-    let mbt = editor.retrieve_with_ops("mbt", xact_id, flesh)?
+    let mbt = editor
+        .retrieve_with_ops("mbt", xact_id, flesh)?
         .expect("Billing has no transaction?");
 
     let grocery = &mbt["grocery"];
     let circulation = &mbt["circulation"];
 
-    /*
+    // TODO
+    // bill_payment_map_for_xact()
+    // ...
 
-
-    */
-
-    Ok(())
+    todo!();
 }
 
+pub struct BillPaymentMap {
+    /// The adjusted bill object
+    pub bill: JsonValue,
+    /// List of account adjustments that apply directly to the bill.
+    pub adjustments: Vec<JsonValue>,
+    /// List of payment objects applied to the bill
+    pub payments: Vec<JsonValue>,
+    /// original amount from the billing object
+    pub bill_amount: f64,
+    /// Total of account adjustments that apply to the bill.
+    pub adjustment_amount: f64,
+}
+
+pub fn bill_payment_map_for_xact(
+    editor: &mut Editor,
+    xact_id: i64,
+) -> Result<Vec<BillPaymentMap>, String> {
+    let query = json::object! {
+        "xact": xact_id,
+        "voided": "f",
+    };
+    let ops = json::object! {
+        "order_by": {
+            "mb": {
+                "billing_ts": {
+                    "direction": "asc"
+                }
+            }
+        }
+    };
+
+    let mut bills = editor.search_with_ops("mb", query, ops)?;
+
+    let mut maps = Vec::new();
+
+    if bills.len() == 0 {
+        return Ok(maps);
+    }
+
+    for bill in bills.drain(0..) {
+        let amount = json_float(&bill["amount"])?;
+
+        let map = BillPaymentMap {
+            bill: bill,
+            adjustments: Vec::new(),
+            payments: Vec::new(),
+            bill_amount: amount,
+            adjustment_amount: 0.00,
+        };
+
+        maps.push(map);
+    }
+
+    let query = json::object! {"xact": xact_id, "voided": "f"};
+
+    let ops = json::object! {
+        "flesh": 1,
+        "flesh_fields": {"mp": ["account_adjustment"]},
+        "order_by": {"mp": {"payment_ts": {"direction": "asc"}}},
+    };
+
+    let mut payments = editor.search_with_ops("mp", query, ops)?;
+
+    if payments.len() == 0 {
+        // If we have no payments, return the unmodified maps.
+        return Ok(maps);
+    }
+
+    // Sort payments largest to lowest amount.
+    // This will come in handy later.
+    payments.sort_by(|a, b| {
+        if json_int(&b["amount"]).unwrap() < json_int(&a["amount"]).unwrap() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    });
+
+    let mut used_adjustments: HashSet<i64> = HashSet::new();
+
+    for map in maps.iter_mut() {
+        let bill = &mut map.bill;
+
+        // Find adjustments that apply to this individual billing and
+        // has not already been accounted for.
+        let mut my_adjustments: Vec<&mut JsonValue> = payments
+            .iter_mut()
+            .filter(|p| p["payment_type"].as_str().unwrap() == "account_adjustment")
+            .filter(|p| {
+                used_adjustments.contains(&json_int(&p["account_adjustment"]["id"]).unwrap())
+            })
+            .filter(|p| p["account_adjustment"]["billing"] == bill["id"])
+            .map(|p| &mut p["account_adjustment"])
+            .collect();
+
+        if my_adjustments.len() == 0 {
+            continue;
+        }
+
+        for adjustment in my_adjustments.drain(0..) {
+            let adjust_amount = json_float(&adjustment["amount"])?;
+            let adjust_id = json_int(&adjustment["id"])?;
+
+            let new_amount = util::fpdiff(json_float(&bill["amount"])?, adjust_amount);
+
+            if new_amount >= 0.0 {
+                map.adjustments.push(adjustment.clone());
+                map.adjustment_amount += adjust_amount;
+                bill["amount"] = json::from(new_amount);
+                used_adjustments.insert(adjust_id);
+            } else {
+                // It should never happen that we have more adjustment
+                // payments on a single bill than the amount of the bill.
+
+                // Clone the adjustment to say how much of it actually
+                // applied to this bill.
+                let mut new_adjustment = adjustment.clone();
+                new_adjustment["amount"] = bill["amount"].clone();
+                new_adjustment["amount_collected"] = bill["amount"].clone();
+                map.adjustments.push(new_adjustment.clone());
+                map.adjustment_amount += json_float(&new_adjustment["amount"])?;
+                bill["amount"] = json::from(0.0);
+                adjustment["amount"] = json::from(-new_amount);
+            }
+
+            if json_float(&bill["amount"])? == 0.0 {
+                break;
+            }
+        }
+    }
+
+    // Try to map payments to bills by amounts starting with the
+    // largest payments.
+    let mut used_payments: HashSet<i64> = HashSet::new();
+    for payment in payments.iter() {
+        let mut map = match maps
+            .iter_mut()
+            .filter(|m| {
+                m.bill["amount"] == payment["amount"]
+                    && !used_payments.contains(&json_int(&payment["id"]).unwrap())
+            })
+            .next()
+        {
+            Some(m) => m,
+            None => continue,
+        };
+
+        map.bill["amount"] = json::from(0.0);
+        map.payments.push(payment.clone());
+        used_payments.insert(json_int(&payment["id"])?);
+    }
+
+    // Remove the used payments from our working list.
+    let mut new_payments = Vec::new();
+    for pay in payments.drain(0..) {
+        if !used_payments.contains(&json_int(&pay["id"])?) {
+            new_payments.push(pay);
+        }
+    }
+    payments = new_payments;
+    let mut used_payments = HashSet::new();
+
+    // Map remaining bills to payments in whatever order.
+    for map in maps
+        .iter_mut()
+        .filter(|m| json_float(&m.bill["amount"]).unwrap() > 0.0)
+    {
+        let bill = &mut map.bill;
+        // Loop over remaining unused / unmapped payments.
+        for pay in payments
+            .iter_mut()
+            .filter(|p| !used_payments.contains(&json_int(&p["id"]).unwrap()))
+        {
+            loop {
+                let bill_amount = json_float(&bill["amount"])?;
+                if bill_amount > 0.0 {
+                    let new_amount = util::fpdiff(bill_amount, json_float(&pay["amount"])?);
+                    if new_amount < 0.0 {
+                        let mut new_payment = pay.clone();
+                        new_payment["amount"] = json::from(bill_amount);
+                        bill["amount"] = json::from(0.0);
+                        map.payments.push(new_payment);
+                        pay["amount"] = json::from(-new_amount);
+                    } else {
+                        bill["amount"] = json::from(new_amount);
+                        map.payments.push(pay.clone());
+                        used_payments.insert(json_int(&pay["id"])?);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(maps)
+}
+
+/// Returns true if the most recent payment toward a transaction
+/// occurred within now minus the specified interval.
 pub fn xact_has_payment_within(
     editor: &mut Editor,
     xact_id: i64,
@@ -263,10 +462,13 @@ pub fn xact_has_payment_within(
     let intvl_secs = date::interval_to_seconds(interval)?;
 
     // Every payment has a payment_ts value
-    let payment_ts = date::parse_datetime(&payment["payment_ts"].as_str().unwrap())?;
-    let max_time = payment_ts + Duration::seconds(intvl_secs);
+    let payment_ts = &payment["payment_ts"].as_str().unwrap();
+    let payment_dt = date::parse_datetime(payment_ts)?;
 
-    Ok(max_time > Local::now())
+    // Payments made before this time don't count.
+    let window_start = Local::now() - Duration::seconds(intvl_secs);
+
+    Ok(payment_dt > window_start)
 }
 
 pub fn generate_fines(editor: &mut Editor, xact_ids: &[i64]) -> Result<(), String> {
