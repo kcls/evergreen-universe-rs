@@ -210,7 +210,7 @@ pub fn adjust_bills_to_zero(
     bill_ids: &[i64],
     note: &str,
 ) -> Result<(), String> {
-    let bills = editor.search("mb", json::object! {"id": bill_ids})?;
+    let mut bills = editor.search("mb", json::object! {"id": bill_ids})?;
     if bills.len() == 0 {
         return Ok(());
     }
@@ -231,12 +231,71 @@ pub fn adjust_bills_to_zero(
 
     let grocery = &mbt["grocery"];
     let circulation = &mbt["circulation"];
+    let user_id = json_int(&mbt["usr"])?;
+    let mut bill_maps = bill_payment_map_for_xact(editor, xact_id)?;
 
-    // TODO
-    // bill_payment_map_for_xact()
-    // ...
+    let mut xact_total = match bill_maps
+        .iter()
+        .map(|m| json_float(&m.bill["amount"]).unwrap())
+        .reduce(|a, b| a + b)
+    {
+        Some(t) => t,
+        None => return Ok(()), // should never happen
+    };
 
-    todo!();
+    for bill in bills.iter_mut() {
+        let map = match bill_maps
+            .iter_mut()
+            .filter(|m| m.bill["id"] == bill["id"])
+            .next()
+        {
+            Some(m) => m,
+            None => continue, // should never happen
+        };
+
+        // The amount to adjust is the non-adjusted balance on the
+        // bill. It should never be less than zero.
+        let mut amount_to_adjust = util::fpdiff(map.bill_amount, map.adjustment_amount);
+
+        // Check if this bill is already adjusted.  We don't allow
+        // "double" adjustments regardless of settings.
+        if amount_to_adjust <= 0.0 {
+            continue;
+        }
+
+        if amount_to_adjust > xact_total {
+            amount_to_adjust = xact_total;
+        }
+
+        // Create the account adjustment
+        let payment = json::object! {
+            "amount": amount_to_adjust,
+            "amount_collected": amount_to_adjust,
+            "xact": xact_id,
+            "accepting_usr": editor.requestor_id(),
+            "payment_ts": "now",
+            "billing": bill["id"].clone(),
+            "note": note,
+        };
+
+        let payment = editor.idl().create_from("maa", payment)?;
+        editor.create(&payment)?;
+
+        // Adjust our bill_payment_map
+        map.adjustment_amount += amount_to_adjust;
+        map.adjustments.push(payment);
+
+        // Should come to zero:
+        let new_bill_amount = util::fpdiff(json_float(&bill["amount"])?, amount_to_adjust);
+        bill["amount"] = json::from(new_bill_amount);
+    }
+
+    check_open_xact(editor, xact_id)?;
+
+    let org_id = xact_org(editor, xact_id)?;
+    penalty::calculate_penalties(editor, user_id, org_id, None)?;
+
+    Ok(())
 }
 
 pub struct BillPaymentMap {

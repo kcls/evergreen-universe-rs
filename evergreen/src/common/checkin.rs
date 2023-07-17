@@ -875,13 +875,12 @@ impl Circulator {
     }
 
     fn handle_circ_checkin_fines(&mut self) -> Result<(), String> {
+        let copy_circ_lib = self.copy_circ_lib();
+
         if let Some(ops) = self.options.get("lost_or_lo_billing_options") {
             if !self.get_option_bool("void_overdues") {
                 if let Some(setting) = ops["ous_restore_overdue"].as_str() {
-                    if json_bool(
-                        self.settings
-                            .get_value_at_org(setting, self.copy_circ_lib())?,
-                    ) {
+                    if json_bool(self.settings.get_value_at_org(setting, copy_circ_lib)?) {
                         self.checkin_handle_lost_or_lo_now_found_restore_od(false)?;
                     }
                 }
@@ -918,7 +917,76 @@ impl Circulator {
             self.circ = self.editor.retrieve("circ", circ["id"].clone())?;
         }
 
-        todo!()
+        if !self.get_option_bool("needs_lost_bill_handling") {
+            return Ok(());
+        }
+
+        let circ_id = json_int(&self.circ.as_ref().unwrap()["id"])?;
+
+        let ops = match self.options.get("lost_or_lo_billing_options") {
+            Some(o) => o,
+            None => return Err(format!("Cannot handle lost/lo billing without options")),
+        };
+
+        // below was previously called checkin_handle_lost_or_lo_now_found()
+        let tag = if json_bool(&ops["is_longoverdue"]) {
+            "LONGOVERDUE"
+        } else {
+            "LOST"
+        };
+        let note = format!("{tag} ITEM RETURNED");
+
+        let mut void_cost = 0.0;
+        if let Some(set) = ops["ous_void_item_cost"].as_str() {
+            if let Ok(c) = json_float(self.settings.get_value_at_org(set, copy_circ_lib)?) {
+                void_cost = c;
+            }
+        }
+
+        let mut void_proc_fee = 0.0;
+        if let Some(set) = ops["ous_void_proc_fee"].as_str() {
+            if let Ok(c) = json_float(self.settings.get_value_at_org(set, copy_circ_lib)?) {
+                void_proc_fee = c;
+            }
+        }
+
+        if void_cost > 0.0 {
+            let void_cost_btype = match ops["void_cost_btype"].as_i64() {
+                Some(b) => b,
+                None => {
+                    log::warn!("Cannot zero {tag} circ without a billing type");
+                    return Ok(());
+                }
+            };
+
+            billing::void_or_zero_bills_of_type(
+                &mut self.editor,
+                circ_id,
+                copy_circ_lib,
+                void_cost_btype,
+                &note,
+            )?;
+        }
+
+        if void_proc_fee > 0.0 {
+            let void_fee_btype = match ops["void_fee_btype"].as_i64() {
+                Some(b) => b,
+                None => {
+                    log::warn!("Cannot zero {tag} circ without a billing type");
+                    return Ok(());
+                }
+            };
+
+            billing::void_or_zero_bills_of_type(
+                &mut self.editor,
+                circ_id,
+                copy_circ_lib,
+                void_fee_btype,
+                &note,
+            )?;
+        }
+
+        Ok(())
     }
 
     fn handle_reservation_checkin_fines(&mut self) -> Result<(), String> {
