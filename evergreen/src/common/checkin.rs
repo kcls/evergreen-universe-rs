@@ -858,23 +858,6 @@ impl Circulator {
     }
 
     fn handle_checkin_fines(&mut self) -> Result<(), String> {
-        if self.circ.is_some() {
-            self.handle_circ_checkin_fines()?;
-        } else if self.reservation.is_some() {
-            self.handle_reservation_checkin_fines()?;
-        } else {
-            log::info!("{self} we have no transaction to generate fines for");
-        }
-
-        if !self.get_option_bool("needs_lost_bill_handling") {
-            // No lost/lo billing work required.  All done.
-            return Ok(());
-        }
-
-        Ok(())
-    }
-
-    fn handle_circ_checkin_fines(&mut self) -> Result<(), String> {
         let copy_circ_lib = self.copy_circ_lib();
 
         if let Some(ops) = self.options.get("lost_or_lo_billing_options") {
@@ -887,41 +870,36 @@ impl Circulator {
             }
         }
 
-        let circ = self.circ.as_ref().unwrap();
+        let mut is_circ = false;
+        let xact_id = match self.circ.as_ref() {
+            Some(c) => {
+                is_circ = true;
+                json_int(&c["id"])?
+            }
+            None => match self.reservation.as_ref() {
+                Some(r) => json_int(&r["id"])?,
+                None => Err(format!("{self} we have no transaction to generate fines for"))?,
+            }
+        };
+        if is_circ {
+            if self.circ.as_ref().unwrap()["stop_fines"].is_null() {
+                billing::generate_fines(&mut self.editor, &[xact_id])?;
 
-        // Set stop_fines and stop_fines_time on our open circulation.
-        if circ["stop_fines"].is_null() {
-            let stop_fines = if self.circ_op == CircOp::Renew {
-                "RENEW"
-            } else if self.get_option_bool("claims_never_checked_out") {
-                "CLAIMSNEVERCHECKEDOUT"
-            } else {
-                "CHECKIN"
-            };
+                // Update our copy of the circ after billing changes,
+                // which may apply a stop_fines value.
+                self.circ = self.editor.retrieve("circ", xact_id)?;
+            }
 
-            let stop_fines = json::from(stop_fines);
+            self.set_circ_stop_fines()?;
 
-            let stop_fines_time = match self.options.get("backdate") {
-                Some(bd) => bd.clone(),
-                None => json::from("now"),
-            };
-
-            let circ = self.circ.as_mut().unwrap();
-
-            circ["stop_fines"] = stop_fines;
-            circ["stop_fines_time"] = stop_fines_time;
-
-            self.editor.update(circ)?;
-
-            // Update our copy to get in-DB changes.
-            self.circ = self.editor.retrieve("circ", circ["id"].clone())?;
+        } else {
+            billing::generate_fines(&mut self.editor, &[xact_id])?;
         }
 
         if !self.get_option_bool("needs_lost_bill_handling") {
+            // No lost/lo billing work required.  All done.
             return Ok(());
         }
-
-        let circ_id = json_int(&self.circ.as_ref().unwrap()["id"])?;
 
         let ops = match self.options.get("lost_or_lo_billing_options") {
             Some(o) => o,
@@ -961,7 +939,7 @@ impl Circulator {
 
             billing::void_or_zero_bills_of_type(
                 &mut self.editor,
-                circ_id,
+                xact_id,
                 copy_circ_lib,
                 void_cost_btype,
                 &note,
@@ -979,12 +957,48 @@ impl Circulator {
 
             billing::void_or_zero_bills_of_type(
                 &mut self.editor,
-                circ_id,
+                xact_id,
                 copy_circ_lib,
                 void_fee_btype,
                 &note,
             )?;
         }
+
+        Ok(())
+    }
+
+    fn set_circ_stop_fines(&mut self) -> Result<(), String> {
+        let circ = self.circ.as_ref().unwrap();
+
+        if !circ["stop_fines"].is_null() {
+            return Ok(());
+        }
+
+        // Set stop_fines and stop_fines_time on our open circulation.
+        let stop_fines = if self.circ_op == CircOp::Renew {
+            "RENEW"
+        } else if self.get_option_bool("claims_never_checked_out") {
+            "CLAIMSNEVERCHECKEDOUT"
+        } else {
+            "CHECKIN"
+        };
+
+        let stop_fines = json::from(stop_fines);
+
+        let stop_fines_time = match self.options.get("backdate") {
+            Some(bd) => bd.clone(),
+            None => json::from("now"),
+        };
+
+        let circ = self.circ.as_mut().unwrap();
+
+        circ["stop_fines"] = stop_fines;
+        circ["stop_fines_time"] = stop_fines_time;
+
+        self.editor.update(circ)?;
+
+        // Update our copy to get in-DB changes.
+        self.circ = self.editor.retrieve("circ", circ["id"].clone())?;
 
         Ok(())
     }
