@@ -2,14 +2,16 @@ use crate::common::penalty;
 use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
-use crate::event::EgEvent;
 use crate::settings::Settings;
 use crate::util;
 use crate::util::{json_bool, json_float, json_int};
-use chrono::{Duration, Local};
+use chrono::{DateTime, Duration, Local};
+use chrono::prelude::Datelike;
 use json::JsonValue;
 use std::cmp::Ordering;
 use std::collections::HashSet;
+
+const DAY_OF_SECONDS: i64 = 86400;
 
 /// Void a list of billings.
 pub fn void_bills(
@@ -556,13 +558,16 @@ pub fn generate_fines_for_xact(
     due_date: &str,
     target_copy: i64,
     circ_lib: i64,
-    recurring_fine: f64,
+    mut recurring_fine: f64,
     fine_interval: &str,
-    max_fine: f64,
+    mut max_fine: f64,
     grace_period: Option<&str>,
 ) -> Result<(), String> {
+    let mut settings = Settings::new(&editor);
+
     let fine_interval = date::interval_to_seconds(fine_interval)?;
-    let grace_period = date::interval_to_seconds(grace_period.unwrap_or("0s"))?;
+    let mut grace_period = date::interval_to_seconds(grace_period.unwrap_or("0s"))?;
+    let now = Local::now();
 
     if fine_interval == 0 || recurring_fine * 100.0 == 0.0 || max_fine * 100.0 == 0.0 {
         log::info!(
@@ -614,15 +619,209 @@ pub fn generate_fines_for_xact(
         .map(|f| f.to_owned())
         .collect();
 
+    let due_date_dt = date::parse_datetime(due_date)?;
+
     // First fine in the list (if we have one) will be the most recent.
     let last_fine_dt = match fines.get(0) {
         Some(f) => date::parse_datetime(&f["billing_ts"].as_str().unwrap())?,
         None => {
-            // $grace_period = extend_grace_period($class,
-            // $c->$circ_lib_method,$c->$due_date_method,$grace_period,undef,$hoo{$c->$circ_lib_method});
-            date::parse_datetime(due_date)?
+            grace_period = extend_grace_period(
+                editor,
+                circ_lib,
+                grace_period,
+                due_date_dt.clone(),
+                None, // TODO?
+                Some(&mut settings),
+            )?;
+
+            // If we have no fines, due date is the last fine time.
+            due_date_dt
+       }
+    };
+
+    if last_fine_dt > now {
+        log::warn!("Transaction {xact_id} has futuer last fine date?");
+        return Ok(());
+    }
+
+    if last_fine_dt == due_date_dt &&
+        grace_period > 0 &&
+        now.timestamp() < due_date_dt.timestamp() - grace_period {
+        // We have no fines yet and we have a grace period and we
+        // are still within the grace period.  New fines not yet needed.
+
+        log::info!("Stil within grace period for circ {xact_id}");
+        return Ok(());
+    }
+
+    // Generate fines for each past interval, including the one we are inside.
+    let range = now.timestamp() - last_fine_dt.timestamp();
+    let mut pending_fine_count = (range as f64 / fine_interval as f64).ceil() as i64;
+
+    if pending_fine_count == 0 {
+        // No fines to generate.
+        return Ok(());
+    }
+
+    recurring_fine *= 100.0;
+    max_fine *= 100.0;
+
+    let skip_closed_check = json_bool(
+        settings.get_value_at_org("circ.fines.charge_when_closed", circ_lib)?);
+
+    let truncate_to_max_fine = json_bool(
+        settings.get_value_at_org("circ.fines.truncate_to_max_fine", circ_lib)?);
+
+    let timezone = match settings.get_value_at_org("lib.timezone", circ_lib)?.as_str() {
+        Some(tz) => tz,
+        None => "local",
+    };
+
+
+    Ok(())
+}
+
+pub fn extend_grace_period(
+    editor: &mut Editor,
+    context_org: i64,
+    mut grace_period: i64,
+    mut due_date: DateTime<Local>,
+    org_hours: Option<&JsonValue>,
+    settings: Option<&mut Settings>,
+) -> Result<i64, String> {
+
+    if grace_period < DAY_OF_SECONDS {
+        // Only extended for >1day intervals.
+        return Ok(grace_period);
+    }
+
+    let mut local_settings;
+    let settings = match settings {
+        Some(s) => s,
+        None => {
+            local_settings = Some(Settings::new(&editor));
+            local_settings.as_mut().unwrap()
         }
     };
 
-    Ok(())
+    let extend = json_bool(settings.get_value_at_org("circ.grace.extend", context_org)?);
+
+    if !extend {
+        // No extension configured.
+        return Ok(grace_period);
+    }
+
+    let fetched_hours;
+    let org_hours = match org_hours {
+        Some(o) => o,
+        None => {
+            fetched_hours = editor.retrieve("aouhoo", context_org)?;
+            match fetched_hours.as_ref() {
+                Some(o) => o,
+                // Hours of operation are required for extension
+                None => return Ok(grace_period),
+            }
+        }
+    };
+
+    let mut close_days: HashSet<usize> = HashSet::new();
+    let mut close_count = 0;
+    for day in 0..6 {
+        // day open/close are required fields.
+        let open = org_hours[&format!("day_{day}_open")].as_str().unwrap();
+        let close = org_hours[&format!("day_{day}_close")].as_str().unwrap();
+
+        if open == "00:00:00" && close == "00:00:00" {
+            close_count += 1;
+            close_days.insert(day);
+        }
+    }
+
+    if close_count == 7 {
+        // Cannot extend if the branch is never open.
+        return Ok(grace_period);
+    }
+
+    // Capture the original due date in epoch form.
+    let orig_due_epoch = due_date.timestamp();
+
+    let extend_into_closed = json_bool(
+        settings.get_value_at_org("circ.grace.extend.into_closed", context_org)?);
+
+    if extend_into_closed {
+        // Merge closed dates trailing the grace period into the grace period.
+        // Note to self: why add exactly one day?
+        due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+    }
+
+    let extend_all = json_bool(
+        settings.get_value_at_org("circ.grace.extend.all", context_org)?);
+
+    if extend_all {
+        // Start checking the day after the item was due.
+        due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+    } else {
+        // Jump to the end of the grace period.
+        due_date = due_date + Duration::seconds(grace_period);
+    }
+
+    let mut new_grace_period = grace_period;
+    let mut counter = 0;
+    let mut closed;
+
+    // Scan at most 1 year of org close/hours info.
+    while counter < 366 {
+        counter += 1;
+        closed = false;
+
+        // Zero-based day of week.
+        let weekday = due_date.naive_local().weekday().num_days_from_sunday();
+
+        if close_days.contains(&(weekday as usize)) {
+            closed = true;
+            new_grace_period += DAY_OF_SECONDS;
+            due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+
+        } else {
+            // Hours of operation say we're open, but we may have a
+            // configured closed date.
+
+            let timestamp = date::to_iso8601(&due_date);
+            let query = json::object! {
+                "org_unit": context_org,
+                "close_start": {"<=": json::from(timestamp.clone())},
+                "close_end": {">=": json::from(timestamp)},
+            };
+
+            let closed_days = editor.search("aoucd", query)?;
+
+            if closed_days.len() > 0 {
+                // Extend the due date out past this period of closed days.
+                closed = true;
+                for closed_day in closed_days.iter() {
+                    let closed_dt = date::parse_datetime(
+                        &closed_day["close_end"].as_str().unwrap() // required
+                    )?;
+
+                    if due_date <= closed_dt {
+                        new_grace_period += DAY_OF_SECONDS;
+                        due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+                    }
+                }
+            } else {
+                due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+            }
+        }
+
+        if !closed && due_date.timestamp() > orig_due_epoch + new_grace_period {
+            break;
+        }
+    }
+
+    if new_grace_period > grace_period {
+        grace_period = new_grace_period;
+        log::info!("Grace period extended for circulation to {}", date::to_iso8601(&due_date));
+    }
+
+    Ok(grace_period)
 }
