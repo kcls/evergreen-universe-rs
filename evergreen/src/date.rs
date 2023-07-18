@@ -1,4 +1,6 @@
-use chrono::{DateTime, Duration, Local, Months};
+use chrono::prelude::*;
+use chrono::{DateTime, FixedOffset, Duration, Local, Months, TimeZone};
+use chrono_tz::Tz;
 
 /// Turn an interval string into a number of seconds.
 ///
@@ -100,3 +102,24 @@ pub fn parse_datetime(dt: &str) -> Result<DateTime<Local>, String> {
 pub fn to_iso8601(dt: &DateTime<Local>) -> String {
     dt.format("%FT%T%z").to_string()
 }
+
+pub fn set_timezone(dt: DateTime<Local>, timezone: &str) -> Result<DateTime<FixedOffset>, String> {
+    let fixed: DateTime<FixedOffset> = dt.into();
+
+    if timezone == "local" {
+        return Ok(fixed);
+    }
+
+    // Parse the time zone string.
+    let tz: Tz = timezone.parse()
+        .or_else(|e| Err(format!("Cannot parse timezone: {timezone} {e}")))?;
+
+    // Apply the parsed timezone
+    let fixed = fixed.with_timezone(&tz);
+
+    // Translate the parsed timezone into a fixed time zone.
+    let fixed = fixed.with_timezone(&dt.offset().fix());
+
+    Ok(fixed)
+}
+

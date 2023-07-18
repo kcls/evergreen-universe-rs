@@ -1,6 +1,10 @@
 use crate::editor::Editor;
+use crate::date;
 use crate::util;
 use json;
+use chrono::{NaiveDate, DateTime, Duration, Local, FixedOffset};
+use chrono::prelude::Datelike;
+use std::collections::HashSet;
 
 /// Apply a variety of DB transforms to an org unit and return
 /// the calculated org unit IDs.
@@ -46,4 +50,98 @@ pub fn descendants(editor: &mut Editor, org_id: i64) -> Result<Vec<i64>, String>
 
 pub fn full_path(editor: &mut Editor, org_id: i64, depth: Option<i64>) -> Result<Vec<i64>, String> {
     org_relations_query(editor, org_id, "actor.org_unit_full_path", depth)
+}
+
+
+/// Conveys the open state of an org unit on a specific day.
+#[derive(Clone, PartialEq)]
+pub enum OrgOpenState {
+    /// Open on the requested day.
+    Open,
+    /// Org unit is never open
+    Never,
+    /// Org unit is closed on the requested day and will not open
+    /// again utnil this day representd by this date.
+    ///
+    /// Uses NaiveDate because we only wish to convey if the
+    /// org unit is open on a certain day (for the purposes of
+    /// fine generation, hold targeting, etc.), not the specific
+    /// open time.
+    OpensOnDate(NaiveDate),
+}
+
+pub fn next_open_date(
+    editor: &mut Editor,
+    org_id: i64,
+    date: &DateTime<FixedOffset>,
+) -> Result<OrgOpenState, String> {
+    let start_date = date.clone();
+    let mut date = date.clone();
+
+    let mut closed_days: HashSet<i64> = HashSet::new();
+    if let Some(h) = editor.retrieve("aouhoo", org_id)? {
+        for day in 0..7 {
+            let open = h[&format!("day_{day}_open")].as_str().unwrap();
+            let close = h[&format!("day_{day}_close")].as_str().unwrap();
+            if open == "00:00:00" && close == open {
+                closed_days.insert(day);
+            }
+        }
+
+        // Always closed.
+        if closed_days.len() == 7 {
+            return Ok(OrgOpenState::Never);
+        }
+    }
+
+    let mut counter = 0;
+    while counter < 366 { // inspect at most 1 year of data
+        counter += 1;
+
+        // Zero-based day of week
+        let weekday = date.naive_local().weekday().num_days_from_sunday();
+
+        if closed_days.contains(&(weekday as i64)) {
+            // Closed for the current day based on hours of operation.
+            // Jump ahead one day and start over.
+            date = date + Duration::days(1);
+            continue;
+        }
+
+        let timestamp = date::to_iso8601(&date.into());
+        let query = json::object! {
+            "org_unit": org_id,
+            "close_start": {"<=": json::from(timestamp.clone())},
+            "close_end": {">=": json::from(timestamp)},
+        };
+
+        let closed_days = editor.search("aoucd", query)?;
+
+        if closed_days.len() == 0 {
+            // We've found an open day.
+            if start_date == date {
+                // No changes were made.  We're open on the requested day.
+                return Ok(OrgOpenState::Open);
+            } else {
+                // Advancements were made to the date in progress to
+                // find an open day.
+                return Ok(OrgOpenState::OpensOnDate(date.date_naive()));
+            }
+        }
+
+        // Find the end of the closed date range and jump ahead to that.
+        let mut range_end = closed_days[0]["close_end"].as_str().unwrap();
+        for day in closed_days.iter() {
+            let end = day["close_end"].as_str().unwrap();
+            if end > range_end {
+                range_end = end;
+            }
+        }
+
+        date = date::parse_datetime(&range_end)?.into();
+        date = date + Duration::days(1);
+    }
+
+    // If we get here it means we never found an open day.
+    Ok(OrgOpenState::Never)
 }

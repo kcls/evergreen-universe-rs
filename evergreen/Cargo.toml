@@ -12,6 +12,7 @@ opensrf = { path = "../opensrf" }
 marc = { path = "../marc" }
 roxmltree = "0.18"
 chrono = "0.4"
+chrono-tz = "0.8"
 yaml-rust = "0.4"
 log = "0.4"
 json = "0.12"
