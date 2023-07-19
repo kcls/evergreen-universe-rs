@@ -631,6 +631,7 @@ impl Circulator {
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
                 circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
+
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -1097,13 +1098,15 @@ impl Circulator {
         let transit_dest = json_int(&transit["dest"])?;
         let transit_copy_status = json_int(&transit["copy_status"])?;
 
-        let mut maybe_hold_transit = self.editor.retrieve("ahtc", transit_id)?;
-        let mut maybe_hold = None;
-        if let Some(ht) = maybe_hold_transit.as_ref() {
+        self.hold_transit = self.editor.retrieve("ahtc", transit_id)?;
+
+        if let Some(ht) = self.hold_transit.as_ref() {
             // A hold transit can have a null "hold" value if the linked
-            // hold was canceled or anonymized while in transit.
+            // hold was anonymized while in transit.  (Perl describes
+            // this scenario as a cancled hold, but I don't see why
+            // that would clear the transit.hold value).
             if !ht["hold"].is_null() {
-                maybe_hold = self.editor.retrieve("ahr", ht["hold"].clone())?;
+                self.hold = self.editor.retrieve("ahr", ht["hold"].clone())?;
             }
         }
 
@@ -1118,8 +1121,6 @@ impl Circulator {
                 "{self}: Fowarding transit on copy which is destined
                 for a different location. transit={transit_id} destination={transit_dest}"
             );
-
-            self.hold = maybe_hold;
 
             let mut evt = EgEvent::new("ROUTE_ITEM");
             evt.set_org(transit_dest);
@@ -1139,12 +1140,11 @@ impl Circulator {
         self.update_copy(json::object! {"status": transit_copy_status})?;
 
         let mut is_hold = false;
-        if maybe_hold.is_some() {
+        if self.hold.is_some() {
             is_hold = true;
-            self.hold = maybe_hold;
             self.put_hold_on_shelf()?;
         } else {
-            maybe_hold_transit = None;
+            self.hold_transit = None;
             self.set_option_true("cancelled_hold_transit");
             self.reshelve_copy(true)?;
             self.clear_option("fake_hold_dest");
@@ -1154,8 +1154,8 @@ impl Circulator {
             transit: self.transit.as_ref().unwrap().clone()
         };
 
-        if let Some(ht) = maybe_hold_transit {
-            payload["holdtransit"] = ht;
+        if let Some(ht) = self.hold_transit.as_ref() {
+            payload["holdtransit"] = ht.clone();
         }
 
         let mut evt = EgEvent::success();
@@ -1163,6 +1163,8 @@ impl Circulator {
         evt.set_is_hold(is_hold);
 
         self.add_event(evt);
+
+        self.changes_applied = true;
 
         Ok(())
     }
@@ -1219,6 +1221,9 @@ impl Circulator {
     }
 
     fn put_hold_on_shelf(&mut self) -> Result<(), String> {
+        let hold = self.hold.as_mut().unwrap();
+        hold["shelf_time"] = json::from("now");
+        hold["current_shelf_lib"] = json::from(self.circ_lib);
         todo!()
     }
 }

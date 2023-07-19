@@ -3,6 +3,7 @@ pub mod billing;
 pub mod checkin;
 pub mod circ;
 pub mod circulator;
+pub mod holds;
 pub mod org;
 pub mod penalty;
 pub mod trigger;

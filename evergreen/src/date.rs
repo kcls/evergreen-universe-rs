@@ -91,6 +91,11 @@ fn add_hms(part: &str, mut date: DateTime<Local>) -> Result<DateTime<Local>, Str
     Ok(date)
 }
 
+/// Current date/time with a fixed offset matching the local time zone.
+pub fn now_local() -> DateTime<FixedOffset> {
+    to_local_timezone_fixed(Local::now().into())
+}
+
 /// Parse an ISO date string and return a date which retains its original
 /// time zone.
 ///
