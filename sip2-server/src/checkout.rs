@@ -194,7 +194,7 @@ impl Session {
         let evt = eg::event::EgEvent::parse(&event)
             .ok_or(format!("API call {method} failed to return an event"))?;
 
-        if evt.success() {
+        if evt.is_success() {
             let circ = &evt.payload()["circ"];
 
             if circ.is_object() {

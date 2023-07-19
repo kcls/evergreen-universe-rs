@@ -1,3 +1,4 @@
+use crate::util;
 use chrono::Local;
 use json;
 use std::fmt;
@@ -13,8 +14,9 @@ pub struct EgEvent {
     servertime: Option<String>,
     ilsperm: Option<String>,
     ilspermloc: i64,
-    success: bool,
     org: Option<i64>,
+    /// Needed for compat with circ code.
+    is_hold: bool,
 }
 
 impl fmt::Display for EgEvent {
@@ -41,10 +43,10 @@ impl From<&EgEvent> for json::JsonValue {
     fn from(evt: &EgEvent) -> Self {
         let mut obj = json::object! {
             code: evt.code(),
-            success: evt.success(),
             textcode: evt.textcode(),
             payload: evt.payload().clone(),
             ilspermloc: evt.ilspermloc(),
+            ishold: json::from(evt.is_hold()),
         };
 
         if let Some(v) = evt.desc() {
@@ -71,22 +73,28 @@ impl From<&EgEvent> for json::JsonValue {
 }
 
 impl EgEvent {
+    /// Create a new event with the provided code.
     pub fn new(textcode: &str) -> Self {
         let servertime = Local::now().to_rfc3339();
 
         EgEvent {
-            code: 0,
+            code: -1,
             textcode: textcode.to_string(),
             payload: json::JsonValue::Null,
             desc: None,
             debug: None,
             note: None,
             org: None,
+            is_hold: false,
             servertime: Some(servertime),
             ilsperm: None,
             ilspermloc: 0,
-            success: textcode.eq("SUCCESS"),
         }
+    }
+
+    /// Create a new SUCCESS event
+    pub fn success() -> Self {
+        EgEvent::new("SUCCESS")
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
@@ -140,8 +148,8 @@ impl EgEvent {
         self.ilspermloc
     }
 
-    pub fn success(&self) -> bool {
-        self.success
+    pub fn is_success(&self) -> bool {
+        self.textcode.eq("SUCCESS")
     }
 
     pub fn org(&self) -> &Option<i64> {
@@ -149,6 +157,14 @@ impl EgEvent {
     }
     pub fn set_org(&mut self, id: i64) {
         self.org = Some(id);
+    }
+
+    pub fn is_hold(&self) -> bool {
+        self.is_hold
+    }
+
+    pub fn set_is_hold(&mut self, is: bool) {
+        self.is_hold = is;
     }
 
     /// Parses a JsonValue and optionally returns an EgEvent.
@@ -166,7 +182,7 @@ impl EgEvent {
     /// };
     ///
     /// let evt = EgEvent::parse(&jv).expect("Event Parsing Failed");
-    /// assert!(evt.success());
+    /// assert!(evt.is_success());
     ///
     /// assert_eq!(format!("{}", evt), String::from("Event: -1:SUCCESS STAFF_LOGIN@1"));
     ///
@@ -185,26 +201,12 @@ impl EgEvent {
         // textcode is the only required field.
         let textcode = match jv["textcode"].as_str() {
             Some(c) => String::from(c),
-            _ => {
-                return None;
-            }
+            _ => return None,
         };
 
-        let success = textcode.eq("SUCCESS");
-
-        let mut evt = EgEvent {
-            code: -1,
-            textcode: textcode,
-            payload: jv["payload"].clone(),
-            desc: None,
-            debug: None,
-            note: None,
-            org: None,
-            servertime: None,
-            ilsperm: None,
-            ilspermloc: -1,
-            success: success,
-        };
+        let mut evt = EgEvent::new(&textcode);
+        evt.set_payload(jv["payload"].clone());
+        evt.is_hold = util::json_bool(&jv["ishold"]);
 
         if let Some(code) = jv["ilsevent"].as_isize() {
             evt.code = code;

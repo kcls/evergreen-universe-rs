@@ -765,6 +765,10 @@ impl Circulator {
         self.options.insert(name.to_string(), json::from(true));
     }
 
+    pub fn clear_option(&mut self, name: &str) {
+        self.options.remove(name);
+    }
+
     /// Get the value for a boolean option.
     ///
     /// Returns false if the value is unset or false-ish.

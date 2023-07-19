@@ -346,7 +346,7 @@ impl Shell {
 
     fn _check_for_event(&mut self, v: &json::JsonValue) -> Result<(), String> {
         if let Some(evt) = event::EgEvent::parse(v) {
-            if !evt.success() {
+            if !evt.is_success() {
                 return Err(format!("Non-SUCCESS event returned: {evt}"));
             }
         }

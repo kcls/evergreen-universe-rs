@@ -198,7 +198,7 @@ impl AuthSession {
             }
         };
 
-        if !evt.success() {
+        if !evt.is_success() {
             log::warn!("Login failed: {evt:?}");
             return Ok(None);
         }

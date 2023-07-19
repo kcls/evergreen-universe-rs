@@ -1086,7 +1086,6 @@ impl Circulator {
         Ok(())
     }
 
-
     /// Assumes self.transit is set
     fn checkin_handle_transit(&mut self) -> Result<(), String> {
         log::info!("{self} attempting to receive transit");
@@ -1094,8 +1093,19 @@ impl Circulator {
         let suppress_transit = self.should_suppress_transit()?;
 
         let transit = self.transit.as_ref().unwrap();
+        let transit_id = json_int(&transit["id"])?;
         let transit_dest = json_int(&transit["dest"])?;
         let transit_copy_status = json_int(&transit["copy_status"])?;
+
+        let mut maybe_hold_transit = self.editor.retrieve("ahtc", transit_id)?;
+        let mut maybe_hold = None;
+        if let Some(ht) = maybe_hold_transit.as_ref() {
+            // A hold transit can have a null "hold" value if the linked
+            // hold was canceled or anonymized while in transit.
+            if !ht["hold"].is_null() {
+                maybe_hold = self.editor.retrieve("ahr", ht["hold"].clone())?;
+            }
+        }
 
         let hold_as_transit = self.get_option_bool("hold_as_transit")
             && transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF;
@@ -1103,22 +1113,56 @@ impl Circulator {
         if !suppress_transit && (transit_dest != self.circ_lib || hold_as_transit) {
             // Item is in-transit to a different location OR
             // we are captured holds as transits and don't need another one.
-            let transit_id = json_int(&transit["id"])?;
 
-            log::info!("{self}: Fowarding transit on copy which is destined
-                for a different location. transit={transit_id} destination={transit_dest}");
+            log::info!(
+                "{self}: Fowarding transit on copy which is destined
+                for a different location. transit={transit_id} destination={transit_dest}"
+            );
 
-            // Grab the hold transit if possible
-            if let Some(ht) = self.editor.retrieve("ahtc", transit_id)? {
-                self.hold = self.editor.retrieve("ahr", ht["hold"].clone())?;
-            }
+            self.hold = maybe_hold;
 
             let mut evt = EgEvent::new("ROUTE_ITEM");
             evt.set_org(transit_dest);
+
             return self.exit_ok_on_event(evt);
         }
 
-        // TODO
+        // Receive the transit
+        let transit = self.transit.as_mut().unwrap();
+        transit["dest_recv_time"] = json::from("now");
+        self.editor.update(&transit)?;
+
+        // Refresh our copy of the transit.
+        self.transit = self.editor.retrieve("atc", transit_id)?;
+
+        // Apply the destination copy status.
+        self.update_copy(json::object! {"status": transit_copy_status})?;
+
+        let mut is_hold = false;
+        if maybe_hold.is_some() {
+            is_hold = true;
+            self.hold = maybe_hold;
+            self.put_hold_on_shelf()?;
+        } else {
+            maybe_hold_transit = None;
+            self.set_option_true("cancelled_hold_transit");
+            self.reshelve_copy(true)?;
+            self.clear_option("fake_hold_dest");
+        }
+
+        let mut payload = json::object! {
+            transit: self.transit.as_ref().unwrap().clone()
+        };
+
+        if let Some(ht) = maybe_hold_transit {
+            payload["holdtransit"] = ht;
+        }
+
+        let mut evt = EgEvent::success();
+        evt.set_payload(payload);
+        evt.set_is_hold(is_hold);
+
+        self.add_event(evt);
 
         Ok(())
     }
@@ -1132,8 +1176,9 @@ impl Circulator {
             return Ok(false);
         }
 
-        if self.get_option_bool("hold_as_transit") &&
-            transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
+        if self.get_option_bool("hold_as_transit")
+            && transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF
+        {
             return Ok(false);
         }
 
@@ -1151,8 +1196,10 @@ impl Circulator {
             return Ok(false);
         }
 
-        let suppress_for_dest =
-            self.settings.get_value_at_org(setting, self.circ_lib)?.clone();
+        let suppress_for_dest = self
+            .settings
+            .get_value_at_org(setting, self.circ_lib)?
+            .clone();
         if suppress_for_dest.is_null() {
             return Ok(false);
         }
@@ -1170,5 +1217,8 @@ impl Circulator {
 
         Ok(true)
     }
-}
 
+    fn put_hold_on_shelf(&mut self) -> Result<(), String> {
+        todo!()
+    }
+}
