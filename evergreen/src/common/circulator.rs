@@ -63,6 +63,7 @@ pub struct Circulator {
     pub copy: Option<JsonValue>,
     pub copy_id: Option<i64>,
     pub circ: Option<JsonValue>,
+    pub hold: Option<JsonValue>,
     pub reservation: Option<JsonValue>,
     pub patron: Option<JsonValue>,
     pub transit: Option<JsonValue>,
@@ -72,6 +73,10 @@ pub struct Circulator {
     pub runtime_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
     pub circ_op: CircOp,
+
+    /// When true, stop further processing and exit.
+    /// This is not necessarily an error condition.
+    pub exit_early: bool,
 
     pub override_args: Option<Overrides>,
 
@@ -111,8 +116,8 @@ impl fmt::Display for Circulator {
 
         write!(
             f,
-            "Circulator action={} copy={} copy_status={} patron={}",
-            self.circ_op, copy_barcode, patron_barcode, copy_status
+            "Circulator action={} circ_lib={} copy={} copy_status={} patron={}",
+            self.circ_op, self.circ_lib, copy_barcode, patron_barcode, copy_status
         )
     }
 }
@@ -136,6 +141,7 @@ impl Circulator {
             circ_lib,
             events: Vec::new(),
             circ: None,
+            hold: None,
             reservation: None,
             copy: None,
             copy_id: None,
@@ -148,6 +154,7 @@ impl Circulator {
             is_override: false,
             override_args: None,
             failed_events: Vec::new(),
+            exit_early: false,
             circ_op: CircOp::Other,
         })
     }
@@ -208,10 +215,20 @@ impl Circulator {
         self.editor.rollback()
     }
 
-    /// Used for events that stop processing, i.e. cannot be overridden.
-    pub fn exit_now_on_event_code(&mut self, code: &str) -> Result<(), String> {
+    /// Used for Error events that stop processing, i.e. cannot be overridden.
+    pub fn exit_err_on_event_code(&mut self, code: &str) -> Result<(), String> {
         self.add_event_code(code);
         Err(format!("Bailing on event: {code}"))
+    }
+
+    /// Sets a final event and sets the exit_early flag.
+    ///
+    /// This is for non-Error events that occur when logic has
+    /// reached an endpoint that requires to further processing.
+    pub fn exit_ok_on_event(&mut self, evt: EgEvent) -> Result<(), String> {
+        self.exit_early = true;
+        self.add_event(evt);
+        Ok(())
     }
 
     /// Add a potentially overridable event to our events list (by code).
@@ -249,7 +266,7 @@ impl Circulator {
             if let Some(copy) = self.editor.retrieve_with_ops("acp", query, copy_flesh)? {
                 self.copy = Some(copy.to_owned());
             } else {
-                self.exit_now_on_event_code("ASSET_COPY_NOT_FOUND")?;
+                self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
             }
         } else if let Some(copy_barcode) = self.options.get("copy_barcode") {
             // Non-cataloged items are assumed to not exist.
@@ -266,7 +283,7 @@ impl Circulator {
                 {
                     self.copy = Some(copy.to_owned());
                 } else {
-                    self.exit_now_on_event_code("ASSET_COPY_NOT_FOUND")?;
+                    self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
                 }
             }
         }
@@ -658,7 +675,7 @@ impl Circulator {
             if let Some(patron) = self.editor.retrieve_with_ops("au", patron_id, flesh)? {
                 self.patron = Some(patron.to_owned());
             } else {
-                self.exit_now_on_event_code("ACTOR_USER_NOT_FOUND")?;
+                self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND")?;
             }
         } else if let Some(patron_barcode) = self.options.get("patron_barcode") {
             let query = json::object! {barcode: patron_barcode.clone()};
@@ -671,7 +688,7 @@ impl Circulator {
                 card["usr"] = patron["id"].clone(); // de-flesh card->user
                 patron["card"] = card; // flesh user->card
             } else {
-                self.exit_now_on_event_code("ACTOR_USER_NOT_FOUND")?;
+                self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND")?;
             }
         } else if let Some(ref copy) = self.copy {
             // See if we can find the circulation / patron related

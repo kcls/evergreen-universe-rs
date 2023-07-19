@@ -6,7 +6,6 @@ use crate::editor::Editor;
 use crate::settings::Settings;
 use crate::util;
 use crate::util::{json_bool, json_float, json_int};
-use chrono::prelude::Datelike;
 use chrono::{DateTime, Duration, FixedOffset, Local};
 use json::JsonValue;
 use std::cmp::Ordering;
@@ -553,7 +552,6 @@ pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> Result<(), 
         editor,
         resv_id,
         resv["end_time"].as_str().unwrap(),
-        json_int(&resv["current_resource"])?,
         json_int(&resv["pickup_lib"])?,
         json_float(&resv["fine_amount"])?,
         fine_interval,
@@ -572,7 +570,6 @@ pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> Result<(), 
         editor,
         circ_id,
         circ["due_date"].as_str().unwrap(),
-        json_int(&circ["target_copy"])?,
         json_int(&circ["circ_lib"])?,
         json_float(&circ["recurring_fine"])?,
         circ["fine_interval"].as_str().unwrap(),
@@ -586,7 +583,6 @@ pub fn generate_fines_for_xact(
     editor: &mut Editor,
     xact_id: i64,
     due_date: &str,
-    target_copy: i64,
     circ_lib: i64,
     mut recurring_fine: f64,
     fine_interval: &str,
@@ -809,9 +805,6 @@ pub fn extend_grace_period(
         // No extension configured.
         return Ok(grace_period);
     }
-
-    // Capture the original due date in epoch form.
-    let orig_due_epoch = due_date.timestamp();
 
     let extend_into_closed =
         json_bool(settings.get_value_at_org("circ.grace.extend.into_closed", context_org)?);

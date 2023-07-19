@@ -1,5 +1,4 @@
-use chrono::prelude::*;
-use chrono::{DateTime, Duration, FixedOffset, Local, Months, TimeZone};
+use chrono::{DateTime, Duration, FixedOffset, Local, Months};
 use chrono_tz::Tz;
 
 /// Turn an interval string into a number of seconds.

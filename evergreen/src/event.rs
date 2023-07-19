@@ -147,6 +147,9 @@ impl EgEvent {
     pub fn org(&self) -> &Option<i64> {
         &self.org
     }
+    pub fn set_org(&mut self, id: i64) {
+        self.org = Some(id);
+    }
 
     /// Parses a JsonValue and optionally returns an EgEvent.
     ///

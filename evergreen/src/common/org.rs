@@ -2,9 +2,8 @@ use crate::date;
 use crate::editor::Editor;
 use crate::util;
 use chrono::prelude::Datelike;
-use chrono::{DateTime, Duration, FixedOffset, Local};
+use chrono::{DateTime, Duration, FixedOffset};
 use json;
-use std::collections::HashSet;
 
 /// Apply a variety of DB transforms to an org unit and return
 /// the calculated org unit IDs.

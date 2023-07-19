@@ -44,16 +44,28 @@ impl Circulator {
         self.check_circ_deposit(false)?;
         self.try_override_events()?;
 
+        if self.exit_early {
+            return Ok(());
+        }
+
         if self.circ.is_some() {
             self.checkin_handle_circ()?;
-        } // todo
+        } else if self.transit.is_some() {
+            self.checkin_handle_transit()?;
+        } else {
+            todo!()
+        }
+
+        if self.exit_early {
+            return Ok(());
+        }
 
         Ok(())
     }
 
     fn basic_copy_checks(&mut self) -> Result<(), String> {
         if self.copy.is_none() {
-            self.exit_now_on_event_code("ASSET_COPY_NOT_FOUND")?;
+            self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
         }
 
         if json_bool(&self.copy()["deleted"]) {
@@ -652,6 +664,8 @@ impl Circulator {
             self.circ = Some(c);
         }
 
+        self.changes_applied = true;
+
         Ok(())
     }
 
@@ -823,7 +837,7 @@ impl Circulator {
         // Set the backdate hour and minute based on the hour/minute
         // of the original due date.
         let orig_date = date::parse_datetime(duedate)?;
-        let mut new_date = orig_date.clone();
+        let mut new_date = date::parse_datetime(backdate)?;
 
         new_date = new_date
             .with_hour(orig_date.hour())
@@ -1071,4 +1085,90 @@ impl Circulator {
 
         Ok(())
     }
+
+
+    /// Assumes self.transit is set
+    fn checkin_handle_transit(&mut self) -> Result<(), String> {
+        log::info!("{self} attempting to receive transit");
+
+        let suppress_transit = self.should_suppress_transit()?;
+
+        let transit = self.transit.as_ref().unwrap();
+        let transit_dest = json_int(&transit["dest"])?;
+        let transit_copy_status = json_int(&transit["copy_status"])?;
+
+        let hold_as_transit = self.get_option_bool("hold_as_transit")
+            && transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF;
+
+        if !suppress_transit && (transit_dest != self.circ_lib || hold_as_transit) {
+            // Item is in-transit to a different location OR
+            // we are captured holds as transits and don't need another one.
+            let transit_id = json_int(&transit["id"])?;
+
+            log::info!("{self}: Fowarding transit on copy which is destined
+                for a different location. transit={transit_id} destination={transit_dest}");
+
+            // Grab the hold transit if possible
+            if let Some(ht) = self.editor.retrieve("ahtc", transit_id)? {
+                self.hold = self.editor.retrieve("ahr", ht["hold"].clone())?;
+            }
+
+            let mut evt = EgEvent::new("ROUTE_ITEM");
+            evt.set_org(transit_dest);
+            return self.exit_ok_on_event(evt);
+        }
+
+        // TODO
+
+        Ok(())
+    }
+
+    fn should_suppress_transit(&mut self) -> Result<bool, String> {
+        let transit = self.transit.as_ref().unwrap();
+        let transit_dest = json_int(&transit["dest"])?;
+        let transit_copy_status = json_int(&transit["copy_status"])?;
+
+        if transit_dest == self.circ_lib {
+            return Ok(false);
+        }
+
+        if self.get_option_bool("hold_as_transit") &&
+            transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
+            return Ok(false);
+        }
+
+        let setting = if transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
+            "circ.transit.suppress_hold"
+        } else {
+            "circ.transit.suppress_non_hold"
+        };
+
+        // These value for these settings is opaque.  If a value is
+        // set (i.e. not null), then we only care of they match.
+        // Values are clone()ed to avoid parallel mutable borrows.
+        let suppress_for_circ = self.settings.get_value(setting)?.clone();
+        if suppress_for_circ.is_null() {
+            return Ok(false);
+        }
+
+        let suppress_for_dest =
+            self.settings.get_value_at_org(setting, self.circ_lib)?.clone();
+        if suppress_for_dest.is_null() {
+            return Ok(false);
+        }
+
+        // json::* knows if two JsonValue's are the same.
+        if suppress_for_circ != suppress_for_dest {
+            return Ok(false);
+        }
+
+        // Ok, we're suppressing the transit.
+
+        if transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
+            self.set_option_true("fake_hold_dest");
+        }
+
+        Ok(true)
+    }
 }
+
