@@ -642,23 +642,12 @@ impl Circulator {
 
         self.check_circ_deposit(true)?;
 
-        // Set xact_finish as needed and update the circ in the DB.
-        if let Some(sum) = self
-            .editor
-            .retrieve("mbts", self.circ.as_ref().unwrap()["id"].clone())?
-        {
-            let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
-            if json_float(&sum["balance_owed"])? == 0.0 {
-                circ["xact_finish"] = json::from("now");
-            } else {
-                circ["xact_finish"] = JsonValue::Null;
-            }
-        }
+        let circ_id = self.circ.as_ref().unwrap()["id"].clone();
 
-        self.editor.update(self.circ.as_ref().unwrap())?;
+        // Set/clear stop_fines as needed.
+        billing::check_open_xact(&mut self.editor, json_int(&circ_id)?)?;
 
         // Get a post-save version of the circ to pick up any in-DB changes.
-        let circ_id = self.circ.as_ref().unwrap()["id"].clone();
         if let Some(c) = self.editor.retrieve("circ", circ_id)? {
             self.circ = Some(c);
         }
@@ -834,7 +823,7 @@ impl Circulator {
         // Set the backdate hour and minute based on the hour/minute
         // of the original due date.
         let orig_date = date::parse_datetime(duedate)?;
-        let mut new_date = date::parse_datetime(backdate)?;
+        let mut new_date = orig_date.clone();
 
         new_date = new_date
             .with_hour(orig_date.hour())
@@ -850,7 +839,7 @@ impl Circulator {
         } else {
             self.options.insert(
                 "backdate".to_string(),
-                json::from(date::to_iso8601(&new_date)),
+                json::from(date::to_iso8601(&new_date.into())),
             );
         }
 
