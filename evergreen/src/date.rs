@@ -107,6 +107,12 @@ pub fn parse_datetime(dt: &str) -> Result<DateTime<FixedOffset>, String> {
 }
 
 /// Turn a DateTime into the kind of date string we like in these parts.
+/// ```
+/// use evergreen::date;
+/// use chrono::{DateTime, FixedOffset, Local};
+/// let dt: DateTime<FixedOffset> = "2023-07-11T12:00:00-0700".parse().unwrap();
+/// assert_eq!(date::to_iso8601(&dt), "2023-07-11T12:00:00-0700");
+/// ```
 pub fn to_iso8601(dt: &DateTime<FixedOffset>) -> String {
     dt.format("%FT%T%z").to_string()
 }
@@ -118,6 +124,19 @@ pub fn to_iso(dt: &DateTime<FixedOffset>) -> String {
 
 /// Translate a DateTime into the Local timezone while leaving the
 /// DateTime as a FixedOffset DateTime.
+/// ```
+/// use evergreen::date;
+/// use chrono::{DateTime, FixedOffset, Local};
+/// let dt: DateTime<FixedOffset> = "2023-07-11T12:00:00-0200".parse().unwrap();
+/// let dt2: DateTime<FixedOffset> = date::to_local_timezone_fixed(dt);
+///
+///
+/// assert_eq!(dt2.offset(), Local::now().offset());
+///
+/// // String output will vary by locale, but the dates will be equivalent.
+/// assert_eq!(dt, dt2);
+/// ```
+
 pub fn to_local_timezone_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
     let local: DateTime<Local> = dt.into();
 
@@ -133,6 +152,14 @@ pub fn to_local_timezone_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffse
 ///
 /// To apply a timezone to a Local or Utc value, just:
 /// set_timezone(local_date.into(), "America/New_York");
+///
+/// ```
+/// use evergreen::date;
+/// use chrono::{DateTime, FixedOffset};
+/// let dt: DateTime<FixedOffset> = "2023-07-11T12:00:00-0400".parse().unwrap();
+/// let dt = date::set_timezone(dt, "GMT").unwrap();
+/// assert_eq!(date::to_iso(&dt), "2023-07-11T16:00:00+0000");
+/// ```
 pub fn set_timezone(
     dt: DateTime<FixedOffset>,
     timezone: &str,
@@ -146,10 +173,14 @@ pub fn set_timezone(
         .parse()
         .or_else(|e| Err(format!("Cannot parse timezone: {timezone} {e}")))?;
 
-    // Apply the parsed timezone to the provided date.
-    dt.with_timezone(&tz);
+    let modified = dt.with_timezone(&tz);
 
-    Ok(dt)
+    let fixed: DateTime<FixedOffset> = match modified.format("%FT%T%z").to_string().parse() {
+        Ok(f) => f,
+        Err(e) => Err(format!("Cannot reconstruct date: {modified:?} : {e}"))?,
+    };
+
+    Ok(fixed)
 }
 
 
@@ -178,6 +209,7 @@ pub fn set_hms(
         None => Err(format!("Could not set time to {hours}:{minutes}:{seconds}"))?,
     };
 
+    // and_local_timezone() can return multiples in cases where it's ambiguous.
     let new_date: DateTime<FixedOffset> = match datetime.and_local_timezone(offset).single() {
         Some(d) => d,
         None => Err(format!("Error setting timezone for datetime {datetime:?}"))?,
