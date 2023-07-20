@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, FixedOffset, Local, Months};
+use chrono::{DateTime, Duration, FixedOffset, Local, Months, TimeZone};
 use chrono_tz::Tz;
 
 /// Turn an interval string into a number of seconds.
@@ -111,6 +111,11 @@ pub fn to_iso8601(dt: &DateTime<FixedOffset>) -> String {
     dt.format("%FT%T%z").to_string()
 }
 
+/// Shortcut for to_iso8601
+pub fn to_iso(dt: &DateTime<FixedOffset>) -> String {
+    dt.format("%FT%T%z").to_string()
+}
+
 /// Translate a DateTime into the Local timezone while leaving the
 /// DateTime as a FixedOffset DateTime.
 pub fn to_local_timezone_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
@@ -145,4 +150,38 @@ pub fn set_timezone(
     dt.with_timezone(&tz);
 
     Ok(dt)
+}
+
+
+/// Set the hour/minute/seconds on a DateTime, retaining the original date and timezone.
+///
+/// (There's gotta be a better way...)
+///
+/// ```
+/// use evergreen::date;
+/// use chrono::{DateTime, FixedOffset};
+/// let dt: DateTime<FixedOffset> = "2023-07-11T01:25:18-0400".parse().unwrap();
+/// let dt = date::set_hms(&dt, 23, 59, 59).unwrap();
+/// assert_eq!(date::to_iso(&dt), "2023-07-11T23:59:59-0400");
+/// ```
+pub fn set_hms(
+    date: &DateTime<FixedOffset>,
+    hours: u32,
+    minutes: u32,
+    seconds: u32
+) -> Result<DateTime<FixedOffset>, String> {
+
+    let offset = FixedOffset::from_offset(date.offset());
+
+    let datetime = match date.date_naive().and_hms_opt(hours, minutes, seconds) {
+        Some(dt) => dt,
+        None => Err(format!("Could not set time to {hours}:{minutes}:{seconds}"))?,
+    };
+
+    let new_date: DateTime<FixedOffset> = match datetime.and_local_timezone(offset).single() {
+        Some(d) => d,
+        None => Err(format!("Error setting timezone for datetime {datetime:?}"))?,
+    };
+
+    Ok(new_date)
 }
