@@ -1,9 +1,9 @@
 use crate::common::org;
 use crate::common::penalty;
+use crate::common::settings::Settings;
 use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
-use crate::settings::Settings;
 use crate::util;
 use crate::util::{json_bool, json_float, json_int};
 use chrono::{DateTime, Duration, FixedOffset, Local};
@@ -762,8 +762,8 @@ pub fn generate_fines_for_xact(
             billing_type: "Overdue materials",
             btype: C::BTYPE_OVERDUE_MATERIALS,
             amount: this_billing_amount / 100.0,
-            period_start: date::to_iso8601(&period_start),
-            period_end: date::to_iso8601(&period_end),
+            period_start: date::to_iso(&period_start),
+            period_end: date::to_iso(&period_end),
         };
 
         let bill = editor.idl().create_from("mb", bill)?;

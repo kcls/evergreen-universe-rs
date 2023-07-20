@@ -111,13 +111,8 @@ pub fn parse_datetime(dt: &str) -> Result<DateTime<FixedOffset>, String> {
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset, Local};
 /// let dt: DateTime<FixedOffset> = "2023-07-11T12:00:00-0700".parse().unwrap();
-/// assert_eq!(date::to_iso8601(&dt), "2023-07-11T12:00:00-0700");
+/// assert_eq!(date::to_iso(&dt), "2023-07-11T12:00:00-0700");
 /// ```
-pub fn to_iso8601(dt: &DateTime<FixedOffset>) -> String {
-    dt.format("%FT%T%z").to_string()
-}
-
-/// Shortcut for to_iso8601
 pub fn to_iso(dt: &DateTime<FixedOffset>) -> String {
     dt.format("%FT%T%z").to_string()
 }

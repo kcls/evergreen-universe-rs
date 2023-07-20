@@ -12,5 +12,4 @@ pub mod idldb;
 pub mod init;
 pub mod norm;
 pub mod samples;
-pub mod settings;
 pub mod util;

@@ -1,8 +1,8 @@
 use eg::common::circ;
 use eg::common::penalty;
 use eg::common::user;
+use eg::common::settings::Settings;
 use eg::editor::Editor;
-use eg::settings::Settings;
 use eg::util;
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;

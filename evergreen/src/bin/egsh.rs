@@ -14,7 +14,7 @@ use eg::event;
 use eg::idl;
 use eg::idldb;
 use eg::init;
-use eg::settings;
+use eg::common::settings;
 
 use eg::util;
 use evergreen as eg;

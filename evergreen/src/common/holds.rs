@@ -1,5 +1,5 @@
 use crate::editor::Editor;
-use crate::settings::Settings;
+use crate::common::settings::Settings;
 use crate::util::{json_bool, json_bool_op, json_int};
 use crate::common::org;
 use crate::date;
@@ -50,5 +50,5 @@ pub fn calc_hold_shelf_expire_time(
         start_time = date::set_hms(&open_on, 23, 59, 59)?;
     }
 
-    Ok(Some(date::to_iso8601(&start_time)))
+    Ok(Some(date::to_iso(&start_time)))
 }

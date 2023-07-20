@@ -114,7 +114,7 @@ pub fn next_open_date(
         // Open this day based on hours of operation.
         // See if any overlapping closings are configured instead.
 
-        let timestamp = date::to_iso8601(&date);
+        let timestamp = date::to_iso(&date);
         let query = json::object! {
             "org_unit": org_id,
             "close_start": {"<=": json::from(timestamp.clone())},

@@ -1,4 +1,5 @@
 use crate::common::billing;
+use crate::common::holds;
 use crate::common::circulator::{CircOp, Circulator};
 use crate::constants as C;
 use crate::date;
@@ -854,7 +855,7 @@ impl Circulator {
         } else {
             self.options.insert(
                 "backdate".to_string(),
-                json::from(date::to_iso8601(&new_date.into())),
+                json::from(date::to_iso(&new_date.into())),
             );
         }
 
@@ -1220,10 +1221,21 @@ impl Circulator {
         Ok(true)
     }
 
+    /// Set hold shelf values and update the hold.
     fn put_hold_on_shelf(&mut self) -> Result<(), String> {
         let hold = self.hold.as_mut().unwrap();
+        let hold_id = json_int(&hold["id"])?;
+
         hold["shelf_time"] = json::from("now");
         hold["current_shelf_lib"] = json::from(self.circ_lib);
-        todo!()
+
+        if let Some(date) = holds::calc_hold_shelf_expire_time(&mut self.editor, &hold, None)? {
+            hold["shelf_expire_time"] = json::from(date);
+        }
+
+        self.editor.update(&hold)?;
+        self.hold = self.editor.retrieve("ahr", hold_id)?;
+
+        Ok(())
     }
 }
