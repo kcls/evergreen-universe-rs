@@ -1,7 +1,7 @@
 use eg::common::circ;
 use eg::common::penalty;
-use eg::common::user;
 use eg::common::settings::Settings;
+use eg::common::user;
 use eg::editor::Editor;
 use eg::util;
 use evergreen as eg;

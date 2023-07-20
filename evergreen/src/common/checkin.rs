@@ -1,6 +1,6 @@
 use crate::common::billing;
-use crate::common::holds;
 use crate::common::circulator::{CircOp, Circulator};
+use crate::common::holds;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
@@ -40,7 +40,6 @@ impl Circulator {
         self.load_runtime_copy_alerts()?;
         self.check_copy_alerts()?;
 
-        // check_checkin_copy_status() // superseded by new copy alerts
         self.check_claims_returned();
         self.check_circ_deposit(false)?;
         self.try_override_events()?;
@@ -51,10 +50,14 @@ impl Circulator {
 
         if self.circ.is_some() {
             self.checkin_handle_circ()?;
+
         } else if self.transit.is_some() {
             self.checkin_handle_transit()?;
-        } else {
-            todo!()
+            self.checkin_handle_received_hold()?;
+
+        } else if self.copy_status() == C::COPY_STATUS_IN_TRANSIT {
+            log::warn!("{self} copy is in-transit but there is no transit");
+            self.reshelve_copy(true)?;
         }
 
         if self.exit_early {
@@ -463,22 +466,15 @@ impl Circulator {
             )?;
         }
 
-        // What hold are we on the shelf for?
-        let query = json::object! {
-            current_copy: copy_id,
-            capture_time: {"!=": JsonValue::Null},
-            fulfillment_time: JsonValue::Null,
-            cancel_time: JsonValue::Null,
+        let hold = match holds::captured_hold_for_copy(&mut self.editor, copy_id)? {
+            Some(h) => h,
+            None => {
+                log::warn!("{self} Copy on holds shelf but there is no hold");
+                self.reshelve_copy(false)?;
+                return Ok(false);
+            }
         };
 
-        let holds = self.editor.search("ahr", query)?;
-        if holds.len() == 0 {
-            log::warn!("{self} Copy on holds shelf but there is no hold");
-            self.reshelve_copy(false)?;
-            return Ok(false);
-        }
-
-        let hold = holds[0].to_owned();
         let pickup_lib = json_int(&hold["pickup_lib"])?;
 
         log::info!("{self} we found a captured, un-fulfilled hold");
@@ -632,7 +628,6 @@ impl Circulator {
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
                 circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
-
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -1103,9 +1098,7 @@ impl Circulator {
 
         if let Some(ht) = self.hold_transit.as_ref() {
             // A hold transit can have a null "hold" value if the linked
-            // hold was anonymized while in transit.  (Perl describes
-            // this scenario as a cancled hold, but I don't see why
-            // that would clear the transit.hold value).
+            // hold was anonymized while in transit.
             if !ht["hold"].is_null() {
                 self.hold = self.editor.retrieve("ahr", ht["hold"].clone())?;
             }
@@ -1140,13 +1133,10 @@ impl Circulator {
         // Apply the destination copy status.
         self.update_copy(json::object! {"status": transit_copy_status})?;
 
-        let mut is_hold = false;
         if self.hold.is_some() {
-            is_hold = true;
             self.put_hold_on_shelf()?;
         } else {
             self.hold_transit = None;
-            self.set_option_true("cancelled_hold_transit");
             self.reshelve_copy(true)?;
             self.clear_option("fake_hold_dest");
         }
@@ -1161,11 +1151,71 @@ impl Circulator {
 
         let mut evt = EgEvent::success();
         evt.set_payload(payload);
-        evt.set_is_hold(is_hold);
+        evt.set_is_hold(self.hold.is_some());
 
         self.add_event(evt);
 
         self.changes_applied = true;
+
+        Ok(())
+    }
+
+
+    /// This handles standard hold transits as well as items
+    /// that transited here w/o a hold transit yet are in
+    /// fact captured for a hold.
+    fn checkin_handle_received_hold(&mut self) -> Result<(), String> {
+        let copy = self.copy.as_ref().unwrap();
+
+        if self.hold_transit.is_none() &&
+            json_int(&copy["status"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
+            // No hold transit and not headed for the holds shelf.
+            return Ok(());
+        }
+
+        let mut alt_hold = None;
+        let hold = match self.hold.as_mut() {
+            Some(h) => h,
+            None => match holds::captured_hold_for_copy(&mut self.editor, self.copy_id.unwrap())? {
+                Some(h) => {
+                    alt_hold = Some(h);
+                    alt_hold.as_mut().unwrap()
+                }
+                None => {
+                    log::warn!("{self} item should be captured, but isn't, skipping");
+                    return Ok(());
+                }
+            }
+        };
+
+        if !hold["cancel_time"].is_null() || !hold["fulfillment_time"].is_null() {
+            // Hold cancled or filled mid-transit
+            self.reshelve_copy(false)?;
+            self.clear_option("fake_hold_dest");
+            return Ok(());
+        }
+
+        if hold["hold_type"].as_str().unwrap() == "R" { // hold_type required
+            self.update_copy(json::object! {status: C::COPY_STATUS_CATALOGING})?;
+            self.clear_option("fake_hold_dest");
+            // no further processing needed.
+            self.set_option_true("noop");
+
+            let hold = self.hold.as_mut().unwrap();
+            hold["fulfillment_time"] = json::from("now");
+            self.editor.update(&hold)?;
+
+            return Ok(());
+        }
+
+        if self.get_option_bool("fake_hold_dest") {
+            let hold = self.hold.as_mut().unwrap();
+            // Perl code does not update the hold in the database
+            // at this point.  Doing same.
+            hold["pickup_lib"] = json::from(self.circ_lib);
+
+            return Ok(());
+        }
 
         Ok(())
     }

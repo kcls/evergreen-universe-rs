@@ -8,13 +8,13 @@ use getopts;
 use rustyline;
 
 use eg::auth::AuthSession;
+use eg::common::settings;
 use eg::db::DatabaseConnection;
 use eg::editor;
 use eg::event;
 use eg::idl;
 use eg::idldb;
 use eg::init;
-use eg::common::settings;
 
 use eg::util;
 use evergreen as eg;

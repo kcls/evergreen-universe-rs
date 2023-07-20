@@ -1,7 +1,7 @@
 use crate::common::org;
+use crate::common::settings::Settings;
 use crate::editor::Editor;
 use crate::event::EgEvent;
-use crate::common::settings::Settings;
 use crate::util;
 use crate::util::{json_bool, json_bool_op, json_int};
 use json::JsonValue;
@@ -228,10 +228,16 @@ impl Circulator {
     /// This is for non-Error events that occur when logic has
     /// reached an endpoint that requires to further processing.
     pub fn exit_ok_on_event(&mut self, evt: EgEvent) -> Result<(), String> {
-        self.exit_early = true;
         self.add_event(evt);
+        self.exit_ok()
+    }
+
+    /// Exit now without adding any additional events.
+    pub fn exit_ok(&mut self) -> Result<(), String> {
+        self.exit_early = true;
         Ok(())
     }
+
 
     /// Add a potentially overridable event to our events list (by code).
     pub fn add_event_code(&mut self, code: &str) {

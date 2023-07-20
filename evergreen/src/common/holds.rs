@@ -1,10 +1,10 @@
-use crate::editor::Editor;
-use crate::common::settings::Settings;
-use crate::util::{json_bool, json_bool_op, json_int};
 use crate::common::org;
+use crate::common::settings::Settings;
 use crate::date;
+use crate::editor::Editor;
+use crate::util::{json_bool, json_bool_op, json_int};
+use chrono::Duration;
 use json::JsonValue;
-use chrono::{Duration};
 /*
 use crate::common::org;
 use crate::event::EgEvent;
@@ -19,14 +19,12 @@ pub fn calc_hold_shelf_expire_time(
     editor: &mut Editor,
     hold: &JsonValue,
     start_time: Option<&str>,
-) -> Result<Option<String>, String>  {
+) -> Result<Option<String>, String> {
     let pickup_lib = json_int(&hold["pickup_lib"])?;
 
     let mut settings = Settings::new(&editor);
-    let interval = settings.get_value_at_org(
-        "circ.holds.default_shelf_expire_interval",
-        pickup_lib,
-    )?;
+    let interval =
+        settings.get_value_at_org("circ.holds.default_shelf_expire_interval", pickup_lib)?;
 
     let interval = match interval.as_str() {
         Some(i) => i,
@@ -52,3 +50,21 @@ pub fn calc_hold_shelf_expire_time(
 
     Ok(Some(date::to_iso(&start_time)))
 }
+
+/// Returns the captured, unfulfilled, uncanceled hold that
+/// targets the provided copy.
+pub fn captured_hold_for_copy(
+    editor: &mut Editor,
+    copy_id: i64
+) -> Result<Option<JsonValue>, String> {
+
+    let query = json::object! {
+        current_copy: copy_id,
+        capture_time: {"!=": JsonValue::Null},
+        fulfillment_time: JsonValue::Null,
+        cancel_time: JsonValue::Null,
+    };
+
+    Ok(editor.search("ahr", query)?.first().map(|h| h.to_owned()))
+}
+

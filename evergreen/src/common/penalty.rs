@@ -1,7 +1,7 @@
 //! Standing penalty utility functions
+use crate::common::settings::Settings;
 use crate::common::trigger;
 use crate::editor::Editor;
-use crate::common::settings::Settings;
 use crate::util;
 use json::JsonValue;
 

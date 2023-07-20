@@ -178,7 +178,6 @@ pub fn set_timezone(
     Ok(fixed)
 }
 
-
 /// Set the hour/minute/seconds on a DateTime, retaining the original date and timezone.
 ///
 /// (There's gotta be a better way...)
@@ -194,9 +193,8 @@ pub fn set_hms(
     date: &DateTime<FixedOffset>,
     hours: u32,
     minutes: u32,
-    seconds: u32
+    seconds: u32,
 ) -> Result<DateTime<FixedOffset>, String> {
-
     let offset = FixedOffset::from_offset(date.offset());
 
     let datetime = match date.date_naive().and_hms_opt(hours, minutes, seconds) {
