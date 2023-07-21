@@ -3,6 +3,7 @@ use crate::common::circulator::{CircOp, Circulator};
 use crate::common::holds;
 use crate::constants as C;
 use crate::date;
+use crate::error::EgError;
 use crate::event::EgEvent;
 use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
@@ -16,7 +17,7 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
 
 /// Checkin
 impl Circulator {
-    pub fn checkin(&mut self) -> Result<(), String> {
+    pub fn checkin(&mut self) -> Result<(), EgError> {
         self.circ_op = CircOp::Checkin;
 
         // Pre-cache some setting values.
@@ -50,11 +51,9 @@ impl Circulator {
 
         if self.circ.is_some() {
             self.checkin_handle_circ()?;
-
         } else if self.transit.is_some() {
             self.checkin_handle_transit()?;
             self.checkin_handle_received_hold()?;
-
         } else if self.copy_status() == C::COPY_STATUS_IN_TRANSIT {
             log::warn!("{self} copy is in-transit but there is no transit");
             self.reshelve_copy(true)?;
@@ -70,10 +69,9 @@ impl Circulator {
             return Ok(());
         }
 
-
-       // Circulations and transits are now closed where necessary.
-       // Now see if this copy can fulfill a hold or needs to be
-       // routed to a different location.
+        // Circulations and transits are now closed where necessary.
+        // Now see if this copy can fulfill a hold or needs to be
+        // routed to a different location.
 
         let mut item_is_needed = false;
         if self.get_option_bool("noop") {
@@ -90,7 +88,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn basic_copy_checks(&mut self) -> Result<(), String> {
+    fn basic_copy_checks(&mut self) -> Result<(), EgError> {
         if self.copy.is_none() {
             self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
         }
@@ -106,7 +104,7 @@ impl Circulator {
 
     /// Load the open transit and make sure our copy is in the right
     /// status if there's a matching transit.
-    fn fix_broken_transit_status(&mut self) -> Result<(), String> {
+    fn fix_broken_transit_status(&mut self) -> Result<(), EgError> {
         let query = json::object! {
             target_copy: self.copy()["id"].clone(),
             dest_recv_time: JsonValue::Null,
@@ -134,7 +132,7 @@ impl Circulator {
     /// If a copy goes into transit and is then checked in before the
     /// transit checkin interval has expired, push an event onto the
     /// overridable events list.
-    fn check_transit_checkin_interval(&mut self) -> Result<(), String> {
+    fn check_transit_checkin_interval(&mut self) -> Result<(), EgError> {
         if self.copy_status() != C::COPY_STATUS_IN_TRANSIT {
             // We only care about in-transit items.
             return Ok(());
@@ -184,7 +182,7 @@ impl Circulator {
     /// a target.  Useful if the copy is going from a non-holdable
     /// to a holdable status and the hold targeter may not run
     /// until, say, overnight.
-    fn checkin_retarget_holds(&mut self) -> Result<(), String> {
+    fn checkin_retarget_holds(&mut self) -> Result<(), EgError> {
         let retarget_mode = match self.options.get("retarget_mode") {
             Some(r) => match r.as_str() {
                 Some(s) => s,
@@ -351,7 +349,7 @@ impl Circulator {
 
     /// If have both an open circulation and an open transit,
     /// cancel the transit.
-    fn cancel_transit_if_circ_exists(&mut self) -> Result<(), String> {
+    fn cancel_transit_if_circ_exists(&mut self) -> Result<(), EgError> {
         if self.circ.is_none() {
             return Ok(());
         }
@@ -375,7 +373,7 @@ impl Circulator {
 
     /// Decides if we need to avoid certain LOST / LO processing for
     /// transactions that have a zero balance.
-    fn set_dont_change_lost_zero(&mut self) -> Result<(), String> {
+    fn set_dont_change_lost_zero(&mut self) -> Result<(), EgError> {
         match self.copy_status() {
             C::COPY_STATUS_LOST | C::COPY_STATUS_LOST_AND_PAID | C::COPY_STATUS_LONG_OVERDUE => {
                 // Found a copy me may want to work on,
@@ -411,7 +409,7 @@ impl Circulator {
     }
 
     /// Determines of our copy is eligible for floating.
-    fn set_can_float(&mut self) -> Result<(), String> {
+    fn set_can_float(&mut self) -> Result<(), EgError> {
         let float_id = &self.copy()["floating"];
 
         if float_id.is_null() {
@@ -441,7 +439,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn do_inventory_update(&mut self) -> Result<(), String> {
+    fn do_inventory_update(&mut self) -> Result<(), EgError> {
         if !self.get_option_bool("do_inventory_update") {
             return Ok(());
         }
@@ -460,10 +458,12 @@ impl Circulator {
             copy: self.copy()["id"].clone(),
         };
 
-        self.editor.create(&aci).map(|_| ()) // don't need the result.
+        self.editor.create(&aci)?;
+
+        Ok(())
     }
 
-    fn check_is_on_holds_shelf(&mut self) -> Result<bool, String> {
+    fn check_is_on_holds_shelf(&mut self) -> Result<bool, EgError> {
         if self.copy_status() != C::COPY_STATUS_ON_HOLDS_SHELF {
             return Ok(false);
         }
@@ -535,7 +535,7 @@ impl Circulator {
         Ok(false)
     }
 
-    fn reshelve_copy(&mut self, force: bool) -> Result<(), String> {
+    fn reshelve_copy(&mut self, force: bool) -> Result<(), EgError> {
         let force = force || self.get_option_bool("force");
 
         let status = self.copy_status();
@@ -567,7 +567,7 @@ impl Circulator {
         }
     }
 
-    fn check_circ_deposit(&mut self, void: bool) -> Result<(), String> {
+    fn check_circ_deposit(&mut self, void: bool) -> Result<(), EgError> {
         let circ_id = match self.circ.as_ref() {
             Some(c) => c["id"].clone(),
             None => return Ok(()),
@@ -600,7 +600,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn checkin_handle_circ(&mut self) -> Result<(), String> {
+    fn checkin_handle_circ(&mut self) -> Result<(), EgError> {
         if self.get_option_bool("claims_never_checked_out") {
             let xact_start = &self.circ.as_ref().unwrap()["xact_start"];
             self.options
@@ -684,7 +684,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn checkin_handle_lost(&mut self) -> Result<(), String> {
+    fn checkin_handle_lost(&mut self) -> Result<(), EgError> {
         log::info!("{self} processing LOST checkin...");
 
         let billing_options = json::object! {
@@ -705,7 +705,7 @@ impl Circulator {
         )
     }
 
-    fn checkin_handle_long_overdue(&mut self) -> Result<(), String> {
+    fn checkin_handle_long_overdue(&mut self) -> Result<(), EgError> {
         let billing_options = json::object! {
             is_longoverdue: true,
             ous_void_item_cost: "circ.void_longoverdue_on_checkin",
@@ -730,7 +730,7 @@ impl Circulator {
         ous_max_return: &str,
         ous_immediately_available: &str,
         ous_use_last_activity: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), EgError> {
         // Lost / Long-Overdue settings are based on the copy circ lib.
         let copy_circ_lib = self.copy_circ_lib();
         let max_return = self
@@ -800,7 +800,7 @@ impl Circulator {
     fn circ_last_billing_activity(
         &mut self,
         maybe_setting: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<String, EgError> {
         let copy_circ_lib = self.copy_circ_lib();
         let circ = self.circ.as_ref().unwrap();
 
@@ -834,7 +834,7 @@ impl Circulator {
     /// Compiles the exact backdate value.
     ///
     /// Assumes circ and options.backdate are set.
-    fn checkin_compile_backdate(&mut self) -> Result<(), String> {
+    fn checkin_compile_backdate(&mut self) -> Result<(), EgError> {
         let duedate = match self.circ.as_ref() {
             Some(circ) => circ["due_date"]
                 .as_str()
@@ -875,7 +875,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn handle_checkin_fines(&mut self) -> Result<(), String> {
+    fn handle_checkin_fines(&mut self) -> Result<(), EgError> {
         let copy_circ_lib = self.copy_circ_lib();
 
         if let Some(ops) = self.options.get("lost_or_lo_billing_options") {
@@ -922,7 +922,7 @@ impl Circulator {
 
         let ops = match self.options.get("lost_or_lo_billing_options") {
             Some(o) => o,
-            None => return Err(format!("Cannot handle lost/lo billing without options")),
+            None => Err(format!("Cannot handle lost/lo billing without options"))?,
         };
 
         // below was previously called checkin_handle_lost_or_lo_now_found()
@@ -986,7 +986,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn set_circ_stop_fines(&mut self) -> Result<(), String> {
+    fn set_circ_stop_fines(&mut self) -> Result<(), EgError> {
         let circ = self.circ.as_ref().unwrap();
 
         if !circ["stop_fines"].is_null() {
@@ -1026,7 +1026,7 @@ impl Circulator {
     fn checkin_handle_lost_or_lo_now_found_restore_od(
         &mut self,
         is_longoverdue: bool,
-    ) -> Result<(), String> {
+    ) -> Result<(), EgError> {
         let circ = self.circ.as_ref().unwrap();
         let circ_id = json_int(&circ["id"])?;
 
@@ -1102,7 +1102,7 @@ impl Circulator {
     }
 
     /// Assumes self.transit is set
-    fn checkin_handle_transit(&mut self) -> Result<(), String> {
+    fn checkin_handle_transit(&mut self) -> Result<(), EgError> {
         log::info!("{self} attempting to receive transit");
 
         let suppress_transit = self.should_suppress_transit()?;
@@ -1176,15 +1176,15 @@ impl Circulator {
         Ok(())
     }
 
-
     /// This handles standard hold transits as well as items
     /// that transited here w/o a hold transit yet are in
     /// fact captured for a hold.
-    fn checkin_handle_received_hold(&mut self) -> Result<(), String> {
+    fn checkin_handle_received_hold(&mut self) -> Result<(), EgError> {
         let copy = self.copy.as_ref().unwrap();
 
-        if self.hold_transit.is_none() &&
-            json_int(&copy["status"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
+        if self.hold_transit.is_none()
+            && json_int(&copy["status"])? != C::COPY_STATUS_ON_HOLDS_SHELF
+        {
             // No hold transit and not headed for the holds shelf.
             return Ok(());
         }
@@ -1201,7 +1201,7 @@ impl Circulator {
                     log::warn!("{self} item should be captured, but isn't, skipping");
                     return Ok(());
                 }
-            }
+            },
         };
 
         if !hold["cancel_time"].is_null() || !hold["fulfillment_time"].is_null() {
@@ -1211,7 +1211,8 @@ impl Circulator {
             return Ok(());
         }
 
-        if hold["hold_type"].as_str().unwrap() == "R" { // hold_type required
+        if hold["hold_type"].as_str().unwrap() == "R" {
+            // hold_type required
             self.update_copy(json::object! {status: C::COPY_STATUS_CATALOGING})?;
             self.clear_option("fake_hold_dest");
             // no further processing needed.
@@ -1236,7 +1237,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn should_suppress_transit(&mut self) -> Result<bool, String> {
+    fn should_suppress_transit(&mut self) -> Result<bool, EgError> {
         let transit = self.transit.as_ref().unwrap();
         let transit_dest = json_int(&transit["dest"])?;
         let transit_copy_status = json_int(&transit["copy_status"])?;
@@ -1288,7 +1289,7 @@ impl Circulator {
     }
 
     /// Set hold shelf values and update the hold.
-    fn put_hold_on_shelf(&mut self) -> Result<(), String> {
+    fn put_hold_on_shelf(&mut self) -> Result<(), EgError> {
         let hold = self.hold.as_mut().unwrap();
         let hold_id = json_int(&hold["id"])?;
 
@@ -1305,7 +1306,7 @@ impl Circulator {
         Ok(())
     }
 
-    fn try_to_capture(&mut self) -> Result<bool, String> {
+    fn try_to_capture(&mut self) -> Result<bool, EgError> {
         let mut needed = false;
 
         if self.get_option_bool("remote_hold") {
@@ -1340,11 +1341,10 @@ impl Circulator {
         }
         */
 
-
-       Ok(needed)
+        Ok(needed)
     }
 
-    fn attempt_checkin_hold_capture(&mut self) -> Result<bool, String> {
+    fn attempt_checkin_hold_capture(&mut self) -> Result<bool, EgError> {
         if let Some(value) = self.options.get("capture") {
             if let Some(capture) = value.as_str() {
                 if capture == "nocapture" {
@@ -1353,8 +1353,8 @@ impl Circulator {
             }
         }
 
-        let (mut maybe_hold, retarget) = holds::find_nearest_permitted_hold(
-            &mut self.editor, self.copy_id.unwrap(), false)?;
+        let (mut maybe_hold, retarget) =
+            holds::find_nearest_permitted_hold(&mut self.editor, self.copy_id.unwrap(), false)?;
 
         let mut hold = match maybe_hold {
             Some(h) => h,

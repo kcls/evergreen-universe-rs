@@ -528,7 +528,10 @@ impl Session {
         if !hold["current_copy"].is_null() {
             // We have a captured copy.  Use it.
             let copy_id = eg::util::json_int(&hold["current_copy"])?;
-            return self.editor_mut().retrieve("acp", copy_id);
+            return self
+                .editor_mut()
+                .retrieve("acp", copy_id)
+                .map_err(|e| e.to_string());
         }
 
         let hold_type = hold["hold_type"].as_str().unwrap(); // required
@@ -536,7 +539,10 @@ impl Session {
 
         if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
             // These are all copy-level hold types
-            return self.editor_mut().retrieve("acp", hold_target);
+            return self
+                .editor_mut()
+                .retrieve("acp", hold_target)
+                .map_err(|e| e.to_string());
         }
 
         if hold_type.eq("V") {
@@ -569,7 +575,10 @@ impl Session {
         let copy_id_hashes = self.editor_mut().json_query(query)?;
         if copy_id_hashes.len() > 0 {
             let copy_id = eg::util::json_int(&copy_id_hashes[0]["id"])?;
-            return self.editor_mut().retrieve("acp", copy_id);
+            return self
+                .editor_mut()
+                .retrieve("acp", copy_id)
+                .map_err(|e| e.to_string());
         }
 
         Ok(None)
@@ -646,7 +655,9 @@ impl Session {
             ops["offset"] = json::from(sum_ops.offset());
         }
 
-        self.editor_mut().search_with_ops("mbts", search, ops)
+        self.editor_mut()
+            .search_with_ops("mbts", search, ops)
+            .map_err(|e| e.to_string())
     }
 
     fn set_patron_hold_ids(
@@ -814,7 +825,9 @@ impl Session {
             }
         };
 
-        self.editor_mut().json_query(search)
+        self.editor_mut()
+            .json_query(search)
+            .map_err(|e| e.to_string())
     }
 
     fn get_user(&mut self, barcode: &str) -> Result<Option<JsonValue>, String> {

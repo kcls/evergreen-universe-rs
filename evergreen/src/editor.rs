@@ -1,3 +1,4 @@
+use crate::error::EgError;
 use crate::event::EgEvent;
 use crate::idl;
 use crate::util;
@@ -134,7 +135,7 @@ impl Editor {
     ///
     /// Update our "requestor" object to match the user object linked
     /// to the authtoken in the cache.
-    pub fn checkauth(&mut self) -> Result<bool, String> {
+    pub fn checkauth(&mut self) -> Result<bool, EgError> {
         let token = match self.authtoken() {
             Some(t) => t,
             None => {
@@ -182,7 +183,7 @@ impl Editor {
     }
 
     /// Set the authtoken value and verify the authtoken is valid
-    pub fn apply_authtoken(&mut self, token: &str) -> Result<bool, String> {
+    pub fn apply_authtoken(&mut self, token: &str) -> Result<bool, EgError> {
         self.set_authtoken(token);
         self.checkauth()
     }
@@ -223,11 +224,11 @@ impl Editor {
     }
 
     /// Returns Err if no requestor value is set.
-    pub fn has_requestor(&self) -> Result<(), String> {
+    pub fn has_requestor(&self) -> Result<(), EgError> {
         self.requestor
             .as_ref()
             .map(|_| ())
-            .ok_or(format!("Editor requestor is unset"))
+            .ok_or(format!("Editor requestor is unset").into())
     }
 
     pub fn set_requestor(&mut self, r: &json::JsonValue) {
@@ -255,22 +256,22 @@ impl Editor {
     /// and return a stringified variant of the last event.
     ///
     /// The raw event can still be accessed via self.last_event().
-    pub fn die_event(&mut self) -> Result<(), String> {
+    pub fn die_event(&mut self) -> Result<(), EgError> {
         self.rollback()?;
         Err(match self.last_event() {
-            Some(e) => format!("{e}"),
-            None => String::from("NO_EVENT"),
+            Some(e) => EgError::Event(e.clone()),
+            None => EgError::Message("Die-Event Called With No Event".to_string()),
         })
     }
 
     /// Rollback the active transaction and disconnect from the worker.
-    pub fn rollback(&mut self) -> Result<(), String> {
+    pub fn rollback(&mut self) -> Result<(), EgError> {
         self.xact_rollback()?;
         self.disconnect()
     }
 
     /// Commit the active transaction and disconnect from the worker.
-    pub fn commit(&mut self) -> Result<(), String> {
+    pub fn commit(&mut self) -> Result<(), EgError> {
         self.xact_commit()?;
         self.disconnect()
     }
@@ -292,7 +293,7 @@ impl Editor {
     /// Rollback a database transaction.
     ///
     /// This variation does not send a DISCONNECT to the connected worker.
-    pub fn xact_rollback(&mut self) -> Result<(), String> {
+    pub fn xact_rollback(&mut self) -> Result<(), EgError> {
         if self.in_transaction() {
             self.request_np(&self.app_method("transaction.rollback"))?;
         }
@@ -305,7 +306,7 @@ impl Editor {
     }
 
     /// Start a new transaction, connecting to a worker if necessary.
-    pub fn xact_begin(&mut self) -> Result<(), String> {
+    pub fn xact_begin(&mut self) -> Result<(), EgError> {
         self.connect()?;
         if let Some(id) = self.request_np(&self.app_method("transaction.begin"))? {
             if let Some(id_str) = id.as_str() {
@@ -319,7 +320,7 @@ impl Editor {
     /// Commit a database transaction.
     ///
     /// This variation does not send a DISCONNECT to the connected worker.
-    pub fn xact_commit(&mut self) -> Result<(), String> {
+    pub fn xact_commit(&mut self) -> Result<(), EgError> {
         if self.in_transaction() {
             // We can take() the xact_id here because we're clearing
             // it below anyway.  This avoids a .to_string() as a way
@@ -337,7 +338,7 @@ impl Editor {
     }
 
     /// End the stateful conversation with the remote worker.
-    pub fn disconnect(&mut self) -> Result<(), String> {
+    pub fn disconnect(&mut self) -> Result<(), EgError> {
         self.xact_rollback()?;
 
         if let Some(ref ses) = self.session {
@@ -348,20 +349,21 @@ impl Editor {
     }
 
     /// Start a stateful conversation with a worker.
-    pub fn connect(&mut self) -> Result<(), String> {
+    pub fn connect(&mut self) -> Result<(), EgError> {
         if let Some(ref ses) = self.session {
             if ses.connected() {
                 // Already connected.
                 return Ok(());
             }
         }
-        self.session().connect()
+        self.session().connect()?;
+        Ok(())
     }
 
     /// Send an API request without any parameters.
     ///
     /// See request() for more.
-    fn request_np(&mut self, method: &str) -> Result<Option<json::JsonValue>, String> {
+    fn request_np(&mut self, method: &str) -> Result<Option<json::JsonValue>, EgError> {
         let params: Vec<json::JsonValue> = Vec::new();
         self.request(method, params)
     }
@@ -385,7 +387,7 @@ impl Editor {
         )
     }
 
-    fn args_to_string(&self, params: &ApiParams) -> Result<String, String> {
+    fn args_to_string(&self, params: &ApiParams) -> Result<String, EgError> {
         let mut buf = String::new();
         for p in params.params().iter() {
             if self.idl.is_idl_object(p) {
@@ -407,7 +409,7 @@ impl Editor {
     /// Send an API request to our service/worker with parameters.
     ///
     /// All requests return at most a single response.
-    fn request<T>(&mut self, method: &str, params: T) -> Result<Option<json::JsonValue>, String>
+    fn request<T>(&mut self, method: &str, params: T) -> Result<Option<json::JsonValue>, EgError>
     where
         T: Into<ApiParams>,
     {
@@ -423,9 +425,9 @@ impl Editor {
         if method.contains("create") || method.contains("update") || method.contains("delete") {
             if !self.has_xact_id() {
                 self.disconnect()?;
-                return Err(format!(
+                Err(format!(
                     "Attempt to update DB while not in a transaction : {method}"
-                ));
+                ))?;
             }
 
             // Write calls also get logged to the activity log
@@ -443,6 +445,7 @@ impl Editor {
         })?;
 
         req.first_with_timeout(self.timeout)
+            .map_err(|e| EgError::Message(e))
     }
 
     /// Returns our mutable session, creating a new one if needed.
@@ -455,26 +458,26 @@ impl Editor {
     }
 
     /// Get an IDL class by class name.
-    fn get_class(&self, idlclass: &str) -> Result<&idl::Class, String> {
+    fn get_class(&self, idlclass: &str) -> Result<&idl::Class, EgError> {
         match self.idl.classes().get(idlclass) {
             Some(c) => Ok(c),
-            None => Err(format!("No such IDL class: {idlclass}")),
+            None => Err(format!("No such IDL class: {idlclass}").into()),
         }
     }
 
     /// Returns the fieldmapper value for the IDL class, replacing
     /// "::" with "." so the value matches how it's formatted in
     /// cstore, etc. API calls.
-    fn get_fieldmapper(&self, idlclass: &str) -> Result<String, String> {
+    fn get_fieldmapper(&self, idlclass: &str) -> Result<String, EgError> {
         let class = self.get_class(idlclass)?;
 
         match class.fieldmapper() {
             Some(s) => Ok(s.replace("::", ".")),
-            None => Err(format!("IDL class has no fieldmapper value: {idlclass}")),
+            None => Err(format!("IDL class has no fieldmapper value: {idlclass}").into()),
         }
     }
 
-    pub fn json_query(&mut self, query: json::JsonValue) -> Result<Vec<json::JsonValue>, String> {
+    pub fn json_query(&mut self, query: json::JsonValue) -> Result<Vec<json::JsonValue>, EgError> {
         self.json_query_with_ops(query, json::JsonValue::Null)
     }
 
@@ -482,7 +485,7 @@ impl Editor {
         &mut self,
         query: json::JsonValue,
         ops: json::JsonValue,
-    ) -> Result<Vec<json::JsonValue>, String> {
+    ) -> Result<Vec<json::JsonValue>, EgError> {
         let method = self.app_method(&format!("json_query.atomic"));
 
         if let Some(jvec) = self.request(&method, vec![query, ops])? {
@@ -491,10 +494,10 @@ impl Editor {
             }
         }
 
-        Err(format!("Unexpected response to method {method}"))
+        Err(format!("Unexpected response to method {method}").into())
     }
 
-    pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> Result<Option<json::JsonValue>, String>
+    pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> Result<Option<json::JsonValue>, EgError>
     where
         T: Into<ApiParams>,
     {
@@ -506,7 +509,7 @@ impl Editor {
         idlclass: &str,
         id: T,
         ops: json::JsonValue, // flesh, etc.
-    ) -> Result<Option<json::JsonValue>, String>
+    ) -> Result<Option<json::JsonValue>, EgError>
     where
         T: Into<ApiParams>,
     {
@@ -531,7 +534,7 @@ impl Editor {
         &mut self,
         idlclass: &str,
         query: json::JsonValue,
-    ) -> Result<Vec<json::JsonValue>, String> {
+    ) -> Result<Vec<json::JsonValue>, EgError> {
         self.search_with_ops(idlclass, query, json::JsonValue::Null)
     }
 
@@ -540,7 +543,7 @@ impl Editor {
         idlclass: &str,
         query: json::JsonValue,
         ops: json::JsonValue, // flesh, etc.
-    ) -> Result<Vec<json::JsonValue>, String> {
+    ) -> Result<Vec<json::JsonValue>, EgError> {
         let fmapper = self.get_fieldmapper(idlclass)?;
 
         let method = self.app_method(&format!("direct.{fmapper}.search.atomic"));
@@ -551,10 +554,10 @@ impl Editor {
             }
         }
 
-        Err(format!("Unexpected response to method {method}"))
+        Err(format!("Unexpected response to method {method}").into())
     }
 
-    pub fn update(&mut self, object: &json::JsonValue) -> Result<(), String> {
+    pub fn update(&mut self, object: &json::JsonValue) -> Result<(), EgError> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for UPDATE"))?;
         }
@@ -580,7 +583,7 @@ impl Editor {
     }
 
     /// Returns the newly created object.
-    pub fn create(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, String> {
+    pub fn create(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, EgError> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for CREATE"))?;
         }
@@ -605,14 +608,14 @@ impl Editor {
 
             Ok(resp)
         } else {
-            Err(format!("Create returned no response"))
+            Err(format!("Create returned no response").into())
         }
     }
 
     /// Delete an IDL Object.
     ///
     /// Response is the PKEY value as a JsonValue.
-    pub fn delete(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, String> {
+    pub fn delete(&mut self, object: &json::JsonValue) -> Result<json::JsonValue, EgError> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for DELETE"))?;
         }
@@ -629,13 +632,13 @@ impl Editor {
             self.has_pending_changes = true;
             Ok(resp)
         } else {
-            Err(format!("Create returned no response"))
+            Err(format!("Create returned no response").into())
         }
     }
 
     /// Returns Result of true if our authenticated requestor has the
     /// specified permission.
-    pub fn allowed(&mut self, perm: &str, org_id_op: Option<i64>) -> Result<bool, String> {
+    pub fn allowed(&mut self, perm: &str, org_id_op: Option<i64>) -> Result<bool, EgError> {
         let user_id = match self.requestor() {
             Some(r) => util::json_int(&r["id"])?,
             None => return Ok(false),

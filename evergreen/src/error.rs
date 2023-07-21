@@ -1,13 +1,13 @@
 use crate::event::EgEvent;
 use std::error::Error;
 use std::fmt;
-use std::result::Result;
-
-pub type EgResult<T> = Result<T, EgError>;
 
 #[derive(Debug, Clone)]
 pub enum EgError {
     /// General error/failure messages that is not linked to an EgEvent.
+    ///
+    /// For one thing, this is useful for encapsulating OpenSRF's generic
+    /// fatal error strings.
     Message(String),
     Event(EgEvent),
 }
@@ -29,6 +29,7 @@ impl fmt::Display for EgError {
     }
 }
 
+/// Useful for translating generic OSRF Err(String)'s into EgError's
 impl From<String> for EgError {
     fn from(msg: String) -> Self {
         EgError::Message(msg)
@@ -38,6 +39,15 @@ impl From<String> for EgError {
 impl From<&str> for EgError {
     fn from(msg: &str) -> Self {
         EgError::Message(msg.to_string())
+    }
+}
+
+impl From<EgError> for String {
+    fn from(err: EgError) -> Self {
+        match err {
+            EgError::Message(m) => m.to_string(),
+            EgError::Event(e) => e.to_string(),
+        }
     }
 }
 
@@ -52,11 +62,3 @@ impl From<&EgEvent> for EgError {
         EgError::Event(evt.clone())
     }
 }
-
-impl<T> From<EgError> for EgResult<T> {
-    fn from(err: EgError) -> Self {
-        EgResult::Err(err)
-    }
-}
-
-

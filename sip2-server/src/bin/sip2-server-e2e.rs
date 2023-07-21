@@ -169,7 +169,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
         .create_default_acp(e, eg::util::json_int(&acn["id"])?)?;
     tester.samples.create_default_au(e)?;
 
-    e.commit()
+    e.commit().map_err(|e| e.to_string())
 }
 
 fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {

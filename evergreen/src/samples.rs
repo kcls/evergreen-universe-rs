@@ -1,6 +1,7 @@
 use crate::constants as C;
 /// Evergreen sample data tools
 use crate::editor::Editor;
+use crate::error::EgError;
 use json::JsonValue;
 
 pub const ACN_CREATOR: i64 = 1;
@@ -47,7 +48,7 @@ impl SampleData {
         }
     }
 
-    pub fn create_default_acn(&self, e: &mut Editor) -> Result<JsonValue, String> {
+    pub fn create_default_acn(&self, e: &mut Editor) -> Result<JsonValue, EgError> {
         let seed = json::object! {
             creator: self.acn_creator,
             editor: self.acn_creator,
@@ -62,7 +63,7 @@ impl SampleData {
         e.create(&acn)
     }
 
-    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> Result<JsonValue, String> {
+    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> Result<JsonValue, EgError> {
         let seed = json::object! {
             call_number: acn_id,
             creator: self.acn_creator,
@@ -79,7 +80,7 @@ impl SampleData {
         e.create(&acp)
     }
 
-    pub fn delete_default_acn(&self, e: &mut Editor) -> Result<(), String> {
+    pub fn delete_default_acn(&self, e: &mut Editor) -> Result<(), EgError> {
         let acns = e.search(
             "acn",
             json::object! {label: self.acn_label.to_string(), deleted: "f"},
@@ -92,7 +93,7 @@ impl SampleData {
         Ok(())
     }
 
-    pub fn delete_default_acp(&self, e: &mut Editor) -> Result<(), String> {
+    pub fn delete_default_acp(&self, e: &mut Editor) -> Result<(), EgError> {
         let acps = e.search(
             "acp",
             json::object! {barcode: self.acp_barcode.to_string(), deleted: "f"},
@@ -106,7 +107,7 @@ impl SampleData {
     }
 
     /// Create default user with a default card.
-    pub fn create_default_au(&self, e: &mut Editor) -> Result<JsonValue, String> {
+    pub fn create_default_au(&self, e: &mut Editor) -> Result<JsonValue, EgError> {
         let seed = json::object! {
             profile: self.au_profile,
             usrname: self.au_barcode.to_string(),
@@ -138,7 +139,7 @@ impl SampleData {
     }
 
     /// Purge the default user, including its linked card, transactions, etc.
-    pub fn delete_default_au(&self, e: &mut Editor) -> Result<(), String> {
+    pub fn delete_default_au(&self, e: &mut Editor) -> Result<(), EgError> {
         let cards = e.search("ac", json::object! {barcode: self.au_barcode.to_string()})?;
 
         if let Some(ac) = cards.get(0) {

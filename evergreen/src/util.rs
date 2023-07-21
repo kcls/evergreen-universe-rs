@@ -1,3 +1,4 @@
+use crate::error::EgError;
 use chrono::prelude::*;
 use chrono::DateTime;
 use json::JsonValue;
@@ -51,7 +52,7 @@ pub fn json_bool_op(op: Option<&JsonValue>) -> bool {
 /// let res = evergreen::util::json_float(&json::from(0));
 /// assert_eq!(res.unwrap(), 0.0);
 /// ```
-pub fn json_float(value: &JsonValue) -> Result<f64, String> {
+pub fn json_float(value: &JsonValue) -> Result<f64, EgError> {
     if let Some(n) = value.as_f64() {
         return Ok(n);
     } else if let Some(s) = value.as_str() {
@@ -59,7 +60,7 @@ pub fn json_float(value: &JsonValue) -> Result<f64, String> {
             return Ok(n);
         }
     }
-    Err(format!("Invalid float value: {}", value))
+    Err(format!("Invalid float value: {}", value).into())
 }
 
 /// Translate a number-ish thing into a signed int.
@@ -74,7 +75,7 @@ pub fn json_float(value: &JsonValue) -> Result<f64, String> {
 ///
 /// let res = evergreen::util::json_int(&json::from(12));
 /// assert_eq!(res.unwrap(), 12);
-pub fn json_int(value: &JsonValue) -> Result<i64, String> {
+pub fn json_int(value: &JsonValue) -> Result<i64, EgError> {
     if let Some(n) = value.as_i64() {
         return Ok(n);
     } else if let Some(s) = value.as_str() {
@@ -82,20 +83,20 @@ pub fn json_int(value: &JsonValue) -> Result<i64, String> {
             return Ok(n);
         }
     }
-    Err(format!("Invalid int value: {}", value))
+    Err(format!("Invalid int value: {}", value).into())
 }
 
 /// Translate a json value into a String.
 ///
 /// Will coerce numeric values into strings.  Return Err if the
 /// value is not a string or number.
-pub fn json_string(value: &JsonValue) -> Result<String, String> {
+pub fn json_string(value: &JsonValue) -> Result<String, EgError> {
     if let Some(s) = value.as_str() {
         Ok(s.to_string())
     } else if value.is_number() {
         Ok(format!("{value}"))
     } else {
-        Err(format!("Cannot extract value as a string: {value}"))
+        Err(format!("Cannot extract value as a string: {value}").into())
     }
 }
 
@@ -113,9 +114,9 @@ pub fn json_string(value: &JsonValue) -> Result<String, String> {
 /// let res = evergreen::util::parse_pg_date("2023-02-03T123");
 /// assert!(res.is_err());
 /// ```
-pub fn parse_pg_date(pg_iso_date: &str) -> Result<DateTime<FixedOffset>, String> {
+pub fn parse_pg_date(pg_iso_date: &str) -> Result<DateTime<FixedOffset>, EgError> {
     DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
-        .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}")))
+        .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}").into()))
 }
 
 /// Turns a PG array string (e.g. '{1,23,456}') into a uniq list of ints.

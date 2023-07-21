@@ -1,3 +1,4 @@
+use crate::error::EgError;
 ///! IDL Parser
 ///!
 ///! Creates an in-memory representation of the IDL file.
@@ -275,10 +276,10 @@ impl fmt::Display for Class {
 /// NOTE: experiment
 /// Create an Instance wrapper around a JsonValue to enforce
 /// IDL field access (and maybe more, we'll see).
-pub fn wrap(idl: Arc<Parser>, v: json::JsonValue) -> Result<Instance, String> {
+pub fn wrap(idl: Arc<Parser>, v: json::JsonValue) -> Result<Instance, EgError> {
     let classname = match v[CLASSNAME_KEY].as_str() {
         Some(c) => c.to_string(),
-        None => return Err(format!("JsonValue cannot be blessed into an idl::Instance")),
+        None => Err(format!("JsonValue cannot be blessed into an idl::Instance"))?,
     };
 
     Ok(Instance {
@@ -342,23 +343,19 @@ impl Parser {
         &self.classes
     }
 
-    pub fn parse_file(filename: &str) -> Result<Arc<Parser>, String> {
+    pub fn parse_file(filename: &str) -> Result<Arc<Parser>, EgError> {
         let xml = match fs::read_to_string(filename) {
             Ok(x) => x,
-            Err(e) => {
-                return Err(format!("Cannot parse IDL file '{filename}': {e}"));
-            }
+            Err(e) => Err(format!("Cannot parse IDL file '{filename}': {e}"))?,
         };
 
         Parser::parse_string(&xml)
     }
 
-    pub fn parse_string(xml: &str) -> Result<Arc<Parser>, String> {
+    pub fn parse_string(xml: &str) -> Result<Arc<Parser>, EgError> {
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
-            Err(e) => {
-                return Err(format!("Error parsing XML string for IDL: {e}"));
-            }
+            Err(e) => Err(format!("Error parsing XML string for IDL: {e}"))?,
         };
 
         let mut parser = Parser {
@@ -620,7 +617,7 @@ impl Parser {
     /// Replace Object or Array values on an IDL object with the
     /// scalar primary key value of the linked object (real fields)
     /// or null (virtual fields).
-    pub fn de_flesh_object(&self, obj: &mut json::JsonValue) -> Result<(), String> {
+    pub fn de_flesh_object(&self, obj: &mut json::JsonValue) -> Result<(), EgError> {
         let cname = obj[CLASSNAME_KEY]
             .as_str()
             .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
@@ -678,7 +675,7 @@ impl Parser {
     }
 
     /// Create the seed of an IDL object with the requested class.
-    pub fn create(&self, classname: &str) -> Result<json::JsonValue, String> {
+    pub fn create(&self, classname: &str) -> Result<json::JsonValue, EgError> {
         if !self.classes.contains_key(classname) {
             Err(format!("Invalid IDL class: {classname}"))?;
         }
@@ -695,7 +692,7 @@ impl Parser {
         &self,
         classname: &str,
         mut obj: json::JsonValue,
-    ) -> Result<json::JsonValue, String> {
+    ) -> Result<json::JsonValue, EgError> {
         if !obj.is_object() {
             Err(format!("IDL cannot create_from() on a non-object"))?;
         }

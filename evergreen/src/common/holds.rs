@@ -2,7 +2,7 @@ use crate::common::org;
 use crate::common::settings::Settings;
 use crate::date;
 use crate::editor::Editor;
-use crate::util::{json_int};
+use crate::util::json_int;
 use chrono::Duration;
 use json::JsonValue;
 /*
@@ -55,9 +55,8 @@ pub fn calc_hold_shelf_expire_time(
 /// targets the provided copy.
 pub fn captured_hold_for_copy(
     editor: &mut Editor,
-    copy_id: i64
+    copy_id: i64,
 ) -> Result<Option<JsonValue>, String> {
-
     let query = json::object! {
         current_copy: copy_id,
         capture_time: {"!=": JsonValue::Null},
@@ -68,7 +67,6 @@ pub fn captured_hold_for_copy(
     Ok(editor.search("ahr", query)?.first().map(|h| h.to_owned()))
 }
 
-
 /// Returns the captured hold if found and a list of hold IDs that
 /// will need to be retargeted, since they previously targeted the
 /// provided copy.
@@ -77,11 +75,9 @@ pub fn find_nearest_permitted_hold(
     copy_id: i64,
     check_only: bool,
 ) -> Result<(Option<JsonValue>, Vec<i64>), String> {
-
     let mut retarget: Vec<i64> = Vec::new();
 
     // Fetch the appropriatly fleshed copy.
-
 
     let query = json::object! {
        "current_copy": copy_id,
@@ -91,7 +87,7 @@ pub fn find_nearest_permitted_hold(
 
     let existing_holds = editor.search("ahr", query)?;
 
-/*
+    /*
     # find any existing holds that already target this copy
     my $old_holds = $editor->search_action_hold_request(
 
@@ -100,7 +96,5 @@ pub fn find_nearest_permitted_hold(
     my $hold_stall_interval = $U->ou_ancestor_setting_value($user->ws_ou, OILS_SETTING_HOLD_SOFT_STALL);
     */
 
-
     Ok((None, retarget))
 }
-

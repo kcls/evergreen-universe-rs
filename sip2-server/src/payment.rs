@@ -140,7 +140,7 @@ impl Session {
             }
         };
 
-        if eg::util::json_int(&sum["usr"]) != eg::util::json_int(&user["id"]) {
+        if eg::util::json_int(&sum["usr"])? != eg::util::json_int(&user["id"])? {
             log::warn!("{self} Payment transaction {xact_id} does not link to provided user");
             return Ok(Vec::new());
         }

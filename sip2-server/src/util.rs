@@ -80,7 +80,7 @@ impl Session {
             field = &requestor["home_ou"];
         };
 
-        eg::util::json_int(field)
+        eg::util::json_int(field).map_err(|e| e.to_string())
     }
 
     pub fn get_user_and_card(&mut self, user_id: i64) -> Result<Option<json::JsonValue>, String> {
@@ -89,7 +89,9 @@ impl Session {
             flesh_fields: {au: ["card"]}
         };
 
-        self.editor_mut().retrieve_with_ops("au", user_id, ops)
+        self.editor_mut()
+            .retrieve_with_ops("au", user_id, ops)
+            .map_err(|e| e.to_string())
     }
 
     pub fn format_user_name(&self, user: &json::JsonValue) -> String {

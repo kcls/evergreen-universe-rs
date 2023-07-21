@@ -1,5 +1,6 @@
 use eg::common::circulator::Circulator;
 use eg::editor::Editor;
+use eg::error::EgError;
 use eg::util;
 use evergreen as eg;
 use json;
@@ -74,9 +75,19 @@ pub fn checkin(
 
     let result = circulator.checkin();
 
-    if let Err(e) = result {
+    if let Err(err) = result {
         circulator.rollback()?;
-        return Err(e);
+
+        // If the internal API returns an error event, return the event
+        // to the caller as a "successful" response.  Otherwise, fail
+        // with the error string.
+        match err {
+            EgError::Event(evt) => {
+                session.respond(&evt);
+                return Ok(());
+            }
+            EgError::Message(msg) => Err(msg)?,
+        }
     }
 
     // TODO Ask the circulator to collect a pile of return

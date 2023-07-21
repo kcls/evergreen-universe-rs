@@ -1,6 +1,7 @@
 use crate::common::org;
 use crate::common::settings::Settings;
 use crate::editor::Editor;
+use crate::error::EgError;
 use crate::event::EgEvent;
 use crate::util;
 use crate::util::{json_bool, json_bool_op, json_int};
@@ -134,7 +135,7 @@ impl Circulator {
     /// Create a new Circulator.
     ///
     ///
-    pub fn new(e: Editor, options: HashMap<String, JsonValue>) -> Result<Circulator, String> {
+    pub fn new(e: Editor, options: HashMap<String, JsonValue>) -> Result<Circulator, EgError> {
         if e.requestor().is_none() {
             Err(format!("Circulator requires an authenticated requestor"))?;
         }
@@ -217,39 +218,38 @@ impl Circulator {
         std::mem::replace(&mut self.editor, new_e)
     }
 
-    pub fn begin(&mut self) -> Result<(), String> {
+    pub fn begin(&mut self) -> Result<(), EgError> {
         self.editor.xact_begin()
     }
 
-    pub fn commit(&mut self) -> Result<(), String> {
+    pub fn commit(&mut self) -> Result<(), EgError> {
         self.editor.commit()
     }
 
-    pub fn rollback(&mut self) -> Result<(), String> {
+    pub fn rollback(&mut self) -> Result<(), EgError> {
         self.editor.rollback()
     }
 
     /// Used for Error events that stop processing, i.e. cannot be overridden.
-    pub fn exit_err_on_event_code(&mut self, code: &str) -> Result<(), String> {
-        self.add_event_code(code);
-        Err(format!("Bailing on event: {code}"))
+    pub fn exit_err_on_event_code(&mut self, code: &str) -> Result<(), EgError> {
+        self.add_event(EgEvent::new(code));
+        Err(EgError::Event(EgEvent::new(code)))
     }
 
     /// Sets a final event and sets the exit_early flag.
     ///
     /// This is for non-Error events that occur when logic has
     /// reached an endpoint that requires to further processing.
-    pub fn exit_ok_on_event(&mut self, evt: EgEvent) -> Result<(), String> {
+    pub fn exit_ok_on_event(&mut self, evt: EgEvent) -> Result<(), EgError> {
         self.add_event(evt);
         self.exit_ok()
     }
 
     /// Exit now without adding any additional events.
-    pub fn exit_ok(&mut self) -> Result<(), String> {
+    pub fn exit_ok(&mut self) -> Result<(), EgError> {
         self.exit_early = true;
         Ok(())
     }
-
 
     /// Add a potentially overridable event to our events list (by code).
     pub fn add_event_code(&mut self, code: &str) {
@@ -262,7 +262,7 @@ impl Circulator {
     }
 
     /// Search for the copy in question
-    fn load_copy(&mut self) -> Result<(), String> {
+    fn load_copy(&mut self) -> Result<(), EgError> {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
@@ -293,7 +293,7 @@ impl Circulator {
             if !self.is_noncat {
                 let query = json::object! {
                     barcode: copy_barcode.clone(),
-                    deleted: "f", // cstore turns false into NULL :\
+                    deleted: "f", // cstore turns json false into NULL :\
                 };
 
                 if let Some(copy) = self
@@ -315,7 +315,7 @@ impl Circulator {
         Ok(())
     }
 
-    pub fn load_runtime_copy_alerts(&mut self) -> Result<(), String> {
+    pub fn load_runtime_copy_alerts(&mut self) -> Result<(), EgError> {
         if self.copy.is_none() {
             return Ok(());
         }
@@ -337,7 +337,7 @@ impl Circulator {
         self.filter_runtime_copy_alerts()
     }
 
-    fn filter_runtime_copy_alerts(&mut self) -> Result<(), String> {
+    fn filter_runtime_copy_alerts(&mut self) -> Result<(), EgError> {
         if self.runtime_copy_alerts.len() == 0 {
             return Ok(());
         }
@@ -422,7 +422,7 @@ impl Circulator {
     }
 
     ///
-    pub fn load_system_copy_alerts(&mut self) -> Result<(), String> {
+    pub fn load_system_copy_alerts(&mut self) -> Result<(), EgError> {
         let copy_id = match self.copy_id {
             Some(i) => i,
             None => return Ok(()),
@@ -565,7 +565,7 @@ impl Circulator {
     fn add_overrides_from_system_copy_alerts(
         &mut self,
         conditions: HashSet<String>,
-    ) -> Result<(), String> {
+    ) -> Result<(), EgError> {
         for condition in conditions.iter() {
             let map = match COPY_ALERT_OVERRIDES
                 .iter()
@@ -621,7 +621,7 @@ impl Circulator {
     }
 
     /// Assumes new-style alerts are supported.
-    pub fn check_copy_alerts(&mut self) -> Result<(), String> {
+    pub fn check_copy_alerts(&mut self) -> Result<(), EgError> {
         if self.copy.is_none() {
             return Ok(());
         }
@@ -658,7 +658,7 @@ impl Circulator {
     }
 
     /// Find an open circulation linked to our copy if possible.
-    fn load_circ(&mut self) -> Result<(), String> {
+    fn load_circ(&mut self) -> Result<(), EgError> {
         if self.circ.is_some() {
             log::info!("{self} found an open circulation");
             // May have been set in load_patron()
@@ -683,7 +683,7 @@ impl Circulator {
     /// Find the requested patron if possible.
     ///
     /// Also sets a value for self.circ if needed to find the patron.
-    fn load_patron(&mut self) -> Result<(), String> {
+    fn load_patron(&mut self) -> Result<(), EgError> {
         if let Some(patron_id) = self.options.get("patron_id") {
             let flesh = json::object! {
                 flesh: 1,
@@ -742,7 +742,8 @@ impl Circulator {
         Ok(())
     }
 
-    pub fn init(&mut self) -> Result<(), String> {
+    //pub fn init(&mut self) -> EgResult<()> {
+    pub fn init(&mut self) -> Result<(), EgError> {
         if let Some(cl) = self.options.get("circ_lib") {
             self.circ_lib = json_int(cl)?;
         }
@@ -761,7 +762,7 @@ impl Circulator {
     /// Update our copy with the values provided.
     ///
     /// * `changes` - a JSON Object with key/value copy attributes to update.
-    pub fn update_copy(&mut self, changes: JsonValue) -> Result<&JsonValue, String> {
+    pub fn update_copy(&mut self, changes: JsonValue) -> Result<&JsonValue, EgError> {
         let mut copy = match self.copy.take() {
             Some(c) => c,
             None => Err(format!("We have no copy to update"))?,
@@ -806,7 +807,7 @@ impl Circulator {
     /// Returns Err to exit early if any events exist that cannot
     /// be overridden either becuase we are not actively overriding
     /// or because an override permission check fails.
-    pub fn try_override_events(&mut self) -> Result<(), String> {
+    pub fn try_override_events(&mut self) -> Result<(), EgError> {
         if self.events.len() == 0 {
             return Ok(());
         }
@@ -853,10 +854,8 @@ impl Circulator {
         }
 
         if self.failed_events.len() > 0 {
-            Err(format!(
-                "Exiting early on failed events: {:?}",
-                self.failed_events
-            ))
+            log::info!("Exiting early on failed events: {:?}", self.failed_events);
+            Err(EgError::Event(self.failed_events[0].clone()))
         } else {
             // If all is well and we encountered a SUCCESS event, keep
             // it in place so it can ultimately be returned to the caller.
@@ -868,26 +867,25 @@ impl Circulator {
         }
     }
 
-
     /// Sets the is_booking_enable flag if not previously set.
     ///
     /// TODO: make this a host setting so we can avoid the network call.
-    pub fn set_booking_status(&mut self) -> Result<(), String> {
+    pub fn set_booking_status(&mut self) -> Result<(), EgError> {
         if self.is_booking_enabled.is_some() {
             return Ok(());
         }
 
-        if let Some(services) = self.editor
-            .client_mut()
-            .send_recv_one("router", "opensrf.router.info.class.list", None)? {
-
+        if let Some(services) = self.editor.client_mut().send_recv_one(
+            "router",
+            "opensrf.router.info.class.list",
+            None,
+        )? {
             self.is_booking_enabled = Some(services.contains("open-ils.booking"));
-
         } else {
             // Should not get here since it means the Router is not resonding.
             self.is_booking_enabled = Some(false);
         }
 
-        return Ok(())
+        return Ok(());
     }
 }
