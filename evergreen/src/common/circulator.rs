@@ -69,7 +69,6 @@ pub struct Circulator {
     pub transit: Option<JsonValue>,
     pub hold_transit: Option<JsonValue>,
     pub is_noncat: bool,
-    pub changes_applied: bool,
     pub system_copy_alerts: Vec<JsonValue>,
     pub runtime_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
@@ -88,8 +87,16 @@ pub struct Circulator {
     /// to the caller.
     pub failed_events: Vec<EgEvent>,
 
+    /// None until a status is determined one way or the other.
+    pub is_booking_enabled: Option<bool>,
+
     /// Storage for the large list of circulation API flags that we
-    /// don't explicitly defined elsewhere in this struct.
+    /// don't explicitly define in this struct.
+    ///
+    /// General plan so far is if the value is only used by a specific
+    /// circ_op (e.g. checkin) then make it an option.  If it's used
+    /// more or less globally for circ stuff, make it part of the
+    /// Circulator proper.
     pub options: HashMap<String, JsonValue>,
 }
 
@@ -150,15 +157,20 @@ impl Circulator {
             transit: None,
             hold_transit: None,
             is_noncat: false,
-            changes_applied: false,
             system_copy_alerts: Vec::new(),
             runtime_copy_alerts: Vec::new(),
             is_override: false,
             override_args: None,
             failed_events: Vec::new(),
             exit_early: false,
+            is_booking_enabled: None,
             circ_op: CircOp::Other,
         })
+    }
+
+    /// Panics if the booking status is unknown.
+    pub fn is_booking_enabled(&self) -> bool {
+        self.is_booking_enabled.unwrap()
     }
 
     /// Unchecked copy getter.
@@ -741,6 +753,7 @@ impl Circulator {
         self.load_copy()?;
         self.load_patron()?;
         self.load_circ()?;
+        self.set_booking_status()?;
 
         Ok(())
     }
@@ -853,5 +866,28 @@ impl Circulator {
 
             Ok(())
         }
+    }
+
+
+    /// Sets the is_booking_enable flag if not previously set.
+    ///
+    /// TODO: make this a host setting so we can avoid the network call.
+    pub fn set_booking_status(&mut self) -> Result<(), String> {
+        if self.is_booking_enabled.is_some() {
+            return Ok(());
+        }
+
+        if let Some(services) = self.editor
+            .client_mut()
+            .send_recv_one("router", "opensrf.router.info.class.list", None)? {
+
+            self.is_booking_enabled = Some(services.contains("open-ils.booking"));
+
+        } else {
+            // Should not get here since it means the Router is not resonding.
+            self.is_booking_enabled = Some(false);
+        }
+
+        return Ok(())
     }
 }

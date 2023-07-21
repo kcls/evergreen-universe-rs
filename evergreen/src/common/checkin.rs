@@ -64,6 +64,29 @@ impl Circulator {
             return Ok(());
         }
 
+        if self.circ_op == CircOp::Renew {
+            //self.finish_fines_and_voiding()?;
+            self.add_event_code("SUCCESS");
+            return Ok(());
+        }
+
+
+       // Circulations and transits are now closed where necessary.
+       // Now see if this copy can fulfill a hold or needs to be
+       // routed to a different location.
+
+        let mut item_is_needed = false;
+        if self.get_option_bool("noop") {
+            if self.get_option_bool("can_float") {
+                // As noted in the Perl, it's maybe unexpected that
+                // floating items are modified during NO-OP checkins,
+                // but the behavior is retained for backwards compat.
+                self.update_copy(json::object! {"circ_lib": self.circ_lib})?;
+            }
+        } else {
+            item_is_needed = self.try_to_capture()?;
+        }
+
         Ok(())
     }
 
@@ -437,8 +460,6 @@ impl Circulator {
             copy: self.copy()["id"].clone(),
         };
 
-        self.changes_applied = true;
-
         self.editor.create(&aci).map(|_| ()) // don't need the result.
     }
 
@@ -531,7 +552,6 @@ impl Circulator {
                 && status != next_status)
         {
             self.update_copy(json::object! {status: json::from(next_status)})?;
-            self.changes_applied = true;
         }
 
         Ok(())
@@ -660,8 +680,6 @@ impl Circulator {
         if let Some(c) = self.editor.retrieve("circ", circ_id)? {
             self.circ = Some(c);
         }
-
-        self.changes_applied = true;
 
         Ok(())
     }
@@ -1155,8 +1173,6 @@ impl Circulator {
 
         self.add_event(evt);
 
-        self.changes_applied = true;
-
         Ok(())
     }
 
@@ -1173,7 +1189,7 @@ impl Circulator {
             return Ok(());
         }
 
-        let mut alt_hold = None;
+        let mut alt_hold;
         let hold = match self.hold.as_mut() {
             Some(h) => h,
             None => match holds::captured_hold_for_copy(&mut self.editor, self.copy_id.unwrap())? {
@@ -1287,5 +1303,67 @@ impl Circulator {
         self.hold = self.editor.retrieve("ahr", hold_id)?;
 
         Ok(())
+    }
+
+    fn try_to_capture(&mut self) -> Result<bool, String> {
+        let mut needed = false;
+
+        if self.get_option_bool("remote_hold") {
+            needed = self.attempt_checkin_hold_capture()?;
+            return Ok(needed);
+        }
+
+        /*
+        if (!$self->remote_hold) {
+            if ($self->use_booking) {
+                my $potential_hold = $self->hold_capture_is_possible;
+                my $potential_reservation = $self->reservation_capture_is_possible;
+
+                if ($potential_hold and $potential_reservation) {
+                    $logger->info("circulator: item could fulfill either hold or reservation");
+                    $self->push_events(new OpenILS::Event(
+                        "HOLD_RESERVATION_CONFLICT",
+                        "hold" => $potential_hold,
+                        "reservation" => $potential_reservation
+                    ));
+                    return if $self->bail_out;
+                } elsif ($potential_hold) {
+                    $needed_for_something =
+                        $self->attempt_checkin_hold_capture;
+                } elsif ($potential_reservation) {
+                    $needed_for_something =
+                        $self->attempt_checkin_reservation_capture;
+                }
+            } else {
+                $needed_for_something = $self->attempt_checkin_hold_capture;
+            }
+        }
+        */
+
+
+       Ok(needed)
+    }
+
+    fn attempt_checkin_hold_capture(&mut self) -> Result<bool, String> {
+        if let Some(value) = self.options.get("capture") {
+            if let Some(capture) = value.as_str() {
+                if capture == "nocapture" {
+                    return Ok(false);
+                }
+            }
+        }
+
+        let (mut maybe_hold, retarget) = holds::find_nearest_permitted_hold(
+            &mut self.editor, self.copy_id.unwrap(), false)?;
+
+        let mut hold = match maybe_hold {
+            Some(h) => h,
+            None => {
+                log::info!("{self} no permitted holds found for copy");
+                return Ok(false);
+            }
+        };
+
+        Ok(false)
     }
 }

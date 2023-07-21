@@ -6,6 +6,7 @@ pub mod constants;
 pub mod date;
 pub mod db;
 pub mod editor;
+pub mod error;
 pub mod event;
 pub mod idl;
 pub mod idldb;

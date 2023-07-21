@@ -63,6 +63,8 @@ pub struct Editor {
 
     /// Most recent non-success event
     last_event: Option<EgEvent>,
+
+    has_pending_changes: bool,
 }
 
 impl Clone for Editor {
@@ -90,11 +92,21 @@ impl Editor {
             authtime: None,
             requestor: None,
             last_event: None,
+            has_pending_changes: false,
         }
     }
 
     pub fn client_mut(&mut self) -> &mut osrf::Client {
         &mut self.client
+    }
+
+    /// True if create/update/delete have been called within a
+    /// transaction that has yet to be committed or rolled back.
+    ///
+    /// This has no effect on the Editor, but may be useful to
+    /// the calling code.
+    pub fn has_pending_changes(&self) -> bool {
+        self.has_pending_changes
     }
 
     /// Create an editor with an existing authtoken
@@ -287,6 +299,7 @@ impl Editor {
 
         self.xact_id = None;
         self.xact_wanted = false;
+        self.has_pending_changes = false;
 
         Ok(())
     }
@@ -318,6 +331,7 @@ impl Editor {
 
         self.xact_id = None;
         self.xact_wanted = false;
+        self.has_pending_changes = false;
 
         Ok(())
     }
@@ -560,6 +574,8 @@ impl Editor {
             Err(format!("Update returned no response"))?;
         }
 
+        self.has_pending_changes = true;
+
         Ok(())
     }
 
@@ -585,6 +601,8 @@ impl Editor {
                 log::debug!("Created new {idlclass} object: {resp:?}");
             }
 
+            self.has_pending_changes = true;
+
             Ok(resp)
         } else {
             Err(format!("Create returned no response"))
@@ -608,6 +626,7 @@ impl Editor {
         let method = self.app_method(&format!("direct.{fmapper}.delete"));
 
         if let Some(resp) = self.request(&method, object)? {
+            self.has_pending_changes = true;
             Ok(resp)
         } else {
             Err(format!("Create returned no response"))
