@@ -1,7 +1,7 @@
 use crate::common::org;
 use crate::common::settings::Settings;
 use crate::editor::Editor;
-use crate::error::EgError;
+use crate::error::{EgResult, EgError};
 use crate::event::EgEvent;
 use crate::util;
 use crate::util::{json_bool, json_bool_op, json_int};
@@ -134,8 +134,7 @@ impl fmt::Display for Circulator {
 impl Circulator {
     /// Create a new Circulator.
     ///
-    ///
-    pub fn new(e: Editor, options: HashMap<String, JsonValue>) -> Result<Circulator, EgError> {
+    pub fn new(e: Editor, options: HashMap<String, JsonValue>) -> EgResult<Circulator> {
         if e.requestor().is_none() {
             Err(format!("Circulator requires an authenticated requestor"))?;
         }
@@ -218,20 +217,20 @@ impl Circulator {
         std::mem::replace(&mut self.editor, new_e)
     }
 
-    pub fn begin(&mut self) -> Result<(), EgError> {
+    pub fn begin(&mut self) -> EgResult<()> {
         self.editor.xact_begin()
     }
 
-    pub fn commit(&mut self) -> Result<(), EgError> {
+    pub fn commit(&mut self) -> EgResult<()> {
         self.editor.commit()
     }
 
-    pub fn rollback(&mut self) -> Result<(), EgError> {
+    pub fn rollback(&mut self) -> EgResult<()> {
         self.editor.rollback()
     }
 
     /// Used for Error events that stop processing, i.e. cannot be overridden.
-    pub fn exit_err_on_event_code(&mut self, code: &str) -> Result<(), EgError> {
+    pub fn exit_err_on_event_code(&mut self, code: &str) -> EgResult<()> {
         self.add_event(EgEvent::new(code));
         Err(EgError::Event(EgEvent::new(code)))
     }
@@ -240,13 +239,13 @@ impl Circulator {
     ///
     /// This is for non-Error events that occur when logic has
     /// reached an endpoint that requires to further processing.
-    pub fn exit_ok_on_event(&mut self, evt: EgEvent) -> Result<(), EgError> {
+    pub fn exit_ok_on_event(&mut self, evt: EgEvent) -> EgResult<()> {
         self.add_event(evt);
         self.exit_ok()
     }
 
     /// Exit now without adding any additional events.
-    pub fn exit_ok(&mut self) -> Result<(), EgError> {
+    pub fn exit_ok(&mut self) -> EgResult<()> {
         self.exit_early = true;
         Ok(())
     }
@@ -262,7 +261,7 @@ impl Circulator {
     }
 
     /// Search for the copy in question
-    fn load_copy(&mut self) -> Result<(), EgError> {
+    fn load_copy(&mut self) -> EgResult<()> {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
@@ -315,7 +314,7 @@ impl Circulator {
         Ok(())
     }
 
-    pub fn load_runtime_copy_alerts(&mut self) -> Result<(), EgError> {
+    pub fn load_runtime_copy_alerts(&mut self) -> EgResult<()> {
         if self.copy.is_none() {
             return Ok(());
         }
@@ -337,7 +336,7 @@ impl Circulator {
         self.filter_runtime_copy_alerts()
     }
 
-    fn filter_runtime_copy_alerts(&mut self) -> Result<(), EgError> {
+    fn filter_runtime_copy_alerts(&mut self) -> EgResult<()> {
         if self.runtime_copy_alerts.len() == 0 {
             return Ok(());
         }
@@ -422,7 +421,7 @@ impl Circulator {
     }
 
     ///
-    pub fn load_system_copy_alerts(&mut self) -> Result<(), EgError> {
+    pub fn load_system_copy_alerts(&mut self) -> EgResult<()> {
         let copy_id = match self.copy_id {
             Some(i) => i,
             None => return Ok(()),
@@ -565,7 +564,7 @@ impl Circulator {
     fn add_overrides_from_system_copy_alerts(
         &mut self,
         conditions: HashSet<String>,
-    ) -> Result<(), EgError> {
+    ) -> EgResult<()> {
         for condition in conditions.iter() {
             let map = match COPY_ALERT_OVERRIDES
                 .iter()
@@ -621,7 +620,7 @@ impl Circulator {
     }
 
     /// Assumes new-style alerts are supported.
-    pub fn check_copy_alerts(&mut self) -> Result<(), EgError> {
+    pub fn check_copy_alerts(&mut self) -> EgResult<()> {
         if self.copy.is_none() {
             return Ok(());
         }
@@ -658,7 +657,7 @@ impl Circulator {
     }
 
     /// Find an open circulation linked to our copy if possible.
-    fn load_circ(&mut self) -> Result<(), EgError> {
+    fn load_circ(&mut self) -> EgResult<()> {
         if self.circ.is_some() {
             log::info!("{self} found an open circulation");
             // May have been set in load_patron()
@@ -683,7 +682,7 @@ impl Circulator {
     /// Find the requested patron if possible.
     ///
     /// Also sets a value for self.circ if needed to find the patron.
-    fn load_patron(&mut self) -> Result<(), EgError> {
+    fn load_patron(&mut self) -> EgResult<()> {
         if let Some(patron_id) = self.options.get("patron_id") {
             let flesh = json::object! {
                 flesh: 1,
@@ -742,8 +741,7 @@ impl Circulator {
         Ok(())
     }
 
-    //pub fn init(&mut self) -> EgResult<()> {
-    pub fn init(&mut self) -> Result<(), EgError> {
+    pub fn init(&mut self) -> EgResult<()> {
         if let Some(cl) = self.options.get("circ_lib") {
             self.circ_lib = json_int(cl)?;
         }
@@ -762,7 +760,7 @@ impl Circulator {
     /// Update our copy with the values provided.
     ///
     /// * `changes` - a JSON Object with key/value copy attributes to update.
-    pub fn update_copy(&mut self, changes: JsonValue) -> Result<&JsonValue, EgError> {
+    pub fn update_copy(&mut self, changes: JsonValue) -> EgResult<&JsonValue> {
         let mut copy = match self.copy.take() {
             Some(c) => c,
             None => Err(format!("We have no copy to update"))?,
@@ -807,7 +805,7 @@ impl Circulator {
     /// Returns Err to exit early if any events exist that cannot
     /// be overridden either becuase we are not actively overriding
     /// or because an override permission check fails.
-    pub fn try_override_events(&mut self) -> Result<(), EgError> {
+    pub fn try_override_events(&mut self) -> EgResult<()> {
         if self.events.len() == 0 {
             return Ok(());
         }
@@ -870,7 +868,7 @@ impl Circulator {
     /// Sets the is_booking_enable flag if not previously set.
     ///
     /// TODO: make this a host setting so we can avoid the network call.
-    pub fn set_booking_status(&mut self) -> Result<(), EgError> {
+    pub fn set_booking_status(&mut self) -> EgResult<()> {
         if self.is_booking_enabled.is_some() {
             return Ok(());
         }

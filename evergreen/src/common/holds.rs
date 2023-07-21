@@ -1,3 +1,4 @@
+use crate::error::{EgResult, EgError};
 use crate::common::org;
 use crate::common::settings::Settings;
 use crate::date;
@@ -19,7 +20,7 @@ pub fn calc_hold_shelf_expire_time(
     editor: &mut Editor,
     hold: &JsonValue,
     start_time: Option<&str>,
-) -> Result<Option<String>, String> {
+) -> EgResult<Option<String>> {
     let pickup_lib = json_int(&hold["pickup_lib"])?;
 
     let mut settings = Settings::new(&editor);
@@ -56,7 +57,7 @@ pub fn calc_hold_shelf_expire_time(
 pub fn captured_hold_for_copy(
     editor: &mut Editor,
     copy_id: i64,
-) -> Result<Option<JsonValue>, String> {
+) -> EgResult<Option<JsonValue>> {
     let query = json::object! {
         current_copy: copy_id,
         capture_time: {"!=": JsonValue::Null},
@@ -74,10 +75,21 @@ pub fn find_nearest_permitted_hold(
     editor: &mut Editor,
     copy_id: i64,
     check_only: bool,
-) -> Result<(Option<JsonValue>, Vec<i64>), String> {
+) -> EgResult<Option<(JsonValue, Vec<i64>)>> {
     let mut retarget: Vec<i64> = Vec::new();
 
     // Fetch the appropriatly fleshed copy.
+    let flesh = json::object! {
+        flesh: 1,
+        flesh_fields: {
+            "acp": ["call_number"],
+        }
+    };
+
+    let copy = match editor.retrieve("acp", json::object! {"id": copy_id})? {
+        Some(c) => c,
+        None => Err(editor.die_event())?,
+    };
 
     let query = json::object! {
        "current_copy": copy_id,
@@ -85,16 +97,41 @@ pub fn find_nearest_permitted_hold(
        "capture_time": JsonValue::Null,
     };
 
-    let existing_holds = editor.search("ahr", query)?;
+    let old_holds = editor.search("ahr", query)?;
 
-    /*
-    # find any existing holds that already target this copy
-    my $old_holds = $editor->search_action_hold_request(
+    let mut settings = Settings::new(&editor);
+    let hold_stall_intvl = settings.get_value("circ.hold_stalling.soft")?;
 
-    );
+    let params = json::array! [
+        editor.requestor_ws_ou(),
+        copy.clone(),
+        100,
+        hold_stall_intvl.clone(),
+    ];
 
-    my $hold_stall_interval = $U->ou_ancestor_setting_value($user->ws_ou, OILS_SETTING_HOLD_SOFT_STALL);
-    */
+    let best_holds = editor.client_mut().send_recv_one(
+        "open-ils.storage",
+        "open-ils.storage.action.hold_request.nearest_hold.atomic",
+        params
+    )?;
 
-    Ok((None, retarget))
+    let mut best_holds = match best_holds {
+        Some(list) => list,
+        None => JsonValue::new_array(),
+    };
+
+    // Holds that already target this copy are still in the game.
+    for old_hold in old_holds.iter() {
+        if !best_holds.members().any(|h| h["id"] == old_hold["id"]) {
+            best_holds.push(old_hold.clone());
+        }
+    }
+
+    if best_holds.len() == 0 {
+        log::info!("Found no suitable holds for item {}", copy["barcode"]);
+        return Ok(None);
+    }
+
+
+    Ok(None)
 }

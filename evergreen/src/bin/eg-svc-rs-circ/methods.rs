@@ -83,10 +83,10 @@ pub fn checkin(
         // with the error string.
         match err {
             EgError::Event(evt) => {
-                session.respond(&evt);
+                session.respond(&evt)?;
                 return Ok(());
             }
-            EgError::Message(msg) => Err(msg)?,
+            EgError::Debug(msg) => Err(msg)?,
         }
     }
 

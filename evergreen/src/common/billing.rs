@@ -4,7 +4,7 @@ use crate::common::settings::Settings;
 use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
-use crate::error::EgError;
+use crate::error::{EgResult, EgError};
 use crate::util;
 use crate::util::{json_bool, json_float, json_int};
 use chrono::{DateTime, Duration, FixedOffset, Local};
@@ -19,7 +19,7 @@ pub fn void_bills(
     editor: &mut Editor,
     billing_ids: &[i64], // money.billing.id
     maybe_note: Option<&str>,
-) -> Result<(), EgError> {
+) -> EgResult<()> {
     editor.has_requestor()?;
 
     let mut bills = editor.search("mb", json::object! {"id": billing_ids})?;
@@ -38,7 +38,7 @@ pub fn void_bills(
         let xact = editor.retrieve("mbt", bill["xact"].clone())?;
         let xact = match xact {
             Some(x) => x,
-            None => return editor.die_event(),
+            None => Err(editor.die_event())?,
         };
 
         let xact_org = xact_org(editor, json_int(&xact["id"])?)?;
@@ -71,15 +71,15 @@ pub fn void_bills(
 }
 
 /// Sets or clears xact_finish on a transaction as needed.
-pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> Result<(), EgError> {
+pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> EgResult<()> {
     let mut xact = match editor.retrieve("mbt", xact_id)? {
         Some(x) => x,
-        None => return editor.die_event(),
+        None => Err(editor.die_event())?,
     };
 
     let mbts = match editor.retrieve("mbts", xact_id)? {
         Some(m) => m,
-        None => return editor.die_event(),
+        None => Err(editor.die_event())?,
     };
 
     // See if we have a completed circ.
@@ -114,7 +114,7 @@ pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> Result<(), EgError>
 }
 
 /// Returns the context org unit ID for a transaction (by ID).
-pub fn xact_org(editor: &mut Editor, xact_id: i64) -> Result<i64, EgError> {
+pub fn xact_org(editor: &mut Editor, xact_id: i64) -> EgResult<i64> {
     // There's a view for that!
     // money.billable_xact_summary_location_view
     if let Some(sum) = editor.retrieve("mbtslv", xact_id)? {
@@ -134,7 +134,7 @@ pub fn create_bill(
     maybe_note: Option<&str>,
     period_start: Option<&str>,
     period_end: Option<&str>,
-) -> Result<JsonValue, EgError> {
+) -> EgResult<JsonValue> {
     log::info!("System is charging ${amount} [btype={btype_id}:{btype_label}] on xact {xact_id}");
 
     let note = maybe_note.unwrap_or("SYSTEM GENERATED");
@@ -161,7 +161,7 @@ pub fn void_or_zero_bills_of_type(
     context_org: i64,
     btype_id: i64,
     for_note: &str,
-) -> Result<(), EgError> {
+) -> EgResult<()> {
     log::info!("Void/Zero Bills for xact={xact_id} and btype={btype_id}");
 
     let mut settings = Settings::new(&editor);
@@ -212,7 +212,7 @@ pub fn adjust_bills_to_zero(
     editor: &mut Editor,
     bill_ids: &[i64],
     note: &str,
-) -> Result<(), EgError> {
+) -> EgResult<()> {
     let mut bills = editor.search("mb", json::object! {"id": bill_ids})?;
     if bills.len() == 0 {
         return Ok(());
@@ -315,7 +315,7 @@ pub struct BillPaymentMap {
 pub fn bill_payment_map_for_xact(
     editor: &mut Editor,
     xact_id: i64,
-) -> Result<Vec<BillPaymentMap>, EgError> {
+) -> EgResult<Vec<BillPaymentMap>> {
     let query = json::object! {
         "xact": xact_id,
         "voided": "f",
@@ -501,7 +501,7 @@ pub fn xact_has_payment_within(
     editor: &mut Editor,
     xact_id: i64,
     interval: &str,
-) -> Result<bool, EgError> {
+) -> EgResult<bool> {
     let query = json::object! {
         "xact": xact_id,
         "payment_type": {"!=": "account_adjustment"}
@@ -539,7 +539,7 @@ pub enum BillableTransactionType {
     Reservation,
 }
 
-pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> Result<(), EgError> {
+pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> EgResult<()> {
     let resv = editor
         .retrieve("bresv", resv_id)?
         .ok_or(format!("{}", editor.last_event().unwrap()))?;
@@ -562,7 +562,7 @@ pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> Result<(), 
     )
 }
 
-pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> Result<(), EgError> {
+pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> EgResult<()> {
     let circ = editor
         .retrieve("circ", circ_id)?
         .ok_or(format!("{}", editor.last_event().unwrap()))?;
@@ -590,7 +590,7 @@ pub fn generate_fines_for_xact(
     mut max_fine: f64,
     grace_period: Option<&str>,
     xact_type: BillableTransactionType,
-) -> Result<(), EgError> {
+) -> EgResult<()> {
     let mut settings = Settings::new(&editor);
 
     let fine_interval = date::interval_to_seconds(fine_interval)?;
@@ -785,7 +785,7 @@ pub fn extend_grace_period(
     grace_period: i64,
     mut due_date: DateTime<FixedOffset>,
     settings: Option<&mut Settings>,
-) -> Result<i64, EgError> {
+) -> EgResult<i64> {
     if grace_period < DAY_OF_SECONDS {
         // Only extended for >1day intervals.
         return Ok(grace_period);
