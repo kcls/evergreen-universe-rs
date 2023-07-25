@@ -196,13 +196,15 @@ impl EgEvent {
     ///     code: json::from(100),
     ///     textcode: json::from("SUCCESS"),
     ///     ilsperm: json::from("STAFF_LOGIN"),
-    ///     ilspermloc: 1
+    ///     ilspermloc: 1,
+    ///     foo: json::from("bar"),
     /// };
     ///
     /// let evt = EgEvent::parse(&jv).expect("Event Parsing Failed");
     /// assert!(evt.is_success());
     ///
     /// assert_eq!(format!("{}", evt), String::from("Event: -1:SUCCESS STAFF_LOGIN@1"));
+    /// assert!(evt.ad_hoc().unwrap().has_key("foo"));
     ///
     /// let jv2 = json::object! {
     ///     howdy: json::from(123)
@@ -241,7 +243,7 @@ impl EgEvent {
         for (field, value) in jv.entries() {
             match field {
                 "textcode" | "payload" | "ilsevent" | "ilspermloc" | "org" => {
-                    // These are already handled.
+                    // These are already handled above.
                 }
                 "desc" | "debug" | "note" | "servertime" | "ilsperm" => {
                     // These are well-known string values.

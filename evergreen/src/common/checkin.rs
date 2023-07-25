@@ -1102,12 +1102,17 @@ impl Circulator {
     fn checkin_handle_transit(&mut self) -> EgResult<()> {
         log::info!("{self} attempting to receive transit");
 
-        let suppress_transit = self.should_suppress_transit()?;
-
         let transit = self.transit.as_ref().unwrap();
         let transit_id = json_int(&transit["id"])?;
         let transit_dest = json_int(&transit["dest"])?;
         let transit_copy_status = json_int(&transit["copy_status"])?;
+
+        let for_hold = transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF;
+        let suppress_transit = self.should_suppress_transit(transit_dest, for_hold)?;
+
+        if for_hold && suppress_transit {
+            self.set_option_true("fake_hold_dest");
+        }
 
         self.hold_transit = self.editor.retrieve("ahtc", transit_id)?;
 
@@ -1234,22 +1239,16 @@ impl Circulator {
         Ok(())
     }
 
-    fn should_suppress_transit(&mut self) -> EgResult<bool> {
-        let transit = self.transit.as_ref().unwrap();
-        let transit_dest = json_int(&transit["dest"])?;
-        let transit_copy_status = json_int(&transit["copy_status"])?;
-
-        if transit_dest == self.circ_lib {
+    fn should_suppress_transit(&mut self, destination: i64, for_hold: bool) -> EgResult<bool> {
+        if destination == self.circ_lib {
             return Ok(false);
         }
 
-        if self.get_option_bool("hold_as_transit")
-            && transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF
-        {
+        if for_hold && self.get_option_bool("hold_as_transit") {
             return Ok(false);
         }
 
-        let setting = if transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
+        let setting = if for_hold {
             "circ.transit.suppress_hold"
         } else {
             "circ.transit.suppress_non_hold"
@@ -1258,8 +1257,8 @@ impl Circulator {
         // These value for these settings is opaque.  If a value is
         // set (i.e. not null), then we only care of they match.
         // Values are clone()ed to avoid parallel mutable borrows.
-        let suppress_for_circ = self.settings.get_value(setting)?.clone();
-        if suppress_for_circ.is_null() {
+        let suppress_for_here = self.settings.get_value(setting)?.clone();
+        if suppress_for_here.is_null() {
             return Ok(false);
         }
 
@@ -1272,14 +1271,8 @@ impl Circulator {
         }
 
         // json::* knows if two JsonValue's are the same.
-        if suppress_for_circ != suppress_for_dest {
+        if suppress_for_here != suppress_for_dest {
             return Ok(false);
-        }
-
-        // Ok, we're suppressing the transit.
-
-        if transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
-            self.set_option_true("fake_hold_dest");
         }
 
         Ok(true)
@@ -1372,6 +1365,34 @@ impl Circulator {
             }
         }
 
-        Ok(false)
+        if retarget.len() > 0 {
+            self.retarget_holds = Some(retarget);
+        }
+
+        let pickup_lib = json_int(&hold["pickup_lib"])?;
+        let suppress_transit = self.should_suppress_transit(pickup_lib, true)?;
+
+        hold["hopeless_date"] = JsonValue::Null;
+        hold["current_copy"] = json::from(self.copy_id.unwrap());
+        hold["capture_time"] = json::from("now");
+
+        // Clear some other potential cruft
+        hold["fulfillment_time"] = JsonValue::Null;
+        hold["fulfillment_staff"] = JsonValue::Null;
+        hold["fulfillment_lib"] = JsonValue::Null;
+        hold["expire_time"] = JsonValue::Null;
+        hold["cancel_time"] = JsonValue::Null;
+
+        if suppress_transit ||
+            (pickup_lib == self.circ_lib && !self.get_option_bool("hold_as_transit")) {
+            self.hold = Some(hold);
+            // This updates and refreshes the hold.
+            self.put_hold_on_shelf()?;
+        } else {
+            self.editor.update(&hold)?;
+            self.hold = self.editor.retrieve("ahr", json_int(&hold["id"])?)?;
+        }
+
+        Ok(true)
     }
 }

@@ -85,6 +85,9 @@ pub struct Circulator {
     /// None until a status is determined one way or the other.
     pub is_booking_enabled: Option<bool>,
 
+    /// List of hold IDs for holds that need to be retargeted.
+    pub retarget_holds: Option<Vec<i64>>,
+
     /// Storage for the large list of circulation API flags that we
     /// don't explicitly define in this struct.
     ///
@@ -158,6 +161,7 @@ impl Circulator {
             failed_events: Vec::new(),
             exit_early: false,
             is_booking_enabled: None,
+            retarget_holds: None,
             circ_op: CircOp::Other,
         })
     }
