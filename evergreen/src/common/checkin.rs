@@ -3,7 +3,7 @@ use crate::common::circulator::{CircOp, Circulator};
 use crate::common::holds;
 use crate::constants as C;
 use crate::date;
-use crate::error::{EgResult, EgError};
+use crate::error::{EgError, EgResult};
 use crate::event::EgEvent;
 use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
@@ -797,10 +797,7 @@ impl Circulator {
     /// false/unset, then last billing activity is always the due date.
     ///
     /// Panics if self.circ is None.
-    fn circ_last_billing_activity(
-        &mut self,
-        maybe_setting: Option<&str>,
-    ) -> EgResult<String> {
+    fn circ_last_billing_activity(&mut self, maybe_setting: Option<&str>) -> EgResult<String> {
         let copy_circ_lib = self.copy_circ_lib();
         let circ = self.circ.as_ref().unwrap();
 

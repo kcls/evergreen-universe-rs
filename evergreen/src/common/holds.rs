@@ -1,10 +1,10 @@
-use crate::error::{EgResult,EgError};
 use crate::common::org;
 use crate::common::settings::Settings;
-use crate::event::{Overrides, EgEvent};
 use crate::date;
 use crate::editor::Editor;
-use crate::util::{json_int, json_bool};
+use crate::error::{EgError, EgResult};
+use crate::event::{EgEvent, Overrides};
+use crate::util::{json_bool, json_int};
 use chrono::Duration;
 use json::JsonValue;
 /*
@@ -55,10 +55,7 @@ pub fn calc_hold_shelf_expire_time(
 
 /// Returns the captured, unfulfilled, uncanceled hold that
 /// targets the provided copy.
-pub fn captured_hold_for_copy(
-    editor: &mut Editor,
-    copy_id: i64,
-) -> EgResult<Option<JsonValue>> {
+pub fn captured_hold_for_copy(editor: &mut Editor, copy_id: i64) -> EgResult<Option<JsonValue>> {
     let query = json::object! {
         current_copy: copy_id,
         capture_time: {"!=": JsonValue::Null},
@@ -80,6 +77,7 @@ pub fn find_nearest_permitted_hold(
     let mut retarget: Vec<i64> = Vec::new();
 
     // Fetch the appropriatly fleshed copy.
+    let query = json::object! {"id": copy_id};
     let flesh = json::object! {
         flesh: 1,
         flesh_fields: {
@@ -87,7 +85,7 @@ pub fn find_nearest_permitted_hold(
         }
     };
 
-    let copy = match editor.retrieve_with_ops("acp", json::object! {"id": copy_id}, flesh)? {
+    let copy = match editor.retrieve_with_ops("acp", query, flesh)? {
         Some(c) => c,
         None => Err(editor.die_event())?,
     };
@@ -98,34 +96,38 @@ pub fn find_nearest_permitted_hold(
        "capture_time": JsonValue::Null,
     };
 
-    let old_holds = editor.search("ahr", query)?;
+    let mut old_holds = editor.search("ahr", query)?;
 
     let mut settings = Settings::new(&editor);
     let hold_stall_intvl = settings.get_value("circ.hold_stalling.soft")?;
 
-    let params = json::array! [
+    let params = json::array![
         editor.requestor_ws_ou(),
         copy.clone(),
         100,
-        hold_stall_intvl.clone(),
+        hold_stall_intvl.to_owned(),
     ];
 
     // best_holds is a JSON array of JSON hold IDs.
-    let best_holds = editor.client_mut().send_recv_one(
+    let best_hold_results = editor.client_mut().send_recv_one(
         "open-ils.storage",
         "open-ils.storage.action.hold_request.nearest_hold.atomic",
-        params
+        params,
     )?;
 
-    let mut best_holds = match best_holds {
-        Some(list) => list,
-        None => JsonValue::new_array(),
-    };
+    // Map the JSON hold IDs to numbers.
+    let mut best_holds: Vec<i64> = Vec::new();
+    if let Some(bhr) = best_hold_results {
+        for h in bhr.members() {
+            best_holds.push(json_int(&h)?);
+        }
+    }
 
     // Holds that already target this copy are still in the game.
     for old_hold in old_holds.iter() {
-        if !best_holds.members().any(|id| id == &old_hold["id"]) {
-            best_holds.push(old_hold["id"].clone());
+        let old_id = json_int(&old_hold["id"])?;
+        if !best_holds.contains(&old_id) {
+            best_holds.push(old_id);
         }
     }
 
@@ -136,9 +138,11 @@ pub fn find_nearest_permitted_hold(
 
     let mut best_hold = None;
 
-    for hold_id in best_holds.members() {
-        let hold_id = json_int(&hold_id)?;
-        log::info!("Checking if hold {hold_id} is permitted for copy {}", copy["barcode"]);
+    for hold_id in best_holds {
+        log::info!(
+            "Checking if hold {hold_id} is permitted for copy {}",
+            copy["barcode"]
+        );
 
         let hold = editor.retrieve("ahr", hold_id)?.unwrap(); // required
         let hold_type = hold["hold_type"].as_str().unwrap(); // required
@@ -170,13 +174,43 @@ pub fn find_nearest_permitted_hold(
         }
     }
 
-    if best_hold.is_none() {
-        log::info!("No suitable holds found for copy {}", copy["barcode"]);
-        return Ok(None);
+    let mut targeted_hold = match best_hold {
+        Some(h) => h,
+        None => {
+            log::info!("No suitable holds found for copy {}", copy["barcode"]);
+            return Ok(None);
+        }
+    };
+
+    log::info!(
+        "Best hold {} found for copy {}",
+        targeted_hold["id"],
+        copy["barcode"]
+    );
+
+    if check_only {
+        return Ok(Some((targeted_hold, retarget)));
     }
 
+    // Target the copy
+    targeted_hold["current_copy"] = json::from(copy_id);
+    editor.update(&targeted_hold)?;
 
-    Ok(None)
+    // len() test required for drain()
+    if old_holds.len() > 0 {
+        // Retarget any other holds that currently target this copy.
+        for mut hold in old_holds.drain(0..) {
+            if hold["id"] == targeted_hold["id"] {
+                continue;
+            }
+            hold["current_copy"] = JsonValue::Null;
+            hold["prev_check_time"] = JsonValue::Null;
+            editor.update(&hold)?;
+            retarget.push(json_int(&hold["id"])?);
+        }
+    }
+
+    return Ok(Some((targeted_hold, retarget)));
 }
 
 pub struct HoldPermitResult {
@@ -329,7 +363,8 @@ pub fn test_copy_for_hold(
                 log::debug!("Override succeeded for {permission}");
             } else {
                 has_failure = true;
-                if let Some(e) = editor.last_event() { // should be set.
+                if let Some(e) = editor.last_event() {
+                    // should be set.
                     pending_result.failed_override = Some(e.clone());
                 }
             }
@@ -346,6 +381,3 @@ pub fn test_copy_for_hold(
 
     Ok(result)
 }
-
-
-

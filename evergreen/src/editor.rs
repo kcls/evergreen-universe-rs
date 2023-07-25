@@ -1,4 +1,4 @@
-use crate::error::{EgResult, EgError};
+use crate::error::{EgError, EgResult};
 use crate::event::EgEvent;
 use crate::idl;
 use crate::util;

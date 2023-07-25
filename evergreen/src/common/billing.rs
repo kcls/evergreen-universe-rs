@@ -4,7 +4,7 @@ use crate::common::settings::Settings;
 use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
-use crate::error::{EgResult, EgError};
+use crate::error::{EgError, EgResult};
 use crate::util;
 use crate::util::{json_bool, json_float, json_int};
 use chrono::{DateTime, Duration, FixedOffset, Local};
@@ -208,11 +208,7 @@ pub fn void_or_zero_bills_of_type(
 }
 
 /// Assumes all bills are linked to the same transaction.
-pub fn adjust_bills_to_zero(
-    editor: &mut Editor,
-    bill_ids: &[i64],
-    note: &str,
-) -> EgResult<()> {
+pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -> EgResult<()> {
     let mut bills = editor.search("mb", json::object! {"id": bill_ids})?;
     if bills.len() == 0 {
         return Ok(());
