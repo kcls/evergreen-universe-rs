@@ -1166,7 +1166,7 @@ impl Circulator {
 
         let mut evt = EgEvent::success();
         evt.set_payload(payload);
-        evt.set_is_hold(self.hold.is_some());
+        evt.set_ad_hoc_value("ishold", json::from(self.hold.is_some()));
 
         self.add_event(evt);
 
@@ -1360,6 +1360,17 @@ impl Circulator {
                 return Ok(false);
             }
         };
+
+        if let Some(capture) = self.options.get("capture") {
+            if capture != "capture" {
+                // See if this item is in a hold-capture-verify location.
+                if json_bool(&self.copy()["location"]["hold_verify"]) {
+                    let mut evt = EgEvent::new("HOLD_CAPTURE_DELAYED");
+                    evt.set_ad_hoc_value("copy_location", self.copy()["location"].clone());
+                    self.exit_err_on_event(evt)?;
+                }
+            }
+        }
 
         Ok(false)
     }

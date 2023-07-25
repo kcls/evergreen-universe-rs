@@ -438,6 +438,14 @@ impl Editor {
                 ))?;
             }
 
+            if params.params().len() == 0 {
+                Err(EgError::Debug(format!("Create/update/delete calls require a parameter")))?;
+            }
+
+            // Verify the object provided is a valid IDL object with
+            // correctly spelled keys.
+            self.idl().verify_object(&params.params()[0])?;
+
             // Write calls also get logged to the activity log
             log::info!(
                 "ACT:{} request {} {}",

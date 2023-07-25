@@ -1,11 +1,10 @@
-use crate::error::EgError;
 ///! IDL Parser
 ///!
 ///! Creates an in-memory representation of the IDL file.
 ///!
 ///! Parser is wrapped in an Arc<Parser> since it's read-only and
 ///! practically all areas of EG code need a reference to it.
-use json;
+use json::JsonValue;
 use log::warn;
 use opensrf::classified;
 use opensrf::client::DataSerializer;
@@ -15,6 +14,7 @@ use std::fmt;
 use std::fs;
 use std::ops::Index;
 use std::sync::Arc;
+use crate::error::{EgResult, EgError};
 
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
 const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
@@ -276,7 +276,7 @@ impl fmt::Display for Class {
 /// NOTE: experiment
 /// Create an Instance wrapper around a JsonValue to enforce
 /// IDL field access (and maybe more, we'll see).
-pub fn wrap(idl: Arc<Parser>, v: json::JsonValue) -> Result<Instance, EgError> {
+pub fn wrap(idl: Arc<Parser>, v: JsonValue) -> Result<Instance, EgError> {
     let classname = match v[CLASSNAME_KEY].as_str() {
         Some(c) => c.to_string(),
         None => Err(format!("JsonValue cannot be blessed into an idl::Instance"))?,
@@ -291,12 +291,12 @@ pub fn wrap(idl: Arc<Parser>, v: json::JsonValue) -> Result<Instance, EgError> {
 
 pub struct Instance {
     classname: String,
-    value: json::JsonValue,
+    value: JsonValue,
     idl: Arc<Parser>,
 }
 
 impl Instance {
-    pub fn inner(&self) -> &json::JsonValue {
+    pub fn inner(&self) -> &JsonValue {
         &self.value
     }
     pub fn classname(&self) -> &str {
@@ -306,7 +306,7 @@ impl Instance {
 
 /// Ensures field access fails on unknown IDL class fields.
 impl Index<&str> for Instance {
-    type Output = json::JsonValue;
+    type Output = JsonValue;
     fn index(&self, key: &str) -> &Self::Output {
         if let Some(_) = self
             .idl
@@ -567,10 +567,10 @@ impl Parser {
     /// array as it goes.
     ///
     /// Includes a _classname key with the IDL class.
-    fn array_to_hash(&self, class: &str, mut value: json::JsonValue) -> json::JsonValue {
+    fn array_to_hash(&self, class: &str, mut value: JsonValue) -> JsonValue {
         let fields = &self.classes.get(class).unwrap().fields;
 
-        let mut hash = json::JsonValue::new_object();
+        let mut hash = JsonValue::new_object();
 
         hash.insert(CLASSNAME_KEY, json::from(class)).unwrap();
 
@@ -584,14 +584,14 @@ impl Parser {
     /// Converts an IDL-classed hash into an IDL-classed array, whose
     /// array positions match the IDL field position, consuming the
     /// hash as it goes.
-    fn hash_to_array(&self, class: &str, mut hash: json::JsonValue) -> json::JsonValue {
+    fn hash_to_array(&self, class: &str, mut hash: JsonValue) -> JsonValue {
         let fields = &self.classes.get(class).unwrap().fields;
 
         // Translate the fields hash into a sorted array
         let mut sorted = fields.values().collect::<Vec<&Field>>();
         sorted.sort_by_key(|f| f.array_pos);
 
-        let mut array = json::JsonValue::new_array();
+        let mut array = JsonValue::new_array();
 
         for field in sorted {
             array.push(hash[&field.name].take()).unwrap();
@@ -602,7 +602,7 @@ impl Parser {
 
     /// Returns true if the provided value is shaped like an IDL-blessed
     /// object and has a valid IDL class name.
-    pub fn is_idl_object(&self, obj: &json::JsonValue) -> bool {
+    pub fn is_idl_object(&self, obj: &JsonValue) -> bool {
         if obj.is_object() {
             if let Some(cname) = obj[CLASSNAME_KEY].as_str() {
                 if self.classes.get(cname).is_some() {
@@ -617,7 +617,7 @@ impl Parser {
     /// Replace Object or Array values on an IDL object with the
     /// scalar primary key value of the linked object (real fields)
     /// or null (virtual fields).
-    pub fn de_flesh_object(&self, obj: &mut json::JsonValue) -> Result<(), EgError> {
+    pub fn de_flesh_object(&self, obj: &mut JsonValue) -> Result<(), EgError> {
         let cname = obj[CLASSNAME_KEY]
             .as_str()
             .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
@@ -632,7 +632,7 @@ impl Parser {
             if value.is_object() || value.is_array() {
                 if field.is_virtual() {
                     // Virtual fields can be fully cleared.
-                    obj[name] = json::JsonValue::Null;
+                    obj[name] = JsonValue::Null;
                 } else {
                     if let Some(val) = self.get_pkey_value(obj) {
                         // Replace fleshed real fields with their pkey.
@@ -653,12 +653,12 @@ impl Parser {
         Ok(())
     }
 
-    pub fn get_pkey_value(&self, obj: &json::JsonValue) -> Option<json::JsonValue> {
+    pub fn get_pkey_value(&self, obj: &JsonValue) -> Option<JsonValue> {
         self.get_pkey_info(obj).map(|(_, v)| v)
     }
 
     /// Get the primary key field and value from an IDL object if one exists.
-    pub fn get_pkey_info(&self, obj: &json::JsonValue) -> Option<(&Field, json::JsonValue)> {
+    pub fn get_pkey_info(&self, obj: &JsonValue) -> Option<(&Field, JsonValue)> {
         if !self.is_idl_object(obj) {
             return None;
         }
@@ -675,12 +675,12 @@ impl Parser {
     }
 
     /// Create the seed of an IDL object with the requested class.
-    pub fn create(&self, classname: &str) -> Result<json::JsonValue, EgError> {
+    pub fn create(&self, classname: &str) -> Result<JsonValue, EgError> {
         if !self.classes.contains_key(classname) {
             Err(format!("Invalid IDL class: {classname}"))?;
         }
 
-        let mut obj = json::JsonValue::new_object();
+        let mut obj = JsonValue::new_object();
         obj[CLASSNAME_KEY] = json::from(classname);
 
         Ok(obj)
@@ -691,8 +691,8 @@ impl Parser {
     pub fn create_from(
         &self,
         classname: &str,
-        mut obj: json::JsonValue,
-    ) -> Result<json::JsonValue, EgError> {
+        mut obj: JsonValue,
+    ) -> Result<JsonValue, EgError> {
         if !obj.is_object() {
             Err(format!("IDL cannot create_from() on a non-object"))?;
         }
@@ -717,17 +717,52 @@ impl Parser {
 
         Ok(obj)
     }
+
+    /// Verify a JSON object is a properly-formatted IDL object with no
+    /// misspelled field names.
+    ///
+    /// Field names begging with "_" will not be checked.
+    pub fn verify_object(&self, obj: &JsonValue) -> EgResult<()> {
+        if !obj.is_object() {
+            Err(EgError::Debug(format!("IDL value is not an object: {}", obj.dump())))?;
+        }
+
+        let cname = match obj[CLASSNAME_KEY].as_str() {
+            Some(c) => c,
+            None => Err(EgError::Debug(format!("IDL object has no class name: {}", obj.dump())))?,
+        };
+
+        let idl_class = match self.classes.get(cname) {
+            Some(c) => c,
+            None => Err(EgError::Debug(format!("No such IDL class: {cname}")))?,
+        };
+
+        for (key, _) in obj.entries() {
+            // Ignore keys that start with _ as that's a supported method
+            // for attaching values to IDL objects with ad-hoc keys.
+            if !key.starts_with("_") {
+                if !idl_class.fields.contains_key(key) {
+                    Err(EgError::Debug(format!(
+                        "IDL class {} has no such field: {}",
+                        cname, key
+                    )))?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl DataSerializer for Parser {
     /// Creates a clone of the provided JsonValue, replacing any
     /// IDL-classed arrays with classed hashes.
-    fn unpack(&self, value: json::JsonValue) -> json::JsonValue {
+    fn unpack(&self, value: JsonValue) -> JsonValue {
         if !value.is_array() && !value.is_object() {
             return value;
         }
 
-        let mut obj: json::JsonValue;
+        let mut obj: JsonValue;
 
         if classified::ClassifiedJson::can_declassify(&value) {
             let mut unpacked = classified::ClassifiedJson::declassify(value).unwrap();
@@ -742,14 +777,14 @@ impl DataSerializer for Parser {
         }
 
         if obj.is_array() {
-            let mut arr = json::JsonValue::new_array();
+            let mut arr = JsonValue::new_array();
             while obj.len() > 0 {
                 arr.push(self.unpack(obj.array_remove(0))).unwrap();
             }
 
             return arr;
         } else if obj.is_object() {
-            let mut hash = json::JsonValue::new_object();
+            let mut hash = JsonValue::new_object();
             loop {
                 let key = match obj.entries().next() {
                     Some((k, _)) => k.to_owned(),
@@ -766,7 +801,7 @@ impl DataSerializer for Parser {
 
     /// Creates a clone of the provided JsonValue, replacing any
     /// IDL-classed hashes with IDL-classed arrays.
-    fn pack(&self, mut value: json::JsonValue) -> json::JsonValue {
+    fn pack(&self, mut value: JsonValue) -> JsonValue {
         if !value.is_array() && !value.is_object() {
             return value;
         }
@@ -779,7 +814,7 @@ impl DataSerializer for Parser {
             let class = class_json.as_str().unwrap();
             let mut array = self.hash_to_array(&class, value);
 
-            let mut new_arr = json::JsonValue::new_array();
+            let mut new_arr = JsonValue::new_array();
             while array.len() > 0 {
                 new_arr.push(self.pack(array.array_remove(0))).ok();
             }
@@ -788,14 +823,14 @@ impl DataSerializer for Parser {
         }
 
         if value.is_array() {
-            let mut arr = json::JsonValue::new_array();
+            let mut arr = JsonValue::new_array();
             while value.len() > 0 {
                 arr.push(self.pack(value.array_remove(0))).ok();
             }
 
             arr
         } else if value.is_object() {
-            let mut hash = json::JsonValue::new_object();
+            let mut hash = JsonValue::new_object();
 
             loop {
                 let key = match value.entries().next() {
@@ -814,7 +849,7 @@ impl DataSerializer for Parser {
 
 /// Remove the class designation and any auto-fields, resulting in a
 /// vanilla hash.
-pub fn unbless(hash: &mut json::JsonValue) {
+pub fn unbless(hash: &mut JsonValue) {
     hash.remove(CLASSNAME_KEY);
     for field in AUTO_FIELDS {
         hash.remove(field);

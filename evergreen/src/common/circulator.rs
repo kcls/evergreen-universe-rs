@@ -223,10 +223,17 @@ impl Circulator {
         self.editor.rollback()
     }
 
-    /// Used for Error events that stop processing, i.e. cannot be overridden.
+    /// Used for events that stop processing and should result in
+    /// a rollback on the main editor.
     pub fn exit_err_on_event_code(&mut self, code: &str) -> EgResult<()> {
-        self.add_event(EgEvent::new(code));
-        Err(EgError::Event(EgEvent::new(code)))
+        self.exit_err_on_event(EgEvent::new(code))
+    }
+
+    /// Used for events that stop processing and should result in
+    /// a rollback on the main editor.
+    pub fn exit_err_on_event(&mut self, evt: EgEvent) -> EgResult<()> {
+        self.add_event(evt.clone());
+        Err(EgError::Event(evt))
     }
 
     /// Sets a final event and sets the exit_early flag.

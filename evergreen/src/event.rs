@@ -1,6 +1,6 @@
 use crate::util;
 use chrono::Local;
-use json;
+use json::JsonValue;
 use std::fmt;
 
 /// Common argument to API calls that allow for targeted overrides.
@@ -14,7 +14,7 @@ pub enum Overrides {
 pub struct EgEvent {
     code: isize,
     textcode: String,
-    payload: json::JsonValue, // json::JsonValue::Null if empty
+    payload: JsonValue, // JsonValue::Null if empty
     desc: Option<String>,
     debug: Option<String>,
     note: Option<String>,
@@ -22,8 +22,9 @@ pub struct EgEvent {
     ilsperm: Option<String>,
     ilspermloc: i64,
     org: Option<i64>,
-    /// Needed for compat with circ code.
-    is_hold: bool,
+    /// Some code adds ad-hoc bits to the event proper instead of putting
+    /// them into the "payload".
+    ad_hoc: Option<JsonValue>,
 }
 
 impl fmt::Display for EgEvent {
@@ -46,15 +47,20 @@ impl fmt::Display for EgEvent {
     }
 }
 
-impl From<&EgEvent> for json::JsonValue {
+impl From<&EgEvent> for JsonValue {
     fn from(evt: &EgEvent) -> Self {
         let mut obj = json::object! {
             code: evt.code(),
             textcode: evt.textcode(),
             payload: evt.payload().clone(),
             ilspermloc: evt.ilspermloc(),
-            ishold: json::from(evt.is_hold()),
         };
+
+        if let Some(ad_hoc) = evt.ad_hoc.as_ref() {
+            for (k, v) in ad_hoc.entries() {
+                obj[k] = v.clone();
+            }
+        }
 
         if let Some(v) = evt.desc() {
             obj["desc"] = json::from(v);
@@ -87,15 +93,15 @@ impl EgEvent {
         EgEvent {
             code: -1,
             textcode: textcode.to_string(),
-            payload: json::JsonValue::Null,
+            payload: JsonValue::Null,
             desc: None,
             debug: None,
             note: None,
             org: None,
-            is_hold: false,
             servertime: Some(servertime),
             ilsperm: None,
             ilspermloc: 0,
+            ad_hoc: None,
         }
     }
 
@@ -104,7 +110,7 @@ impl EgEvent {
         EgEvent::new("SUCCESS")
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> JsonValue {
         self.into()
     }
 
@@ -124,10 +130,10 @@ impl EgEvent {
         &self.textcode
     }
 
-    pub fn payload(&self) -> &json::JsonValue {
+    pub fn payload(&self) -> &JsonValue {
         &self.payload
     }
-    pub fn set_payload(&mut self, payload: json::JsonValue) {
+    pub fn set_payload(&mut self, payload: JsonValue) {
         self.payload = payload
     }
 
@@ -166,12 +172,17 @@ impl EgEvent {
         self.org = Some(id);
     }
 
-    pub fn is_hold(&self) -> bool {
-        self.is_hold
+    pub fn ad_hoc(&self) -> Option<&JsonValue> {
+        self.ad_hoc.as_ref()
     }
 
-    pub fn set_is_hold(&mut self, is: bool) {
-        self.is_hold = is;
+    pub fn set_ad_hoc_value(&mut self, key: &str, value: JsonValue) {
+        if self.ad_hoc.is_none() {
+            self.ad_hoc = Some(JsonValue::new_object());
+        }
+
+        let ad_hoc = self.ad_hoc.as_mut().unwrap();
+        ad_hoc[key] = value;
     }
 
     /// Parses a JsonValue and optionally returns an EgEvent.
@@ -200,7 +211,7 @@ impl EgEvent {
     /// let evt_op = EgEvent::parse(&jv2);
     /// assert!(evt_op.is_none());
     /// ```
-    pub fn parse(jv: &json::JsonValue) -> Option<EgEvent> {
+    pub fn parse(jv: &JsonValue) -> Option<EgEvent> {
         if !jv.is_object() {
             return None;
         }
@@ -213,7 +224,6 @@ impl EgEvent {
 
         let mut evt = EgEvent::new(&textcode);
         evt.set_payload(jv["payload"].clone());
-        evt.is_hold = util::json_bool(&jv["ishold"]);
 
         if let Some(code) = jv["ilsevent"].as_isize() {
             evt.code = code;
@@ -227,18 +237,32 @@ impl EgEvent {
             evt.org = Some(org);
         }
 
-        for field in vec!["desc", "debug", "note", "servertime", "ilsperm"] {
-            if let Some(value) = jv[field].as_str() {
-                let v = String::from(value);
-                match field {
-                    "desc" => evt.desc = Some(v),
-                    "debug" => evt.debug = Some(v),
-                    "note" => evt.note = Some(v),
-                    "servertime" => evt.servertime = Some(v),
-                    "ilsperm" => evt.ilsperm = Some(v),
-                    _ => {}
+        let mut ad_hoc = JsonValue::new_object();
+        for (field, value) in jv.entries() {
+            match field {
+                "textcode" | "payload" | "ilsevent" | "ilspermloc" | "org" => {
+                    // These are already handled.
                 }
+                "desc" | "debug" | "note" | "servertime" | "ilsperm" => {
+                    // These are well-known string values.
+                    if let Some(v) = value.as_str() {
+                        match field {
+                            "desc" => evt.desc = Some(v.to_string()),
+                            "debug" => evt.debug = Some(v.to_string()),
+                            "note" => evt.note = Some(v.to_string()),
+                            "servertime" => evt.servertime = Some(v.to_string()),
+                            "ilsperm" => evt.ilsperm = Some(v.to_string()),
+                             _ => {} // shold not happen
+                        }
+                    }
+                }
+                // Tack any unknown values onto the ad_hoc blob.
+                _ => ad_hoc[field] = value.clone()
             }
+        }
+
+        if ad_hoc.len() > 0 {
+            evt.ad_hoc = Some(ad_hoc);
         }
 
         Some(evt)
