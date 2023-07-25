@@ -88,6 +88,14 @@ impl Circulator {
         Ok(())
     }
 
+    fn capture_state(&self) -> &str {
+        match self.options.get("capture") {
+            Some(c) => c.as_str().unwrap_or(""),
+            None => "",
+        }
+    }
+
+
     fn basic_copy_checks(&mut self) -> EgResult<()> {
         if self.copy.is_none() {
             self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
@@ -195,15 +203,7 @@ impl Circulator {
             return Ok(());
         }
 
-        let capture = match self.options.get("capture") {
-            Some(c) => match c.as_str() {
-                Some(s) => s,
-                None => "",
-            },
-            None => "",
-        };
-
-        if capture.eq("nocapture") {
+        if self.capture_state() == "nocapture" {
             return Ok(());
         }
 
@@ -1297,50 +1297,45 @@ impl Circulator {
     }
 
     fn try_to_capture(&mut self) -> EgResult<bool> {
-        let mut needed = false;
-
         if self.get_option_bool("remote_hold") {
-            needed = self.attempt_checkin_hold_capture()?;
-            return Ok(needed);
+            return Ok(false);
         }
 
-        /*
-        if (!$self->remote_hold) {
-            if ($self->use_booking) {
-                my $potential_hold = $self->hold_capture_is_possible;
-                my $potential_reservation = $self->reservation_capture_is_possible;
+        if !self.is_booking_enabled() {
+            return Ok(self.attempt_checkin_hold_capture()?);
+        }
 
-                if ($potential_hold and $potential_reservation) {
-                    $logger->info("circulator: item could fulfill either hold or reservation");
-                    $self->push_events(new OpenILS::Event(
-                        "HOLD_RESERVATION_CONFLICT",
-                        "hold" => $potential_hold,
-                        "reservation" => $potential_reservation
-                    ));
-                    return if $self->bail_out;
-                } elsif ($potential_hold) {
-                    $needed_for_something =
-                        $self->attempt_checkin_hold_capture;
-                } elsif ($potential_reservation) {
-                    $needed_for_something =
-                        $self->attempt_checkin_reservation_capture;
-                }
+        // XXX this would be notably faster if we didn't first check
+        // for both hold and reservation capturability, i.e. if one
+        // automatically took precedence.  Like this, capture logic,
+        // which can be slow, has to run at minimum 3 times.
+        let maybe_hold = self.hold_capture_is_possible()?;
+        let maybe_resv = self.reservation_capture_is_possible()?;
+
+        if let Some(hold) = maybe_hold {
+            if let Some(resv) = maybe_resv {
+                // Hold and reservation == conflict.
+                let mut evt = EgEvent::new("HOLD_RESERVATION_CONFLICT");
+                evt.set_ad_hoc_value("hold", hold);
+                evt.set_ad_hoc_value("reservation", resv);
+                self.exit_err_on_event(evt)?;
+                Ok(false)
             } else {
-                $needed_for_something = $self->attempt_checkin_hold_capture;
+                // Hold but no reservation
+                self.attempt_checkin_hold_capture()
             }
+        } else if maybe_resv.is_some() {
+            // Reservation, but no hold.
+            self.attempt_checkin_reservation_capture()
+        } else {
+            // No nuthin
+            Ok(false)
         }
-        */
-
-        Ok(needed)
     }
 
     fn attempt_checkin_hold_capture(&mut self) -> EgResult<bool> {
-        if let Some(value) = self.options.get("capture") {
-            if let Some(capture) = value.as_str() {
-                if capture == "nocapture" {
-                    return Ok(false);
-                }
-            }
+        if self.capture_state() == "nocapture" {
+            return Ok(false);
         }
 
         let maybe_found =
@@ -1354,14 +1349,12 @@ impl Circulator {
             }
         };
 
-        if let Some(capture) = self.options.get("capture") {
-            if capture != "capture" {
-                // See if this item is in a hold-capture-verify location.
-                if json_bool(&self.copy()["location"]["hold_verify"]) {
-                    let mut evt = EgEvent::new("HOLD_CAPTURE_DELAYED");
-                    evt.set_ad_hoc_value("copy_location", self.copy()["location"].clone());
-                    self.exit_err_on_event(evt)?;
-                }
+        if self.capture_state() != "capture" {
+            // See if this item is in a hold-capture-verify location.
+            if json_bool(&self.copy()["location"]["hold_verify"]) {
+                let mut evt = EgEvent::new("HOLD_CAPTURE_DELAYED");
+                evt.set_ad_hoc_value("copy_location", self.copy()["location"].clone());
+                self.exit_err_on_event(evt)?;
             }
         }
 
@@ -1394,5 +1387,52 @@ impl Circulator {
         }
 
         Ok(true)
+    }
+
+
+    fn attempt_checkin_reservation_capture(&mut self) -> EgResult<bool> {
+        Ok(true)
+    }
+
+    fn hold_capture_is_possible(&mut self) -> EgResult<Option<JsonValue>> {
+        if self.capture_state() == "nocapture" {
+            return Ok(None);
+        }
+
+        let maybe_found = holds::find_nearest_permitted_hold(
+            &mut self.editor, self.copy_id.unwrap(), true /* check only */)?;
+
+        let (hold, retarget) = match maybe_found {
+            Some(info) => info,
+            None => {
+                log::info!("{self} no permitted holds found for copy");
+                return Ok(None);
+            }
+        };
+
+        Ok(Some(hold))
+    }
+
+    fn reservation_capture_is_possible(&mut self) -> EgResult<Option<JsonValue>> {
+        if self.capture_state() == "nocapture" {
+            return Ok(None);
+        }
+
+        let params = json::array! [
+            self.editor.authtoken().unwrap(),
+            self.copy()["barcode"].clone()
+        ];
+
+        let result = self.editor.client_mut().send_recv_one(
+            "open-ils.booking",
+            "open-ils.booking.reservations.could_capture",
+            params
+        )?.ok_or(format!("Booking API returned no results"))?;
+
+        if let Some(evt) = EgEvent::parse(&result) {
+            self.exit_err_on_event(evt)?;
+        }
+
+        Ok(Some(result))
     }
 }
