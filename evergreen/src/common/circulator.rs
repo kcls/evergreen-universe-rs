@@ -2,7 +2,7 @@ use crate::common::org;
 use crate::common::settings::Settings;
 use crate::editor::Editor;
 use crate::error::{EgResult, EgError};
-use crate::event::EgEvent;
+use crate::event::{Overrides, EgEvent};
 use crate::util;
 use crate::util::{json_bool, json_bool_op, json_int};
 use json::JsonValue;
@@ -46,12 +46,6 @@ impl fmt::Display for CircOp {
             Self::Other => write!(f, "other"),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Overrides {
-    All,
-    Events(Vec<String>),
 }
 
 /// Context and shared methods for circulation actions.

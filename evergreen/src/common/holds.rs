@@ -1,9 +1,10 @@
-use crate::error::{EgResult, EgError};
+use crate::error::{EgResult,EgError};
 use crate::common::org;
 use crate::common::settings::Settings;
+use crate::event::{Overrides, EgEvent};
 use crate::date;
 use crate::editor::Editor;
-use crate::util::json_int;
+use crate::util::{json_int, json_bool};
 use chrono::Duration;
 use json::JsonValue;
 /*
@@ -86,7 +87,7 @@ pub fn find_nearest_permitted_hold(
         }
     };
 
-    let copy = match editor.retrieve("acp", json::object! {"id": copy_id})? {
+    let copy = match editor.retrieve_with_ops("acp", json::object! {"id": copy_id}, flesh)? {
         Some(c) => c,
         None => Err(editor.die_event())?,
     };
@@ -109,6 +110,7 @@ pub fn find_nearest_permitted_hold(
         hold_stall_intvl.clone(),
     ];
 
+    // best_holds is a JSON array of JSON hold IDs.
     let best_holds = editor.client_mut().send_recv_one(
         "open-ils.storage",
         "open-ils.storage.action.hold_request.nearest_hold.atomic",
@@ -122,8 +124,8 @@ pub fn find_nearest_permitted_hold(
 
     // Holds that already target this copy are still in the game.
     for old_hold in old_holds.iter() {
-        if !best_holds.members().any(|h| h["id"] == old_hold["id"]) {
-            best_holds.push(old_hold.clone());
+        if !best_holds.members().any(|id| id == &old_hold["id"]) {
+            best_holds.push(old_hold["id"].clone());
         }
     }
 
@@ -132,6 +134,218 @@ pub fn find_nearest_permitted_hold(
         return Ok(None);
     }
 
+    let mut best_hold = None;
+
+    for hold_id in best_holds.members() {
+        let hold_id = json_int(&hold_id)?;
+        log::info!("Checking if hold {hold_id} is permitted for copy {}", copy["barcode"]);
+
+        let hold = editor.retrieve("ahr", hold_id)?.unwrap(); // required
+        let hold_type = hold["hold_type"].as_str().unwrap(); // required
+        let hold_usr = json_int(&hold["usr"])?;
+        let pickup_lib = json_int(&hold["pickup_lib"])?;
+        let request_lib = json_int(&hold["request_lib"])?;
+        let requestor = json_int(&hold["requestor"])?;
+
+        if hold_type == "R" || hold_type == "F" {
+            // These hold types do not require verification
+            best_hold = Some(hold);
+            break;
+        }
+
+        let result = test_copy_for_hold(
+            editor,
+            hold_usr,
+            copy_id,
+            pickup_lib,
+            request_lib,
+            requestor,
+            true,
+            None,
+        )?;
+
+        if result.success {
+            best_hold = Some(hold);
+            break;
+        }
+    }
+
+    if best_hold.is_none() {
+        log::info!("No suitable holds found for copy {}", copy["barcode"]);
+        return Ok(None);
+    }
+
 
     Ok(None)
 }
+
+pub struct HoldPermitResult {
+    matchpoint: Option<i64>,
+    fail_part: Option<String>,
+    mapped_event: Option<EgEvent>,
+    failed_override: Option<EgEvent>,
+}
+
+impl HoldPermitResult {
+    pub fn new() -> HoldPermitResult {
+        HoldPermitResult {
+            matchpoint: None,
+            fail_part: None,
+            mapped_event: None,
+            failed_override: None,
+        }
+    }
+}
+
+pub struct TestCopyForHoldResult {
+    /// True if the permit call returned a success or we were able
+    /// to override all failure events.
+    success: bool,
+
+    /// Details on the individual permit results.
+    permit_results: Vec<HoldPermitResult>,
+
+    /// True if age-protect is the only blocking factor.
+    age_protect_only: bool,
+}
+
+/// Test if a hold can be used to fill a hold.
+pub fn test_copy_for_hold(
+    editor: &mut Editor,
+    patron_id: i64,
+    copy_id: i64,
+    pickup_lib: i64,
+    request_lib: i64,
+    requestor: i64,
+    is_retarget: bool,
+    overrides: Option<Overrides>,
+) -> EgResult<TestCopyForHoldResult> {
+    let mut result = TestCopyForHoldResult {
+        success: false,
+        permit_results: Vec::new(),
+        age_protect_only: false,
+    };
+
+    let db_func = match is_retarget {
+        true => "action.hold_retarget_permit_test",
+        false => "action.hold_request_permit_test",
+    };
+
+    let query = json::object! {
+        "from": [
+            db_func,
+            pickup_lib,
+            request_lib,
+            copy_id,
+            patron_id,
+            requestor,
+        ]
+    };
+
+    let db_results = editor.json_query(query)?;
+
+    if let Some(row) = db_results.first() {
+        // If the first result is a success, we're done.
+        if json_bool(&row["success"]) {
+            let mut res = HoldPermitResult::new();
+
+            res.matchpoint = json_int(&row["matchpoint"]).ok(); // Option
+            result.permit_results.push(res);
+            result.success = true;
+
+            return Ok(result);
+        }
+    }
+
+    let mut pending_results = Vec::new();
+
+    for res in db_results.iter() {
+        let fail_part = match res["fail_part"].as_str() {
+            Some(s) => s,
+            None => continue, // Should not happen.
+        };
+
+        let matchpoint = json_int(&db_results[0]["matchpoint"]).ok(); // Option
+
+        let mut res = HoldPermitResult::new();
+        res.fail_part = Some(fail_part.to_string());
+        res.matchpoint = matchpoint;
+
+        // Map some newstyle fail parts to legacy event codes.
+        let evtcode = match fail_part {
+            "config.hold_matrix_test.holdable" => "ITEM_NOT_HOLDABLE",
+            "item.holdable" => "ITEM_NOT_HOLDABLE",
+            "location.holdable" => "ITEM_NOT_HOLDABLE",
+            "status.holdable" => "ITEM_NOT_HOLDABLE",
+            "transit_range" => "ITEM_NOT_HOLDABLE",
+            "no_matchpoint" => "NO_POLICY_MATCHPOINT",
+            "config.hold_matrix_test.max_holds" => "MAX_HOLDS",
+            "config.rule_age_hold_protect.prox" => "ITEM_AGE_PROTECTED",
+            _ => fail_part,
+        };
+
+        let mut evt = EgEvent::new(evtcode);
+        evt.set_payload(json::object! {
+            "fail_part": fail_part,
+            "matchpoint": matchpoint,
+        });
+
+        res.mapped_event = Some(evt);
+        pending_results.push(res);
+    }
+
+    if pending_results.len() == 0 {
+        // This should not happen, but cannot go unchecked.
+        return Ok(result);
+    }
+
+    let mut has_failure = false;
+    let mut has_age_protect = false;
+    for mut pending_result in pending_results.drain(0..) {
+        let evt = pending_result.mapped_event.as_ref().unwrap();
+
+        if !has_age_protect {
+            has_age_protect = evt.textcode() == "ITEM_AGE_PROTECTED";
+        }
+
+        let try_override = if let Some(ov) = overrides.as_ref() {
+            match ov {
+                Overrides::All => true,
+                Overrides::Events(ref list) => list
+                    .iter()
+                    .map(|e| e.as_str())
+                    .collect::<Vec<&str>>()
+                    .contains(&evt.textcode()),
+            }
+        } else {
+            false
+        };
+
+        if try_override {
+            let permission = format!("{}.override", evt.textcode());
+            log::debug!("Checking permission to verify copy for hold: {permission}");
+
+            if editor.allowed(&permission, None)? {
+                log::debug!("Override succeeded for {permission}");
+            } else {
+                has_failure = true;
+                if let Some(e) = editor.last_event() { // should be set.
+                    pending_result.failed_override = Some(e.clone());
+                }
+            }
+        }
+
+        result.permit_results.push(pending_result);
+    }
+
+    result.age_protect_only = has_age_protect && result.permit_results.len() == 1;
+
+    // If all events were successfully overridden, then the end
+    // result is a success.
+    result.success = !has_failure;
+
+    Ok(result)
+}
+
+
+

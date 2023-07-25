@@ -3,6 +3,13 @@ use chrono::Local;
 use json;
 use std::fmt;
 
+/// Common argument to API calls that allow for targeted overrides.
+#[derive(Debug, PartialEq, Clone)]
+pub enum Overrides {
+    All,
+    Events(Vec<String>),
+}
+
 #[derive(Debug, Clone)]
 pub struct EgEvent {
     code: isize,
