@@ -76,13 +76,16 @@ impl Circulator {
         let mut item_is_needed = false;
         if self.get_option_bool("noop") {
             if self.get_option_bool("can_float") {
-                // As noted in the Perl, it's maybe unexpected that
+                // As noted in the Perl, it may be unexpected that
                 // floating items are modified during NO-OP checkins,
                 // but the behavior is retained for backwards compat.
                 self.update_copy(json::object! {"circ_lib": self.circ_lib})?;
             }
         } else {
             item_is_needed = self.try_to_capture()?;
+            if !item_is_needed {
+                self.try_to_transit()?;
+            }
         }
 
         Ok(())
@@ -210,10 +213,7 @@ impl Circulator {
         let copy = self.copy();
         let copy_id = self.copy_id.unwrap();
 
-        let is_precat =
-            json_bool_op(self.options.get("is_precat")) || json_int(&copy["call_number"])? == -1;
-
-        if is_precat {
+        if self.is_precat() {
             return Ok(());
         }
 
@@ -1434,5 +1434,106 @@ impl Circulator {
         }
 
         Ok(Some(result))
+    }
+
+
+    fn try_to_transit(&mut self) -> EgResult<()> {
+        let mut dest_lib = self.copy_circ_lib();
+
+        let mut has_remote_hold = false;
+        if let Some(hold) = self.options.get("remote_hold") {
+            has_remote_hold = true;
+            if let Ok(pl) = json_int(&hold["pickup_lib"]) {
+                dest_lib = pl;
+            }
+        }
+
+        let suppress_transit = self.should_suppress_transit(dest_lib, false)?;
+        let hold_as_transit = self.get_option_bool("hold_as_transit");
+
+        if suppress_transit ||
+            (dest_lib == self.circ_lib && !(has_remote_hold && hold_as_transit)) {
+            // Copy is where it needs to be, either for hold or reshelving.
+            return self.checkin_handle_precat();
+        }
+
+        let can_float = self.get_option_bool("can_float");
+        let manual_float =
+            self.get_option_bool("manual_float") ||
+            json_bool(&self.copy()["floating"]["manual"]);
+
+        if can_float && manual_float && !has_remote_hold {
+            // Copy is floating -- make it stick here
+            self.update_copy(json::object! {"circ_lib": self.circ_lib})?;
+            return Ok(());
+        }
+
+        // Copy needs to transit home
+        self.checkin_build_copy_transit(dest_lib);
+        let mut evt = EgEvent::new("ROUTE_ITEM");
+        evt.set_org(dest_lib);
+        self.add_event(evt);
+
+        Ok(())
+    }
+
+    fn checkin_handle_precat(&mut self) -> EgResult<()> {
+        let copy = self.copy();
+
+        if !self.is_precat() {
+            return Ok(());
+        }
+
+        if self.copy_status() != C::COPY_STATUS_CATALOGING {
+            return Ok(());
+        }
+
+        self.add_event_code("ITEM_NOT_CATALOGED");
+
+        self.update_copy(json::object! {"status": C::COPY_STATUS_CATALOGING}).map(|_| ())
+    }
+
+
+    fn checkin_build_copy_transit(&mut self, dest_lib: i64) -> EgResult<()> {
+        let copy = self.copy();
+
+        let mut transit = json::object! {
+            "source": self.circ_lib,
+            "dest": dest_lib,
+            "target_copy": self.copy_id.unwrap(),
+            "source_send_time": "now",
+            "copy_status": self.copy_status(),
+        };
+
+        // If we are "transiting" an item to the holds shelf,
+        // it's a hold transit.
+        let maybe_remote_hold = self.options.get("remote_hold");
+
+        if let Some(hold) = maybe_remote_hold.as_ref() {
+            transit["hold"] = hold["id"].clone();
+
+            // Hold is transiting, clear any shelf-iness.
+            if !hold["current_shelf_lib"].is_null() || !hold["shelf_time"].is_null() {
+                let mut h = (*hold).clone();
+                h["current_shelf_lib"] = JsonValue::Null;
+                h["shelf_time"] = JsonValue::Null;
+                self.editor.update(&h)?;
+            }
+        }
+
+        log::info!("{self} transiting copy to {dest_lib}");
+
+        if maybe_remote_hold.is_some() {
+            let t = self.editor.idl().create_from("ahtc", transit)?;
+            let t = self.editor.create(&t)?;
+            self.hold_transit = self.editor.retrieve("ahtc", t["id"].clone())?;
+        } else {
+            let t = self.editor.idl().create_from("atc", transit)?;
+            let t = self.editor.create(&t)?;
+            self.transit = self.editor.retrieve("ahtc", t["id"].clone())?;
+        }
+
+        self.update_copy(json::object! {"status": C::COPY_STATUS_IN_TRANSIT})?;
+        Ok(())
     }
 }

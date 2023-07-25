@@ -891,4 +891,18 @@ impl Circulator {
 
         return Ok(());
     }
+
+    pub fn is_precat(&self) -> bool {
+        if json_bool_op(self.options.get("is_precat")) {
+            return true;
+        }
+
+        if let Some(copy) = self.copy.as_ref() {
+            if let Ok(cn) = json_int(&copy["call_number"]) {
+                return cn == -1;
+            }
+        }
+
+        false
+    }
 }
