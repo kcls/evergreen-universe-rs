@@ -6,7 +6,7 @@ use crate::date;
 use crate::editor::Editor;
 use crate::error::{EgError, EgResult};
 use crate::util;
-use crate::util::{json_bool, json_float, json_int};
+use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{DateTime, Duration, FixedOffset, Local};
 use json::JsonValue;
 use std::cmp::Ordering;
@@ -848,10 +848,103 @@ pub fn void_or_zero_overdues(
     editor: &mut Editor,
     circ_id: i64,
     backdate: Option<&str>,
-    note: Option<&str>,
+    mut note: Option<&str>,
+    force_zero: bool,
+    force_void: bool,
 ) -> EgResult<()> {
     log::info!("Voiding overdues for circ={circ_id}");
 
-    Ok(())
+    let circ = match editor.retrieve("circ", circ_id)? {
+        Some(c) => c,
+        None => Err(EgError::Event(editor.last_event_unchecked().clone()))?,
+    };
+
+    let mut query = json::object! {
+        "xact": circ_id,
+        "btype": C::BTYPE_OVERDUE_MATERIALS,
+    };
+
+    if let Some(bd) = backdate {
+        if note.is_none() {
+            note = Some("System: OVERDUE REVERSED FOR BACKDATE");
+        }
+        if let Some(min_date) = calc_min_void_date(editor, &circ, bd)? {
+            query["billing_ts"] = json::object! {">=": date::to_iso(&min_date) };
+        }
+    }
+
+    let circ_lib = json_int(&circ["circ_lib"])?;
+    let bills = editor.search("mb", query)?;
+
+    if bills.len() == 0 {
+        // Nothing to void/zero.
+        return Ok(());
+    }
+
+    let bill_ids: Vec<i64> = bills.iter().map(|b| json_int(&b["id"]).unwrap()).collect();
+
+    let mut settings = Settings::new(&editor);
+    let prohibit_neg_balance = json_bool(
+        settings.get_value_at_org("bill.prohibit_negative_balance_on_overdue", circ_lib)?,
+    ) || json_bool(
+        settings.get_value_at_org("bill.prohibit_negative_balance_default", circ_lib)?,
+    );
+
+    let mut neg_balance_interval =
+        settings.get_value_at_org("bill.negative_balance_interval_on_overdue", circ_lib)?;
+
+    if neg_balance_interval.is_null() {
+        neg_balance_interval =
+            settings.get_value_at_org("bill.negative_balance_interval_default", circ_lib)?;
+    }
+
+    let mut has_refundable = false;
+    if let Some(interval) = neg_balance_interval.as_str() {
+        has_refundable = xact_has_payment_within(editor, circ_id, interval)?;
+    }
+
+    if force_zero || (!force_void && prohibit_neg_balance && !has_refundable) {
+        adjust_bills_to_zero(editor, bill_ids.as_slice(), note.unwrap_or(""))
+    } else {
+        void_bills(editor, bill_ids.as_slice(), note)
+    }
+}
+
+/// Determine the minimum overdue billing date that can be voided,
+/// based on the provided backdate.
+///
+/// Fines for overdue materials are assessed up to, but not including,
+/// one fine interval after the fines are applicable.  Here, we add
+/// one fine interval to the backdate to ensure that we are not
+/// voiding fines that were applicable before the backdate.
+fn calc_min_void_date(
+    editor: &mut Editor,
+    circ: &JsonValue,
+    backdate: &str
+) -> EgResult<Option<DateTime<FixedOffset>>> {
+    let fine_interval = json_string(&circ["fine_interval"])?;
+    let fine_interval = date::interval_to_seconds(&fine_interval)?;
+    let backdate = date::parse_datetime(backdate)?;
+    let due_date = date::parse_datetime(&json_string(&circ["due_date"])?)?;
+
+    let grace_period = circ["grace_period"].as_str().unwrap_or("0s");
+    let grace_period = date::interval_to_seconds(&grace_period)?;
+
+    let grace_period = extend_grace_period(
+        editor,
+        json_int(&circ["circ_lib"])?,
+        grace_period,
+        due_date,
+        None,
+    )?;
+
+    if backdate < due_date + Duration::seconds(grace_period) {
+        log::info!("Backdate {backdate} is within grace period, voiding all");
+        Ok(None)
+    } else {
+        let backdate = backdate + Duration::seconds(fine_interval);
+        log::info!("Applying backdate {backdate} in overdue voiding");
+        Ok(Some(backdate))
+    }
 }
 

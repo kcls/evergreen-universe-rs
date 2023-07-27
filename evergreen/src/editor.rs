@@ -238,6 +238,11 @@ impl Editor {
         self.last_event.as_ref()
     }
 
+    /// Panics if there is no last event
+    pub fn last_event_unchecked(&self) -> &EgEvent {
+        self.last_event().unwrap()
+    }
+
     pub fn event_as_err(&self) -> EgError {
         match self.last_event() {
             Some(e) => EgError::Event(e.clone()),

@@ -102,6 +102,11 @@ impl Circulator {
 
         self.finish_fines_and_voiding()?;
 
+        if let Some(patron) = self.patron.as_ref() {
+            penalty::calculate_penalties(
+                &mut self.editor, json_int(&patron["id"])?, self.circ_lib, None)?;
+        }
+
         Ok(())
     }
 
@@ -1613,6 +1618,8 @@ impl Circulator {
             circ_id,
             backdate_maybe,
             note_maybe,
+            false,
+            false,
         )?;
 
         billing::check_open_xact(&mut self.editor, circ_id)
