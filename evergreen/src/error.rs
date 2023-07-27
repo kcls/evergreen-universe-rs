@@ -123,6 +123,8 @@ impl From<EgEvent> for EgError {
 ///     } else {
 ///         panic!("Unexpected EgError type: {}", e);
 ///     }
+/// } else {
+///     panic!("Unexpected result type");
 /// }
 /// ```
 impl From<&EgEvent> for EgError {

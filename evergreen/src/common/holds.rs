@@ -77,7 +77,6 @@ pub fn find_nearest_permitted_hold(
     let mut retarget: Vec<i64> = Vec::new();
 
     // Fetch the appropriatly fleshed copy.
-    let query = json::object! {"id": copy_id};
     let flesh = json::object! {
         flesh: 1,
         flesh_fields: {
@@ -85,7 +84,7 @@ pub fn find_nearest_permitted_hold(
         }
     };
 
-    let copy = match editor.retrieve_with_ops("acp", query, flesh)? {
+    let copy = match editor.retrieve_with_ops("acp", copy_id, flesh)? {
         Some(c) => c,
         None => Err(editor.die_event())?,
     };

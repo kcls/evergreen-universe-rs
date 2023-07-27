@@ -285,9 +285,7 @@ impl Circulator {
         };
 
         if let Some(copy_id) = copy_id_op {
-            let query = json::object! {id: copy_id};
-
-            if let Some(copy) = self.editor.retrieve_with_ops("acp", query, copy_flesh)? {
+            if let Some(copy) = self.editor.retrieve_with_ops("acp", copy_id, copy_flesh)? {
                 self.copy = Some(copy.to_owned());
             } else {
                 self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
@@ -447,8 +445,12 @@ impl Circulator {
             from: ["asset.copy_state", copy_id]
         })?;
 
-        // Every copy as a copy state
-        let copy_state = list[0].as_str().unwrap();
+        let mut copy_state = "NORMAL";
+        if let Some(hash) = list.get(0) {
+            if let Some(state) = hash["asset.copy_state"].as_str() {
+                copy_state = state;
+            }
+        }
 
         // Avoid creating system copy alerts for "NORMAL" copies.
         if copy_state.eq("NORMAL") {
