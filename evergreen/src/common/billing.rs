@@ -538,7 +538,7 @@ pub enum BillableTransactionType {
 pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> EgResult<()> {
     let resv = editor
         .retrieve("bresv", resv_id)?
-        .ok_or(format!("{}", editor.last_event().unwrap()))?;
+        .ok_or(editor.last_event_unchecked())?;
 
     let fine_interval = match resv["fine_interval"].as_str() {
         Some(f) => f,
@@ -561,7 +561,7 @@ pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> EgResult<()
 pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> EgResult<()> {
     let circ = editor
         .retrieve("circ", circ_id)?
-        .ok_or(format!("{}", editor.last_event().unwrap()))?;
+        .ok_or(editor.last_event_unchecked())?;
 
     generate_fines_for_xact(
         editor,
@@ -854,10 +854,8 @@ pub fn void_or_zero_overdues(
 ) -> EgResult<()> {
     log::info!("Voiding overdues for circ={circ_id}");
 
-    let circ = match editor.retrieve("circ", circ_id)? {
-        Some(c) => c,
-        None => Err(EgError::Event(editor.last_event_unchecked().clone()))?,
-    };
+    let circ = editor.retrieve("circ", circ_id)?
+        .ok_or(editor.last_event_unchecked())?;
 
     let mut query = json::object! {
         "xact": circ_id,

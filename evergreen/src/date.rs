@@ -143,7 +143,7 @@ pub fn to_local_timezone_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffse
 /// Apply a timezone to a DateTime value.
 ///
 /// This does not change the date/time, only the lense through which
-/// the datetime is interpreted (string represntation, hour, day of week, etc.).
+/// the datetime is interpreted (string representation, hour, day of week, etc.).
 ///
 /// To apply a timezone to a Local or Utc value, just:
 /// set_timezone(local_date.into(), "America/New_York");
