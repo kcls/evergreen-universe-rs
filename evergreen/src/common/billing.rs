@@ -920,7 +920,7 @@ pub fn void_or_zero_overdues(
 fn calc_min_void_date(
     editor: &mut Editor,
     circ: &JsonValue,
-    backdate: &str
+    backdate: &str,
 ) -> EgResult<Option<DateTime<FixedOffset>>> {
     let fine_interval = json_string(&circ["fine_interval"])?;
     let fine_interval = date::interval_to_seconds(&fine_interval)?;
@@ -947,4 +947,3 @@ fn calc_min_void_date(
         Ok(Some(backdate))
     }
 }
-

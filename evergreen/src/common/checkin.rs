@@ -104,7 +104,11 @@ impl Circulator {
 
         if let Some(patron) = self.patron.as_ref() {
             penalty::calculate_penalties(
-                &mut self.editor, json_int(&patron["id"])?, self.circ_lib, None)?;
+                &mut self.editor,
+                json_int(&patron["id"])?,
+                self.circ_lib,
+                None,
+            )?;
         }
 
         Ok(())
@@ -121,12 +125,10 @@ impl Circulator {
             None => return Ok(false),
         };
 
-        if !json_bool(
-            self.settings.get_value_at_org(
-                "circ.claim_never_checked_out.mark_missing",
-                json_int(&circ["circ_lib"])?
-            )?
-        ) {
+        if !json_bool(self.settings.get_value_at_org(
+            "circ.claim_never_checked_out.mark_missing",
+            json_int(&circ["circ_lib"])?,
+        )?) {
             return Ok(false);
         }
 
@@ -1428,8 +1430,9 @@ impl Circulator {
         hold["expire_time"] = JsonValue::Null;
         hold["cancel_time"] = JsonValue::Null;
 
-        if suppress_transit ||
-            (pickup_lib == self.circ_lib && !self.get_option_bool("hold_as_transit")) {
+        if suppress_transit
+            || (pickup_lib == self.circ_lib && !self.get_option_bool("hold_as_transit"))
+        {
             self.hold = Some(hold);
             // This updates and refreshes the hold.
             self.put_hold_on_shelf()?;
@@ -1441,7 +1444,6 @@ impl Circulator {
         Ok(true)
     }
 
-
     fn attempt_checkin_reservation_capture(&mut self) -> EgResult<bool> {
         Ok(true)
     }
@@ -1452,7 +1454,10 @@ impl Circulator {
         }
 
         let maybe_found = holds::find_nearest_permitted_hold(
-            &mut self.editor, self.copy_id.unwrap(), true /* check only */)?;
+            &mut self.editor,
+            self.copy_id.unwrap(),
+            true, /* check only */
+        )?;
 
         let (hold, retarget) = match maybe_found {
             Some(info) => info,
@@ -1470,16 +1475,20 @@ impl Circulator {
             return Ok(None);
         }
 
-        let params = json::array! [
+        let params = json::array![
             self.editor.authtoken().unwrap(),
             self.copy()["barcode"].clone()
         ];
 
-        let result = self.editor.client_mut().send_recv_one(
-            "open-ils.booking",
-            "open-ils.booking.reservations.could_capture",
-            params
-        )?.ok_or(format!("Booking API returned no results"))?;
+        let result = self
+            .editor
+            .client_mut()
+            .send_recv_one(
+                "open-ils.booking",
+                "open-ils.booking.reservations.could_capture",
+                params,
+            )?
+            .ok_or(format!("Booking API returned no results"))?;
 
         if let Some(evt) = EgEvent::parse(&result) {
             self.exit_err_on_event(evt)?;
@@ -1487,7 +1496,6 @@ impl Circulator {
 
         Ok(Some(result))
     }
-
 
     fn try_to_transit(&mut self) -> EgResult<()> {
         let mut dest_lib = self.copy_circ_lib();
@@ -1503,16 +1511,15 @@ impl Circulator {
         let suppress_transit = self.should_suppress_transit(dest_lib, false)?;
         let hold_as_transit = self.get_option_bool("hold_as_transit");
 
-        if suppress_transit ||
-            (dest_lib == self.circ_lib && !(has_remote_hold && hold_as_transit)) {
+        if suppress_transit || (dest_lib == self.circ_lib && !(has_remote_hold && hold_as_transit))
+        {
             // Copy is where it needs to be, either for hold or reshelving.
             return self.checkin_handle_precat();
         }
 
         let can_float = self.get_option_bool("can_float");
         let manual_float =
-            self.get_option_bool("manual_float") ||
-            json_bool(&self.copy()["floating"]["manual"]);
+            self.get_option_bool("manual_float") || json_bool(&self.copy()["floating"]["manual"]);
 
         if can_float && manual_float && !has_remote_hold {
             // Copy is floating -- make it stick here
@@ -1542,9 +1549,9 @@ impl Circulator {
 
         self.add_event_code("ITEM_NOT_CATALOGED");
 
-        self.update_copy(json::object! {"status": C::COPY_STATUS_CATALOGING}).map(|_| ())
+        self.update_copy(json::object! {"status": C::COPY_STATUS_CATALOGING})
+            .map(|_| ())
     }
-
 
     fn checkin_build_copy_transit(&mut self, dest_lib: i64) -> EgResult<()> {
         let copy = self.copy();
@@ -1588,7 +1595,6 @@ impl Circulator {
         self.update_copy(json::object! {"status": C::COPY_STATUS_IN_TRANSIT})?;
         Ok(())
     }
-
 
     fn finish_fines_and_voiding(&mut self) -> EgResult<()> {
         let void_overdues = self.get_option_bool("void_overdues");

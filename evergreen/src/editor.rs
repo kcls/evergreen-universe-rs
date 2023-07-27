@@ -444,7 +444,9 @@ impl Editor {
             }
 
             if params.params().len() == 0 {
-                Err(EgError::Debug(format!("Create/update/delete calls require a parameter")))?;
+                Err(EgError::Debug(format!(
+                    "Create/update/delete calls require a parameter"
+                )))?;
             }
 
             // Verify the object provided is a valid IDL object with

@@ -254,12 +254,12 @@ impl EgEvent {
                             "note" => evt.note = Some(v.to_string()),
                             "servertime" => evt.servertime = Some(v.to_string()),
                             "ilsperm" => evt.ilsperm = Some(v.to_string()),
-                             _ => {} // shold not happen
+                            _ => {} // shold not happen
                         }
                     }
                 }
                 // Tack any unknown values onto the ad_hoc blob.
-                _ => ad_hoc[field] = value.clone()
+                _ => ad_hoc[field] = value.clone(),
             }
         }
 

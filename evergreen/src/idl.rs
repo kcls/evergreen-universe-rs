@@ -1,3 +1,4 @@
+use crate::error::{EgError, EgResult};
 ///! IDL Parser
 ///!
 ///! Creates an in-memory representation of the IDL file.
@@ -14,7 +15,6 @@ use std::fmt;
 use std::fs;
 use std::ops::Index;
 use std::sync::Arc;
-use crate::error::{EgResult, EgError};
 
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
 const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
@@ -688,11 +688,7 @@ impl Parser {
 
     /// Stamp the object with the requested class and confirm any
     /// existing fields are valid for the class.
-    pub fn create_from(
-        &self,
-        classname: &str,
-        mut obj: JsonValue,
-    ) -> Result<JsonValue, EgError> {
+    pub fn create_from(&self, classname: &str, mut obj: JsonValue) -> Result<JsonValue, EgError> {
         if !obj.is_object() {
             Err(format!("IDL cannot create_from() on a non-object"))?;
         }
@@ -724,12 +720,18 @@ impl Parser {
     /// Field names begging with "_" will not be checked.
     pub fn verify_object(&self, obj: &JsonValue) -> EgResult<()> {
         if !obj.is_object() {
-            Err(EgError::Debug(format!("IDL value is not an object: {}", obj.dump())))?;
+            Err(EgError::Debug(format!(
+                "IDL value is not an object: {}",
+                obj.dump()
+            )))?;
         }
 
         let cname = match obj[CLASSNAME_KEY].as_str() {
             Some(c) => c,
-            None => Err(EgError::Debug(format!("IDL object has no class name: {}", obj.dump())))?,
+            None => Err(EgError::Debug(format!(
+                "IDL object has no class name: {}",
+                obj.dump()
+            )))?,
         };
 
         let idl_class = match self.classes.get(cname) {
