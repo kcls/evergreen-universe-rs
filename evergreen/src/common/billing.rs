@@ -843,3 +843,15 @@ pub fn extend_grace_period(
 
     Ok(new_grace_period)
 }
+
+pub fn void_or_zero_overdues(
+    editor: &mut Editor,
+    circ_id: i64,
+    backdate: Option<&str>,
+    note: Option<&str>,
+) -> EgResult<()> {
+    log::info!("Voiding overdues for circ={circ_id}");
+
+    Ok(())
+}
+

@@ -64,7 +64,7 @@ impl Circulator {
         }
 
         if self.circ_op == CircOp::Renew {
-            //self.finish_fines_and_voiding()?;
+            self.finish_fines_and_voiding()?;
             self.add_event_code("SUCCESS");
             return Ok(());
         }
@@ -88,7 +88,55 @@ impl Circulator {
             }
         }
 
+        if !self.handle_claims_never()? && !item_is_needed {
+            self.reshelve_copy(false)?;
+        }
+
+        if self.editor.has_pending_changes() {
+            if self.events.len() == 0 {
+                self.add_event(EgEvent::success());
+            }
+        } else {
+            self.add_event(EgEvent::new("NO_CHANGE"));
+        }
+
+        self.finish_fines_and_voiding()?;
+
         Ok(())
+    }
+
+    /// Returns true if claims-never-checked-out handling occurred.
+    fn handle_claims_never(&mut self) -> EgResult<bool> {
+        if !self.get_option_bool("claims_never_checked_out") {
+            return Ok(false);
+        }
+
+        let circ = match self.circ.as_ref() {
+            Some(c) => c, // should be set at this point
+            None => return Ok(false),
+        };
+
+        if !json_bool(
+            self.settings.get_value_at_org(
+                "circ.claim_never_checked_out.mark_missing",
+                json_int(&circ["circ_lib"])?
+            )?
+        ) {
+            return Ok(false);
+        }
+
+        // Configured to mark claims never checked out as Missing.
+        // Note to self: this would presumably be a circ-id based
+        // checkin instead of a copy id/barcode checkin.
+
+        let next_status = match self.options.get("next_copy_status") {
+            Some(s) => json_int(&s)?,
+            None => C::COPY_STATUS_MISSING,
+        };
+
+        self.update_copy(json::object! {"status": next_status})?;
+
+        Ok(true)
     }
 
     fn capture_state(&self) -> &str {
@@ -97,7 +145,6 @@ impl Circulator {
             None => "",
         }
     }
-
 
     fn basic_copy_checks(&mut self) -> EgResult<()> {
         if self.copy.is_none() {
@@ -1535,5 +1582,39 @@ impl Circulator {
 
         self.update_copy(json::object! {"status": C::COPY_STATUS_IN_TRANSIT})?;
         Ok(())
+    }
+
+
+    fn finish_fines_and_voiding(&mut self) -> EgResult<()> {
+        let void_overdues = self.get_option_bool("void_overdues");
+        let mut backdate_maybe = match self.options.get("backate") {
+            Some(bd) => bd.as_str(),
+            None => None,
+        };
+
+        let circ_id = match self.circ.as_ref() {
+            Some(c) => json_int(&c["id"])?,
+            None => return Ok(()),
+        };
+
+        if !void_overdues && backdate_maybe.is_none() {
+            return Ok(());
+        }
+
+        let mut note_maybe = None;
+
+        if void_overdues {
+            note_maybe = Some("System: Amnesty Checkin");
+            backdate_maybe = None;
+        }
+
+        billing::void_or_zero_overdues(
+            &mut self.editor,
+            circ_id,
+            backdate_maybe,
+            note_maybe,
+        )?;
+
+        billing::check_open_xact(&mut self.editor, circ_id)
     }
 }
