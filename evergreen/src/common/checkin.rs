@@ -529,9 +529,9 @@ impl Circulator {
             // Clear shelf-expired holds for this copy.
             // TODO run in the same transaction once ported to Rust.
 
-            let params = json::array![
-                self.editor.authtoken(),
-                self.circ_lib,
+            let params = vec![
+                json::from(self.editor.authtoken()),
+                json::from(self.circ_lib),
                 self.copy()["id"].clone(),
             ];
 
@@ -1476,8 +1476,8 @@ impl Circulator {
             return Ok(None);
         }
 
-        let params = json::array![
-            self.editor.authtoken().unwrap(),
+        let params = vec![
+            json::from(self.editor.authtoken()),
             self.copy()["barcode"].clone()
         ];
 
@@ -1488,14 +1488,16 @@ impl Circulator {
                 "open-ils.booking",
                 "open-ils.booking.reservations.could_capture",
                 params,
-            )?
-            .ok_or(format!("Booking API returned no results"))?;
+            )?;
 
-        if let Some(evt) = EgEvent::parse(&result) {
-            self.exit_err_on_event(evt)?;
+        if let Some(resp) = result {
+            if let Some(evt) = EgEvent::parse(&resp) {
+                self.exit_err_on_event(evt)?;
+            } else {
+                return Ok(Some(resp));
+            }
         }
-
-        Ok(Some(result))
+        return Ok(None);
     }
 
     fn try_to_transit(&mut self) -> EgResult<()> {

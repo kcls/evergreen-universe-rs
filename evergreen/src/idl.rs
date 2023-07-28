@@ -634,7 +634,7 @@ impl Parser {
                     // Virtual fields can be fully cleared.
                     obj[name] = JsonValue::Null;
                 } else {
-                    if let Some(val) = self.get_pkey_value(obj) {
+                    if let Some(val) = self.get_pkey_value(value) {
                         // Replace fleshed real fields with their pkey.
                         obj[name] = val;
                     } else {

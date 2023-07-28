@@ -773,6 +773,9 @@ impl Circulator {
             None => Err(format!("We have no copy to update"))?,
         };
 
+        copy["editor"] = json::from(self.editor.requestor_id());
+        copy["edit_date"] = json::from("now");
+
         for (k, v) in changes.entries() {
             copy[k] = v.to_owned();
         }

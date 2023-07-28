@@ -100,11 +100,11 @@ pub fn find_nearest_permitted_hold(
     let mut settings = Settings::new(&editor);
     let hold_stall_intvl = settings.get_value("circ.hold_stalling.soft")?;
 
-    let params = json::array![
-        editor.requestor_ws_ou(),
-        copy.clone(),
-        100,
-        hold_stall_intvl.to_owned(),
+    let params = vec![
+        json::from(editor.requestor_ws_ou()),
+        json::from(copy.clone()),
+        json::from(100),
+        json::from(hold_stall_intvl.to_owned()),
     ];
 
     // best_holds is a JSON array of JSON hold IDs.
