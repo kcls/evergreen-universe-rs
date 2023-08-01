@@ -1,4 +1,4 @@
-use crate::error::{EgError, EgResult};
+use crate::result::{EgError, EgResult};
 ///! IDL Parser
 ///!
 ///! Creates an in-memory representation of the IDL file.

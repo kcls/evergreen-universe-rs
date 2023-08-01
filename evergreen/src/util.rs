@@ -1,4 +1,4 @@
-use crate::error::EgError;
+use crate::result::EgError;
 use chrono::prelude::*;
 use chrono::DateTime;
 use json::JsonValue;

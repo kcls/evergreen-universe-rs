@@ -2,7 +2,7 @@ use crate::common::org;
 use crate::common::settings::Settings;
 use crate::common::trigger;
 use crate::editor::Editor;
-use crate::error::{EgError, EgResult};
+use crate::result::{EgError, EgResult};
 use crate::event::{EgEvent, Overrides};
 use crate::util;
 use crate::util::{json_bool, json_bool_op, json_int};

@@ -4,7 +4,7 @@ use crate::common::settings::Settings;
 use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
-use crate::error::EgResult;
+use crate::result::EgResult;
 use crate::util;
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{DateTime, Duration, FixedOffset, Local};

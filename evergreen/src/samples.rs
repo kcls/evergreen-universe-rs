@@ -1,7 +1,7 @@
 use crate::constants as C;
 /// Evergreen sample data tools
 use crate::editor::Editor;
-use crate::error::EgError;
+use crate::result::EgError;
 use json::JsonValue;
 
 pub const ACN_CREATOR: i64 = 1;

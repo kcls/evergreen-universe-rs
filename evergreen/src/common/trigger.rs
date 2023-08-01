@@ -1,5 +1,5 @@
 //! action_trigger bits
-use crate::error::EgResult;
+use crate::result::EgResult;
 use json::JsonValue;
 use opensrf::client::Client;
 

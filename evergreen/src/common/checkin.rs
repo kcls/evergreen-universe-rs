@@ -4,7 +4,7 @@ use crate::common::holds;
 use crate::common::penalty;
 use crate::constants as C;
 use crate::date;
-use crate::error::EgResult;
+use crate::result::EgResult;
 use crate::event::EgEvent;
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
