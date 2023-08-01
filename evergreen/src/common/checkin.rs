@@ -4,9 +4,9 @@ use crate::common::holds;
 use crate::common::penalty;
 use crate::constants as C;
 use crate::date;
-use crate::error::{EgError, EgResult};
+use crate::error::EgResult;
 use crate::event::EgEvent;
-use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
+use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
 use json::JsonValue;
 use std::collections::HashSet;
@@ -1468,6 +1468,10 @@ impl Circulator {
             }
         };
 
+        if retarget.len() > 0 {
+            self.retarget_holds = Some(retarget);
+        }
+
         Ok(Some(hold))
     }
 
@@ -1478,17 +1482,14 @@ impl Circulator {
 
         let params = vec![
             json::from(self.editor.authtoken()),
-            self.copy()["barcode"].clone()
+            self.copy()["barcode"].clone(),
         ];
 
-        let result = self
-            .editor
-            .client_mut()
-            .send_recv_one(
-                "open-ils.booking",
-                "open-ils.booking.reservations.could_capture",
-                params,
-            )?;
+        let result = self.editor.client_mut().send_recv_one(
+            "open-ils.booking",
+            "open-ils.booking.reservations.could_capture",
+            params,
+        )?;
 
         if let Some(resp) = result {
             if let Some(evt) = EgEvent::parse(&resp) {
@@ -1531,7 +1532,7 @@ impl Circulator {
         }
 
         // Copy needs to transit home
-        self.checkin_build_copy_transit(dest_lib);
+        self.checkin_build_copy_transit(dest_lib)?;
         let mut evt = EgEvent::new("ROUTE_ITEM");
         evt.set_org(dest_lib);
         self.add_event(evt);
@@ -1540,8 +1541,6 @@ impl Circulator {
     }
 
     fn checkin_handle_precat(&mut self) -> EgResult<()> {
-        let copy = self.copy();
-
         if !self.is_precat() {
             return Ok(());
         }
@@ -1557,8 +1556,6 @@ impl Circulator {
     }
 
     fn checkin_build_copy_transit(&mut self, dest_lib: i64) -> EgResult<()> {
-        let copy = self.copy();
-
         let mut transit = json::object! {
             "source": self.circ_lib,
             "dest": dest_lib,

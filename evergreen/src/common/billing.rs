@@ -4,7 +4,7 @@ use crate::common::settings::Settings;
 use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
-use crate::error::{EgError, EgResult};
+use crate::error::EgResult;
 use crate::util;
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{DateTime, Duration, FixedOffset, Local};
@@ -854,7 +854,8 @@ pub fn void_or_zero_overdues(
 ) -> EgResult<()> {
     log::info!("Voiding overdues for circ={circ_id}");
 
-    let circ = editor.retrieve("circ", circ_id)?
+    let circ = editor
+        .retrieve("circ", circ_id)?
         .ok_or(editor.last_event_unchecked())?;
 
     let mut query = json::object! {

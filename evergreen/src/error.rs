@@ -67,6 +67,26 @@ impl Error for EgError {
     }
 }
 
+impl EgError {
+    /// Coerce the EgError into an EgEvent regardless of its internal
+    /// type.
+    ///
+    /// If the error is a Debug(string) type, return a new
+    /// INTERNAL_SERVER_ERROR event containing the error string.
+    /// Otherwise, return a copy of the contained event.
+    pub fn default_event(&self) -> EgEvent {
+        match self {
+            EgError::Event(e) => e.clone(),
+            EgError::Debug(s) => {
+                let mut evt = EgEvent::new("INTERNAL_SERVER_ERROR");
+                // This is for debug purposes only -- i18n not needed.
+                evt.set_desc(&format!("Server Error: {s}"));
+                evt
+            }
+        }
+    }
+}
+
 impl fmt::Display for EgError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
@@ -90,7 +110,7 @@ impl From<&str> for EgError {
 }
 
 /// Useful for translating EgError's into plain strings for
-/// methods/functions that still return Result<T, String>.
+/// methods/functions that return vanilla Result<T, String>.
 impl From<EgError> for String {
     fn from(err: EgError) -> Self {
         match err {

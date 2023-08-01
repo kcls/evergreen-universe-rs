@@ -2,7 +2,7 @@ use crate::common::org;
 use crate::common::settings::Settings;
 use crate::date;
 use crate::editor::Editor;
-use crate::error::{EgError, EgResult};
+use crate::error::EgResult;
 use crate::event::{EgEvent, Overrides};
 use crate::util::{json_bool, json_int};
 use chrono::Duration;

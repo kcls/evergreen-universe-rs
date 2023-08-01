@@ -1,6 +1,5 @@
 use eg::common::circulator::Circulator;
 use eg::editor::Editor;
-use eg::error::EgError;
 use eg::util;
 use evergreen as eg;
 use json;
@@ -64,30 +63,16 @@ pub fn checkin(
         return session.respond(editor.event());
     }
 
-    // Circulator requires us to
     let mut circulator = Circulator::new(editor, options)?;
     circulator.begin()?;
 
-    if let Err(e) = circulator.init() {
-        circulator.rollback()?;
-        return Err(format!("Checkin init failed: {e}"));
-    }
-
-    let result = circulator.checkin();
+    let result = circulator.init().and_then(|()| circulator.checkin());
 
     if let Err(err) = result {
         circulator.rollback()?;
-
-        // If the internal API returns an error event, return the event
-        // to the caller as a "successful" response.  Otherwise, fail
-        // with the error string.
-        match err {
-            EgError::Event(evt) => {
-                session.respond(&evt)?;
-                return Ok(());
-            }
-            EgError::Debug(msg) => Err(msg)?,
-        }
+        // Return the event created by the internal API to the caller.
+        session.respond(&err.default_event())?;
+        return Ok(());
     }
 
     // TODO Ask the circulator to collect a pile of return

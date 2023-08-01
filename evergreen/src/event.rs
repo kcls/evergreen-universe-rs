@@ -1,4 +1,3 @@
-use crate::util;
 use chrono::Local;
 use json::JsonValue;
 use std::fmt;
@@ -174,6 +173,18 @@ impl EgEvent {
 
     pub fn ad_hoc(&self) -> Option<&JsonValue> {
         self.ad_hoc.as_ref()
+    }
+
+    pub fn set_desc(&mut self, s: &str) {
+        self.desc = Some(s.to_string());
+    }
+
+    pub fn set_debug(&mut self, s: &str) {
+        self.debug = Some(s.to_string());
+    }
+
+    pub fn set_note(&mut self, s: &str) {
+        self.note = Some(s.to_string());
     }
 
     pub fn set_ad_hoc_value(&mut self, key: &str, value: JsonValue) {

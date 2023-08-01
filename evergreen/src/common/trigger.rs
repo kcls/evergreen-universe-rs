@@ -1,4 +1,5 @@
 //! action_trigger bits
+use crate::error::EgResult;
 use json::JsonValue;
 use opensrf::client::Client;
 
@@ -10,7 +11,7 @@ pub fn create_events_for_hook(
     granularity: Option<&str>,
     user_data: Option<&JsonValue>,
     wait: bool,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let mut ses = client.session("open-ils.trigger");
 
     let params = json::array![

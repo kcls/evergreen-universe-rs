@@ -1,5 +1,6 @@
 use crate::common::org;
 use crate::common::settings::Settings;
+use crate::common::trigger;
 use crate::editor::Editor;
 use crate::error::{EgError, EgResult};
 use crate::event::{EgEvent, Overrides};
@@ -39,11 +40,18 @@ pub enum CircOp {
 
 impl fmt::Display for CircOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Self::Checkout => write!(f, "checkout"),
-            Self::Checkin => write!(f, "checkin"),
-            Self::Renew => write!(f, "renew"),
-            Self::Other => write!(f, "other"),
+        let s: &str = self.into();
+        write!(f, "{}", s)
+    }
+}
+
+impl From<&CircOp> for &'static str {
+    fn from(op: &CircOp) -> &'static str {
+        match *op {
+            CircOp::Checkout => "checkout",
+            CircOp::Checkin => "checkin",
+            CircOp::Renew => "renewal",
+            CircOp::Other => "other",
         }
     }
 }
@@ -764,6 +772,14 @@ impl Circulator {
         Ok(())
     }
 
+    /// Perform post-commit tasks and cleanup, i.e. jobs that can
+    /// be performed after one of our core actions (e.g. checkin) has
+    /// completed and produced a response.
+    pub fn post_commit_tasks(&mut self) -> EgResult<()> {
+        self.retarget_holds()?;
+        self.make_trigger_events()
+    }
+
     /// Update our copy with the values provided.
     ///
     /// * `changes` - a JSON Object with key/value copy attributes to update.
@@ -909,5 +925,46 @@ impl Circulator {
         }
 
         false
+    }
+
+    /// Does what it says.
+    fn retarget_holds(&mut self) -> EgResult<()> {
+        let hold_ids = match self.retarget_holds.as_ref() {
+            Some(list) => list.clone(),
+            None => return Ok(()),
+        };
+
+        // Send the batch of hold IDs to the hold targeter for retargeting.
+        self.editor.client_mut().send_recv_one(
+            "open-ils.hold-targeter",
+            "open-ils.hold-targeter.target",
+            json::object! {hold: hold_ids},
+        )?;
+
+        Ok(())
+    }
+
+    /// Create events for checkout/checkin/renewal actions.
+    fn make_trigger_events(&mut self) -> EgResult<()> {
+        let circ = match self.circ.as_ref() {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let action: &str = (&self.circ_op).into();
+
+        if action == "other" {
+            return Ok(());
+        }
+
+        trigger::create_events_for_hook(
+            self.editor.client_mut(),
+            action,
+            circ,
+            self.circ_lib,
+            None,
+            None,
+            true,
+        )
     }
 }
