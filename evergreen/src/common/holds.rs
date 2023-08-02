@@ -1,6 +1,9 @@
+use crate::constants as C;
 use crate::common::org;
+use crate::common::transit;
 use crate::common::settings::Settings;
 use crate::date;
+use crate::pkey::PrimaryKey;
 use crate::editor::Editor;
 use crate::result::EgResult;
 use crate::event::{EgEvent, Overrides};
@@ -62,12 +65,16 @@ pub fn captured_hold_for_copy(editor: &mut Editor, copy_id: i64) -> EgResult<Opt
 /// Returns the captured hold if found and a list of hold IDs that
 /// will need to be retargeted, since they previously targeted the
 /// provided copy.
-pub fn find_nearest_permitted_hold(
+pub fn find_nearest_permitted_hold<T>(
     editor: &mut Editor,
-    copy_id: i64,
+    copy_id: T,
     check_only: bool,
-) -> EgResult<Option<(JsonValue, Vec<i64>)>> {
+) -> EgResult<Option<(JsonValue, Vec<i64>)>>
+where
+    T: Into<PrimaryKey>
+{
     let mut retarget: Vec<i64> = Vec::new();
+    let copy_id = copy_id.into().as_int().unwrap();
 
     // Fetch the appropriatly fleshed copy.
     let flesh = json::object! {
@@ -372,4 +379,76 @@ pub fn test_copy_for_hold(
     result.success = !has_failure;
 
     Ok(result)
+}
+
+/// Send holds to the hold targeter service for retargeting.
+///
+/// The editor is needed so we can have a ref to an opensrf client.
+/// TODO: As is, this is NOT run within a transaction, since it's a
+/// call to a remote service.  If targeting is ever ported to Rust, it
+/// can run in the same transaction.
+pub fn retarget_holds(editor: &mut Editor, hold_ids: &[i64]) -> EgResult<()> {
+    editor.client_mut().send_recv_one(
+        "open-ils.hold-targeter",
+        "open-ils.hold-targeter.target",
+        json::object! {hold: hold_ids},
+    )?;
+
+    Ok(())
+}
+
+/// Reset a hold and retarget it.
+///
+/// NOTE: Since retargeting must run outside of our transaction, and our
+/// changes must be committed before retargeting occurs, this function
+/// begins and commits its own transaction, by way of a cloned copy of
+/// the provided editor.
+pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
+    log::info!("Resetting hold {hold_id}");
+
+    // Leave the provided editor in whatever state it's already in.
+    // and start our own transaction.
+    let mut editor = editor.clone();
+    editor.xact_begin()?;
+
+    let mut hold = editor.retrieve("ahr", hold_id)?.ok_or(editor.die_event())?;
+
+    // Resetting captured holds requires a little more care.
+    if !hold["capture_time"].is_null() && !hold["current_copy"].is_null() {
+
+        let mut copy = editor.retrieve("acp", hold["current_copy"].clone())?
+            .ok_or(editor.die_event())?;
+
+        let copy_status = json_int(&copy["status"])?;
+
+        if copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
+            copy["status"] = json::from(C::COPY_STATUS_RESHELVING);
+            copy["editor"] = json::from(editor.requestor_id());
+            copy["edit_date"] = json::from("now");
+
+            editor.update(&copy)?;
+
+        } else if copy_status == C::COPY_STATUS_IN_TRANSIT {
+
+            let query = json::object! {
+                "hold": hold["id"].clone(),
+                "cancel_time": JsonValue::Null,
+            };
+
+            if let Some(ht) = editor.search("ahtc", query)?.pop() {
+                transit::cancel_transit(&mut editor, json_int(&ht["id"])?, true)?;
+            }
+        }
+    }
+
+    hold["capture_time"] = JsonValue::Null;
+    hold["current_copy"] = JsonValue::Null;
+    hold["shelf_time"] = JsonValue::Null;
+    hold["shelf_expire_time"] = JsonValue::Null;
+    hold["current_shelf_lib"] = JsonValue::Null;
+
+    editor.update(&hold)?;
+    editor.commit()?;
+
+    retarget_holds(&mut editor, &[hold_id])
 }

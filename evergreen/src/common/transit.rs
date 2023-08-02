@@ -4,6 +4,7 @@ use crate::result::EgResult;
 use crate::util::{json_bool, json_float, json_int, json_string};
 use crate::event::EgEvent;
 use crate::common::holds;
+use crate::pkey::PrimaryKey;
 /*
 use crate::date;
 use crate::common::holds;
@@ -13,7 +14,14 @@ use json::JsonValue;
 use std::collections::HashSet;
 */
 
-pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: bool) -> EgResult<()> {
+pub fn cancel_transit<T>(
+    editor: &mut Editor,
+    transit_id: T,
+    skip_hold_reset: bool
+) -> EgResult<()>
+where
+    T: Into<PrimaryKey>,
+{
     let flesh = json::object! {
         "flesh": 1,
         "flesh_fields": {
@@ -21,19 +29,22 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
         }
     };
 
-    let mut transit = editor.retrieve_with_ops("atc", transit_id, flesh)?.ok_or(editor.die_event())?;
+    let mut transit = editor.retrieve_with_ops(
+        "atc", transit_id.into(), flesh)?.ok_or(editor.die_event())?;
+
     let mut copy = transit["target_copy"].take();
     transit["target_copy"] = copy["id"].clone();
 
     let tc_status = json_int(&transit["copy_status"])?;
 
-    if (    (tc_status == C::COPY_STATUS_LOST || tc_status == C::COPY_STATUS_LOST_AND_PAID)
-            && !editor.allowed("ABORT_TRANSIT_ON_LOST")?
-        ) || (
-            tc_status == C::COPY_STATUS_MISSING
-            && !editor.allowed("ABORT_TRANSIT_ON_MISSING")?
-        )
-    {
+    let to_lost = tc_status == C::COPY_STATUS_LOST
+        || tc_status == C::COPY_STATUS_LOST_AND_PAID;
+
+    let to_missing = tc_status == C::COPY_STATUS_MISSING;
+
+    if (to_lost && !editor.allowed("ABORT_TRANSIT_ON_LOST")?) ||
+        (to_missing && !editor.allowed("ABORT_TRANSIT_ON_MISSING")?) {
+
         let mut evt = EgEvent::new("TRANSIT_ABORT_NOT_ALLOWED");
         evt.set_ad_hoc_value("copy_status", json::from(tc_status));
         return Err(evt.into());
@@ -56,6 +67,8 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
 
     let copy_status = json_int(&copy["status"])?;
 
+    // The status adopted by the copy in transit depends on
+    // the intended destination status of the copy.
     if copy_status == C::COPY_STATUS_IN_TRANSIT {
         if  tc_status == C::COPY_STATUS_AVAILABLE
             || tc_status == C::COPY_STATUS_CHECKED_OUT
@@ -65,8 +78,7 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
             || tc_status == C::COPY_STATUS_CATALOGING
             || tc_status == C::COPY_STATUS_ON_RESV_SHELF
             || tc_status == C::COPY_STATUS_RESHELVING {
-            // These transit copy statuses are discarded when the
-            // transit is canceled.
+            // These transit copy statuses are discarded.
             copy["status"] = json::from(C::COPY_STATUS_CANCELED_TRANSIT);
         } else {
             // Otherwise, adopt the copy status stored on the transit.
@@ -81,7 +93,7 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
 
     if transit["hold_transit_copy"].is_object() && !skip_hold_reset {
         let hold_id = json_int(&transit["hold_transit_copy"]["hold"])?;
-        // TODO holds::reset_hold(editor, hold_id)?;
+        holds::reset_hold(editor, hold_id)?;
     }
 
     Ok(())

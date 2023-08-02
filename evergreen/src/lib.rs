@@ -12,5 +12,6 @@ pub mod idl;
 pub mod idldb;
 pub mod init;
 pub mod norm;
+pub mod pkey;
 pub mod samples;
 pub mod util;

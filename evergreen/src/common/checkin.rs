@@ -2,6 +2,7 @@ use crate::common::billing;
 use crate::common::circulator::{CircOp, Circulator};
 use crate::common::holds;
 use crate::common::penalty;
+use crate::common::transit;
 use crate::constants as C;
 use crate::date;
 use crate::result::EgResult;
@@ -414,15 +415,7 @@ impl Circulator {
 
         if let Some(transit) = self.transit.as_ref() {
             log::info!("{self} copy is both checked out and in transit.  Canceling transit");
-
-            // TODO once transit.abort is migrated to Rust, this call should
-            // happen within the same transaction.
-            self.editor.client_mut().send_recv_one(
-                "open-ils.circ",
-                "open-ils.circ.transit.abort",
-                json::object! {transitid: transit["id"].clone()},
-            )?;
-
+            transit::cancel_transit(&mut self.editor, &transit["id"], false)?;
             self.transit = None;
         }
 

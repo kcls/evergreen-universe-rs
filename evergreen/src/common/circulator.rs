@@ -1,5 +1,6 @@
 use crate::common::org;
 use crate::common::settings::Settings;
+use crate::common::holds;
 use crate::common::trigger;
 use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
@@ -933,15 +934,7 @@ impl Circulator {
             Some(list) => list.clone(),
             None => return Ok(()),
         };
-
-        // Send the batch of hold IDs to the hold targeter for retargeting.
-        self.editor.client_mut().send_recv_one(
-            "open-ils.hold-targeter",
-            "open-ils.hold-targeter.target",
-            json::object! {hold: hold_ids},
-        )?;
-
-        Ok(())
+        holds::retarget_holds(&mut self.editor, hold_ids.as_slice())
     }
 
     /// Create events for checkout/checkin/renewal actions.
