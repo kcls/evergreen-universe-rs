@@ -1,11 +1,10 @@
 use crate::event::EgEvent;
-use std::error::Error;
 use std::fmt;
 
 /// This is a convenient way to set the error type to EgError on common
 /// method/function responses to simplify the declaration of return types.
 /// ```
-/// use evergreen::error::*;
+/// use evergreen::result::*;
 /// use evergreen::event::*;
 ///
 /// let res = EgResult::Ok("Hello");
@@ -59,8 +58,8 @@ pub enum EgError {
     Event(EgEvent),
 }
 
-impl Error for EgError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl std::error::Error for EgError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match *self {
             _ => None,
         }
@@ -74,7 +73,7 @@ impl EgError {
     /// If the error is a Debug(string) type, return a new
     /// INTERNAL_SERVER_ERROR event containing the error string.
     /// Otherwise, return a copy of the contained event.
-    pub fn default_event(&self) -> EgEvent {
+    pub fn event_or_default(&self) -> EgEvent {
         match self {
             EgError::Event(e) => e.clone(),
             EgError::Debug(s) => {
@@ -110,7 +109,8 @@ impl From<&str> for EgError {
 }
 
 /// Useful for translating EgError's into plain strings for
-/// methods/functions that return vanilla Result<T, String>.
+/// methods/functions that return vanilla Result<T, String>, like
+/// OpenSRF published APIs
 impl From<EgError> for String {
     fn from(err: EgError) -> Self {
         match err {
@@ -130,7 +130,7 @@ impl From<EgEvent> for EgError {
 
 /// ```
 /// use evergreen::event::*;
-/// use evergreen::error::*;
+/// use evergreen::result::*;
 ///
 /// fn foo() -> Result<(), EgError> {
 ///     let evt = EgEvent::new("PROBLEM");

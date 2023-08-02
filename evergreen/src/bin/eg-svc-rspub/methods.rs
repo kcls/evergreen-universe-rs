@@ -268,7 +268,7 @@ pub fn get_barcodes(
     }
 
     // Perm check
-    if !editor.allowed("STAFF_LOGIN", Some(org_id))? {
+    if !editor.allowed_at("STAFF_LOGIN", org_id)? {
         return session.respond(editor.event());
     }
 
@@ -304,7 +304,7 @@ pub fn get_barcodes(
         let u = editor.retrieve("au", user_id)?.unwrap();
         let home_ou = util::json_int(&u["home_ou"])?;
 
-        if editor.allowed("VIEW_USER", Some(home_ou))? {
+        if editor.allowed_at("VIEW_USER", home_ou)? {
             response.push(user_row);
         } else {
             response.push(editor.event());
@@ -481,14 +481,14 @@ pub fn user_opac_vital_stats(
     };
 
     if user_id != editor.requestor_id() {
-        let home_ou = Some(util::json_int(&user["home_ou"])?);
+        let home_ou = util::json_int(&user["home_ou"])?;
 
         // This list of perms seems like overkill for summary data, but
         // it matches the perm checks of the existing open-ils.actor APIs.
-        if !editor.allowed("VIEW_USER", home_ou)?
-            || !editor.allowed("VIEW_USER_FINES_SUMMARY", home_ou)?
-            || !editor.allowed("VIEW_CIRCULATIONS", home_ou)?
-            || !editor.allowed("VIEW_HOLD", home_ou)?
+        if !editor.allowed_at("VIEW_USER", home_ou)?
+            || !editor.allowed_at("VIEW_USER_FINES_SUMMARY", home_ou)?
+            || !editor.allowed_at("VIEW_CIRCULATIONS", home_ou)?
+            || !editor.allowed_at("VIEW_HOLD", home_ou)?
         {
             return session.respond(editor.event());
         }
@@ -551,7 +551,7 @@ pub fn renewal_chain_summary(
         return session.respond(editor.event());
     }
 
-    if !editor.allowed("VIEW_CIRCULATIONS", None)? {
+    if !editor.allowed("VIEW_CIRCULATIONS")? {
         return session.respond(editor.event());
     }
 
@@ -575,7 +575,7 @@ pub fn prev_renewal_chain_summary(
         return session.respond(editor.event());
     }
 
-    if !editor.allowed("VIEW_CIRCULATIONS", None)? {
+    if !editor.allowed("VIEW_CIRCULATIONS")? {
         return session.respond(editor.event());
     }
 
@@ -637,7 +637,7 @@ pub fn update_penalties(
 
     let mut context_org = util::json_int(&user["home_ou"])?;
 
-    if !editor.allowed("UPDATE_USER", Some(context_org))? {
+    if !editor.allowed_at("UPDATE_USER", context_org)? {
         return session.respond(editor.event());
     }
 

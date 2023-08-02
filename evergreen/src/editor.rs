@@ -660,9 +660,20 @@ impl Editor {
         }
     }
 
+
     /// Returns Result of true if our authenticated requestor has the
-    /// specified permission.
-    pub fn allowed(&mut self, perm: &str, org_id_op: Option<i64>) -> EgResult<bool> {
+    /// specified permission globally.
+    pub fn allowed(&mut self, perm: &str) -> EgResult<bool> {
+        self.allowed_maybe_at(perm, None)
+    }
+
+    /// Returns Result of true if our authenticated requestor has the
+    /// specified permission at the specified org unit.
+    pub fn allowed_at(&mut self, perm: &str, org_id: i64) -> EgResult<bool> {
+        self.allowed_maybe_at(perm, Some(org_id))
+    }
+
+    fn allowed_maybe_at(&mut self, perm: &str, org_id_op: Option<i64>) -> EgResult<bool> {
         let user_id = match self.requestor() {
             Some(r) => util::json_int(&r["id"])?,
             None => return Ok(false),

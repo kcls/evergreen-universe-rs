@@ -7,13 +7,6 @@ use crate::event::{EgEvent, Overrides};
 use crate::util::{json_bool, json_int};
 use chrono::Duration;
 use json::JsonValue;
-/*
-use crate::common::org;
-use crate::event::EgEvent;
-use crate::util;
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-*/
 
 /// Returns an ISO date string if a shelf time was calculated, None
 /// if holds do not expire on the shelf.
@@ -358,7 +351,7 @@ pub fn test_copy_for_hold(
             let permission = format!("{}.override", evt.textcode());
             log::debug!("Checking permission to verify copy for hold: {permission}");
 
-            if editor.allowed(&permission, None)? {
+            if editor.allowed(&permission)? {
                 log::debug!("Override succeeded for {permission}");
             } else {
                 has_failure = true;

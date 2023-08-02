@@ -112,6 +112,9 @@ impl Circulator {
             )?;
         }
 
+        self.cleanup_events();
+        self.flesh_checkin_events()?;
+
         Ok(())
     }
 
@@ -1629,5 +1632,109 @@ impl Circulator {
         )?;
 
         billing::check_open_xact(&mut self.editor, circ_id)
+    }
+
+    /// This assumes the caller is finished with all processing and makes
+    /// changes to local copies if data (e.g. setting copy = None for editing).
+    fn flesh_checkin_events(&mut self) -> EgResult<()> {
+        let mut copy = self.copy.take().unwrap().take(); // assumes copy
+        let copy_id = self.copy_id.unwrap();
+        let record_id = json_int(&copy["call_number"]["record"])?;
+
+        // Grab the volume before it's de-fleshed.
+        let volume = copy["call_number"].take();
+        copy["call_number"] = volume["id"].clone();
+
+        // De-flesh the copy
+        self.editor.idl().de_flesh_object(&mut copy)?;
+
+        let mut payload = json::object! {
+            "copy": copy,
+            "volume": volume,
+        };
+
+        if !self.is_precat() {
+            if let Some(rec) = self.editor.retrieve("rmsr", record_id)? {
+                payload["title"] = rec;
+            }
+        }
+
+        if let Some(mut hold) = self.hold.take() {
+            if hold["cancel_time"].is_null() {
+                hold["notes"] = json::from(
+                    self.editor.search(
+                        "ahrn", json::object! {hold: hold["id"].clone()}
+                    )?
+                );
+                payload["hold"] = hold;
+            }
+        }
+
+        if let Some(circ) = self.circ.as_ref() {
+            let flesh = json::object! {
+                "flesh": 1,
+                "flesh_fields": {
+                    "circ": ["billable_transaction"],
+                    "mbt": ["summary"]
+                }
+            };
+
+            if let Some(fcirc) =
+                self.editor.retrieve_with_ops("circ", circ["id"].clone(), flesh)? {
+                payload["circ"] = fcirc;
+            }
+        }
+
+        if let Some(patron) = self.patron.as_ref() {
+            let flesh = json::object! {
+                "flesh": 1,
+                "flesh_fields": {
+                    "au": ["card", "billing_address", "mailing_address"]
+                }
+            };
+
+            if let Some(fpatron) =
+                self.editor.retrieve_with_ops("au", patron["id"].clone(), flesh)? {
+                payload["patron"] = fpatron;
+            }
+        }
+
+        if let Some(reservation) = self.reservation.take() {
+            payload["reservation"] = reservation;
+        }
+
+        if let Some(transit) = self.hold_transit.take().or(self.transit.take()) {
+            payload["transit"] = transit;
+        }
+
+        let query = json::object! {"copy": copy_id};
+        let flesh = json::object! {
+            "flesh": 1,
+            "flesh_fields": {
+                "alci": ["inventory_workstation"]
+            }
+        };
+
+        if let Some(inventory) = self.editor.search_with_ops("alci", query, flesh)?.pop() {
+            payload["copy"]["latest_inventory"] = inventory;
+        }
+
+        // Should never happen, but to be safe:
+        if self.events.len() == 0 {
+            self.events.push(EgEvent::new("NO_CHANGE"));
+        }
+
+        // Clone the payload into any additional events for full coverage.
+        for (idx, evt) in self.events.iter_mut().enumerate() {
+            if idx > 0 {
+                evt.set_payload(payload.clone());
+            }
+        }
+
+        // Capture the uncloned payload into the first event (which will
+        // always be present).
+        self.events[0].set_payload(payload.to_owned());
+
+        Ok(())
     }
 }

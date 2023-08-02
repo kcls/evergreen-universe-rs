@@ -866,7 +866,7 @@ impl Circulator {
             log::info!("{selfstr} attempting to override: {perm}");
 
             // Override permissions are all global
-            if !self.editor.allowed(&perm, None)? {
+            if !self.editor.allowed(&perm)? {
                 if let Some(e) = self.editor.last_event() {
                     // Track the permission failure as the event to return.
                     self.failed_events.push(e.clone());
@@ -927,7 +927,7 @@ impl Circulator {
         false
     }
 
-    /// Does what it says.
+    /// Retarget holds in our collected list of holds to retarget.
     fn retarget_holds(&mut self) -> EgResult<()> {
         let hold_ids = match self.retarget_holds.as_ref() {
             Some(list) => list.clone(),
@@ -966,5 +966,40 @@ impl Circulator {
             None,
             true,
         )
+    }
+
+    pub fn cleanup_events(&mut self) {
+        if self.events.len() == 0 {
+            return;
+        }
+
+        // Deduplicate
+        let mut events: Vec<EgEvent> = Vec::new();
+        for evt in self.events.drain(0..) {
+            if !events.iter().any(|e| e.textcode() == evt.textcode()) {
+                events.push(evt);
+            }
+        };
+
+        if events.len() > 1 {
+            // Multiple events mean something failed somewhere.
+            // Remove any success events to avoid confusion.
+            events = events
+                .iter()
+                .filter(|e| !e.is_success())
+                .map(|e| e.to_owned())
+                .collect();
+        }
+
+        self.events = events;
+    }
+
+    pub fn events(&self) -> &Vec<EgEvent> {
+        &self.events
+    }
+
+    /// Clears our list of compiled events and returns them to the caller.
+    pub fn take_events(&mut self) -> Vec<EgEvent> {
+        std::mem::replace(&mut self.events, Vec::new())
     }
 }

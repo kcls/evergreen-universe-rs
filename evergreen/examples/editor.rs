@@ -23,7 +23,7 @@ fn main() -> Result<(), String> {
         println!("Auth Check OK: {}", editor.requestor().unwrap()["usrname"]);
     }
 
-    if editor.allowed("EVERYTHING", None)? {
+    if editor.allowed("EVERYTHING")? {
         println!("Requestor is allowed");
     } else {
         println!("Requestor is NOT allowed");

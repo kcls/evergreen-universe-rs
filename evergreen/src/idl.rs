@@ -329,7 +329,7 @@ pub struct Parser {
 
 impl fmt::Debug for Parser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "IDLParser") // TODO more stuff?
+        write!(f, "IDLParser")
     }
 }
 impl Parser {

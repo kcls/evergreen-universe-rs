@@ -59,26 +59,35 @@ pub fn checkin(
     }
 
     // Initial perm check
-    if !editor.allowed("COPY_CHECKIN", None)? {
+    if !editor.allowed("COPY_CHECKIN")? {
         return session.respond(editor.event());
     }
 
     let mut circulator = Circulator::new(editor, options)?;
     circulator.begin()?;
 
+    // Collect needed data then kickoff the checkin process.
     let result = circulator.init().and_then(|()| circulator.checkin());
 
     if let Err(err) = result {
         circulator.rollback()?;
-        // Return the event created by the internal API to the caller.
-        session.respond(&err.default_event())?;
+        // Return the error event to the caller.
+        session.respond(&err.event_or_default())?;
         return Ok(());
     }
 
-    // TODO Ask the circulator to collect a pile of return
-    // data, then commit, then return the collected data.
+    // Collect the response data.
+    // Consistent with Perl, collect all of the response data before
+    // committing the transaction.
+    let events: Vec<json::JsonValue> = circulator.events().iter().map(|e| e.into()).collect();
 
     circulator.commit()?;
+
+    // Send the compiled events to the caller and let them know we're done.
+    session.respond_complete(events)?;
+
+    // Work that the caller does not care about.
+    circulator.post_commit_tasks()?;
 
     Ok(())
 }
