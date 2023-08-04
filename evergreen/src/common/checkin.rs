@@ -30,6 +30,7 @@ impl Circulator {
         self.check_transit_checkin_interval()?;
         self.checkin_retarget_holds()?;
         self.cancel_transit_if_circ_exists()?;
+        self.hold_revert_sanity_checks()?;
         self.set_dont_change_lost_zero()?;
         self.set_can_float()?;
         self.do_inventory_update()?;
@@ -68,6 +69,10 @@ impl Circulator {
         if self.circ_op == CircOp::Renew {
             self.finish_fines_and_voiding()?;
             self.add_event_code("SUCCESS");
+            return Ok(());
+        }
+
+        if self.revert_hold_fulfillment()? {
             return Ok(());
         }
 
@@ -118,6 +123,7 @@ impl Circulator {
 
         Ok(())
     }
+
 
     /// Returns true if claims-never-checked-out handling occurred.
     fn handle_claims_never(&mut self) -> EgResult<bool> {
@@ -262,6 +268,10 @@ impl Circulator {
         };
 
         if !retarget_mode.contains("retarget") {
+            return Ok(());
+        }
+
+        if self.get_option_bool("revert_hold_fulfillment") {
             return Ok(());
         }
 
@@ -1732,5 +1742,80 @@ impl Circulator {
         self.events[0].set_payload(payload.to_owned());
 
         Ok(())
+    }
+
+    /// Returns true if a hold revert was requested but it does
+    /// not make sense with the data we have.
+    pub fn hold_revert_sanity_checks(&mut self) -> EgResult<()> {
+        if !self.get_option_bool("revert_hold_fulfillment") {
+            return Ok(());
+        }
+
+        if self.circ.is_some()
+            && self.copy.is_some()
+            && self.copy_status() == C::COPY_STATUS_CHECKED_OUT
+            && self.patron.is_some()
+            && self.circ_op != CircOp::Renew {
+            return Ok(());
+        }
+
+        log::warn!("{self} hold-revert requested but makes no sense");
+
+        // Return an inocuous event response to avoid spooking
+        // SIP clients -- also, it's true.
+        Err(EgEvent::new("NO_CHANGE").into())
+    }
+
+    /// Returns true if a hold fulfillment was reverted.
+    fn revert_hold_fulfillment(&mut self) -> EgResult<bool> {
+        if !self.get_option_bool("revert_hold_fulfillment") {
+            return Ok(false);
+        }
+
+        let query = json::object! {
+            "usr": self.patron.as_ref().unwrap()["id"].clone(),
+            "cancel_time": JsonValue::Null,
+            "fulfillment_time": {"!=": JsonValue::Null},
+            "current_copy": self.copy()["id"].clone(),
+        };
+
+        let ops = json::object! {
+            "order_by": {
+                "ahr": "fulfillment_time desc"
+            },
+            "limit": 1
+        };
+
+        let mut hold = match self.editor.search_with_ops("ahr", query, ops)?.pop() {
+            Some(h) => h,
+            None => return Ok(false),
+        };
+
+        // The hold fulfillment time will match the xact_start time of
+        // its companion circulation.
+        let xact_date = date::parse_datetime(
+            self.circ.as_ref().unwrap()["xact_start"].as_str().unwrap())?;
+
+        let ff_date = date::parse_datetime(
+            self.hold.as_ref().unwrap()["fulfillment_time"].as_str().unwrap())?;
+
+        // In some cases the date stored in PG contains milliseconds and
+        // in other cases not. To make an accurate comparison, truncate
+        // to seconds.
+        if xact_date.timestamp() != ff_date.timestamp() {
+            return Ok(false);
+        }
+
+        log::info!("{self} undoing fulfillment for hold {}", hold["id"]);
+
+        hold["fulfillment_time"].take();
+        hold["fulfillment_staff"].take();
+        hold["fulfillment_lib"].take();
+
+        self.editor.update(&hold)?;
+
+        self.update_copy(json::object! {"status": C::COPY_STATUS_ON_HOLDS_SHELF})?;
+
+        Ok(true)
     }
 }
