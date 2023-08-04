@@ -1,8 +1,7 @@
-use crate::result::{EgError, EgResult};
 use crate::event::EgEvent;
 use crate::idl;
+use crate::result::{EgError, EgResult};
 use crate::util;
-use crate::pkey::PrimaryKey;
 use opensrf as osrf;
 use osrf::params::ApiParams;
 use std::sync::Arc;
@@ -523,7 +522,7 @@ impl Editor {
 
     pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> EgResult<Option<json::JsonValue>>
     where
-        T: Into<PrimaryKey>,
+        T: Into<ApiParams>,
     {
         self.retrieve_with_ops(idlclass, id, json::JsonValue::Null)
     }
@@ -535,14 +534,13 @@ impl Editor {
         ops: json::JsonValue, // flesh, etc.
     ) -> EgResult<Option<json::JsonValue>>
     where
-        T: Into<PrimaryKey>,
+        T: Into<ApiParams>,
     {
         let fmapper = self.get_fieldmapper(idlclass)?;
 
         let method = self.app_method(&format!("direct.{fmapper}.retrieve"));
 
-        // Generic into PrimaryKey into ApiParams
-        let mut params: ApiParams = id.into().into();
+        let mut params: ApiParams = id.into();
         params.add(ops);
 
         let resp_op = self.request(&method, params)?;
@@ -661,7 +659,6 @@ impl Editor {
             Err(format!("Create returned no response").into())
         }
     }
-
 
     /// Returns Result of true if our authenticated requestor has the
     /// specified permission globally.

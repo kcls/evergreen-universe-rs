@@ -1,10 +1,10 @@
+use crate::common::holds;
 use crate::common::org;
 use crate::common::settings::Settings;
-use crate::common::holds;
 use crate::common::trigger;
 use crate::editor::Editor;
-use crate::result::{EgError, EgResult};
 use crate::event::{EgEvent, Overrides};
+use crate::result::{EgError, EgResult};
 use crate::util;
 use crate::util::{json_bool, json_bool_op, json_int};
 use json::JsonValue;
@@ -972,7 +972,7 @@ impl Circulator {
             if !events.iter().any(|e| e.textcode() == evt.textcode()) {
                 events.push(evt);
             }
-        };
+        }
 
         if events.len() > 1 {
             // Multiple events mean something failed somewhere.

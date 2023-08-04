@@ -1,12 +1,11 @@
-use crate::constants as C;
 use crate::common::org;
-use crate::common::transit;
 use crate::common::settings::Settings;
+use crate::common::transit;
+use crate::constants as C;
 use crate::date;
-use crate::pkey::PrimaryKey;
 use crate::editor::Editor;
-use crate::result::EgResult;
 use crate::event::{EgEvent, Overrides};
+use crate::result::EgResult;
 use crate::util::{json_bool, json_int};
 use chrono::Duration;
 use json::JsonValue;
@@ -51,9 +50,12 @@ pub fn calc_hold_shelf_expire_time(
 
 /// Returns the captured, unfulfilled, uncanceled hold that
 /// targets the provided copy.
-pub fn captured_hold_for_copy(editor: &mut Editor, copy_id: i64) -> EgResult<Option<JsonValue>> {
+pub fn captured_hold_for_copy<T>(editor: &mut Editor, copy_id: T) -> EgResult<Option<JsonValue>>
+where
+    T: Into<JsonValue>,
+{
     let query = json::object! {
-        current_copy: copy_id,
+        current_copy: copy_id.into(),
         capture_time: {"!=": JsonValue::Null},
         fulfillment_time: JsonValue::Null,
         cancel_time: JsonValue::Null,
@@ -71,10 +73,10 @@ pub fn find_nearest_permitted_hold<T>(
     check_only: bool,
 ) -> EgResult<Option<(JsonValue, Vec<i64>)>>
 where
-    T: Into<PrimaryKey>
+    T: Into<JsonValue>,
 {
     let mut retarget: Vec<i64> = Vec::new();
-    let copy_id = copy_id.into().as_int().unwrap();
+    let copy_id = copy_id.into();
 
     // Fetch the appropriatly fleshed copy.
     let flesh = json::object! {
@@ -84,13 +86,13 @@ where
         }
     };
 
-    let copy = match editor.retrieve_with_ops("acp", copy_id, flesh)? {
+    let copy = match editor.retrieve_with_ops("acp", &copy_id, flesh)? {
         Some(c) => c,
         None => Err(editor.die_event())?,
     };
 
     let query = json::object! {
-       "current_copy": copy_id,
+       "current_copy": copy_id.clone(),
        "cancel_time": JsonValue::Null,
        "capture_time": JsonValue::Null,
     };
@@ -145,11 +147,6 @@ where
 
         let hold = editor.retrieve("ahr", hold_id)?.unwrap(); // required
         let hold_type = hold["hold_type"].as_str().unwrap(); // required
-        let hold_usr = json_int(&hold["usr"])?;
-        let pickup_lib = json_int(&hold["pickup_lib"])?;
-        let request_lib = json_int(&hold["request_lib"])?;
-        let requestor = json_int(&hold["requestor"])?;
-
         if hold_type == "R" || hold_type == "F" {
             // These hold types do not require verification
             best_hold = Some(hold);
@@ -158,11 +155,11 @@ where
 
         let result = test_copy_for_hold(
             editor,
-            hold_usr,
-            copy_id,
-            pickup_lib,
-            request_lib,
-            requestor,
+            hold["usr"].clone(),
+            copy_id.clone(),
+            hold["pickup_lib"].clone(),
+            hold["request_lib"].clone(),
+            hold["requestor"].clone(),
             true,
             None,
         )?;
@@ -202,8 +199,8 @@ where
             if hold["id"] == targeted_hold["id"] {
                 continue;
             }
-            hold["current_copy"] = JsonValue::Null;
-            hold["prev_check_time"] = JsonValue::Null;
+            hold["current_copy"].take();
+            hold["prev_check_time"].take();
             editor.update(&hold)?;
             retarget.push(json_int(&hold["id"])?);
         }
@@ -243,16 +240,29 @@ pub struct TestCopyForHoldResult {
 }
 
 /// Test if a hold can be used to fill a hold.
-pub fn test_copy_for_hold(
+pub fn test_copy_for_hold<T, U, V, W, X>(
     editor: &mut Editor,
-    patron_id: i64,
-    copy_id: i64,
-    pickup_lib: i64,
-    request_lib: i64,
-    requestor: i64,
+    patron_id: T,
+    copy_id: U,
+    pickup_lib: V,
+    request_lib: W,
+    requestor: X,
     is_retarget: bool,
     overrides: Option<Overrides>,
-) -> EgResult<TestCopyForHoldResult> {
+) -> EgResult<TestCopyForHoldResult>
+where
+    T: Into<JsonValue>,
+    U: Into<JsonValue>,
+    V: Into<JsonValue>,
+    W: Into<JsonValue>,
+    X: Into<JsonValue>,
+{
+    let copy_id = copy_id.into();
+    let patron_id = patron_id.into();
+    let pickup_lib = pickup_lib.into();
+    let request_lib = request_lib.into();
+    let requestor = requestor.into();
+
     let mut result = TestCopyForHoldResult {
         success: false,
         permit_results: Vec::new(),
@@ -387,7 +397,10 @@ pub fn test_copy_for_hold(
 /// TODO: As is, this is NOT run within a transaction, since it's a
 /// call to a remote service.  If targeting is ever ported to Rust, it
 /// can run in the same transaction.
-pub fn retarget_holds(editor: &mut Editor, hold_ids: &[i64]) -> EgResult<()> {
+pub fn retarget_holds<T>(editor: &mut Editor, hold_ids: &[T]) -> EgResult<()>
+where
+    T: Into<JsonValue> + Clone,
+{
     editor.client_mut().send_recv_one(
         "open-ils.hold-targeter",
         "open-ils.hold-targeter.target",
@@ -403,7 +416,11 @@ pub fn retarget_holds(editor: &mut Editor, hold_ids: &[i64]) -> EgResult<()> {
 /// changes must be committed before retargeting occurs, this function
 /// begins and commits its own transaction, by way of a cloned copy of
 /// the provided editor.
-pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
+pub fn reset_hold<T>(editor: &mut Editor, hold_id: T) -> EgResult<()>
+where
+    T: Into<JsonValue>,
+{
+    let hold_id = hold_id.into();
     log::info!("Resetting hold {hold_id}");
 
     // Leave the provided editor in whatever state it's already in.
@@ -411,12 +428,14 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
     let mut editor = editor.clone();
     editor.xact_begin()?;
 
-    let mut hold = editor.retrieve("ahr", hold_id)?.ok_or(editor.die_event())?;
+    let mut hold = editor
+        .retrieve("ahr", &hold_id)?
+        .ok_or(editor.die_event())?;
 
     // Resetting captured holds requires a little more care.
     if !hold["capture_time"].is_null() && !hold["current_copy"].is_null() {
-
-        let mut copy = editor.retrieve("acp", hold["current_copy"].clone())?
+        let mut copy = editor
+            .retrieve("acp", hold["current_copy"].clone())?
             .ok_or(editor.die_event())?;
 
         let copy_status = json_int(&copy["status"])?;
@@ -427,11 +446,9 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
             copy["edit_date"] = json::from("now");
 
             editor.update(&copy)?;
-
         } else if copy_status == C::COPY_STATUS_IN_TRANSIT {
-
             let query = json::object! {
-                "hold": hold["id"].clone(),
+                "hold": hold_id.clone(),
                 "cancel_time": JsonValue::Null,
             };
 
@@ -441,14 +458,15 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
         }
     }
 
-    hold["capture_time"] = JsonValue::Null;
-    hold["current_copy"] = JsonValue::Null;
-    hold["shelf_time"] = JsonValue::Null;
-    hold["shelf_expire_time"] = JsonValue::Null;
-    hold["current_shelf_lib"] = JsonValue::Null;
+    hold["capture_time"].take();
+    hold["current_copy"].take();
+    hold["shelf_time"].take();
+    hold["shelf_expire_time"].take();
+    hold["current_shelf_lib"].take();
 
     editor.update(&hold)?;
     editor.commit()?;
 
-    retarget_holds(&mut editor, &[hold_id])
+    let id = json_int(&hold_id)?; // TODO avoid this translation
+    retarget_holds(&mut editor, &[id])
 }

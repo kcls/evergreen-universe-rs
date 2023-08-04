@@ -5,8 +5,8 @@ use crate::common::penalty;
 use crate::common::transit;
 use crate::constants as C;
 use crate::date;
-use crate::result::EgResult;
 use crate::event::EgEvent;
+use crate::result::EgResult;
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
 use json::JsonValue;
@@ -415,7 +415,7 @@ impl Circulator {
 
         if let Some(transit) = self.transit.as_ref() {
             log::info!("{self} copy is both checked out and in transit.  Canceling transit");
-            transit::cancel_transit(&mut self.editor, &transit["id"], false)?;
+            transit::cancel_transit(&mut self.editor, transit["id"].to_owned(), false)?;
             self.transit = None;
         }
 
@@ -1245,7 +1245,7 @@ impl Circulator {
         let mut alt_hold;
         let hold = match self.hold.as_mut() {
             Some(h) => h,
-            None => match holds::captured_hold_for_copy(&mut self.editor, self.copy_id.unwrap())? {
+            None => match holds::captured_hold_for_copy(&mut self.editor, copy["id"].clone())? {
                 Some(h) => {
                     alt_hold = Some(h);
                     alt_hold.as_mut().unwrap()
@@ -1655,9 +1655,8 @@ impl Circulator {
         if let Some(mut hold) = self.hold.take() {
             if hold["cancel_time"].is_null() {
                 hold["notes"] = json::from(
-                    self.editor.search(
-                        "ahrn", json::object! {hold: hold["id"].clone()}
-                    )?
+                    self.editor
+                        .search("ahrn", json::object! {hold: hold["id"].clone()})?,
                 );
                 payload["hold"] = hold;
             }
@@ -1672,8 +1671,10 @@ impl Circulator {
                 }
             };
 
-            if let Some(fcirc) =
-                self.editor.retrieve_with_ops("circ", circ["id"].clone(), flesh)? {
+            if let Some(fcirc) = self
+                .editor
+                .retrieve_with_ops("circ", circ["id"].clone(), flesh)?
+            {
                 payload["circ"] = fcirc;
             }
         }
@@ -1687,7 +1688,9 @@ impl Circulator {
             };
 
             if let Some(fpatron) =
-                self.editor.retrieve_with_ops("au", patron["id"].clone(), flesh)? {
+                self.editor
+                    .retrieve_with_ops("au", patron["id"].clone(), flesh)?
+            {
                 payload["patron"] = fpatron;
             }
         }

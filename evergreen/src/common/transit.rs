@@ -1,26 +1,14 @@
+use crate::common::holds;
 use crate::constants as C;
 use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util::{json_bool, json_float, json_int, json_string};
 use crate::event::EgEvent;
-use crate::common::holds;
-use crate::pkey::PrimaryKey;
-/*
-use crate::date;
-use crate::common::holds;
-use crate::common::penalty;
-use chrono::{Duration, Local, Timelike};
+use crate::result::EgResult;
+use crate::util::json_int;
 use json::JsonValue;
-use std::collections::HashSet;
-*/
 
-pub fn cancel_transit<T>(
-    editor: &mut Editor,
-    transit_id: T,
-    skip_hold_reset: bool
-) -> EgResult<()>
+pub fn cancel_transit<T>(editor: &mut Editor, transit_id: T, skip_hold_reset: bool) -> EgResult<()>
 where
-    T: Into<PrimaryKey>,
+    T: Into<JsonValue>,
 {
     let flesh = json::object! {
         "flesh": 1,
@@ -29,22 +17,22 @@ where
         }
     };
 
-    let mut transit = editor.retrieve_with_ops(
-        "atc", transit_id.into(), flesh)?.ok_or(editor.die_event())?;
+    let mut transit = editor
+        .retrieve_with_ops("atc", transit_id.into(), flesh)?
+        .ok_or(editor.die_event())?;
 
     let mut copy = transit["target_copy"].take();
     transit["target_copy"] = copy["id"].clone();
 
     let tc_status = json_int(&transit["copy_status"])?;
 
-    let to_lost = tc_status == C::COPY_STATUS_LOST
-        || tc_status == C::COPY_STATUS_LOST_AND_PAID;
+    let to_lost = tc_status == C::COPY_STATUS_LOST || tc_status == C::COPY_STATUS_LOST_AND_PAID;
 
     let to_missing = tc_status == C::COPY_STATUS_MISSING;
 
-    if (to_lost && !editor.allowed("ABORT_TRANSIT_ON_LOST")?) ||
-        (to_missing && !editor.allowed("ABORT_TRANSIT_ON_MISSING")?) {
-
+    if (to_lost && !editor.allowed("ABORT_TRANSIT_ON_LOST")?)
+        || (to_missing && !editor.allowed("ABORT_TRANSIT_ON_MISSING")?)
+    {
         let mut evt = EgEvent::new("TRANSIT_ABORT_NOT_ALLOWED");
         evt.set_ad_hoc_value("copy_status", json::from(tc_status));
         return Err(evt.into());
@@ -70,14 +58,15 @@ where
     // The status adopted by the copy in transit depends on
     // the intended destination status of the copy.
     if copy_status == C::COPY_STATUS_IN_TRANSIT {
-        if  tc_status == C::COPY_STATUS_AVAILABLE
+        if tc_status == C::COPY_STATUS_AVAILABLE
             || tc_status == C::COPY_STATUS_CHECKED_OUT
             || tc_status == C::COPY_STATUS_IN_PROCESS
             || tc_status == C::COPY_STATUS_ON_HOLDS_SHELF
             || tc_status == C::COPY_STATUS_IN_TRANSIT
             || tc_status == C::COPY_STATUS_CATALOGING
             || tc_status == C::COPY_STATUS_ON_RESV_SHELF
-            || tc_status == C::COPY_STATUS_RESHELVING {
+            || tc_status == C::COPY_STATUS_RESHELVING
+        {
             // These transit copy statuses are discarded.
             copy["status"] = json::from(C::COPY_STATUS_CANCELED_TRANSIT);
         } else {
@@ -98,4 +87,3 @@ where
 
     Ok(())
 }
-
