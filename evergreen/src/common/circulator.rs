@@ -602,7 +602,7 @@ impl Circulator {
                     }
                 }
 
-                if copy_override.ne(&"circULATION_EXISTS") {
+                if copy_override.ne(&"CIRCULATION_EXISTS") {
                     continue;
                 }
 

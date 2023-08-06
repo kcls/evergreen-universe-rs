@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, FixedOffset, Local, Months, TimeZone};
+use chrono::{NaiveDate, DateTime, Duration, FixedOffset, Local, Months, TimeZone, Datelike};
 use chrono_tz::Tz;
 
 /// Turn an interval string into a number of seconds.
@@ -102,8 +102,26 @@ pub fn now_local() -> DateTime<FixedOffset> {
 /// If the datetime string is in the Local timezone, for example, the
 /// DateTime value produced will also be in the local timezone.
 pub fn parse_datetime(dt: &str) -> Result<DateTime<FixedOffset>, String> {
-    dt.parse::<DateTime<FixedOffset>>()
-        .or_else(|e| Err(format!("Could not parse datetime string: {e} {dt}")))
+    if dt.len() > 10 {
+        // Assumes its a full date + time
+        return dt.parse::<DateTime<FixedOffset>>()
+            .or_else(|e| Err(format!("Could not parse datetime string: {e} {dt}")));
+    }
+
+    if dt.len() < 10 {
+        return Err(format!("Invalid date string: {dt}"));
+    }
+
+    // Assumes it's just a YYYY-MM-DD
+    let date = dt.parse::<NaiveDate>()
+        .or_else(|e| Err(format!("Could not parse date string: {e} {dt}")))?;
+
+    // If we only have a date, use the local timezone.
+    let local_date = Local.with_ymd_and_hms(
+        date.year(), date.month(), date.day(), 0, 0, 0).earliest()
+        .ok_or(format!("Could not parse date string: {dt}"))?;
+
+    Ok(local_date.into())
 }
 
 /// Turn a DateTime into the kind of date string we like in these parts.

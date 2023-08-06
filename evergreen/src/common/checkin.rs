@@ -505,6 +505,12 @@ impl Circulator {
             return Ok(());
         }
 
+        let ws_id = match self.editor.requestor_ws_id() {
+            Some(i) => i,
+            // Cannot perform inventory without a workstation.
+            None => return Ok(()),
+        };
+
         if json_int(&self.copy()["circ_lib"])? != self.circ_lib
             && !self.get_option_bool("can_float")
         {
@@ -515,7 +521,7 @@ impl Circulator {
         // Create a new copy inventory row.
         let aci = json::object! {
             inventory_date: "now",
-            inventory_workstation: self.editor.requestor_ws_id(),
+            inventory_workstation: ws_id,
             copy: self.copy()["id"].clone(),
         };
 
@@ -685,7 +691,9 @@ impl Circulator {
         circ["checkin_scan_time"] = json::from("now");
         circ["checkin_staff"] = json::from(self.editor.requestor_id());
         circ["checkin_lib"] = json::from(self.circ_lib);
-        circ["checkin_workstation"] = json::from(self.editor.requestor_ws_id());
+        if let Some(id) = self.editor.requestor_ws_id() {
+            circ["checkin_workstation"] = json::from(id);
+        }
 
         match copy_status {
             C::COPY_STATUS_LOST => self.checkin_handle_lost()?,

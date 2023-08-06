@@ -31,7 +31,27 @@ pub static METHODS: &[StaticMethod] = &[StaticMethod {
             required: true,
             name: "options",
             datatype: ParamDataType::Object,
-            desc: "Optoins including copy_barcode, etc.", // TODO expand
+            desc: "Options including copy_barcode, etc.", // TODO expand
+        },
+    ],
+},
+StaticMethod {
+    name: "checkin.override",
+    desc: "Checkin a copy / Override edition. See checkin",
+    param_count: ParamCount::Exactly(2),
+    handler: checkin,
+    params: &[
+        StaticParam {
+            required: true,
+            name: "authtoken",
+            datatype: ParamDataType::String,
+            desc: "Authentication Toaken",
+        },
+        StaticParam {
+            required: true,
+            name: "options",
+            datatype: ParamDataType::Object,
+            desc: "Options including copy_barcode, etc.", // TODO expand
         },
     ],
 }];
@@ -64,6 +84,7 @@ pub fn checkin(
     }
 
     let mut circulator = Circulator::new(editor, options)?;
+    circulator.is_override = method.method().contains(".override");
     circulator.begin()?;
 
     // Collect needed data then kickoff the checkin process.
@@ -76,12 +97,10 @@ pub fn checkin(
         return Ok(());
     }
 
-    // Collect the response data.
-    // Consistent with Perl, collect all of the response data before
-    // committing the transaction.
-    let events: Vec<json::JsonValue> = circulator.events().iter().map(|e| e.into()).collect();
-
+    // Checkin call completed
     circulator.commit()?;
+
+    let events: Vec<json::JsonValue> = circulator.events().iter().map(|e| e.into()).collect();
 
     // Send the compiled events to the caller and let them know we're done.
     session.respond_complete(events)?;

@@ -2,6 +2,8 @@ use super::item;
 use super::session::Session;
 use chrono::NaiveDateTime;
 use evergreen as eg;
+use eg::common::circulator::Circulator;
+use std::collections::HashMap;
 
 pub enum AlertType {
     Unknown,
@@ -153,13 +155,16 @@ impl Session {
         cancel: bool,
         ovride: bool,
     ) -> Result<CheckinResult, String> {
-        let mut args = json::object! {
-            copy_barcode: item.barcode.as_str(),
-            hold_as_transit: self.account().settings().checkin_holds_as_transits(),
-        };
+
+        let mut options: HashMap<String, json::JsonValue> = HashMap::new();
+        options.insert("copy_barcode".to_string(), item.barcode.as_str().into());
+
+        if self.account().settings().checkin_holds_as_transits() {
+            options.insert("hold_as_transit".to_string(), json::from(true));
+        }
 
         if cancel {
-            args["revert_hold_fulfillment"] = json::from(cancel);
+            options.insert("revert_hold_fulfillment".to_string(), json::from(cancel));
         }
 
         if return_date.trim().len() == 18 {
@@ -171,7 +176,7 @@ impl Session {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("{self} Checking in with backdate: {iso_date}");
 
-                args["backdate"] = json::from(iso_date);
+                options.insert("backdate".to_string(), json::from(iso_date));
             } else {
                 log::warn!("{self} Invalid checkin return date: {return_date}");
             }
@@ -179,44 +184,44 @@ impl Session {
 
         if let Some(sn) = current_loc_op {
             if let Some(org) = self.org_from_sn(sn)? {
-                args["circ_lib"] = org["id"].clone();
+                options.insert("circ_lib".to_string(), org["id"].clone());
+            } else {
+                log::warn!("Unknown org unit provided for current location: {sn}");
             }
         }
 
-        if !args.has_key("circ_lib") {
-            args["circ_lib"] = json::from(self.get_ws_org_id()?);
+        if !options.contains_key("circ_lib") {
+            options.insert("circ_lib".to_string(), json::from(self.get_ws_org_id()?));
         }
 
-        let method = match ovride {
-            true => "open-ils.circ.checkin.override",
-            false => "open-ils.circ.checkin",
-        };
+        log::info!("{self} checkin with params: {:?}", options);
 
-        let params = vec![json::from(self.authtoken()?), args];
+        let editor = self.editor().clone();
 
-        let resp = match self
-            .osrf_client_mut()
-            .send_recv_one("open-ils.circ", method, params)?
-        {
-            Some(r) => r,
-            None => Err(format!("API call {method} failed to return a response"))?,
-        };
+        let mut circulator = Circulator::new(editor, options)?;
+        circulator.is_override = ovride;
+        circulator.begin()?;
 
-        log::debug!("{self} Checkin of {} returned: {resp}", item.barcode);
+        // Collect needed data then kickoff the checkin process.
+        let result = circulator.init().and_then(|()| circulator.checkin());
 
-        let evt_json = match resp {
-            json::JsonValue::Array(list) => {
-                if list.len() > 0 {
-                    list[0].to_owned()
-                } else {
-                    json::JsonValue::Null
-                }
+        log::info!("{self} Checkin of {} returned: {result:?}", item.barcode);
+
+        let err_bind;
+        let evt = match result {
+            Ok(()) => {
+                circulator.commit()?;
+                circulator
+                    .events()
+                    .get(0)
+                    .ok_or(format!("API call failed to return an event"))?
+            },
+            Err(err) => {
+                circulator.rollback()?;
+                err_bind = Some(err.event_or_default());
+                err_bind.as_ref().unwrap()
             }
-            _ => resp,
         };
-
-        let evt = eg::event::EgEvent::parse(&evt_json)
-            .ok_or(format!("API call {method} failed to return an event"))?;
 
         if !ovride
             && self
@@ -230,6 +235,7 @@ impl Session {
 
         let mut current_loc = item.current_loc.to_string(); // item.circ_lib
         let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
+
         let mut destination_loc = None;
         if let Some(org_id) = evt.org() {
             if let Some(org) = self.org_from_id(*org_id)? {

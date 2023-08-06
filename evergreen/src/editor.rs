@@ -214,8 +214,13 @@ impl Editor {
     /// Workstation ID of the requestor's workstation.
     ///
     /// Panics if requestor value is unset.
-    pub fn requestor_ws_id(&self) -> i64 {
-        util::json_int(&self.requestor().unwrap()["ws_id"]).unwrap()
+    pub fn requestor_ws_id(&self) -> Option<i64> {
+        if let Some(r) = self.requestor() {
+            if let Ok(n) = util::json_int(&r["ws_id"]) {
+                return Some(n);
+            }
+        }
+        None
     }
 
     pub fn requestor(&self) -> Option<&json::JsonValue> {
@@ -544,6 +549,8 @@ impl Editor {
         params.add(ops);
 
         let resp_op = self.request(&method, params)?;
+
+        log::info!("RETRIEVE RETURNED: {:?}", resp_op);
 
         if resp_op.is_none() {
             // not-found is not necessarily an error.
