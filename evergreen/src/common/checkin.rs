@@ -24,8 +24,10 @@ impl Circulator {
 
         // Pre-cache some setting values.
         self.settings.fetch_values(CHECKIN_ORG_SETTINGS)?;
-
         self.basic_copy_checks()?;
+
+        log::info!("{self} starting checkin");
+
         self.fix_broken_transit_status()?;
         self.check_transit_checkin_interval()?;
         self.checkin_retarget_holds()?;
@@ -668,6 +670,8 @@ impl Circulator {
     }
 
     fn checkin_handle_circ(&mut self) -> EgResult<()> {
+        let selfstr: String = self.to_string();
+
         if self.get_option_bool("claims_never_checked_out") {
             let xact_start = &self.circ.as_ref().unwrap()["xact_start"];
             self.options
@@ -682,6 +686,8 @@ impl Circulator {
         let copy_circ_lib = self.copy_circ_lib();
 
         let circ = self.circ.as_mut().unwrap();
+        let circ_id: i64 = json_int(&circ["id"])?;
+
         circ["checkin_time"] = self
             .options
             .get("backdate")
@@ -694,6 +700,8 @@ impl Circulator {
         if let Some(id) = self.editor.requestor_ws_id() {
             circ["checkin_workstation"] = json::from(id);
         }
+
+        log::info!("{selfstr} checking item in with checkin_time {}", circ["checkin_time"]);
 
         match copy_status {
             C::COPY_STATUS_LOST => self.checkin_handle_lost()?,
@@ -709,14 +717,19 @@ impl Circulator {
             _ => self.reshelve_copy(true)?,
         }
 
-        if !self.get_option_bool("dont_change_lost_zero") {
-            // Caller has not requested we leave well enough alone, i.e.
-            // if an item was lost and paid, it's eligible to be re-opened
-            // for additional billing.
+        if self.get_option_bool("dont_change_lost_zero") {
+            // Caller has requested we leave well enough alone, i.e.
+            // if an item was lost and paid, it's not eligible to be
+            // re-opened for additional billing.
+            let circ = self.circ.as_mut().unwrap();
+            self.editor.update(&circ)?;
+
+        } else {
 
             if self.get_option_bool("claims_never_checked_out") {
-                let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
+                let circ = self.circ.as_mut().unwrap();
                 circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
+
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -730,20 +743,22 @@ impl Circulator {
                     // (to fill the gap between mark lost time and when
                     // the fines would have naturally stopped), then
                     // clear stop_fines so the fine generator can work.
-                    let circ = self.circ.as_mut().unwrap(); // mut borrow conflicts
+                    let circ = self.circ.as_mut().unwrap();
                     circ["stop_fines"] = JsonValue::Null;
                 }
             }
 
+            let circ = self.circ.as_mut().unwrap();
+            self.editor.update(&circ)?;
             self.handle_checkin_fines()?;
         }
 
         self.check_circ_deposit(true)?;
 
-        let circ_id = self.circ.as_ref().unwrap()["id"].clone();
+        log::debug!("{selfstr} checking open transaction state");
 
         // Set/clear stop_fines as needed.
-        billing::check_open_xact(&mut self.editor, json_int(&circ_id)?)?;
+        billing::check_open_xact(&mut self.editor, circ_id)?;
 
         // Get a post-save version of the circ to pick up any in-DB changes.
         if let Some(c) = self.editor.retrieve("circ", circ_id)? {
@@ -1254,7 +1269,7 @@ impl Circulator {
         let copy = self.copy.as_ref().unwrap();
 
         if self.hold_transit.is_none()
-            && json_int(&copy["status"])? != C::COPY_STATUS_ON_HOLDS_SHELF
+            && self.copy_status() != C::COPY_STATUS_ON_HOLDS_SHELF
         {
             // No hold transit and not headed for the holds shelf.
             return Ok(());
@@ -1350,7 +1365,6 @@ impl Circulator {
     /// Set hold shelf values and update the hold.
     fn put_hold_on_shelf(&mut self) -> EgResult<()> {
         let hold = self.hold.as_mut().unwrap();
-        let hold_id = json_int(&hold["id"])?;
 
         hold["shelf_time"] = json::from("now");
         hold["current_shelf_lib"] = json::from(self.circ_lib);
@@ -1360,7 +1374,7 @@ impl Circulator {
         }
 
         self.editor.update(&hold)?;
-        self.hold = self.editor.retrieve("ahr", hold_id)?;
+        self.hold = self.editor.retrieve("ahr", hold["id"].clone())?;
 
         Ok(())
     }

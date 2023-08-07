@@ -550,8 +550,6 @@ impl Editor {
 
         let resp_op = self.request(&method, params)?;
 
-        log::info!("RETRIEVE RETURNED: {:?}", resp_op);
-
         if resp_op.is_none() {
             // not-found is not necessarily an error.
             let key = fmapper.replace(".", "_").to_uppercase();
