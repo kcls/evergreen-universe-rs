@@ -19,6 +19,11 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
 
 /// Checkin
 impl Circulator {
+
+    /// Checkin an item.
+    ///
+    /// Returns Ok(()) if the active transaction should be committed and
+    /// Err(EgError) if the active transaction should be rolled backed.
     pub fn checkin(&mut self) -> EgResult<()> {
         self.circ_op = CircOp::Checkin;
 
@@ -482,7 +487,8 @@ impl Circulator {
 
         // Copy can float.  Can it float here?
 
-        let float_group = self.editor.retrieve("cfg", float_id.clone())?.unwrap(); // foreign key
+        let float_group = self.editor.retrieve("cfg", float_id.clone())?
+            .ok_or_else(|| self.editor.die_event())?;
 
         let query = json::object! {
             from: [
@@ -744,7 +750,7 @@ impl Circulator {
                     // the fines would have naturally stopped), then
                     // clear stop_fines so the fine generator can work.
                     let circ = self.circ.as_mut().unwrap();
-                    circ["stop_fines"] = JsonValue::Null;
+                    circ["stop_fines"].take();
                 }
             }
 
@@ -761,9 +767,7 @@ impl Circulator {
         billing::check_open_xact(&mut self.editor, circ_id)?;
 
         // Get a post-save version of the circ to pick up any in-DB changes.
-        if let Some(c) = self.editor.retrieve("circ", circ_id)? {
-            self.circ = Some(c);
-        }
+        self.circ = self.editor.retrieve("circ", circ_id)?;
 
         Ok(())
     }
@@ -1266,14 +1270,14 @@ impl Circulator {
     /// that transited here w/o a hold transit yet are in
     /// fact captured for a hold.
     fn checkin_handle_received_hold(&mut self) -> EgResult<()> {
-        let copy = self.copy.as_ref().unwrap();
-
         if self.hold_transit.is_none()
             && self.copy_status() != C::COPY_STATUS_ON_HOLDS_SHELF
         {
             // No hold transit and not headed for the holds shelf.
             return Ok(());
         }
+
+        let copy = self.copy.as_ref().unwrap();
 
         let mut alt_hold;
         let hold = match self.hold.as_mut() {
@@ -1323,6 +1327,10 @@ impl Circulator {
         Ok(())
     }
 
+    /// Returns true if transits should be supressed between "here" and
+    /// the provided destination.
+    ///
+    /// * `for_hold` - true if this would be a hold transit.
     fn should_suppress_transit(&mut self, destination: i64, for_hold: bool) -> EgResult<bool> {
         if destination == self.circ_lib {
             return Ok(false);
@@ -1390,7 +1398,7 @@ impl Circulator {
 
         // XXX this would be notably faster if we didn't first check
         // for both hold and reservation capturability, i.e. if one
-        // automatically took precedence.  Like this, capture logic,
+        // automatically took precedence.  As is, the capture logic,
         // which can be slow, has to run at minimum 3 times.
         let maybe_hold = self.hold_capture_is_possible()?;
         let maybe_resv = self.reservation_capture_is_possible()?;
@@ -1448,16 +1456,16 @@ impl Circulator {
         let pickup_lib = json_int(&hold["pickup_lib"])?;
         let suppress_transit = self.should_suppress_transit(pickup_lib, true)?;
 
-        hold["hopeless_date"] = JsonValue::Null;
+        hold["hopeless_date"].take();
         hold["current_copy"] = json::from(self.copy_id.unwrap());
         hold["capture_time"] = json::from("now");
 
         // Clear some other potential cruft
-        hold["fulfillment_time"] = JsonValue::Null;
-        hold["fulfillment_staff"] = JsonValue::Null;
-        hold["fulfillment_lib"] = JsonValue::Null;
-        hold["expire_time"] = JsonValue::Null;
-        hold["cancel_time"] = JsonValue::Null;
+        hold["fulfillment_time"].take();
+        hold["fulfillment_staff"].take();
+        hold["fulfillment_lib"].take();
+        hold["expire_time"].take();
+        hold["cancel_time"].take();
 
         if suppress_transit
             || (pickup_lib == self.circ_lib && !self.get_option_bool("hold_as_transit"))
@@ -1467,7 +1475,7 @@ impl Circulator {
             self.put_hold_on_shelf()?;
         } else {
             self.editor.update(&hold)?;
-            self.hold = self.editor.retrieve("ahr", json_int(&hold["id"])?)?;
+            self.hold = self.editor.retrieve("ahr", hold["id"].clone())?;
         }
 
         Ok(true)
@@ -1602,8 +1610,8 @@ impl Circulator {
             // Hold is transiting, clear any shelf-iness.
             if !hold["current_shelf_lib"].is_null() || !hold["shelf_time"].is_null() {
                 let mut h = (*hold).clone();
-                h["current_shelf_lib"] = JsonValue::Null;
-                h["shelf_time"] = JsonValue::Null;
+                h["current_shelf_lib"].take();
+                h["shelf_time"].take();
                 self.editor.update(&h)?;
             }
         }
