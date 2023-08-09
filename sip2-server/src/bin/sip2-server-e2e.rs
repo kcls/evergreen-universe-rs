@@ -155,6 +155,8 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     test_patron_info(tester, true)?;
     test_checkin(tester)?;
 
+    test_checkin_into_transit(tester)?;
+
     Ok(())
 }
 
@@ -538,6 +540,59 @@ fn test_checkin(tester: &mut Tester) -> Result<(), String> {
     assert_eq!(
         resp.get_field_value("AQ").unwrap(),
         tester.samples.aou_shortname
+    );
+
+    if let Some(da) = resp.get_field_value("BV") {
+        assert_eq!(da, "0.00");
+    }
+
+    Ok(())
+}
+
+/// Same as test_checkin except the item needs to transit back home.
+fn test_checkin_into_transit(tester: &mut Tester) -> Result<(), String> {
+    // Change the circ lib for the copy to an alternate org unit.
+    tester.editor.xact_begin()?;
+
+    tester.samples.modify_default_acp(&mut tester.editor,
+        json::object! {"circ_lib":  eg::samples::AOU_BR2_ID})?;
+
+    tester.editor.commit().map_err(|e| e.to_string())?;
+
+    let req = sip2::Message::from_values(
+        &sip2::spec::M_CHECKIN,
+        &[
+            "N", // renewal policy
+            &sip2::util::sip_date_now(),
+            &sip2::util::sip_date_now(),
+        ],
+        &[
+            ("AA", &tester.samples.au_barcode),
+            ("AB", &tester.samples.acp_barcode),
+            ("AO", &tester.institution),
+            ("AP", &tester.samples.aou_shortname),
+        ],
+    )
+    .unwrap();
+
+    let t = Timer::new();
+    let resp = tester
+        .sipcon
+        .sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+    t.done("test_checkin_into_transit");
+
+    assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
+    assert_eq!(resp.fixed_fields()[1].value(), "Y"); // resensitize, i.e. not magnetic
+
+    assert_eq!(
+        resp.get_field_value("AB").unwrap(),
+        tester.samples.acp_barcode
+    );
+    assert_ne!(resp.get_field_value("AJ").unwrap(), ""); // assume we have some kind of title
+    assert_eq!(
+        resp.get_field_value("AQ").unwrap(),
+        eg::samples::AOU_BR2_SHORTNAME
     );
 
     if let Some(da) = resp.get_field_value("BV") {

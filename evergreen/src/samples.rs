@@ -1,8 +1,10 @@
 use crate::constants as C;
 /// Evergreen sample data tools
 use crate::editor::Editor;
-use crate::result::EgError;
+use crate::result::EgResult;
 use json::JsonValue;
+
+// Sample data based on the Evergreen Concerto sample data set.
 
 pub const ACN_CREATOR: i64 = 1;
 pub const ACN_RECORD: i64 = 1;
@@ -12,8 +14,10 @@ pub const ACP_STATUS: i64 = C::COPY_STATUS_AVAILABLE;
 pub const ACP_BARCODE: &str = "_EG_TEST_";
 pub const ACP_LOAN_DURATION: i64 = C::CIRC_DURATION_NORMAL;
 pub const ACP_FINE_LEVEL: i64 = C::CIRC_FINE_LEVEL_MEDIUM;
-pub const AOU_ID: i64 = 4;
-pub const AOU_SHORTNAME: &str = "BR1";
+pub const AOU_BR1_ID: i64 = 4;
+pub const AOU_BR1_SHORTNAME: &str = "BR1";
+pub const AOU_BR2_ID: i64 = 5;
+pub const AOU_BR2_SHORTNAME: &str = "BR2";
 
 pub const AU_BARCODE: &str = "_EG_TEST_";
 pub const AU_PROFILE: i64 = 2; // Patrons
@@ -37,18 +41,18 @@ impl SampleData {
         SampleData {
             acn_creator: ACN_CREATOR,
             acn_record: ACN_RECORD,
-            aou_id: AOU_ID,
+            aou_id: AOU_BR1_ID,
             acn_label: ACN_LABEL.to_string(),
             acn_label_class: ACN_LABEL_CLASS,
             acp_barcode: ACP_BARCODE.to_string(),
-            aou_shortname: AOU_SHORTNAME.to_string(),
+            aou_shortname: AOU_BR1_SHORTNAME.to_string(),
             au_barcode: AU_BARCODE.to_string(),
             au_profile: AU_PROFILE,
             au_ident_type: AU_IDENT_TYPE,
         }
     }
 
-    pub fn create_default_acn(&self, e: &mut Editor) -> Result<JsonValue, EgError> {
+    pub fn create_default_acn(&self, e: &mut Editor) -> EgResult<JsonValue> {
         let seed = json::object! {
             creator: self.acn_creator,
             editor: self.acn_creator,
@@ -63,7 +67,7 @@ impl SampleData {
         e.create(&acn)
     }
 
-    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> Result<JsonValue, EgError> {
+    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> EgResult<JsonValue> {
         let seed = json::object! {
             call_number: acn_id,
             creator: self.acn_creator,
@@ -80,7 +84,7 @@ impl SampleData {
         e.create(&acp)
     }
 
-    pub fn delete_default_acn(&self, e: &mut Editor) -> Result<(), EgError> {
+    pub fn delete_default_acn(&self, e: &mut Editor) -> EgResult<()> {
         let acns = e.search(
             "acn",
             json::object! {label: self.acn_label.to_string(), deleted: "f"},
@@ -93,21 +97,30 @@ impl SampleData {
         Ok(())
     }
 
-    pub fn delete_default_acp(&self, e: &mut Editor) -> Result<(), EgError> {
-        let acps = e.search(
+    pub fn get_default_acp(&self, e: &mut Editor) -> EgResult<JsonValue> {
+        e.search(
             "acp",
             json::object! {barcode: self.acp_barcode.to_string(), deleted: "f"},
-        )?;
+        )?.pop().ok_or(format!("Cannot find default copy").into())
+    }
 
-        if let Some(acp) = acps.get(0) {
-            e.delete(acp)?;
+    pub fn delete_default_acp(&self, e: &mut Editor) -> EgResult<()> {
+        if let Ok(acp) = self.get_default_acp(e) {
+            e.delete(&acp)?;
         }
-
         Ok(())
     }
 
+    pub fn modify_default_acp(&self, e: &mut Editor, values: JsonValue) -> EgResult<()> {
+        let mut acp = self.get_default_acp(e)?;
+        for (k, v) in values.entries() {
+            acp[k] = v.to_owned();
+        }
+        e.update(&acp)
+    }
+
     /// Create default user with a default card.
-    pub fn create_default_au(&self, e: &mut Editor) -> Result<JsonValue, EgError> {
+    pub fn create_default_au(&self, e: &mut Editor) -> EgResult<JsonValue> {
         let seed = json::object! {
             profile: self.au_profile,
             usrname: self.au_barcode.to_string(),
@@ -139,7 +152,7 @@ impl SampleData {
     }
 
     /// Purge the default user, including its linked card, transactions, etc.
-    pub fn delete_default_au(&self, e: &mut Editor) -> Result<(), EgError> {
+    pub fn delete_default_au(&self, e: &mut Editor) -> EgResult<()> {
         let cards = e.search("ac", json::object! {barcode: self.au_barcode.to_string()})?;
 
         if let Some(ac) = cards.get(0) {
