@@ -1,6 +1,7 @@
 //! Shared, user-focused utility functions
 use crate::editor::Editor;
 use crate::idl;
+use crate::result::EgResult;
 use crate::util;
 use crate::util::json_int;
 use json::JsonValue;
@@ -18,7 +19,7 @@ pub fn verify_migrated_password(
     user_id: i64,
     password: &str,
     is_hashed: bool,
-) -> Result<bool, String> {
+) -> EgResult<bool> {
     let mut computed: Option<String> = None;
 
     if !is_hashed {
@@ -58,7 +59,7 @@ pub fn verify_password(
     user_id: i64,
     password: &str,
     pw_type: &str,
-) -> Result<bool, String> {
+) -> EgResult<bool> {
     let query = json::object! {
         from: [
             "actor.verify_passwd",
@@ -73,13 +74,13 @@ pub fn verify_password(
     if let Some(resp) = verify.get(0) {
         Ok(util::json_bool(&resp["actor.verify_passwd"]))
     } else {
-        Err(format!("actor.verify_passwd failed to return a response"))
+        Err(format!("actor.verify_passwd failed to return a response").into())
     }
 }
 
 /// Returns a list of all org unit IDs where the provided user has
 /// the provided work permission.
-pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> Result<Vec<i64>, String> {
+pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Vec<i64>> {
     let dbfunc = "permission.usr_has_perm_at_all";
 
     let query = json::object! { from: [dbfunc, user_id, perm] };
@@ -96,7 +97,7 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> Result<Vec<
 }
 
 /// Returns counts of items out, overdue, etc. for a user.
-pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> {
+pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
     match e.retrieve("ocirccount", user_id)? {
         Some(mut c) => {
             c["total_out"] = json::from(json_int(&c["out"])? + json_int(&c["overdue"])?);
@@ -118,7 +119,7 @@ pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> Result<JsonValue, S
 }
 
 /// Returns a summary of fines owed by a user
-pub fn fines_summary(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> {
+pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
     let mut fines_list = e.search("mous", json::object! {usr: user_id})?;
 
     if let Some(mut fines) = fines_list.pop() {
@@ -136,7 +137,7 @@ pub fn fines_summary(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> 
 }
 
 /// Returns a total/ready hold counts for a user.
-pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> Result<JsonValue, String> {
+pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
     let query = json::object! {
         select: {ahr: ["pickup_lib", "current_shelf_lib", "behind_desk"]},
         from: "ahr",

@@ -1,8 +1,9 @@
 ///! Tools for translating between IDL objects and Database rows.
-use super::db;
-use super::idl;
-use super::util;
-use super::util::Pager;
+use crate::db;
+use crate::idl;
+use crate::result::EgResult;
+use crate::util;
+use crate::util::Pager;
 use chrono::prelude::*;
 use json::JsonValue;
 use pg::types::ToSql;
@@ -169,17 +170,17 @@ impl Translator {
     }
 
     /// Start a new database transaction
-    pub fn xact_begin(&mut self) -> Result<(), String> {
+    pub fn xact_begin(&mut self) -> EgResult<()> {
         self.db.borrow_mut().xact_begin()
     }
 
     /// Commit an in-progress transaction.
-    pub fn xact_commit(&mut self) -> Result<(), String> {
+    pub fn xact_commit(&mut self) -> EgResult<()> {
         self.db.borrow_mut().xact_commit()
     }
 
     /// Roll back an in-progress transaction.
-    pub fn xact_rollback(&mut self) -> Result<(), String> {
+    pub fn xact_rollback(&mut self) -> EgResult<()> {
         self.db.borrow_mut().xact_rollback()
     }
 
@@ -196,16 +197,16 @@ impl Translator {
         &self,
         classname: &str,
         pkey: &JsonValue,
-    ) -> Result<Option<JsonValue>, String> {
-        let idl_class = self
-            .idl()
-            .classes()
-            .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))?;
+    ) -> EgResult<Option<JsonValue>> {
+        let idl_class = match self.idl().classes().get(classname) {
+            Some(c) => c,
+            None => return Err(format!("No such IDL class: {classname}").into()),
+        };
 
-        let pkey_field = idl_class
-            .pkey_field()
-            .ok_or(format!("Class {classname} has no primary key field"))?;
+        let pkey_field = match idl_class.pkey_field() {
+            Some(f) => f,
+            None => return Err(format!("Class {classname} has no primary key field").into()),
+        };
 
         let mut filter = JsonValue::new_object();
         filter.insert(pkey_field.name(), pkey.clone()).unwrap();
@@ -218,29 +219,31 @@ impl Translator {
         match list.len() {
             0 => Ok(None),
             1 => Ok(Some(list[0].to_owned())),
-            _ => Err(format!(
-                "Pkey query for {classname} returned {} results",
-                list.len()
-            )),
+            _ => {
+                return Err(
+                    format!("Pkey query for {classname} returned {} results", list.len()).into(),
+                )
+            }
         }
     }
 
     /// Get the IDL Class representing to the provided object.
-    pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> Result<&idl::Class, String> {
-        let classname = obj[idl::CLASSNAME_KEY]
-            .as_str()
-            .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
+    pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> EgResult<&idl::Class> {
+        let classname = match obj[idl::CLASSNAME_KEY].as_str() {
+            Some(c) => c,
+            None => return Err(format!("Not an IDL object: {}", obj.dump()).into()),
+        };
 
         self.idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))
+            .ok_or(format!("No such IDL class: {classname}").into())
     }
 
     /// Create an IDL object in the database
     ///
     /// Returns the created value
-    pub fn create_idl_object(&self, obj: &JsonValue) -> Result<JsonValue, String> {
+    pub fn create_idl_object(&self, obj: &JsonValue) -> EgResult<JsonValue> {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut create = IdlClassCreate::new(idl_class.classname());
@@ -260,14 +263,15 @@ impl Translator {
             Err(format!(
                 "Could not create new value for class: {}",
                 idl_class.classname()
-            ))
+            )
+            .into())
         }
     }
 
     /// Create one or more IDL objects in the database.
     ///
     /// Returns the created rows.
-    pub fn idl_class_create(&self, create: &IdlClassCreate) -> Result<Vec<JsonValue>, String> {
+    pub fn idl_class_create(&self, create: &IdlClassCreate) -> EgResult<Vec<JsonValue>> {
         if create.values.len() == 0 {
             Err(format!("No values to create in idl_class_create()"))?;
         }
@@ -348,7 +352,7 @@ impl Translator {
     }
 
     /// Update one IDL object in the database.
-    pub fn update_idl_object(&self, obj: &JsonValue) -> Result<u64, String> {
+    pub fn update_idl_object(&self, obj: &JsonValue) -> EgResult<u64> {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut update = IdlClassUpdate::new(idl_class.classname());
@@ -374,7 +378,7 @@ impl Translator {
     /// Update one or more IDL objects in the database.
     ///
     /// Returns Result of the number of rows modified.
-    pub fn idl_class_update(&self, update: &IdlClassUpdate) -> Result<u64, String> {
+    pub fn idl_class_update(&self, update: &IdlClassUpdate) -> EgResult<u64> {
         if update.values.len() == 0 {
             Err(format!("No values to update in idl_class_update()"))?;
         }
@@ -418,7 +422,7 @@ impl Translator {
     }
 
     /// Execute a single db command and return the number of rows affected.
-    fn execute_one(&self, query: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, String> {
+    fn execute_one(&self, query: &str, params: &[&(dyn ToSql + Sync)]) -> EgResult<u64> {
         log::debug!("update() executing query: {query}; params=[{params:?}]");
 
         let query_res = self.db.borrow_mut().client().execute(query, params);
@@ -430,7 +434,7 @@ impl Translator {
             }
             Err(e) => {
                 log::error!("DB Error: {e} query={query} param={params:?}");
-                Err(format!("DB query failed. See error logs"))
+                Err(format!("DB query failed. See error logs").into())
             }
         }
     }
@@ -438,11 +442,7 @@ impl Translator {
     /// Delete one IDL object via its primary key.
     ///
     /// Returns a Result of the number of rows affected.
-    pub fn delete_idl_object_by_pkey(
-        &self,
-        classname: &str,
-        pkey: &JsonValue,
-    ) -> Result<u64, String> {
+    pub fn delete_idl_object_by_pkey(&self, classname: &str, pkey: &JsonValue) -> EgResult<u64> {
         if !self.db.borrow().in_transaction() {
             Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
         }
@@ -486,7 +486,7 @@ impl Translator {
     /// Search for IDL objects in the database.
     ///
     /// Returns a Vec of the found IDL objects.
-    pub fn idl_class_search(&self, search: &IdlClassSearch) -> Result<Vec<JsonValue>, String> {
+    pub fn idl_class_search(&self, search: &IdlClassSearch) -> EgResult<Vec<JsonValue>> {
         let mut results: Vec<JsonValue> = Vec::new();
         let classname = &search.classname;
 
@@ -574,7 +574,7 @@ impl Translator {
         &self,
         idl_field: &idl::Field,
         value: &JsonValue,
-    ) -> Result<Option<JsonValue>, String> {
+    ) -> EgResult<Option<JsonValue>> {
         if !value.is_string() {
             return Ok(None);
         }
@@ -602,7 +602,7 @@ impl Translator {
         values: &Vec<(String, JsonValue)>,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
-    ) -> Result<String, String> {
+    ) -> EgResult<String> {
         let mut sql = String::from("(");
         let mut strings = Vec::new();
 
@@ -639,7 +639,7 @@ impl Translator {
         values: &Vec<(String, JsonValue)>,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
-    ) -> Result<String, String> {
+    ) -> EgResult<String> {
         let mut parts = Vec::new();
 
         for kvp in values {
@@ -679,12 +679,13 @@ impl Translator {
         filter: &JsonValue,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
-    ) -> Result<String, String> {
+    ) -> EgResult<String> {
         if !filter.is_object() {
             return Err(format!(
                 "Translator class filter must be an object: {}",
                 filter.dump()
-            ));
+            )
+            .into());
         }
 
         let mut filters = Vec::new();
@@ -745,9 +746,9 @@ impl Translator {
         obj: &JsonValue,
         operand: Option<&str>,
         use_default: bool,
-    ) -> Result<String, String> {
+    ) -> EgResult<String> {
         if obj.is_object() || obj.is_array() {
-            return Err(format!("Cannot format array/object as a literal: {obj:?}"));
+            return Err(format!("Cannot format array/object as a literal: {obj:?}").into());
         }
 
         if use_default && obj.is_null() {
@@ -786,7 +787,7 @@ impl Translator {
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
         obj: &JsonValue,
-    ) -> Result<String, String> {
+    ) -> EgResult<String> {
         // A filter object may only contain a single operand => value combo
         let (key, val) = obj
             .entries()
@@ -831,7 +832,7 @@ impl Translator {
         idl_field: &idl::Field,
         arr: &JsonValue,
         operand: &str,
-    ) -> Result<String, String> {
+    ) -> EgResult<String> {
         let operand = operand.to_uppercase();
         if !Translator::is_supported_operand(&operand) {
             Err(format!("Unsupported operand: {operand} : {arr}"))?;
@@ -853,7 +854,7 @@ impl Translator {
     }
 
     /// Maps a PG row into an IDL-based JsonValue;
-    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> Result<JsonValue, String> {
+    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> EgResult<JsonValue> {
         let mut obj = JsonValue::new_object();
         obj[idl::CLASSNAME_KEY] = json::from(class.classname());
 
@@ -868,7 +869,7 @@ impl Translator {
     }
 
     /// Translate a PG-typed row value into a JsonValue
-    fn col_value_to_json_value(&self, row: &pg::Row, index: usize) -> Result<JsonValue, String> {
+    fn col_value_to_json_value(&self, row: &pg::Row, index: usize) -> EgResult<JsonValue> {
         let col_type = row.columns().get(index).map(|c| c.type_().name()).unwrap();
 
         match col_type {
@@ -933,7 +934,7 @@ impl Translator {
                 }
             }
             "tsvector" => Ok(JsonValue::Null),
-            _ => Err(format!("Unsupported column type: {col_type}")),
+            _ => Err(format!("Unsupported column type: {col_type}").into()),
         }
     }
 }

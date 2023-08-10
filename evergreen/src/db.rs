@@ -1,3 +1,4 @@
+use crate::result::EgResult;
 ///! Create, connect, and manage database connections.
 use getopts;
 use log::debug;
@@ -249,7 +250,7 @@ impl DatabaseConnection {
     /// Connect to the database
     ///
     /// Non-TLS connections only supported at present.
-    pub fn connect(&mut self) -> Result<(), String> {
+    pub fn connect(&mut self) -> EgResult<()> {
         debug!("Connecting to DB {}", self.dsn());
 
         match pg::Client::connect(self.dsn(), pg::NoTls) {
@@ -257,7 +258,7 @@ impl DatabaseConnection {
                 self.client = Some(c);
                 Ok(())
             }
-            Err(e) => Err(format!("Error connecting to database: {e}")),
+            Err(e) => Err(format!("Error connecting to database: {e}").into()),
         }
     }
 
@@ -269,7 +270,7 @@ impl DatabaseConnection {
     /// Disconect + connect to PG.
     ///
     /// Useful for releasing PG resources mid-script.
-    pub fn reconnect(&mut self) -> Result<(), String> {
+    pub fn reconnect(&mut self) -> EgResult<()> {
         self.disconnect();
         self.connect()
     }
@@ -306,29 +307,29 @@ impl DatabaseConnection {
     /// to, so it causes all kinds of hassle with lifetimes and RefCell
     /// borrows.  This means we can only have one open transaction per
     /// DatabaseConnection.
-    pub fn xact_begin(&mut self) -> Result<(), String> {
+    pub fn xact_begin(&mut self) -> EgResult<()> {
         if self.in_transaction {
-            return Err(format!("DatabaseConnection is already in a transaction"));
+            return Err("DatabaseConnection is already in a transaction".into());
         }
         self.in_transaction = true;
         match self.client().execute("BEGIN", &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("BEGIN transaction error: {e}")),
+            Err(e) => Err(format!("BEGIN transaction error: {e}").into()),
         }
     }
 
-    pub fn xact_commit(&mut self) -> Result<(), String> {
+    pub fn xact_commit(&mut self) -> EgResult<()> {
         if !self.in_transaction {
             return Err(format!("DatabaseConnection has no transaction to commit"))?;
         }
         self.in_transaction = false;
         match self.client().execute("COMMIT", &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("COMMIT transaction error: {e}")),
+            Err(e) => Err(format!("COMMIT transaction error: {e}").into()),
         }
     }
 
-    pub fn xact_rollback(&mut self) -> Result<(), String> {
+    pub fn xact_rollback(&mut self) -> EgResult<()> {
         if !self.in_transaction {
             log::warn!("No transaction to roll back");
             return Ok(()); // error as well?
@@ -336,7 +337,7 @@ impl DatabaseConnection {
         self.in_transaction = false;
         match self.client().execute("ROLLBACK", &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("ROLLBACK transaction error: {e}")),
+            Err(e) => Err(format!("ROLLBACK transaction error: {e}").into()),
         }
     }
 

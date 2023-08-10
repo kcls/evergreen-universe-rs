@@ -2,6 +2,7 @@
 use crate::common::settings::Settings;
 use crate::common::trigger;
 use crate::editor::Editor;
+use crate::result::EgResult;
 use crate::util;
 use json::JsonValue;
 
@@ -17,7 +18,7 @@ pub fn calculate_penalties(
     user_id: i64,
     context_org: i64,
     only_penalties: Option<&Vec<JsonValue>>,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let query = json::object! {
         from: [
             "actor.calculate_system_penalties",
@@ -116,7 +117,7 @@ fn trim_to_wanted_penalties(
     context_org: i64,
     only_penalties: Option<&Vec<JsonValue>>,
     all_penalties: Vec<JsonValue>,
-) -> Result<Vec<JsonValue>, String> {
+) -> EgResult<Vec<JsonValue>> {
     let only_penalties = match only_penalties {
         Some(op) => op,
         None => return Ok(all_penalties),

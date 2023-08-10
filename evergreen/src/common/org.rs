@@ -1,5 +1,6 @@
 use crate::date;
 use crate::editor::Editor;
+use crate::result::EgResult;
 use crate::util;
 use chrono::prelude::Datelike;
 use chrono::{DateTime, Duration, FixedOffset};
@@ -12,7 +13,7 @@ fn org_relations_query(
     org_id: i64,
     transform: &str,
     depth: Option<i64>,
-) -> Result<Vec<i64>, String> {
+) -> EgResult<Vec<i64>> {
     let mut query = json::object! {
         select: {
             aou: [{
@@ -39,15 +40,15 @@ fn org_relations_query(
     Ok(ids)
 }
 
-pub fn ancestors(editor: &mut Editor, org_id: i64) -> Result<Vec<i64>, String> {
+pub fn ancestors(editor: &mut Editor, org_id: i64) -> EgResult<Vec<i64>> {
     org_relations_query(editor, org_id, "actor.org_unit_ancestors", None)
 }
 
-pub fn descendants(editor: &mut Editor, org_id: i64) -> Result<Vec<i64>, String> {
+pub fn descendants(editor: &mut Editor, org_id: i64) -> EgResult<Vec<i64>> {
     org_relations_query(editor, org_id, "actor.org_unit_descendants", None)
 }
 
-pub fn full_path(editor: &mut Editor, org_id: i64, depth: Option<i64>) -> Result<Vec<i64>, String> {
+pub fn full_path(editor: &mut Editor, org_id: i64, depth: Option<i64>) -> EgResult<Vec<i64>> {
     org_relations_query(editor, org_id, "actor.org_unit_full_path", depth)
 }
 
@@ -76,7 +77,7 @@ pub fn next_open_date(
     editor: &mut Editor,
     org_id: i64,
     date: &DateTime<FixedOffset>,
-) -> Result<OrgOpenState, String> {
+) -> EgResult<OrgOpenState> {
     let start_date = date.clone();
     let mut date = date.clone();
 

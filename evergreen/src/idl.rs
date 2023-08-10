@@ -1,4 +1,4 @@
-use crate::result::{EgError, EgResult};
+use crate::result::EgResult;
 ///! IDL Parser
 ///!
 ///! Creates an in-memory representation of the IDL file.
@@ -276,7 +276,7 @@ impl fmt::Display for Class {
 /// NOTE: experiment
 /// Create an Instance wrapper around a JsonValue to enforce
 /// IDL field access (and maybe more, we'll see).
-pub fn wrap(idl: Arc<Parser>, v: JsonValue) -> Result<Instance, EgError> {
+pub fn wrap(idl: Arc<Parser>, v: JsonValue) -> EgResult<Instance> {
     let classname = match v[CLASSNAME_KEY].as_str() {
         Some(c) => c.to_string(),
         None => Err(format!("JsonValue cannot be blessed into an idl::Instance"))?,
@@ -343,7 +343,7 @@ impl Parser {
         &self.classes
     }
 
-    pub fn parse_file(filename: &str) -> Result<Arc<Parser>, EgError> {
+    pub fn parse_file(filename: &str) -> EgResult<Arc<Parser>> {
         let xml = match fs::read_to_string(filename) {
             Ok(x) => x,
             Err(e) => Err(format!("Cannot parse IDL file '{filename}': {e}"))?,
@@ -352,7 +352,7 @@ impl Parser {
         Parser::parse_string(&xml)
     }
 
-    pub fn parse_string(xml: &str) -> Result<Arc<Parser>, EgError> {
+    pub fn parse_string(xml: &str) -> EgResult<Arc<Parser>> {
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
             Err(e) => Err(format!("Error parsing XML string for IDL: {e}"))?,
@@ -617,7 +617,7 @@ impl Parser {
     /// Replace Object or Array values on an IDL object with the
     /// scalar primary key value of the linked object (real fields)
     /// or null (virtual fields).
-    pub fn de_flesh_object(&self, obj: &mut JsonValue) -> Result<(), EgError> {
+    pub fn de_flesh_object(&self, obj: &mut JsonValue) -> EgResult<()> {
         let cname = obj[CLASSNAME_KEY]
             .as_str()
             .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
@@ -675,7 +675,7 @@ impl Parser {
     }
 
     /// Create the seed of an IDL object with the requested class.
-    pub fn create(&self, classname: &str) -> Result<JsonValue, EgError> {
+    pub fn create(&self, classname: &str) -> EgResult<JsonValue> {
         if !self.classes.contains_key(classname) {
             Err(format!("Invalid IDL class: {classname}"))?;
         }
@@ -688,7 +688,7 @@ impl Parser {
 
     /// Stamp the object with the requested class and confirm any
     /// existing fields are valid for the class.
-    pub fn create_from(&self, classname: &str, mut obj: JsonValue) -> Result<JsonValue, EgError> {
+    pub fn create_from(&self, classname: &str, mut obj: JsonValue) -> EgResult<JsonValue> {
         if !obj.is_object() {
             Err(format!("IDL cannot create_from() on a non-object"))?;
         }
@@ -720,23 +720,17 @@ impl Parser {
     /// Field names begging with "_" will not be checked.
     pub fn verify_object(&self, obj: &JsonValue) -> EgResult<()> {
         if !obj.is_object() {
-            Err(EgError::Debug(format!(
-                "IDL value is not an object: {}",
-                obj.dump()
-            )))?;
+            return Err(format!("IDL value is not an object: {}", obj.dump()).into());
         }
 
         let cname = match obj[CLASSNAME_KEY].as_str() {
             Some(c) => c,
-            None => Err(EgError::Debug(format!(
-                "IDL object has no class name: {}",
-                obj.dump()
-            )))?,
+            None => return Err(format!("IDL object has no class name: {}", obj.dump()).into()),
         };
 
         let idl_class = match self.classes.get(cname) {
             Some(c) => c,
-            None => Err(EgError::Debug(format!("No such IDL class: {cname}")))?,
+            None => return Err(format!("No such IDL class: {cname}").into()),
         };
 
         for (key, _) in obj.entries() {
@@ -744,10 +738,7 @@ impl Parser {
             // for attaching values to IDL objects with ad-hoc keys.
             if !key.starts_with("_") {
                 if !idl_class.fields.contains_key(key) {
-                    Err(EgError::Debug(format!(
-                        "IDL class {} has no such field: {}",
-                        cname, key
-                    )))?;
+                    return Err(format!("IDL class {cname} has no such field: {key}").into());
                 }
             }
         }

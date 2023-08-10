@@ -1,6 +1,7 @@
 //! General purpose org / workstation / user setting fetcher and cache.
 //! Primarily uses the 'actor.get_cascade_setting()' DB function.
 use crate::editor::Editor;
+use crate::result::EgResult;
 use crate::util;
 use json::JsonValue;
 use regex::Regex;
@@ -199,14 +200,14 @@ impl Settings {
     /// Returns a setting value using the default context.
     ///
     /// Returns JSON null if no setting exists.
-    pub fn get_value(&mut self, name: &str) -> Result<&JsonValue, String> {
+    pub fn get_value(&mut self, name: &str) -> EgResult<&JsonValue> {
         // Clone needed here because get_context_value mutably borrows
         // self a number of times.
         self.get_context_value(&self.default_context.clone(), name)
     }
 
     /// Shortcut for get_context_value with an org unit ID set.
-    pub fn get_value_at_org(&mut self, name: &str, org_id: i64) -> Result<&JsonValue, String> {
+    pub fn get_value_at_org(&mut self, name: &str, org_id: i64) -> EgResult<&JsonValue> {
         let mut ctx = SettingContext::new();
         ctx.set_org_id(org_id);
         self.get_context_value(&ctx, name)
@@ -217,7 +218,7 @@ impl Settings {
         &mut self,
         context: &SettingContext,
         name: &str,
-    ) -> Result<&JsonValue, String> {
+    ) -> EgResult<&JsonValue> {
         if self.cache.get(context).is_none() {
             self.cache.insert(context.clone(), HashMap::new());
         }
@@ -230,7 +231,7 @@ impl Settings {
         // fetch_context_values guarantees a value is applied
         // for this setting in the cache (defaulting to json null).
         self.get_cached_value(context, name)
-            .ok_or(format!("Setting value missing from cache"))
+            .ok_or(format!("Setting value missing from cache").into())
     }
 
     pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&JsonValue> {
@@ -257,7 +258,7 @@ impl Settings {
     /// Returns String Err on load failure or invalid setting name.
     /// On success, values are stored in the local cache for this
     /// Setting instance.
-    pub fn fetch_values(&mut self, names: &[&str]) -> Result<(), String> {
+    pub fn fetch_values(&mut self, names: &[&str]) -> EgResult<()> {
         self.fetch_context_values(&self.default_context.clone(), names)
     }
 
@@ -270,7 +271,7 @@ impl Settings {
         &mut self,
         context: &SettingContext,
         names: &[&str],
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         if !context.is_viable() {
             Err(format!(
                 "Cannot retrieve settings without user_id or org_id"
@@ -318,7 +319,7 @@ impl Settings {
         &mut self,
         context: &SettingContext,
         setting: &JsonValue,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let value = match setting["value"].as_str() {
             Some(v) => match json::parse(v) {
                 Ok(vv) => vv,

@@ -1,4 +1,4 @@
-use crate::result::EgError;
+use crate::result::EgResult;
 use chrono::prelude::*;
 use chrono::DateTime;
 use json::JsonValue;
@@ -52,7 +52,7 @@ pub fn json_bool_op(op: Option<&JsonValue>) -> bool {
 /// let res = evergreen::util::json_float(&json::from(0));
 /// assert_eq!(res.unwrap(), 0.0);
 /// ```
-pub fn json_float(value: &JsonValue) -> Result<f64, EgError> {
+pub fn json_float(value: &JsonValue) -> EgResult<f64> {
     if let Some(n) = value.as_f64() {
         return Ok(n);
     } else if let Some(s) = value.as_str() {
@@ -75,7 +75,7 @@ pub fn json_float(value: &JsonValue) -> Result<f64, EgError> {
 ///
 /// let res = evergreen::util::json_int(&json::from(12));
 /// assert_eq!(res.unwrap(), 12);
-pub fn json_int(value: &JsonValue) -> Result<i64, EgError> {
+pub fn json_int(value: &JsonValue) -> EgResult<i64> {
     if let Some(n) = value.as_i64() {
         return Ok(n);
     } else if let Some(s) = value.as_str() {
@@ -90,7 +90,7 @@ pub fn json_int(value: &JsonValue) -> Result<i64, EgError> {
 ///
 /// Will coerce numeric values into strings.  Return Err if the
 /// value is not a string or number.
-pub fn json_string(value: &JsonValue) -> Result<String, EgError> {
+pub fn json_string(value: &JsonValue) -> EgResult<String> {
     if let Some(s) = value.as_str() {
         Ok(s.to_string())
     } else if value.is_number() {
@@ -114,7 +114,7 @@ pub fn json_string(value: &JsonValue) -> Result<String, EgError> {
 /// let res = evergreen::util::parse_pg_date("2023-02-03T123");
 /// assert!(res.is_err());
 /// ```
-pub fn parse_pg_date(pg_iso_date: &str) -> Result<DateTime<FixedOffset>, EgError> {
+pub fn parse_pg_date(pg_iso_date: &str) -> EgResult<DateTime<FixedOffset>> {
     DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
         .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}").into()))
 }
