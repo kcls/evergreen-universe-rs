@@ -1,8 +1,8 @@
 use super::item;
 use super::session::Session;
 use chrono::NaiveDateTime;
-use evergreen as eg;
 use eg::common::circulator::Circulator;
+use evergreen as eg;
 use std::collections::HashMap;
 
 pub enum AlertType {
@@ -155,7 +155,6 @@ impl Session {
         cancel: bool,
         ovride: bool,
     ) -> Result<CheckinResult, String> {
-
         let mut options: HashMap<String, json::JsonValue> = HashMap::new();
         options.insert("copy_barcode".to_string(), item.barcode.as_str().into());
 
@@ -215,7 +214,7 @@ impl Session {
                     .events()
                     .get(0)
                     .ok_or(format!("API call failed to return an event"))?
-            },
+            }
             Err(err) => {
                 circulator.rollback()?;
                 err_bind = Some(err.event_or_default());

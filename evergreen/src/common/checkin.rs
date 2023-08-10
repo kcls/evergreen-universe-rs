@@ -19,7 +19,6 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
 
 /// Checkin
 impl Circulator {
-
     /// Checkin an item.
     ///
     /// Returns Ok(()) if the active transaction should be committed and
@@ -130,7 +129,6 @@ impl Circulator {
 
         Ok(())
     }
-
 
     /// Returns true if claims-never-checked-out handling occurred.
     fn handle_claims_never(&mut self) -> EgResult<bool> {
@@ -487,7 +485,9 @@ impl Circulator {
 
         // Copy can float.  Can it float here?
 
-        let float_group = self.editor.retrieve("cfg", float_id.clone())?
+        let float_group = self
+            .editor
+            .retrieve("cfg", float_id.clone())?
             .ok_or_else(|| self.editor.die_event())?;
 
         let query = json::object! {
@@ -707,7 +707,10 @@ impl Circulator {
             circ["checkin_workstation"] = json::from(id);
         }
 
-        log::info!("{selfstr} checking item in with checkin_time {}", circ["checkin_time"]);
+        log::info!(
+            "{selfstr} checking item in with checkin_time {}",
+            circ["checkin_time"]
+        );
 
         match copy_status {
             C::COPY_STATUS_LOST => self.checkin_handle_lost()?,
@@ -729,13 +732,10 @@ impl Circulator {
             // re-opened for additional billing.
             let circ = self.circ.as_mut().unwrap();
             self.editor.update(&circ)?;
-
         } else {
-
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap();
                 circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
-
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -1270,9 +1270,7 @@ impl Circulator {
     /// that transited here w/o a hold transit yet are in
     /// fact captured for a hold.
     fn checkin_handle_received_hold(&mut self) -> EgResult<()> {
-        if self.hold_transit.is_none()
-            && self.copy_status() != C::COPY_STATUS_ON_HOLDS_SHELF
-        {
+        if self.hold_transit.is_none() && self.copy_status() != C::COPY_STATUS_ON_HOLDS_SHELF {
             // No hold transit and not headed for the holds shelf.
             return Ok(());
         }
@@ -1785,7 +1783,8 @@ impl Circulator {
             && self.copy.is_some()
             && self.copy_status() == C::COPY_STATUS_CHECKED_OUT
             && self.patron.is_some()
-            && self.circ_op != CircOp::Renew {
+            && self.circ_op != CircOp::Renew
+        {
             return Ok(());
         }
 
@@ -1823,11 +1822,14 @@ impl Circulator {
 
         // The hold fulfillment time will match the xact_start time of
         // its companion circulation.
-        let xact_date = date::parse_datetime(
-            self.circ.as_ref().unwrap()["xact_start"].as_str().unwrap())?;
+        let xact_date =
+            date::parse_datetime(self.circ.as_ref().unwrap()["xact_start"].as_str().unwrap())?;
 
         let ff_date = date::parse_datetime(
-            self.hold.as_ref().unwrap()["fulfillment_time"].as_str().unwrap())?;
+            self.hold.as_ref().unwrap()["fulfillment_time"]
+                .as_str()
+                .unwrap(),
+        )?;
 
         // In some cases the date stored in PG contains milliseconds and
         // in other cases not. To make an accurate comparison, truncate

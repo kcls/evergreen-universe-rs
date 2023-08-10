@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, DateTime, Duration, FixedOffset, Local, Months, TimeZone, Datelike};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, Months, NaiveDate, TimeZone};
 use chrono_tz::Tz;
 
 /// Turn an interval string into a number of seconds.
@@ -93,7 +93,7 @@ fn add_hms(part: &str, mut date: DateTime<Local>) -> Result<DateTime<Local>, Str
 
 /// Current date/time with a fixed offset matching the local time zone.
 pub fn now_local() -> DateTime<FixedOffset> {
-    to_local_timezone_fixed(Local::now().into())
+    Local::now().into()
 }
 
 /// Parse an ISO date string and return a date which retains its original
@@ -104,7 +104,8 @@ pub fn now_local() -> DateTime<FixedOffset> {
 pub fn parse_datetime(dt: &str) -> Result<DateTime<FixedOffset>, String> {
     if dt.len() > 10 {
         // Assumes its a full date + time
-        return dt.parse::<DateTime<FixedOffset>>()
+        return dt
+            .parse::<DateTime<FixedOffset>>()
             .or_else(|e| Err(format!("Could not parse datetime string: {e} {dt}")));
     }
 
@@ -113,12 +114,14 @@ pub fn parse_datetime(dt: &str) -> Result<DateTime<FixedOffset>, String> {
     }
 
     // Assumes it's just a YYYY-MM-DD
-    let date = dt.parse::<NaiveDate>()
+    let date = dt
+        .parse::<NaiveDate>()
         .or_else(|e| Err(format!("Could not parse date string: {e} {dt}")))?;
 
     // If we only have a date, use the local timezone.
-    let local_date = Local.with_ymd_and_hms(
-        date.year(), date.month(), date.day(), 0, 0, 0).earliest()
+    let local_date = Local
+        .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+        .earliest()
         .ok_or(format!("Could not parse date string: {dt}"))?;
 
     Ok(local_date.into())

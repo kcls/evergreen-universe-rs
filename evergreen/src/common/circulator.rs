@@ -36,7 +36,7 @@ pub enum CircOp {
     Checkout,
     Checkin,
     Renew,
-    Other,
+    Unset,
 }
 
 impl fmt::Display for CircOp {
@@ -52,7 +52,7 @@ impl From<&CircOp> for &'static str {
             CircOp::Checkout => "checkout",
             CircOp::Checkin => "checkin",
             CircOp::Renew => "renewal",
-            CircOp::Other => "other",
+            CircOp::Unset => "unset",
         }
     }
 }
@@ -109,30 +109,29 @@ pub struct Circulator {
 
 impl fmt::Display for Circulator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let empty = "null";
-        let mut patron_barcode = String::from(empty);
-        let mut copy_barcode = String::from(empty);
-        let mut copy_status = -1;
+        let mut patron_barcode = "null";
+        let mut copy_barcode = "null";
+        let mut copy_status = "null";
 
         if let Some(p) = &self.patron {
             if let Some(bc) = &p["card"]["barcode"].as_str() {
-                patron_barcode = bc.to_string();
+                patron_barcode = bc;
             }
         }
 
         if let Some(c) = &self.copy {
             if let Some(bc) = &c["barcode"].as_str() {
-                copy_barcode = bc.to_string()
+                copy_barcode = bc;
             }
-            if let Ok(s) = json_int(&c["status"]["id"]) {
+            if let Some(s) = c["status"]["name"].as_str() {
                 copy_status = s;
             }
         }
 
         write!(
             f,
-            "Circulator action={} circ_lib={} copy={} copy_status={} patron={}",
-            self.circ_op, self.circ_lib, copy_barcode, patron_barcode, copy_status
+            "Circ: action={} circ_lib={} copy={} copy_status={} patron={}",
+            self.circ_op, self.circ_lib, copy_barcode, copy_status, patron_barcode
         )
     }
 }
@@ -171,7 +170,7 @@ impl Circulator {
             exit_early: false,
             is_booking_enabled: None,
             retarget_holds: None,
-            circ_op: CircOp::Other,
+            circ_op: CircOp::Unset,
         })
     }
 

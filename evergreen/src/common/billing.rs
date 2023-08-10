@@ -73,7 +73,7 @@ pub fn void_bills(
 /// Sets or clears xact_finish on a transaction as needed.
 pub fn check_open_xact<T>(editor: &mut Editor, xact_id: T) -> EgResult<()>
 where
-    T: Into<JsonValue>
+    T: Into<JsonValue>,
 {
     let xact_id: JsonValue = xact_id.into();
     let mut xact = match editor.retrieve("mbt", xact_id.clone())? {
@@ -540,7 +540,9 @@ pub enum BillableTransactionType {
 }
 
 pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> EgResult<()> {
-    let resv = editor.retrieve("bresv", resv_id)?.ok_or_else(|| editor.die_event())?;
+    let resv = editor
+        .retrieve("bresv", resv_id)?
+        .ok_or_else(|| editor.die_event())?;
 
     let fine_interval = match resv["fine_interval"].as_str() {
         Some(f) => f,
@@ -563,7 +565,9 @@ pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> EgResult<()
 pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> EgResult<()> {
     log::info!("Generating fines for circulation {circ_id}");
 
-    let circ = editor.retrieve("circ", circ_id)?.ok_or_else(|| editor.die_event())?;
+    let circ = editor
+        .retrieve("circ", circ_id)?
+        .ok_or_else(|| editor.die_event())?;
 
     generate_fines_for_xact(
         editor,
@@ -856,7 +860,9 @@ pub fn void_or_zero_overdues(
 ) -> EgResult<()> {
     log::info!("Voiding overdues for circ={circ_id}");
 
-    let circ = editor.retrieve("circ", circ_id)?.ok_or_else(|| editor.die_event())?;
+    let circ = editor
+        .retrieve("circ", circ_id)?
+        .ok_or_else(|| editor.die_event())?;
 
     let mut query = json::object! {
         "xact": circ_id,

@@ -101,7 +101,9 @@ impl SampleData {
         e.search(
             "acp",
             json::object! {barcode: self.acp_barcode.to_string(), deleted: "f"},
-        )?.pop().ok_or(format!("Cannot find default copy").into())
+        )?
+        .pop()
+        .ok_or(format!("Cannot find default copy").into())
     }
 
     pub fn delete_default_acp(&self, e: &mut Editor) -> EgResult<()> {

@@ -15,46 +15,48 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethod] = &[StaticMethod {
-    name: "checkin",
-    desc: "Checkin a copy",
-    param_count: ParamCount::Exactly(2),
-    handler: checkin,
-    params: &[
-        StaticParam {
-            required: true,
-            name: "authtoken",
-            datatype: ParamDataType::String,
-            desc: "Authentication Toaken",
-        },
-        StaticParam {
-            required: true,
-            name: "options",
-            datatype: ParamDataType::Object,
-            desc: "Options including copy_barcode, etc.", // TODO expand
-        },
-    ],
-},
-StaticMethod {
-    name: "checkin.override",
-    desc: "Checkin a copy / Override edition. See checkin",
-    param_count: ParamCount::Exactly(2),
-    handler: checkin,
-    params: &[
-        StaticParam {
-            required: true,
-            name: "authtoken",
-            datatype: ParamDataType::String,
-            desc: "Authentication Toaken",
-        },
-        StaticParam {
-            required: true,
-            name: "options",
-            datatype: ParamDataType::Object,
-            desc: "Options including copy_barcode, etc.", // TODO expand
-        },
-    ],
-}];
+pub static METHODS: &[StaticMethod] = &[
+    StaticMethod {
+        name: "checkin",
+        desc: "Checkin a copy",
+        param_count: ParamCount::Exactly(2),
+        handler: checkin,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authentication Toaken",
+            },
+            StaticParam {
+                required: true,
+                name: "options",
+                datatype: ParamDataType::Object,
+                desc: "Options including copy_barcode, etc.", // TODO expand
+            },
+        ],
+    },
+    StaticMethod {
+        name: "checkin.override",
+        desc: "Checkin a copy / Override edition. See checkin",
+        param_count: ParamCount::Exactly(2),
+        handler: checkin,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authentication Toaken",
+            },
+            StaticParam {
+                required: true,
+                name: "options",
+                datatype: ParamDataType::Object,
+                desc: "Options including copy_barcode, etc.", // TODO expand
+            },
+        ],
+    },
+];
 
 pub fn checkin(
     worker: &mut Box<dyn ApplicationWorker>,

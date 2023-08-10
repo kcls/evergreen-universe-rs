@@ -155,7 +155,7 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     test_patron_info(tester, true)?;
     test_checkin(tester)?;
 
-    test_checkin_into_transit(tester)?;
+    test_checkin_with_transit(tester)?;
 
     Ok(())
 }
@@ -550,13 +550,15 @@ fn test_checkin(tester: &mut Tester) -> Result<(), String> {
 }
 
 /// Same as test_checkin except the item needs to transit back home.
-fn test_checkin_into_transit(tester: &mut Tester) -> Result<(), String> {
+fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     // Change the circ lib for the copy to an alternate org unit
     // and check it in "here".
     tester.editor.xact_begin()?;
 
-    tester.samples.modify_default_acp(&mut tester.editor,
-        json::object! {"circ_lib":  eg::samples::AOU_BR2_ID})?;
+    tester.samples.modify_default_acp(
+        &mut tester.editor,
+        json::object! {"circ_lib":  eg::samples::AOU_BR2_ID},
+    )?;
 
     tester.editor.commit()?;
 
@@ -581,7 +583,7 @@ fn test_checkin_into_transit(tester: &mut Tester) -> Result<(), String> {
         .sipcon
         .sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    t.done("test_checkin_into_transit");
+    t.done("test_checkin_with_transit");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
 
@@ -614,7 +616,7 @@ fn test_checkin_into_transit(tester: &mut Tester) -> Result<(), String> {
         .sipcon
         .sendrecv(&req)
         .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
-    t.done("test_checkin_into_transit");
+    t.done("test_checkin_with_transit");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
 
