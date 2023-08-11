@@ -2,6 +2,7 @@ use super::item::Item;
 use super::patron::Patron;
 use super::session::Session;
 use evergreen as eg;
+use eg::result::EgResult;
 
 const RENEW_METHOD: &str = "open-ils.circ.renew";
 const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
@@ -28,7 +29,7 @@ impl CheckoutResult {
 }
 
 impl Session {
-    pub fn handle_checkout(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    pub fn handle_checkout(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         self.set_authtoken()?;
 
         let item_barcode = match msg.get_field_value("AB") {
@@ -80,7 +81,7 @@ impl Session {
         item: &Item,
         patron: &Patron,
         result: &CheckoutResult,
-    ) -> Result<sip2::Message, String> {
+    ) -> EgResult<sip2::Message> {
         // Will only be true if this item is already checked out to
         // the patron and the checkout was renewed.
         let renew_ok = false;
@@ -153,7 +154,7 @@ impl Session {
         fee_ack: bool,
         is_renewal: bool,
         ovride: bool,
-    ) -> Result<CheckoutResult, String> {
+    ) -> EgResult<CheckoutResult> {
         let params = vec![
             json::from(self.authtoken()?),
             json::object! {

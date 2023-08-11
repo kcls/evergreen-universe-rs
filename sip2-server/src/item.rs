@@ -1,5 +1,6 @@
 use super::session::Session;
 use evergreen as eg;
+use eg::result::EgResult;
 
 /// A copy object with SIP-related data collected and attached.
 pub struct Item {
@@ -24,7 +25,7 @@ pub struct Item {
 
 impl Session {
     /// Collect a pile of data for a copy by barcode
-    pub fn get_item_details(&mut self, barcode: &str) -> Result<Option<Item>, String> {
+    pub fn get_item_details(&mut self, barcode: &str) -> EgResult<Option<Item>> {
         let search = json::object! {
             barcode: barcode,
             deleted: "f",
@@ -140,7 +141,7 @@ impl Session {
         }))
     }
 
-    pub fn handle_item_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    pub fn handle_item_info(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let barcode = match msg.get_field_value("AB") {
             Some(b) => b,
             None => return Ok(self.return_item_not_found("")),
@@ -191,7 +192,7 @@ impl Session {
         &mut self,
         copy: &json::JsonValue,
         transit: &Option<json::JsonValue>,
-    ) -> Result<Option<json::JsonValue>, String> {
+    ) -> EgResult<Option<json::JsonValue>> {
         let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 8 {
@@ -235,7 +236,7 @@ impl Session {
     fn get_copy_transit(
         &mut self,
         copy: &json::JsonValue,
-    ) -> Result<Option<json::JsonValue>, String> {
+    ) -> EgResult<Option<json::JsonValue>> {
         let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 6 {
@@ -308,7 +309,7 @@ impl Session {
     }
 
     /// Find an open circulation linked to the copy.
-    fn get_copy_circ(&mut self, copy: &json::JsonValue) -> Result<Option<json::JsonValue>, String> {
+    fn get_copy_circ(&mut self, copy: &json::JsonValue) -> EgResult<Option<json::JsonValue>> {
         let copy_status = eg::util::json_int(&copy["status"]["id"])?;
 
         if copy_status != 1 {

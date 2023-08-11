@@ -2,6 +2,7 @@ use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
 use evergreen as eg;
+use eg::result::EgResult;
 use json::JsonValue;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
@@ -147,7 +148,7 @@ impl Session {
         barcode: &str,
         password_op: Option<&str>,
         summary_list_options: Option<&SummaryListOptions>,
-    ) -> Result<Option<Patron>, String> {
+    ) -> EgResult<Option<Patron>> {
         self.set_authtoken()?;
 
         log::info!("{self} SIP patron details for {barcode}");
@@ -228,7 +229,7 @@ impl Session {
         Ok(Some(patron))
     }
 
-    fn log_activity(&mut self, patron_id: i64) -> Result<(), String> {
+    fn log_activity(&mut self, patron_id: i64) -> EgResult<()> {
         let who = self.account().activity_as().unwrap_or("sip2");
 
         let query = json::object! {
@@ -250,7 +251,7 @@ impl Session {
             Ok(())
         } else {
             self.editor_mut().rollback()?;
-            Err(format!("Patron activity logging returned no response"))
+            Err(format!("Patron activity logging returned no response").into())
         }
     }
 
@@ -260,7 +261,7 @@ impl Session {
         &mut self,
         patron: &mut Patron,
         summary_ops: &SummaryListOptions,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         type SL = SummaryListType; // local shorthand
         match summary_ops.list_type() {
             SL::HoldItems => self.add_hold_items(patron, summary_ops, false)?,
@@ -278,7 +279,7 @@ impl Session {
         &mut self,
         patron: &mut Patron,
         summary_ops: &SummaryListOptions,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let xacts = self.get_patron_xacts(&patron, Some(summary_ops))?;
 
         let mut fines: Vec<String> = Vec::new();
@@ -292,7 +293,7 @@ impl Session {
         Ok(())
     }
 
-    fn add_fine_item(&mut self, xact: &JsonValue) -> Result<String, String> {
+    fn add_fine_item(&mut self, xact: &JsonValue) -> EgResult<String> {
         let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
         let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
 
@@ -358,7 +359,7 @@ impl Session {
     fn get_circ_title_author(
         &mut self,
         id: i64,
-    ) -> Result<(Option<String>, Option<String>), String> {
+    ) -> EgResult<(Option<String>, Option<String>)> {
         let flesh = json::object! {
             flesh: 4,
             flesh_fields: {
@@ -381,7 +382,7 @@ impl Session {
         &mut self,
         patron: &mut Patron,
         summary_ops: &SummaryListOptions,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let all_circ_ids: Vec<&i64> =
             [patron.items_overdue_ids.iter(), patron.items_out_ids.iter()]
                 .into_iter()
@@ -408,7 +409,7 @@ impl Session {
         &mut self,
         patron: &mut Patron,
         summary_ops: &SummaryListOptions,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let offset = summary_ops.offset();
         let limit = summary_ops.limit();
 
@@ -425,7 +426,7 @@ impl Session {
         Ok(())
     }
 
-    fn circ_id_to_value(&mut self, id: i64) -> Result<String, String> {
+    fn circ_id_to_value(&mut self, id: i64) -> EgResult<String> {
         let format = self.account().settings().msg64_summary_datatype();
 
         if format == &conf::Msg64SummaryDatatype::Barcode {
@@ -461,7 +462,7 @@ impl Session {
         patron: &mut Patron,
         summary_ops: &SummaryListOptions,
         unavail: bool,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let format = self.account().settings().msg64_hold_datatype().clone();
 
         let hold_ids = match unavail {
@@ -500,7 +501,7 @@ impl Session {
         Ok(())
     }
 
-    fn find_title_for_hold(&mut self, hold: &JsonValue) -> Result<Option<String>, String> {
+    fn find_title_for_hold(&mut self, hold: &JsonValue) -> EgResult<Option<String>> {
         let hold_id = eg::util::json_int(&hold["id"])?;
         let bib_link = match self.editor_mut().retrieve("rhrr", hold_id)? {
             Some(l) => l,
@@ -524,14 +525,11 @@ impl Session {
         Ok(None)
     }
 
-    fn find_copy_for_hold(&mut self, hold: &JsonValue) -> Result<Option<JsonValue>, String> {
+    fn find_copy_for_hold(&mut self, hold: &JsonValue) -> EgResult<Option<JsonValue>> {
         if !hold["current_copy"].is_null() {
             // We have a captured copy.  Use it.
             let copy_id = eg::util::json_int(&hold["current_copy"])?;
-            return self
-                .editor_mut()
-                .retrieve("acp", copy_id)
-                .map_err(|e| e.to_string());
+            return self.editor_mut().retrieve("acp", copy_id);
         }
 
         let hold_type = hold["hold_type"].as_str().unwrap(); // required
@@ -539,10 +537,7 @@ impl Session {
 
         if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
             // These are all copy-level hold types
-            return self
-                .editor_mut()
-                .retrieve("acp", hold_target)
-                .map_err(|e| e.to_string());
+            return self.editor_mut().retrieve("acp", hold_target);
         }
 
         if hold_type.eq("V") {
@@ -575,16 +570,13 @@ impl Session {
         let copy_id_hashes = self.editor_mut().json_query(query)?;
         if copy_id_hashes.len() > 0 {
             let copy_id = eg::util::json_int(&copy_id_hashes[0]["id"])?;
-            return self
-                .editor_mut()
-                .retrieve("acp", copy_id)
-                .map_err(|e| e.to_string());
+            return self.editor_mut().retrieve("acp", copy_id);
         }
 
         Ok(None)
     }
 
-    fn get_copy_for_vol(&mut self, vol_id: i64) -> Result<Option<JsonValue>, String> {
+    fn get_copy_for_vol(&mut self, vol_id: i64) -> EgResult<Option<JsonValue>> {
         let search = json::object! {
             call_number: vol_id,
             deleted: "f",
@@ -601,7 +593,7 @@ impl Session {
         }
     }
 
-    fn set_patron_summary_items(&mut self, patron: &mut Patron) -> Result<(), String> {
+    fn set_patron_summary_items(&mut self, patron: &mut Patron) -> EgResult<()> {
         self.set_patron_hold_ids(patron, false, None, None)?;
         self.set_patron_hold_ids(patron, true, None, None)?;
 
@@ -639,7 +631,7 @@ impl Session {
         &mut self,
         patron: &Patron,
         summary_ops: Option<&SummaryListOptions>,
-    ) -> Result<Vec<JsonValue>, String> {
+    ) -> EgResult<Vec<JsonValue>> {
         let search = json::object! {
             usr: patron.id,
             balance_owed: {"<>": 0},
@@ -655,9 +647,7 @@ impl Session {
             ops["offset"] = json::from(sum_ops.offset());
         }
 
-        self.editor_mut()
-            .search_with_ops("mbts", search, ops)
-            .map_err(|e| e.to_string())
+        self.editor_mut().search_with_ops("mbts", search, ops)
     }
 
     fn set_patron_hold_ids(
@@ -666,7 +656,7 @@ impl Session {
         unavail: bool,
         limit: Option<usize>,
         offset: Option<usize>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let mut search = json::object! {
             usr: patron.id,
             fulfillment_time: JSON_NULL,
@@ -719,7 +709,7 @@ impl Session {
         &mut self,
         user: &JsonValue,
         patron: &mut Patron,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
         let expire_date = eg::util::parse_pg_date(&expire_date_str)?;
 
@@ -785,7 +775,7 @@ impl Session {
         &self,
         penalty_id: i64,
         penalties: &Vec<JsonValue>,
-    ) -> Result<bool, String> {
+    ) -> EgResult<bool> {
         for pen in penalties.iter() {
             let pen_id = eg::util::json_int(&pen["id"])?;
             if pen_id == penalty_id {
@@ -795,7 +785,7 @@ impl Session {
         Ok(false)
     }
 
-    fn get_patron_penalties(&mut self, user_id: i64) -> Result<Vec<JsonValue>, String> {
+    fn get_patron_penalties(&mut self, user_id: i64) -> EgResult<Vec<JsonValue>> {
         let ws_org = self.get_ws_org_id()?;
 
         let search = json::object! {
@@ -825,12 +815,10 @@ impl Session {
             }
         };
 
-        self.editor_mut()
-            .json_query(search)
-            .map_err(|e| e.to_string())
+        self.editor_mut().json_query(search)
     }
 
-    fn get_user(&mut self, barcode: &str) -> Result<Option<JsonValue>, String> {
+    fn get_user(&mut self, barcode: &str) -> EgResult<Option<JsonValue>> {
         let search = json::object! { barcode: barcode };
 
         let flesh = json::object! {
@@ -855,7 +843,7 @@ impl Session {
         Ok(Some(user))
     }
 
-    fn check_password(&mut self, user_id: i64, password_op: Option<&str>) -> Result<bool, String> {
+    fn check_password(&mut self, user_id: i64, password_op: Option<&str>) -> EgResult<bool> {
         let password = match password_op {
             Some(p) => p,
             None => return Ok(false),
@@ -865,7 +853,7 @@ impl Session {
         eg::common::user::verify_migrated_password(self.editor_mut(), user_id, password, false)
     }
 
-    pub fn handle_patron_status(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    pub fn handle_patron_status(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let barcode = msg
             .get_field_value("AA")
             .ok_or(format!("handle_patron_status() missing patron barcode"))?;
@@ -880,7 +868,7 @@ impl Session {
         )
     }
 
-    pub fn handle_patron_info(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    pub fn handle_patron_info(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let barcode = match msg.get_field_value("AA") {
             Some(b) => b,
             None => {
@@ -974,7 +962,7 @@ impl Session {
         msg_spec: &'static sip2::spec::Message,
         barcode: &str,
         patron_op: Option<&Patron>,
-    ) -> Result<sip2::Message, String> {
+    ) -> EgResult<sip2::Message> {
         let sbool = |v| sip2::util::space_bool(v); // local shorthand
         let sipdate = sip2::util::sip_date_now();
 
@@ -1062,7 +1050,7 @@ impl Session {
     pub fn handle_end_patron_session(
         &mut self,
         msg: &sip2::Message,
-    ) -> Result<sip2::Message, String> {
+    ) -> EgResult<sip2::Message> {
         let resp = sip2::Message::from_values(
             &sip2::spec::M_END_PATRON_SESSION_RESP,
             &[sip2::util::sip_bool(true), &sip2::util::sip_date_now()],

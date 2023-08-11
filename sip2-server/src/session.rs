@@ -1,6 +1,7 @@
 use super::conf;
 use eg::auth;
 use eg::auth::AuthSession;
+use eg::result::EgResult;
 use evergreen as eg;
 use opensrf as osrf;
 use sip2;
@@ -149,7 +150,7 @@ impl Session {
     /// authtoken when necessary.
     ///
     /// Returns Err if we fail to verify the token or login as needed.
-    pub fn set_authtoken(&mut self) -> Result<(), String> {
+    pub fn set_authtoken(&mut self) -> EgResult<()> {
         if self.editor.authtoken().is_some() {
             // If we have an authtoken, verify it's still valid.
             if self.editor.checkauth()? {
@@ -163,10 +164,10 @@ impl Session {
         self.login()
     }
 
-    pub fn authtoken(&self) -> Result<&str, String> {
+    pub fn authtoken(&self) -> EgResult<&str> {
         match self.editor().authtoken() {
             Some(a) => Ok(a),
-            None => Err(format!("Authtoken is unset")),
+            None => Err(format!("Authtoken is unset").into()),
         }
     }
 
@@ -174,7 +175,7 @@ impl Session {
     /// the ILS username for our SIP account.
     ///
     /// Cache the user id after the first lookup.
-    fn get_ils_user_id(&mut self) -> Result<i64, String> {
+    fn get_ils_user_id(&mut self) -> EgResult<i64> {
         if let Some(id) = self.account().ils_user_id() {
             return Ok(id);
         }
@@ -199,7 +200,7 @@ impl Session {
     }
 
     /// Create a internal auth session in the ILS
-    fn login(&mut self) -> Result<(), String> {
+    fn login(&mut self) -> EgResult<()> {
         let ils_user_id = self.get_ils_user_id()?;
         let mut args = auth::AuthInternalLoginArgs::new(ils_user_id, "staff");
 
@@ -225,7 +226,7 @@ impl Session {
     /// Wait for SIP requests in a loop and send replies.
     ///
     /// Exits when the shutdown signal is set or on unrecoverable error.
-    fn start(&mut self) -> Result<(), String> {
+    fn start(&mut self) -> EgResult<()> {
         log::debug!("{self} starting");
 
         loop {
@@ -315,7 +316,7 @@ impl Session {
     }
 
     /// Process a single SIP request.
-    fn handle_sip_request(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    fn handle_sip_request(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let code = msg.spec().code;
 
         if code.eq("99") {
@@ -341,11 +342,11 @@ impl Session {
             "35" => self.handle_end_patron_session(msg),
             "37" => self.handle_payment(msg),
             "63" => self.handle_patron_info(msg),
-            _ => Err(format!("Unsupported SIP message code={}", msg.spec().code)),
+            _ => Err(format!("Unsupported SIP message code={}", msg.spec().code).into()),
         }
     }
 
-    fn handle_login(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    fn handle_login(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         self.account = None;
         let mut login_ok = "0";
 
@@ -371,7 +372,7 @@ impl Session {
         Ok(sip2::Message::from_ff_values(&sip2::spec::M_LOGIN_RESP, &[login_ok]).unwrap())
     }
 
-    fn handle_sc_status(&mut self, _msg: &sip2::Message) -> Result<sip2::Message, String> {
+    fn handle_sc_status(&mut self, _msg: &sip2::Message) -> EgResult<sip2::Message> {
         if self.account.is_none() && !self.sip_config().sc_status_before_login() {
             Err(format!("SC Status before login disabled"))?;
         }

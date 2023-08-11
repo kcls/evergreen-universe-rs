@@ -1,5 +1,6 @@
 use super::session::Session;
 use evergreen as eg;
+use eg::result::EgResult;
 
 impl Session {
     /// This one comes up a lot...
@@ -8,7 +9,7 @@ impl Session {
     pub fn get_copy_title_author(
         &self,
         copy: &json::JsonValue,
-    ) -> Result<(Option<String>, Option<String>), String> {
+    ) -> EgResult<(Option<String>, Option<String>)> {
         let mut resp = (None, None);
 
         if eg::util::json_int(&copy["call_number"]["id"])? == -1 {
@@ -34,7 +35,7 @@ impl Session {
         Ok(resp)
     }
 
-    pub fn org_from_id(&mut self, id: i64) -> Result<Option<&json::JsonValue>, String> {
+    pub fn org_from_id(&mut self, id: i64) -> EgResult<Option<&json::JsonValue>> {
         if self.org_cache().contains_key(&id) {
             return Ok(self.org_cache().get(&id));
         }
@@ -47,7 +48,7 @@ impl Session {
         Ok(None)
     }
 
-    pub fn org_from_sn(&mut self, sn: &str) -> Result<Option<&json::JsonValue>, String> {
+    pub fn org_from_sn(&mut self, sn: &str) -> EgResult<Option<&json::JsonValue>> {
         for (id, org) in self.org_cache() {
             if org["shortname"].as_str().unwrap().eq(sn) {
                 return Ok(self.org_cache().get(id));
@@ -69,7 +70,7 @@ impl Session {
     }
 
     /// Panics if this session is not authenticated.
-    pub fn get_ws_org_id(&self) -> Result<i64, String> {
+    pub fn get_ws_org_id(&self) -> EgResult<i64> {
         let requestor = self
             .editor()
             .requestor()
@@ -80,18 +81,16 @@ impl Session {
             field = &requestor["home_ou"];
         };
 
-        eg::util::json_int(field).map_err(|e| e.to_string())
+        eg::util::json_int(field)
     }
 
-    pub fn get_user_and_card(&mut self, user_id: i64) -> Result<Option<json::JsonValue>, String> {
+    pub fn get_user_and_card(&mut self, user_id: i64) -> EgResult<Option<json::JsonValue>> {
         let ops = json::object! {
             flesh: 1,
             flesh_fields: {au: ["card"]}
         };
 
-        self.editor_mut()
-            .retrieve_with_ops("au", user_id, ops)
-            .map_err(|e| e.to_string())
+        self.editor_mut().retrieve_with_ops("au", user_id, ops)
     }
 
     pub fn format_user_name(&self, user: &json::JsonValue) -> String {

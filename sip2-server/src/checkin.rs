@@ -3,6 +3,7 @@ use super::session::Session;
 use chrono::NaiveDateTime;
 use eg::common::circulator::Circulator;
 use evergreen as eg;
+use eg::result::EgResult;
 use std::collections::HashMap;
 
 pub enum AlertType {
@@ -53,7 +54,7 @@ pub struct CheckinResult {
 }
 
 impl Session {
-    pub fn handle_checkin(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    pub fn handle_checkin(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         self.set_authtoken()?;
 
         let barcode = msg
@@ -154,7 +155,7 @@ impl Session {
         return_date: &str,
         cancel: bool,
         ovride: bool,
-    ) -> Result<CheckinResult, String> {
+    ) -> EgResult<CheckinResult> {
         let mut options: HashMap<String, json::JsonValue> = HashMap::new();
         options.insert("copy_barcode".to_string(), item.barcode.as_str().into());
 
@@ -313,7 +314,7 @@ impl Session {
         &mut self,
         evt: &eg::event::EgEvent,
         result: &mut CheckinResult,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let rh = &evt.payload()["remote_hold"];
         let lh = &evt.payload()["hold"];
 

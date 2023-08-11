@@ -1,6 +1,7 @@
 use super::patron::Patron;
 use super::session::Session;
 use evergreen as eg;
+use eg::result::EgResult;
 
 pub struct PaymentResult {
     success: bool,
@@ -19,7 +20,7 @@ impl PaymentResult {
 }
 
 impl Session {
-    pub fn handle_payment(&mut self, msg: &sip2::Message) -> Result<sip2::Message, String> {
+    pub fn handle_payment(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         self.set_authtoken()?;
 
         let patron_barcode = match msg.get_field_value("AA") {
@@ -131,7 +132,7 @@ impl Session {
         xact_id: i64,
         pay_amount: f64,
         result: &mut PaymentResult,
-    ) -> Result<Vec<(i64, f64)>, String> {
+    ) -> EgResult<Vec<(i64, f64)>> {
         let sum = match self.editor_mut().retrieve("mbts", xact_id)? {
             Some(s) => s,
             None => {
@@ -159,7 +160,7 @@ impl Session {
         user: &json::JsonValue,
         pay_amount: f64,
         result: &mut PaymentResult,
-    ) -> Result<Vec<(i64, f64)>, String> {
+    ) -> EgResult<Vec<(i64, f64)>> {
         let mut payments: Vec<(i64, f64)> = Vec::new();
         let mut patron = Patron::new(&result.patron_barcode, self.format_user_name(&user));
 
@@ -229,7 +230,7 @@ impl Session {
         check_number_op: &Option<String>,
         register_login_op: &Option<String>,
         payments: Vec<(i64, f64)>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         log::info!("{self} applying payments: {payments:?}");
 
         // Add the register login to the payment note if present.
