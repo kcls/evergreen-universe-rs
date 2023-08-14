@@ -2,6 +2,15 @@ use std::collections::HashMap;
 use std::fs;
 use yaml_rust::YamlLoader;
 
+// Shorthand for pulling a bool value from a yaml
+// node and applying it to a setting.
+fn set_bool(g: &yaml_rust::Yaml, k: &str, f: &mut bool) {
+    if let Some(v) = g[k].as_bool() {
+        *f = v;
+    }
+}
+
+
 /// How often each of the sockets wake up and check for a shutdown
 /// (or other) signal.
 pub const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 3;
@@ -128,22 +137,30 @@ impl SipSettings {
     pub fn checkin_holds_as_transits(&self) -> bool {
         self.checkin_holds_as_transits
     }
+    /// Attempt to override all checkout failure events
     pub fn checkout_override_all(&self) -> bool {
         self.checkout_override_all
     }
+    /// Attempt to override all checkin failure events
     pub fn checkin_override_all(&self) -> bool {
         self.checkin_override_all
     }
+    /// List of event codes we will try to override when necessary.
+    ///
+    /// This is superseded by checkout_override_all.
     pub fn checkout_override(&self) -> &Vec<String> {
         &self.checkout_override
     }
+    /// List of event codes will will try to override when necessary.
+    ///
+    /// This is superseded by checkin_override_all.
     pub fn checkin_override(&self) -> &Vec<String> {
         &self.checkin_override
     }
+    /// Filters to apply to outbound messages.
     pub fn field_filters(&self) -> &Vec<FieldFilter> {
         &self.field_filters
     }
-
     pub fn sc_status_library_info(&self) -> bool {
         self.sc_status_library_info
     }
@@ -158,6 +175,7 @@ pub struct SipAccount {
     ils_user_id: Option<i64>,
     workstation: Option<String>,
     activity_as: Option<String>,
+    checkin_block_on_checked_out: bool,
 }
 
 impl SipAccount {
@@ -175,6 +193,7 @@ impl SipAccount {
             ils_user_id: None,
             workstation: None,
             activity_as: None,
+            checkin_block_on_checked_out: false,
         }
     }
 
@@ -201,6 +220,10 @@ impl SipAccount {
     }
     pub fn activity_as(&self) -> Option<&str> {
         self.activity_as.as_deref()
+    }
+    /// Prevent checkin of items that are currently checked out.
+    pub fn checkin_block_on_checked_out(&self) -> bool {
+        self.checkin_block_on_checked_out
     }
 }
 
@@ -284,14 +307,6 @@ impl Config {
                 .expect("Setting group institution required");
 
             let mut grp = SipSettings::new(inst);
-
-            // Local shorthand for pulling a bool value from the yaml
-            // node and applying to a setting value.
-            let set_bool = |g: &yaml_rust::Yaml, k: &str, f: &mut bool| {
-                if let Some(v) = g[k].as_bool() {
-                    *f = v;
-                }
-            };
 
             set_bool(
                 group,
@@ -406,6 +421,12 @@ impl Config {
                 if let Some(ws) = account["activity-as"].as_str() {
                     acct.activity_as = Some(ws.to_string());
                 }
+
+                set_bool(
+                    &account,
+                    "checkin-block-on-checked-out",
+                    &mut acct.checkin_block_on_checked_out
+                );
 
                 self.accounts.insert(username.to_string(), acct);
             }

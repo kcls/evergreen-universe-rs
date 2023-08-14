@@ -1,12 +1,14 @@
 use super::session::Session;
 use evergreen as eg;
 use eg::result::EgResult;
+use eg::constants as C;
 
 /// A copy object with SIP-related data collected and attached.
 pub struct Item {
     pub barcode: String,
     pub circ_lib: i64,
     pub due_date: Option<String>,
+    pub copy_status: i64,
     pub circ_status: String,
     pub fee_type: String,
     pub title: String,
@@ -35,7 +37,7 @@ impl Session {
             flesh: 3,
             flesh_fields: {
                 acp: ["circ_lib", "call_number",
-                    "status", "stat_cat_entry_copy_maps", "circ_modifier"],
+                    "stat_cat_entry_copy_maps", "circ_modifier"],
                 acn: ["owning_lib", "record"],
                 bre: ["simple_record"],
                 ascecm: ["stat_cat", "stat_cat_entry"],
@@ -50,11 +52,12 @@ impl Session {
         }
 
         let copy = &copies[0]; // should only be one
+        let copy_status = eg::util::json_int(&copy["status"])?;
 
         let mut circ_patron_id: Option<i64> = None;
         let mut due_date: Option<String> = None;
 
-        if let Some(circ) = self.get_copy_circ(&copy)? {
+        if let Some(circ) = self.get_copy_circ(&copy, copy_status)? {
             circ_patron_id = Some(eg::util::json_int(&circ["usr"])?);
 
             if let Some(iso_date) = circ["due_date"].as_str() {
@@ -74,7 +77,7 @@ impl Session {
             .unwrap(); // required
 
         let mut dest_location = circ_lib.to_string();
-        let transit_op = self.get_copy_transit(copy)?;
+        let transit_op = self.get_copy_transit(copy, copy_status)?;
 
         if let Some(transit) = &transit_op {
             dest_location = transit["dest"]["shortname"].as_str().unwrap().to_string();
@@ -84,7 +87,7 @@ impl Session {
         let mut hold_patron_barcode_op: Option<String> = None;
         let mut hold_queue_length = 0;
 
-        if let Some(hold) = self.get_copy_hold(copy, &transit_op)? {
+        if let Some(hold) = self.get_copy_hold(copy, &transit_op, copy_status)? {
             hold_queue_length = 1; // copying SIPServer
 
             dest_location = hold["pickup_lib"]["shortname"]
@@ -111,7 +114,7 @@ impl Session {
             }
         }
 
-        let circ_status = self.circ_status(copy);
+        let circ_status = self.circ_status(copy_status);
         let media_type = copy["circ_modifier"]["sip2_media_type"]
             .as_str()
             .unwrap_or("001");
@@ -124,6 +127,7 @@ impl Session {
             barcode: barcode.to_string(),
             due_date,
             title,
+            copy_status: copy_status,
             circ_lib: circ_lib_id,
             deposit_amount,
             hold_queue_length,
@@ -192,13 +196,12 @@ impl Session {
         &mut self,
         copy: &json::JsonValue,
         transit: &Option<json::JsonValue>,
+        copy_status: i64,
     ) -> EgResult<Option<json::JsonValue>> {
-        let copy_status = eg::util::json_int(&copy["status"]["id"])?;
-
-        if copy_status != 8 {
+        if copy_status != C::COPY_STATUS_ON_HOLDS_SHELF {
             // On Holds Shelf
             if let Some(t) = transit {
-                if eg::util::json_int(&t["copy_status"])? != 8 {
+                if eg::util::json_int(&t["copy_status"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
                     // Copy in transit for non-hold reasons
                     return Ok(None);
                 }
@@ -236,10 +239,9 @@ impl Session {
     fn get_copy_transit(
         &mut self,
         copy: &json::JsonValue,
+        copy_status: i64,
     ) -> EgResult<Option<json::JsonValue>> {
-        let copy_status = eg::util::json_int(&copy["status"]["id"])?;
-
-        if copy_status != 6 {
+        if copy_status != C::COPY_STATUS_IN_TRANSIT {
             return Ok(None);
         }
 
@@ -265,21 +267,18 @@ impl Session {
         }
     }
 
-    fn circ_status(&self, copy: &json::JsonValue) -> &str {
-        // copy.status is fleshed
-        let copy_status = eg::util::json_int(&copy["status"]["id"]).unwrap();
-
+    fn circ_status(&self, copy_status: i64) -> &str {
         match copy_status {
-            9 => "02",      // on order
-            0 => "03",      // available
-            1 => "04",      // checked out
-            5 => "06",      // in process
-            8 => "08",      // holds shelf
-            7 => "09",      // reshelving
-            6 => "10",      // in transit
-            3 | 17 => "12", // lost, lost-and-paid
-            4 => "13",      // mising
-            _ => "01",      // unknown
+            C::COPY_STATUS_ON_ORDER => "02",
+            C::COPY_STATUS_AVAILABLE => "03",
+            C::COPY_STATUS_CHECKED_OUT => "04",
+            C::COPY_STATUS_IN_PROCESS => "06",
+            C::COPY_STATUS_ON_HOLDS_SHELF => "08",
+            C::COPY_STATUS_RESHELVING => "09",
+            C::COPY_STATUS_IN_TRANSIT => "10",
+            C::COPY_STATUS_LOST | C::COPY_STATUS_LOST_AND_PAID => "12",
+            C::COPY_STATUS_MISSING => "13",
+            _ => "01", // unknown
         }
     }
 
@@ -309,10 +308,8 @@ impl Session {
     }
 
     /// Find an open circulation linked to the copy.
-    fn get_copy_circ(&mut self, copy: &json::JsonValue) -> EgResult<Option<json::JsonValue>> {
-        let copy_status = eg::util::json_int(&copy["status"]["id"])?;
-
-        if copy_status != 1 {
+    fn get_copy_circ(&mut self, copy: &json::JsonValue, copy_status: i64) -> EgResult<Option<json::JsonValue>> {
+        if copy_status != C::COPY_STATUS_CHECKED_OUT {
             // Checked Out
             return Ok(None);
         }

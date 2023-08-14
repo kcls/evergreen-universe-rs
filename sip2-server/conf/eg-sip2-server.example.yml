@@ -75,6 +75,11 @@ accounts:
     settings: "default"       # Refers to a setting-groups' name.
     #workstation: "BR1-PC123" # Optional.
     #activity-as: "sip2"      # Optional.  Evergreen config.usr_activity_type.ewho
-    # TODO
-    #checkin-requires-transit: false
+    
+    # If true, attempts to checkin an item that is currently
+    # circulating will exit early with a checkin failure.  Original
+    # use case for this is preventing checkin of items mistakenly
+    # included in a tote manifest, i.e. the patron has the item, but the
+    # materials handling code thinks its in a shipping tote.
+    # checkin-block-on-checked-out: false
 

@@ -4,6 +4,7 @@ use chrono::NaiveDateTime;
 use eg::common::circulator::Circulator;
 use evergreen as eg;
 use eg::result::EgResult;
+use eg::constants as C;
 use std::collections::HashMap;
 
 pub enum AlertType {
@@ -80,13 +81,22 @@ impl Session {
             }
         };
 
-        let result = self.checkin(
-            &item,
-            &current_loc_op,
-            return_date.value(),
-            undo_hold_fulfillment,
-            self.account().settings().checkin_override_all(),
-        )?;
+        let mut blocked_on_co = false;
+        let result = match self.handle_block_on_checked_out(&item) {
+            Some(r) => {
+                blocked_on_co = true;
+                r
+            },
+            None => {
+                self.checkin(
+                    &item,
+                    &current_loc_op,
+                    return_date.value(),
+                    undo_hold_fulfillment,
+                    self.account().settings().checkin_override_all(),
+                )?
+            }
+        };
 
         let mut resp = sip2::Message::from_values(
             &sip2::spec::M_CHECKIN_RESP,
@@ -125,8 +135,36 @@ impl Session {
         if let Some(ref n) = result.hold_patron_name {
             resp.add_field("DA", n);
         }
+        if blocked_on_co {
+            resp.add_field("AF", "Item Is Currently Checked Out");
+        }
 
         Ok(resp)
+    }
+
+    /// Returns a CheckinResult if the checkin is blocked due to the
+    /// item being currently checked out.
+    fn handle_block_on_checked_out(&self, item: &item::Item) -> Option<CheckinResult> {
+        if !self.account().checkin_block_on_checked_out() {
+            return None;
+        }
+
+        if item.copy_status != C::COPY_STATUS_CHECKED_OUT {
+            return None;
+        }
+
+        log::info!("Blocking checkin on checked out item");
+
+        Some(CheckinResult {
+            ok: false,
+            current_loc: item.current_loc.to_string(),
+            permanent_loc: item.permanent_loc.to_string(),
+            destination_loc: None,
+            patron_barcode: None,
+            alert_type: Some(AlertType::Other),
+            hold_patron_name: None,
+            hold_patron_barcode: None,
+        })
     }
 
     fn return_checkin_item_not_found(&self, barcode: &str) -> sip2::Message {
