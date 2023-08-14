@@ -3,6 +3,7 @@ use evergreen as eg;
 use getopts;
 use sip2;
 use std::time::SystemTime;
+use json::JsonValue;
 
 struct Timer {
     start: SystemTime,
@@ -592,6 +593,21 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
         eg::samples::AOU_BR2_SHORTNAME
     );
 
+    let copy = tester.samples.get_default_acp(&mut tester.editor)?;
+
+    // Verify the transit was created.
+    let query = json::object! {
+        "target_copy": copy["id"].clone(),
+        "dest_recv_time": JsonValue::Null,
+        "cancel_time": JsonValue::Null,
+    };
+
+    let mut results = tester.editor.search("atc", query)?;
+
+    assert_eq!(results.len(), 1);
+
+    let transit = results.pop().unwrap();
+
     // Check it in again at the destination branch to
     // complete the transit.
 
@@ -624,6 +640,13 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
         resp.get_field_value("AQ").unwrap(),
         eg::samples::AOU_BR2_SHORTNAME
     );
+
+    // Verify the transit was completed
+    let result = tester.editor.retrieve("atc", transit["id"].clone())?;
+    assert!(result.is_some());
+
+    let transit = result.unwrap();
+    assert!(!transit["dest_recv_time"].is_null());
 
     Ok(())
 }
