@@ -1,8 +1,8 @@
 use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
-use evergreen as eg;
 use eg::result::EgResult;
+use evergreen as eg;
 use json::JsonValue;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
@@ -356,10 +356,7 @@ impl Session {
         Ok(line)
     }
 
-    fn get_circ_title_author(
-        &mut self,
-        id: i64,
-    ) -> EgResult<(Option<String>, Option<String>)> {
+    fn get_circ_title_author(&mut self, id: i64) -> EgResult<(Option<String>, Option<String>)> {
         let flesh = json::object! {
             flesh: 4,
             flesh_fields: {
@@ -705,11 +702,7 @@ impl Session {
         Ok(())
     }
 
-    fn set_patron_privileges(
-        &mut self,
-        user: &JsonValue,
-        patron: &mut Patron,
-    ) -> EgResult<()> {
+    fn set_patron_privileges(&mut self, user: &JsonValue, patron: &mut Patron) -> EgResult<()> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
         let expire_date = eg::util::parse_pg_date(&expire_date_str)?;
 
@@ -771,11 +764,7 @@ impl Session {
         Ok(())
     }
 
-    fn penalties_contain(
-        &self,
-        penalty_id: i64,
-        penalties: &Vec<JsonValue>,
-    ) -> EgResult<bool> {
+    fn penalties_contain(&self, penalty_id: i64, penalties: &Vec<JsonValue>) -> EgResult<bool> {
         for pen in penalties.iter() {
             let pen_id = eg::util::json_int(&pen["id"])?;
             if pen_id == penalty_id {
@@ -1047,10 +1036,7 @@ impl Session {
         Ok(resp)
     }
 
-    pub fn handle_end_patron_session(
-        &mut self,
-        msg: &sip2::Message,
-    ) -> EgResult<sip2::Message> {
+    pub fn handle_end_patron_session(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let resp = sip2::Message::from_values(
             &sip2::spec::M_END_PATRON_SESSION_RESP,
             &[sip2::util::sip_bool(true), &sip2::util::sip_date_now()],

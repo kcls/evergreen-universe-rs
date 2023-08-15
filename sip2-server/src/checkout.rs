@@ -1,8 +1,8 @@
 use super::item::Item;
 use super::patron::Patron;
 use super::session::Session;
-use evergreen as eg;
 use eg::result::EgResult;
+use evergreen as eg;
 
 const RENEW_METHOD: &str = "open-ils.circ.renew";
 const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";

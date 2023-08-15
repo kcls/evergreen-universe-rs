@@ -1,7 +1,7 @@
 use super::patron::Patron;
 use super::session::Session;
-use evergreen as eg;
 use eg::result::EgResult;
+use evergreen as eg;
 
 pub struct PaymentResult {
     success: bool,

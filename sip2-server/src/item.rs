@@ -1,7 +1,7 @@
 use super::session::Session;
-use evergreen as eg;
-use eg::result::EgResult;
 use eg::constants as C;
+use eg::result::EgResult;
+use evergreen as eg;
 
 /// A copy object with SIP-related data collected and attached.
 pub struct Item {
@@ -308,7 +308,11 @@ impl Session {
     }
 
     /// Find an open circulation linked to the copy.
-    fn get_copy_circ(&mut self, copy: &json::JsonValue, copy_status: i64) -> EgResult<Option<json::JsonValue>> {
+    fn get_copy_circ(
+        &mut self,
+        copy: &json::JsonValue,
+        copy_status: i64,
+    ) -> EgResult<Option<json::JsonValue>> {
         if copy_status != C::COPY_STATUS_CHECKED_OUT {
             // Checked Out
             return Ok(None);

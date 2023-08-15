@@ -1,6 +1,6 @@
 use super::session::Session;
-use evergreen as eg;
 use eg::result::EgResult;
+use evergreen as eg;
 
 impl Session {
     /// This one comes up a lot...

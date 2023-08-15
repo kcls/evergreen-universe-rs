@@ -6,7 +6,7 @@ use crate::common::transit;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
-use crate::result::{EgResult, EgError};
+use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
 use json::JsonValue;
@@ -286,7 +286,8 @@ impl Circulator {
             || json_bool(&copy["deleted"])
             || !json_bool(&copy["holdable"])
             || !json_bool(&copy["status"]["holdable"])
-            || !json_bool(&copy["location"]["holdable"]) {
+            || !json_bool(&copy["location"]["holdable"])
+        {
             return Ok(());
         }
 
@@ -670,7 +671,8 @@ impl Circulator {
 
         if self.get_option_bool("claims_never_checked_out") {
             let xact_start = &self.circ.as_ref().unwrap()["xact_start"];
-            self.options.insert("backdate".to_string(), xact_start.clone());
+            self.options
+                .insert("backdate".to_string(), xact_start.clone());
         }
 
         if self.options.contains_key("backdate") {
@@ -1498,16 +1500,20 @@ impl Circulator {
             params,
         )?;
 
-        let resp = result.ok_or(
-            EgError::Debug(format!("Booking capture failed to return event")))?;
+        let resp = result.ok_or(EgError::Debug(format!(
+            "Booking capture failed to return event"
+        )))?;
 
-        let mut evt = EgEvent::parse(&resp).ok_or(
-            EgError::Debug(format!("Booking capture failed to return event")))?;
+        let mut evt = EgEvent::parse(&resp).ok_or(EgError::Debug(format!(
+            "Booking capture failed to return event"
+        )))?;
 
         if evt.textcode() == "RESERVATION_NOT_FOUND" {
             if let Some(cause) = evt.payload()["fail_cause"].as_str() {
                 if cause == "not-transferable" {
-                    log::warn!("{self} reservation capture attempted against non-transferable item");
+                    log::warn!(
+                        "{self} reservation capture attempted against non-transferable item"
+                    );
                     self.add_event(evt);
                     return Ok(false);
                 }
@@ -1539,7 +1545,6 @@ impl Circulator {
 
         Ok(true)
     }
-
 
     /// Returns a hold object if one is found which may be suitable
     /// for capturing our item.

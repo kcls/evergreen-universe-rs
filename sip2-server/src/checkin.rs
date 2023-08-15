@@ -2,9 +2,9 @@ use super::item;
 use super::session::Session;
 use chrono::NaiveDateTime;
 use eg::common::circulator::Circulator;
-use evergreen as eg;
-use eg::result::EgResult;
 use eg::constants as C;
+use eg::result::EgResult;
+use evergreen as eg;
 use std::collections::HashMap;
 
 pub enum AlertType {
@@ -86,16 +86,14 @@ impl Session {
             Some(r) => {
                 blocked_on_co = true;
                 r
-            },
-            None => {
-                self.checkin(
-                    &item,
-                    &current_loc_op,
-                    return_date.value(),
-                    undo_hold_fulfillment,
-                    self.account().settings().checkin_override_all(),
-                )?
             }
+            None => self.checkin(
+                &item,
+                &current_loc_op,
+                return_date.value(),
+                undo_hold_fulfillment,
+                self.account().settings().checkin_override_all(),
+            )?,
         };
 
         let mut resp = sip2::Message::from_values(

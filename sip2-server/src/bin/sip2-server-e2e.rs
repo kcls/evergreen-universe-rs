@@ -1,9 +1,9 @@
 use eg::samples::SampleData;
 use evergreen as eg;
 use getopts;
+use json::JsonValue;
 use sip2;
 use std::time::SystemTime;
-use json::JsonValue;
 
 struct Timer {
     start: SystemTime,

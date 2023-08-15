@@ -10,7 +10,6 @@ fn set_bool(g: &yaml_rust::Yaml, k: &str, f: &mut bool) {
     }
 }
 
-
 /// How often each of the sockets wake up and check for a shutdown
 /// (or other) signal.
 pub const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 3;
@@ -425,7 +424,7 @@ impl Config {
                 set_bool(
                     &account,
                     "checkin-block-on-checked-out",
-                    &mut acct.checkin_block_on_checked_out
+                    &mut acct.checkin_block_on_checked_out,
                 );
 
                 self.accounts.insert(username.to_string(), acct);
