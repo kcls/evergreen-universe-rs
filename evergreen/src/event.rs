@@ -132,6 +132,9 @@ impl EgEvent {
     pub fn payload(&self) -> &JsonValue {
         &self.payload
     }
+    pub fn payload_mut(&mut self) -> &mut JsonValue {
+        &mut self.payload
+    }
     pub fn set_payload(&mut self, payload: JsonValue) {
         self.payload = payload
     }

@@ -6,7 +6,7 @@ use crate::common::transit;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
-use crate::result::EgResult;
+use crate::result::{EgResult, EgError};
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
 use json::JsonValue;
@@ -17,7 +17,7 @@ const CHECKIN_ORG_SETTINGS: &[&str] = &[
     "circ.transit.suppress_hold",
 ];
 
-/// Checkin
+/// Performs item checkins
 impl Circulator {
     /// Checkin an item.
     ///
@@ -162,6 +162,7 @@ impl Circulator {
         Ok(true)
     }
 
+    /// What value did the caller provide for the "capture" option, if any.
     fn capture_state(&self) -> &str {
         match self.options.get("capture") {
             Some(c) => c.as_str().unwrap_or(""),
@@ -169,6 +170,7 @@ impl Circulator {
         }
     }
 
+    /// Make sure the requested item exists and is not marked deleted.
     fn basic_copy_checks(&mut self) -> EgResult<()> {
         if self.copy.is_none() {
             self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
@@ -264,6 +266,9 @@ impl Circulator {
     /// to a holdable status and the hold targeter may not run
     /// until, say, overnight.
     fn checkin_retarget_holds(&mut self) -> EgResult<()> {
+        let copy = self.copy();
+        let copy_id = self.copy_id.unwrap();
+
         let retarget_mode = match self.options.get("retarget_mode") {
             Some(r) => match r.as_str() {
                 Some(s) => s,
@@ -272,43 +277,16 @@ impl Circulator {
             None => "",
         };
 
-        if !retarget_mode.contains("retarget") {
-            return Ok(());
-        }
-
-        if self.get_option_bool("revert_hold_fulfillment") {
-            return Ok(());
-        }
-
-        if self.capture_state() == "nocapture" {
-            return Ok(());
-        }
-
-        let copy = self.copy();
-        let copy_id = self.copy_id.unwrap();
-
-        if self.is_precat() {
-            return Ok(());
-        }
-
-        if json_int(&copy["circ_lib"])? != self.circ_lib {
-            // We only care about "our" copies.
-            return Ok(());
-        }
-
-        if !json_bool(&copy["holdable"]) {
-            return Ok(());
-        }
-
-        if json_bool(&copy["deleted"]) {
-            return Ok(());
-        }
-
-        if !json_bool(&copy["status"]["holdable"]) {
-            return Ok(());
-        }
-
-        if !json_bool(&copy["location"]["holdable"]) {
+        // A lot of scenarios can lead to avoiding hold fulfillment checks.
+        if !retarget_mode.contains("retarget")
+            || self.get_option_bool("revert_hold_fulfillment")
+            || self.capture_state() == "nocapture"
+            || self.is_precat()
+            || json_int(&copy["circ_lib"])? != self.circ_lib
+            || json_bool(&copy["deleted"])
+            || !json_bool(&copy["holdable"])
+            || !json_bool(&copy["status"]["holdable"])
+            || !json_bool(&copy["location"]["holdable"]) {
             return Ok(());
         }
 
@@ -508,6 +486,7 @@ impl Circulator {
         Ok(())
     }
 
+    /// Set an inventory date for our item if requested.
     fn do_inventory_update(&mut self) -> EgResult<()> {
         if !self.get_option_bool("do_inventory_update") {
             return Ok(());
@@ -538,6 +517,10 @@ impl Circulator {
         Ok(())
     }
 
+    /// True if our item is currently on the local holds shelf or sits
+    /// within a hold transit suppression group.
+    ///
+    /// Shelf-expired holds for our copy may also be cleared if requested.
     fn check_is_on_holds_shelf(&mut self) -> EgResult<bool> {
         if self.copy_status() != C::COPY_STATUS_ON_HOLDS_SHELF {
             return Ok(false);
@@ -610,6 +593,8 @@ impl Circulator {
         Ok(false)
     }
 
+    /// Sets our copy's status to the determined next-copy-status,
+    /// or to Reshelving, with a few potential execptions.
     fn reshelve_copy(&mut self, force: bool) -> EgResult<()> {
         let force = force || self.get_option_bool("force");
 
@@ -632,6 +617,7 @@ impl Circulator {
         Ok(())
     }
 
+    /// Returns claims-returned event if our circulation is claims returned.
     fn check_claims_returned(&mut self) {
         if let Some(circ) = self.circ.as_ref() {
             if let Some(sf) = circ["stop_fines"].as_str() {
@@ -642,6 +628,8 @@ impl Circulator {
         }
     }
 
+    /// Checks for an existing deposit payment and voids the deposit
+    /// if configured OR returns a deposit paid event.
     fn check_circ_deposit(&mut self, void: bool) -> EgResult<()> {
         let circ_id = match self.circ.as_ref() {
             Some(c) => c["id"].clone(),
@@ -675,13 +663,14 @@ impl Circulator {
         Ok(())
     }
 
+    /// Checkin our open circulation and potentially kick off
+    /// lost/long-overdue item handling, among a few other smaller tasks.
     fn checkin_handle_circ(&mut self) -> EgResult<()> {
         let selfstr: String = self.to_string();
 
         if self.get_option_bool("claims_never_checked_out") {
             let xact_start = &self.circ.as_ref().unwrap()["xact_start"];
-            self.options
-                .insert("backdate".to_string(), xact_start.clone());
+            self.options.insert("backdate".to_string(), xact_start.clone());
         }
 
         if self.options.contains_key("backdate") {
@@ -772,6 +761,7 @@ impl Circulator {
         Ok(())
     }
 
+    /// Collect params and call checkin_handle_lost_or_long_overdue()
     fn checkin_handle_lost(&mut self) -> EgResult<()> {
         log::info!("{self} processing LOST checkin...");
 
@@ -793,6 +783,7 @@ impl Circulator {
         )
     }
 
+    /// Collect params and call checkin_handle_lost_or_long_overdue()
     fn checkin_handle_long_overdue(&mut self) -> EgResult<()> {
         let billing_options = json::object! {
             is_longoverdue: true,
@@ -813,6 +804,8 @@ impl Circulator {
         )
     }
 
+    /// Determines if/what additional LOST/LO handling is needed for
+    /// our circulation.
     fn checkin_handle_lost_or_long_overdue(
         &mut self,
         ous_max_return: &str,
@@ -960,6 +953,8 @@ impl Circulator {
         Ok(())
     }
 
+    /// Run our circ through fine generation and potentially perform
+    /// additional LOST/LO billing/voiding/etc steps.
     fn handle_checkin_fines(&mut self) -> EgResult<()> {
         let copy_circ_lib = self.copy_circ_lib();
 
@@ -1071,6 +1066,9 @@ impl Circulator {
         Ok(())
     }
 
+    /// Apply a reasonable stop_fines / time value to our circ.
+    ///
+    /// Does nothing if the circ already has a stop_fines value.
     fn set_circ_stop_fines(&mut self) -> EgResult<()> {
         let circ = self.circ.as_ref().unwrap();
 
@@ -1186,6 +1184,8 @@ impl Circulator {
         Ok(())
     }
 
+    /// Receive the transit or tell the caller it needs to go elsewhere.
+    ///
     /// Assumes self.transit is set
     fn checkin_handle_transit(&mut self) -> EgResult<()> {
         log::info!("{self} attempting to receive transit");
@@ -1385,6 +1385,7 @@ impl Circulator {
         Ok(())
     }
 
+    /// Attempt to capture our item for a hold or reservation.
     fn try_to_capture(&mut self) -> EgResult<bool> {
         if self.get_option_bool("remote_hold") {
             return Ok(false);
@@ -1422,6 +1423,7 @@ impl Circulator {
         }
     }
 
+    /// Try to capture our item for a hold.
     fn attempt_checkin_hold_capture(&mut self) -> EgResult<bool> {
         if self.capture_state() == "nocapture" {
             return Ok(false);
@@ -1480,9 +1482,67 @@ impl Circulator {
     }
 
     fn attempt_checkin_reservation_capture(&mut self) -> EgResult<bool> {
+        if self.capture_state() == "nocapture" {
+            return Ok(false);
+        }
+
+        let params = vec![
+            json::from(self.editor.authtoken()),
+            self.copy()["barcode"].clone(),
+            json::from(true), // Avoid updating the copy.
+        ];
+
+        let result = self.editor.client_mut().send_recv_one(
+            "open-ils.booking",
+            "open-ils.booking.resources.capture_for_reservation",
+            params,
+        )?;
+
+        let resp = result.ok_or(
+            EgError::Debug(format!("Booking capture failed to return event")))?;
+
+        let mut evt = EgEvent::parse(&resp).ok_or(
+            EgError::Debug(format!("Booking capture failed to return event")))?;
+
+        if evt.textcode() == "RESERVATION_NOT_FOUND" {
+            if let Some(cause) = evt.payload()["fail_cause"].as_str() {
+                if cause == "not-transferable" {
+                    log::warn!("{self} reservation capture attempted against non-transferable item");
+                    self.add_event(evt);
+                    return Ok(false);
+                }
+            }
+        }
+
+        if !evt.is_success() {
+            // Other non-success events are simply treated as non-captures.
+            return Ok(false);
+        }
+
+        log::info!("{self} booking capture succeeded");
+
+        if let Ok(stat) = json_int(&evt.payload()["new_copy_status"]) {
+            self.update_copy(json::object! {"status": stat})?;
+        }
+
+        let reservation = evt.payload_mut()["reservation"].take();
+        if reservation.is_object() {
+            self.reservation = Some(reservation);
+        }
+
+        let transit = evt.payload_mut()["transit"].take();
+        if transit.is_object() {
+            let mut e = EgEvent::new("ROUTE_ITEM");
+            e.set_org(json_int(&transit["dest"])?);
+            self.add_event(e);
+        }
+
         Ok(true)
     }
 
+
+    /// Returns a hold object if one is found which may be suitable
+    /// for capturing our item.
     fn hold_capture_is_possible(&mut self) -> EgResult<Option<JsonValue>> {
         if self.capture_state() == "nocapture" {
             return Ok(None);
@@ -1509,6 +1569,8 @@ impl Circulator {
         Ok(Some(hold))
     }
 
+    /// Returns a reservation object if one is found which may be suitable
+    /// for capturing our item.
     fn reservation_capture_is_possible(&mut self) -> EgResult<Option<JsonValue>> {
         if self.capture_state() == "nocapture" {
             return Ok(None);
@@ -1535,6 +1597,8 @@ impl Circulator {
         return Ok(None);
     }
 
+    /// Determines if our item needs to transit somewhere else and
+    /// builds the needed transit.
     fn try_to_transit(&mut self) -> EgResult<()> {
         let mut dest_lib = self.copy_circ_lib();
 
@@ -1574,6 +1638,8 @@ impl Circulator {
         Ok(())
     }
 
+    /// Set the item status to Cataloging and let the caller know
+    /// it's a pre-cat item.
     fn checkin_handle_precat(&mut self) -> EgResult<()> {
         if !self.is_precat() {
             return Ok(());
@@ -1589,6 +1655,7 @@ impl Circulator {
             .map(|_| ())
     }
 
+    /// Create the actual transit object dn set our item as in-transit.
     fn checkin_build_copy_transit(&mut self, dest_lib: i64) -> EgResult<()> {
         let mut transit = json::object! {
             "source": self.circ_lib,
@@ -1630,6 +1697,8 @@ impl Circulator {
         Ok(())
     }
 
+    /// Maybe void overdues and verify the transaction has the correct
+    /// open/closed state.
     fn finish_fines_and_voiding(&mut self) -> EgResult<()> {
         let void_overdues = self.get_option_bool("void_overdues");
         let mut backdate_maybe = match self.options.get("backate") {

@@ -130,7 +130,7 @@ impl fmt::Display for Circulator {
 
         write!(
             f,
-            "Circ: action={} circ_lib={} copy={} copy_status={} patron={}",
+            "Circ: op={} lib={} copy={} copy_status={} patron={}",
             self.circ_op, self.circ_lib, copy_barcode, copy_status, patron_barcode
         )
     }
@@ -325,6 +325,7 @@ impl Circulator {
         Ok(())
     }
 
+    /// Load copy alerts related to the copy we're working on.
     pub fn load_runtime_copy_alerts(&mut self) -> EgResult<()> {
         if self.copy.is_none() {
             return Ok(());
@@ -347,6 +348,7 @@ impl Circulator {
         self.filter_runtime_copy_alerts()
     }
 
+    /// Filter copy alerts by circ action, location, etc.
     fn filter_runtime_copy_alerts(&mut self) -> EgResult<()> {
         if self.runtime_copy_alerts.len() == 0 {
             return Ok(());
@@ -634,6 +636,8 @@ impl Circulator {
         Ok(())
     }
 
+    /// Map alerts to events, which will be returned to the caller.
+    ///
     /// Assumes new-style alerts are supported.
     pub fn check_copy_alerts(&mut self) -> EgResult<()> {
         if self.copy.is_none() {
@@ -756,6 +760,9 @@ impl Circulator {
         Ok(())
     }
 
+    /// Load data common to most/all circulation operations.
+    ///
+    /// This should be called before any other circulation actions.
     pub fn init(&mut self) -> EgResult<()> {
         if let Some(cl) = self.options.get("circ_lib") {
             self.circ_lib = json_int(cl)?;
@@ -811,6 +818,7 @@ impl Circulator {
         self.options.insert(name.to_string(), json::from(true));
     }
 
+    /// Delete an option key and value from our options hash.
     pub fn clear_option(&mut self, name: &str) {
         self.options.remove(name);
     }
@@ -913,6 +921,8 @@ impl Circulator {
         return Ok(());
     }
 
+    /// True if the caller informs us this is a precat item or if the
+    /// item must be a precat due to it using the precat call number.
     pub fn is_precat(&self) -> bool {
         if json_bool_op(self.options.get("is_precat")) {
             return true;
@@ -936,7 +946,7 @@ impl Circulator {
         holds::retarget_holds(&mut self.editor, hold_ids.as_slice())
     }
 
-    /// Create events for checkout/checkin/renewal actions.
+    /// Create A/T events for checkout/checkin/renewal actions.
     fn make_trigger_events(&mut self) -> EgResult<()> {
         let circ = match self.circ.as_ref() {
             Some(c) => c,
@@ -960,6 +970,8 @@ impl Circulator {
         )
     }
 
+    /// Remove duplicate events and remove any SUCCESS events if other
+    /// event types are present.
     pub fn cleanup_events(&mut self) {
         if self.events.len() == 0 {
             return;
@@ -986,6 +998,7 @@ impl Circulator {
         self.events = events;
     }
 
+    /// Events we have accumulated so far.
     pub fn events(&self) -> &Vec<EgEvent> {
         &self.events
     }
