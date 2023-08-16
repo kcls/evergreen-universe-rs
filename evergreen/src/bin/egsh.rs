@@ -31,23 +31,25 @@ Options
 
     --with-database
         Connect directly to an Evergreen database.
+        Commands that start with "db" require this.
 
     Standard OpenSRF environment variables (e.g. OSRF_CONFIG) are
     also supported.
 
 Commands
 
-    idl get <classname> <pkey-value>
-        Retrieve and IDL-classed object by primary key.
+    db idl get <classname> <pkey-value>
+        Retrieve and IDL-classed object by primary key directly
+        from the database.
 
-    idl search <classname> <field> <operand> <value>
+    db idl search <classname> <field> <operand> <value>
         Examples:
-            idl search aou name ~* "branch"
-            idl search aout depth > 1
+            db idl search aou name ~* "branch"
+            db idl search aout depth > 1
 
-    idlf ...
-        Same as 'idl' commands but values are displayed as formatted
-        key / value pairs, minus NULL values.
+    db idlf ...
+        Same as 'db idl' commands but values are displayed as formatted
+        label / value pairs, minus NULL values.
 
     db sleep <seconds>
         Runs PG_SLEEP(<seconds>).  Mostly for debugging.
@@ -326,8 +328,6 @@ impl Shell {
                 Ok(())
             }
             "login" => self.handle_login(args),
-            "idl" => self.idl_query(args),
-            "idlf" => self.idl_query(args),
             "db" => self.db_command(args),
             "req" | "request" => self.send_request(args),
             "reqauth" => self.send_reqauth(args),
@@ -574,6 +574,7 @@ impl Shell {
 
         match args[0].to_lowercase().as_str() {
             "sleep" => self.db_sleep(args[1]),
+            "idl" | "idlf" => self.idl_query(args),
             _ => Err(format!("Unknown 'db' command: {args:?}")),
         }
     }
@@ -615,9 +616,9 @@ impl Shell {
 
     /// Launch an IDL query.
     fn idl_query(&mut self, args: &[&str]) -> Result<(), String> {
-        self.args_min_length(args, 3)?;
+        self.args_min_length(args, 4)?;
 
-        match args[0] {
+        match args[1] {
             "get" => self.idl_get(args),
             "search" => self.idl_search(args),
             _ => return Err(format!("Could not parse idl query command: {args:?}")),
@@ -626,8 +627,8 @@ impl Shell {
 
     /// Retrieve a single IDL object by its primary key value
     fn idl_get(&mut self, args: &[&str]) -> Result<(), String> {
-        let classname = args[1];
-        let pkey = args[2];
+        let classname = args[2];
+        let pkey = args[3];
 
         let translator = self.db_translator_mut()?;
 
@@ -636,7 +637,7 @@ impl Shell {
             None => return Ok(()),
         };
 
-        if self.command.eq("idlf") {
+        if args[0].eq("idlf") {
             self.print_idl_object(&obj)
         } else {
             self.print_json_record(&obj)
@@ -645,12 +646,12 @@ impl Shell {
 
     /// Retrieve a single IDL object by its primary key value
     fn idl_search(&mut self, args: &[&str]) -> Result<(), String> {
-        self.args_min_length(args, 5)?;
+        self.args_min_length(args, 6)?;
 
-        let classname = args[1];
-        let fieldname = args[2];
-        let operand = args[3];
-        let value = args[4];
+        let classname = args[2];
+        let fieldname = args[3];
+        let operand = args[4];
+        let value = args[5];
 
         let idl_class = self
             .ctx()
@@ -687,7 +688,7 @@ impl Shell {
         let translator = self.db_translator_mut()?;
 
         for obj in translator.idl_class_search(&search)? {
-            if self.command.eq("idlf") {
+            if args[0].eq("idlf") {
                 self.print_idl_object(&obj)?;
             } else {
                 self.print_json_record(&obj)?;
