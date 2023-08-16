@@ -1,3 +1,4 @@
+use eg::common::circ;
 use eg::common::circulator::Circulator;
 use eg::editor::Editor;
 use eg::util;
@@ -56,6 +57,46 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
+    StaticMethod {
+        name: "renewal_chain.retrieve_by_circ.summary",
+        desc: "Circulation Renewal Chain Summary",
+        param_count: ParamCount::Exactly(2),
+        handler: renewal_chain_summary,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "Circ ID",
+                datatype: ParamDataType::Number,
+                desc: "Circulation ID to lookup",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "prev_renewal_chain.retrieve_by_circ.summary",
+        desc: "Previous Circulation Renewal Chain Summary",
+        param_count: ParamCount::Exactly(2),
+        handler: prev_renewal_chain_summary,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "Authtoken",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                required: true,
+                name: "Circ ID",
+                datatype: ParamDataType::Number,
+                desc: "Circulation ID to lookup",
+            },
+        ],
+    },
 ];
 
 pub fn checkin(
@@ -111,4 +152,83 @@ pub fn checkin(
     circulator.post_commit_tasks()?;
 
     Ok(())
+}
+
+pub fn renewal_chain_summary(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsCircWorker::downcast(worker)?;
+    let authtoken = util::json_string(method.param(0))?;
+    let circ_id = util::json_int(method.param(1))?;
+
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    if !editor.allowed("VIEW_CIRCULATIONS")? {
+        return session.respond(editor.event());
+    }
+
+    let chain = circ::summarize_circ_chain(&mut editor, circ_id)?;
+
+    session.respond(chain)
+}
+
+pub fn prev_renewal_chain_summary(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method,
+) -> Result<(), String> {
+    let worker = app::RsCircWorker::downcast(worker)?;
+    let authtoken = util::json_string(method.param(0))?;
+    let circ_id = util::json_int(method.param(1))?;
+
+    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    if !editor.allowed("VIEW_CIRCULATIONS")? {
+        return session.respond(editor.event());
+    }
+
+    let chain = circ::circ_chain(&mut editor, circ_id)?;
+    let first_circ = &chain[0];
+
+    // The previous circ chain contains the circ that occurred most recently
+    // before the first circ in the latest circ chain.
+
+    let query = json::object! {
+        target_copy: util::json_int(&first_circ["target_copy"])?,
+        xact_start: {"<": first_circ["xact_start"].as_str().unwrap()}, // xact_tart required
+    };
+
+    let flesh = json::object! {
+        flesh: 1,
+        flesh_fields: {
+            aacs: [
+                "active_circ",
+                "aged_circ"
+            ]
+        },
+        order_by: {aacs: "xact_start desc"},
+        limit: 1
+    };
+
+    let prev_circ = editor.search_with_ops("aacs", query, flesh)?;
+
+    if prev_circ.len() == 0 {
+        // No previous circ chain
+        return Ok(());
+    }
+
+    session.respond(circ::summarize_circ_chain(
+        &mut editor,
+        util::json_int(&prev_circ[0]["id"])?,
+    )?)
 }

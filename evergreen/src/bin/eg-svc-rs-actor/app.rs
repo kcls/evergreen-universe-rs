@@ -20,14 +20,14 @@ const APPNAME: &str = "open-ils.rspub";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsPubEnv {
+pub struct RsActorEnv {
     /// Global / shared IDL ref
     idl: Arc<idl::Parser>,
 }
 
-impl RsPubEnv {
+impl RsActorEnv {
     pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        RsPubEnv { idl: idl.clone() }
+        RsActorEnv { idl: idl.clone() }
     }
 
     pub fn idl(&self) -> &Arc<idl::Parser> {
@@ -36,31 +36,31 @@ impl RsPubEnv {
 }
 
 /// Implement the needed Env trait
-impl ApplicationEnv for RsPubEnv {
+impl ApplicationEnv for RsActorEnv {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
 /// Our main application class.
-pub struct RsPubApplication {
+pub struct RsActorApplication {
     /// We load the IDL during service init.
     idl: Option<Arc<idl::Parser>>,
 }
 
-impl RsPubApplication {
+impl RsActorApplication {
     pub fn new() -> Self {
-        RsPubApplication { idl: None }
+        RsActorApplication { idl: None }
     }
 }
 
-impl Application for RsPubApplication {
+impl Application for RsActorApplication {
     fn name(&self) -> &str {
         APPNAME
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsPubEnv::new(self.idl.as_ref().unwrap()))
+        Box::new(RsActorEnv::new(self.idl.as_ref().unwrap()))
     }
 
     /// Load the IDL and perform any other needed global startup work.
@@ -102,22 +102,22 @@ impl Application for RsPubApplication {
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || Box::new(RsPubWorker::new())
+        || Box::new(RsActorWorker::new())
     }
 }
 
 /// Per-thread worker instance.
-pub struct RsPubWorker {
-    env: Option<RsPubEnv>,
+pub struct RsActorWorker {
+    env: Option<RsActorEnv>,
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, Method>>>,
 }
 
-impl RsPubWorker {
+impl RsActorWorker {
     pub fn new() -> Self {
-        RsPubWorker {
+        RsActorWorker {
             env: None,
             client: None,
             config: None,
@@ -128,16 +128,16 @@ impl RsPubWorker {
 
     /// This will only ever be called after absorb_env(), so we are
     /// guarenteed to have an env.
-    pub fn env(&self) -> &RsPubEnv {
+    pub fn env(&self) -> &RsActorEnv {
         self.env.as_ref().unwrap()
     }
 
-    /// Cast a generic ApplicationWorker into our RsPubWorker.
+    /// Cast a generic ApplicationWorker into our RsActorWorker.
     ///
-    /// This is necessary to access methods/fields on our RsPubWorker that
+    /// This is necessary to access methods/fields on our RsActorWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut RsPubWorker, String> {
-        match w.as_any_mut().downcast_mut::<RsPubWorker>() {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut RsActorWorker, String> {
+        match w.as_any_mut().downcast_mut::<RsActorWorker>() {
             Some(eref) => Ok(eref),
             None => Err(format!("Cannot downcast")),
         }
@@ -158,7 +158,7 @@ impl RsPubWorker {
     }
 }
 
-impl ApplicationWorker for RsPubWorker {
+impl ApplicationWorker for RsActorWorker {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -180,7 +180,7 @@ impl ApplicationWorker for RsPubWorker {
     ) -> Result<(), String> {
         let worker_env = env
             .as_any()
-            .downcast_ref::<RsPubEnv>()
+            .downcast_ref::<RsActorEnv>()
             .ok_or(format!("Unexpected environment type in absorb_env()"))?;
 
         // Each worker gets its own client, so we have to tell our
