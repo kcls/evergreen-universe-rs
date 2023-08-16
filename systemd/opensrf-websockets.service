@@ -2,8 +2,8 @@
 Description=OpenSRF Websockets
 Requires=redis-server.service
 After=redis-server.service
-Wants=opensrf-router.service
-After=opensrf-router.service
+#Wants=opensrf-#router.service
+#After=opensrf-router.service
 
 [Service]
 Type=simple

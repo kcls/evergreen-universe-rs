@@ -1,5 +1,5 @@
 [Unit]
-Description=Evergreen HTTP Gateway
+Description=Evergreen Service open-ils.rs-circ
 Requires=redis-server.service
 After=redis-server.service
 #Wants=opensrf-router.service
@@ -9,6 +9,6 @@ After=redis-server.service
 Type=simple
 User=opensrf
 Group=opensrf
-ExecStart=/usr/local/bin/eg-http-gateway
+ExecStart=/usr/local/bin/eg-svc-rs-circ
 ExecReload=/bin/kill -HUP $MAINPID
 

@@ -66,6 +66,14 @@ Commands
         Same as 'req', but the first parameter sent to the server
         is our previously stored authtoken (see login)
 
+    introspect <service> [<prefix>]
+        List methods published by <service>, optionally limiting to
+        those which start with the string <prefix>.
+
+    introspect-names <service> [<prefix>]
+        Same as introspect, but only lists method names instead of
+        the full method definition.
+
     pref set <name> <value>
         Set a preference value
 
@@ -323,6 +331,7 @@ impl Shell {
             "db" => self.db_command(args),
             "req" | "request" => self.send_request(args),
             "reqauth" => self.send_reqauth(args),
+            "introspect" | "introspect-names" => self.introspect(args),
             "router" => self.send_router_command(args),
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
@@ -465,6 +474,32 @@ impl Shell {
         };
 
         Ok(())
+    }
+
+
+    fn introspect(&mut self, args: &[&str]) -> Result<(), String> {
+        self.args_min_length(args, 1)?;
+
+        let service = &args[0];
+
+        let mut params = vec![];
+        if let Some(prefix) = args.get(1) {
+            params.push(json::from(*prefix));
+        }
+
+        let mut ses = self.ctx().client().session(service);
+        let mut req = ses.request("opensrf.system.method.all", params)?;
+
+        while let Some(resp) = req.recv()? {
+            if self.command.contains("-names") {
+                println!("* {}", resp["name"]);
+            } else {
+                self.print_json_record(&resp)?;
+            }
+        }
+
+        Ok(())
+
     }
 
     fn send_router_command(&mut self, args: &[&str]) -> Result<(), String> {

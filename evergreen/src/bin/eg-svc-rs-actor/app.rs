@@ -13,7 +13,7 @@ use std::sync::Arc;
 // Import our local methods module.
 use crate::methods;
 
-const APPNAME: &str = "open-ils.rspub";
+const APPNAME: &str = "open-ils.rs-actor";
 
 /// Environment shared by all service workers.
 ///

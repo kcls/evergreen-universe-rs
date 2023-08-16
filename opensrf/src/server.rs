@@ -531,23 +531,34 @@ fn system_method_introspect(
     session: &mut session::ServerSession,
     method: &message::Method,
 ) -> Result<(), String> {
-    // If a prefix string is provided, only return methods whose name
-    // starts with the provided prefix.
-    if let Some(prefix) = method.params().get(0) {
-        if let Some(prefix) = prefix.as_str() {
-            for meth in worker
-                .methods()
-                .values()
-                .filter(|m| m.name().starts_with(prefix))
-            {
-                session.respond(meth.to_json_value())?;
-            }
-            return Ok(());
-        }
-    }
+    let prefix = match method.params().get(0) {
+        Some(p) => p.as_str(),
+        None => None,
+    };
 
-    for meth in worker.methods().values() {
-        session.respond(meth.to_json_value())?;
+    // Collect the names first so we can sort them
+    let mut names: Vec<&str> = match prefix {
+        // If a prefix string is provided, only return methods whose
+        // name starts with the provided prefix.
+        Some(pfx) => worker
+            .methods()
+            .keys()
+            .filter(|n| n.starts_with(pfx))
+            .map(|n| n.as_str())
+            .collect(),
+        None => worker
+            .methods()
+            .keys()
+            .map(|n| n.as_str())
+            .collect(),
+    };
+
+    names.sort();
+
+    for name in names {
+        if let Some(meth) = worker.methods().get(name) {
+            session.respond(meth.to_json_value())?;
+        }
     }
 
     Ok(())

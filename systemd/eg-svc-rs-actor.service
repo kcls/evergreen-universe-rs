@@ -1,14 +1,14 @@
 [Unit]
-Description=Evergreen Service open-ils.rspub
+Description=Evergreen Service open-ils.rs-actor
 Requires=redis-server.service
 After=redis-server.service
-Wants=opensrf-router.service
-After=opensrf-router.service
+#Wants=opensrf-router.service
+#After=opensrf-router.service
 
 [Service]
 Type=simple
 User=opensrf
 Group=opensrf
-ExecStart=/usr/local/bin/eg-svc-rspub
+ExecStart=/usr/local/bin/eg-svc-rs-actor
 ExecReload=/bin/kill -HUP $MAINPID
 
