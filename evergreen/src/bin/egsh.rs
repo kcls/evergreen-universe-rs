@@ -22,7 +22,7 @@ use evergreen as eg;
 //const PROMPT: &str = "egsh# ";
 const PROMPT: &str = "\x1b[1;32megsh# \x1b[0m";
 const HISTORY_FILE: &str = ".egsh_history";
-const SEPARATOR: &str = "---------------------------------------------------";
+const SEPARATOR: &str = "- - - - - - - - - - - - - - - - - - - - - - - - - -";
 const DEFAULT_JSON_PRINT_DEPTH: u16 = 2;
 const DEFAULT_LOGIN_TYPE: &str = "temp";
 
@@ -124,7 +124,11 @@ struct Shell {
     history_file: Option<String>,
     auth_session: Option<AuthSession>,
     result_count: usize,
+    /// Pretty-printed JSON uses this many spaces for formatting.
     json_print_depth: u16,
+    /// Print IDL objects as they travel on the wire, as classed arrays,
+    /// instead of using our internal structure.
+    json_as_wire_protocal: bool,
     command: String,
 }
 
@@ -159,6 +163,7 @@ impl Shell {
             result_count: 0,
             command: String::new(),
             json_print_depth: DEFAULT_JSON_PRINT_DEPTH,
+            json_as_wire_protocal: false,
         };
 
         if params.opt_present("with-database") {
@@ -452,7 +457,7 @@ impl Shell {
     }
 
     fn list_prefs(&mut self) -> Result<(), String> {
-        for pref in ["json_print_depth"] {
+        for pref in ["json_print_depth", "json_as_wire_protocal"] {
             self.get_pref(&["get", pref])?;
         }
         Ok(())
@@ -469,10 +474,14 @@ impl Shell {
                     .parse::<u16>()
                     .or_else(|e| Err(format!("Invalid value for {pref} {e}")))?;
                 self.json_print_depth = value_num;
-                self.get_pref(args)
+            }
+            "json_as_wire_protocal" => {
+                self.json_as_wire_protocal = value.to_lowercase() == "true";
             }
             _ => Err(format!("No such pref: {pref}"))?,
         }
+
+        self.get_pref(args)
     }
 
     fn get_pref(&mut self, args: &[&str]) -> Result<(), String> {
@@ -480,7 +489,8 @@ impl Shell {
         let pref = args[1];
 
         let value = match pref {
-            "json_print_depth" => self.json_print_depth,
+            "json_print_depth" => json::from(self.json_print_depth),
+            "json_as_wire_protocal" => json::from(self.json_as_wire_protocal),
             _ => return Err(format!("No such pref: {pref}")),
         };
 
@@ -525,7 +535,6 @@ impl Shell {
         Ok(())
     }
 
-
     fn introspect(&mut self, args: &[&str]) -> Result<(), String> {
         self.args_min_length(args, 1)?;
 
@@ -548,7 +557,6 @@ impl Shell {
         }
 
         Ok(())
-
     }
 
     fn send_router_command(&mut self, args: &[&str]) -> Result<(), String> {
@@ -749,6 +757,16 @@ impl Shell {
 
     fn print_json_record(&mut self, obj: &json::JsonValue) -> Result<(), String> {
         self.result_count += 1;
+
+        let mut obj = obj;
+        let wire_val;
+        if self.json_as_wire_protocal {
+            // If requested, print JSON values as they appear on
+            // the wire, as classed arrays, instead of our internal
+            // hash-based representation.
+            wire_val = Some(idl::Parser::as_serializer(self.ctx().idl()).pack(obj.clone()));
+            obj = wire_val.as_ref().unwrap();
+        }
 
         println!("{SEPARATOR}");
         if self.json_print_depth == 0 {
