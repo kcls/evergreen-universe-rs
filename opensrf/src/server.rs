@@ -546,11 +546,7 @@ fn system_method_introspect(
             .filter(|n| n.starts_with(pfx))
             .map(|n| n.as_str())
             .collect(),
-        None => worker
-            .methods()
-            .keys()
-            .map(|n| n.as_str())
-            .collect(),
+        None => worker.methods().keys().map(|n| n.as_str()).collect(),
     };
 
     names.sort();
