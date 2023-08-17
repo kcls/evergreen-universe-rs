@@ -54,19 +54,29 @@ Commands
     db sleep <seconds>
         Runs PG_SLEEP(<seconds>).  Mostly for debugging.
 
-    login <username> <password> [<login_type>, <workstation>]
+    login <username> <password> [<login_type> <workstation>]
 
-    router <domain> <command> [<router_class>]
-        Sends <command> to the router at <domain> and reports the result.
-        Specify "_" as the <domain> to send the request to the router
-        on the same node as the primary connection node for egsh.
-
-    req <service> <method> [<param>, <param>, ...]
+    req <service> <method> [<param> <param> ...]
         Send an API request.
 
-    reqauth <service> <method> [<param>, <param>, ...]
+    reqauth <service> <method> [<param> <param> ...]
         Same as 'req', but the first parameter sent to the server
         is our previously stored authtoken (see login)
+
+    cstore <action> <hint_or_fielmapper> <param> [<param> ...]
+        Shortcut for open-ils.cstore queries.
+
+        Examples:
+            cstore retrieve au 1
+            cstore search au {"id":{"<":5}}
+            cstore search actor.user {"id":{"<":5}}
+
+        'hint_or_fielmapper' may be either an IDL class hint ("ahr") or
+        the class fieldmapper name with "::" replaced by "."
+        ("action.hold_request", "actor.user")
+
+        NOTE: this command only works when connecting to a domain
+        that has access to cstore, e.g. private.localhost.
 
     introspect <service> [<prefix>]
         List methods published by <service>, optionally limiting to
@@ -75,6 +85,11 @@ Commands
     introspect-names <service> [<prefix>]
         Same as introspect, but only lists method names instead of
         the full method definition.
+
+    router <domain> <command> [<router_class>]
+        Sends <command> to the router at <domain> and reports the result.
+        Specify "_" as the <domain> to send the request to the router
+        on the same node as the primary connection node for egsh.
 
     pref set <name> <value>
         Set a preference value
@@ -335,12 +350,46 @@ impl Shell {
             "router" => self.send_router_command(args),
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
+            "cstore" => self.handle_cstore(args),
             "help" => {
                 println!("{HELP_TEXT}");
                 Ok(())
             }
             _ => Err(format!("Unknown command: {}", self.command)),
         }
+    }
+
+    fn handle_cstore(&mut self, args: &[&str]) -> Result<(), String> {
+        self.args_min_length(args, 3)?;
+        let action = args[0]; // retrieve, search
+
+        // IDL class may either be a class hint (e.g. "aou") or a full
+        // fieldmapper name ("actor.org_unit");
+        let mut class = args[1].to_string();
+
+        if !class.contains(".") {
+            // Caller provided a class hint.  Translate that into
+            // the fieldmapper string used by cstore APIs.
+
+            if let Some(idl_class) = self.ctx().idl().classes().get(&class) {
+                if let Some(fm) = idl_class.fieldmapper() {
+                    class = fm.replace("::", ".");
+                } else {
+                    return Err(format!("IDL class {class} has no fieldmapper"));
+                }
+            } else {
+                return Err(format!("IDL class {class} does not exist"));
+            }
+        }
+
+        let method = format!("open-ils.cstore.direct.{class}.{action}");
+
+        let mut new_args = vec!["open-ils.cstore", method.as_str()];
+        for s in &args[2..] {
+            new_args.push(s);
+        }
+
+        self.send_request(new_args.as_slice())
     }
 
     fn handle_settings(&mut self, args: &[&str]) -> Result<(), String> {
