@@ -17,21 +17,37 @@ pub fn create_events_for_object(
     user_data: Option<&JsonValue>,
     ignore_opt_in: bool,
 ) -> EgResult<()> {
-    let (class, pkey_op) = editor.idl().get_class_and_pkey(target)?;
+    // Warn and exit w/ Ok if we can't find the requested hook or some
+    // data is not shaped as expected.
+
+    let (class, pkey_op) = match editor.idl().get_class_and_pkey(target) {
+        Ok((a, b)) => (a, b),
+        Err(e) => {
+            log::error!("create_events_for_object(): {e}");
+            return Ok(());
+        }
+    };
 
     let pkey = match pkey_op {
         Some(k) => k,
-        None => return Err(format!("Object has no primary key: {}", target.dump()).into()),
+        None => {
+            log::warn!("Skipping. Object has no primary key: {}", target.dump());
+            return Ok(());
+        }
     };
 
     let hook_obj = match editor.retrieve("ath", hook)? {
         Some(h) => h,
-        None => return Err(format!("No such A/T hook: {hook}").into()),
+        None => {
+            log::warn!("No such A/T hook: {hook}");
+            return Ok(());
+        }
     };
 
     if hook_obj["key"].as_str().unwrap() != class {
-        // key is required.
-        return Err(format!("A/T hook {hook} does not match object core type: {class}").into());
+        // "key" is required.
+        log::warn!("A/T hook {hook} does not match object core type: {class}");
+        return Ok(());
     }
 
     let query = json::object! {

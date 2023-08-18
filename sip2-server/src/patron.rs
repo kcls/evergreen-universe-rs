@@ -149,7 +149,7 @@ impl Session {
         password_op: Option<&str>,
         summary_list_options: Option<&SummaryListOptions>,
     ) -> EgResult<Option<Patron>> {
-        self.set_authtoken()?;
+        self.set_authtoken()?; // needed for workstation info.
 
         log::info!("{self} SIP patron details for {barcode}");
 
