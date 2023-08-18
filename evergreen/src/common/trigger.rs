@@ -98,21 +98,32 @@ pub fn create_events_for_object(
     Ok(())
 }
 
-/// Returns the event runtime as an ISO string if it can be calculated.
-///
-/// If an event is meant to have a delay, but the delay cannot be
-/// calculated, due to lack of data, return None.
-fn calc_runtime(event_def: &JsonValue, target: &JsonValue) -> EgResult<Option<String>> {
-    let now = date::now_local();
+// Cannot write this as a doc-test since calc_runtime is a private function.
+#[test]
+fn test_calc_runtime() {
+    let event_def = json::object! {
+      "passive": "t",
+      "delay_field": "due_date",
+      "delay": "1 day 1 hour 5 minutes 1 second",
+    };
 
+    let target = json::object! {
+      "due_date": "2023-08-18T23:59:59-0400"
+    };
+
+    let runtime = calc_runtime(&event_def, &target).unwrap();
+    assert_eq!(runtime, Some("2023-08-20T01:05:00-0400".to_string()));
+}
+
+fn calc_runtime(event_def: &JsonValue, target: &JsonValue) -> EgResult<Option<String>> {
     if !util::json_bool(&event_def["passive"]) {
         // Active events always run now.
-        return Ok(Some(date::to_iso(&now)));
+        return Ok(Some(date::to_iso(&date::now_local())));
     }
 
     let delay_field = match event_def["delay_field"].as_str() {
         Some(d) => d,
-        None => return Ok(Some(date::to_iso(&now))),
+        None => return Ok(Some(date::to_iso(&date::now_local()))),
     };
 
     let delay_start = match target[delay_field].as_str() {
@@ -133,8 +144,8 @@ fn calc_runtime(event_def: &JsonValue, target: &JsonValue) -> EgResult<Option<St
 }
 
 /// Returns true if the event def does not require opt in (i.e. everyone
-/// is opted in) or it does and the user in question has the necessary
-/// opt-in user setting.
+/// is opted in) or it does require an opt-in and the user linked to the
+/// target has the needed opt-in user setting.
 fn user_is_opted_in(
     editor: &mut Editor,
     event_def: &JsonValue,
@@ -163,7 +174,5 @@ fn user_is_opted_in(
         "value": "true",
     };
 
-    let opt_in_settings = editor.search("aus", query)?;
-
-    Ok(opt_in_settings.len() > 0)
+    Ok(editor.search("aus", query)?.len() > 0)
 }
