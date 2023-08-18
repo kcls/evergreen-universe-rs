@@ -17,25 +17,6 @@ pub fn create_events_for_object(
     user_data: Option<&JsonValue>,
     ignore_opt_in: bool,
 ) -> EgResult<()> {
-    // Warn and exit w/ Ok if we can't find the requested hook or some
-    // data is not shaped as expected.
-
-    let (class, pkey_op) = match editor.idl().get_class_and_pkey(target) {
-        Ok((a, b)) => (a, b),
-        Err(e) => {
-            log::error!("create_events_for_object(): {e}");
-            return Ok(());
-        }
-    };
-
-    let pkey = match pkey_op {
-        Some(k) => k,
-        None => {
-            log::warn!("Skipping. Object has no primary key: {}", target.dump());
-            return Ok(());
-        }
-    };
-
     let hook_obj = match editor.retrieve("ath", hook)? {
         Some(h) => h,
         None => {
@@ -43,6 +24,8 @@ pub fn create_events_for_object(
             return Ok(());
         }
     };
+
+    let class = editor.idl().get_classname(target)?;
 
     if hook_obj["key"].as_str().unwrap() != class {
         // "key" is required.
@@ -59,46 +42,76 @@ pub fn create_events_for_object(
     let event_defs = editor.search("atevdef", query)?;
 
     for def in event_defs.iter() {
-        if let Some(gran) = granularity {
-            // If a granularity is provided by the caller, the def
-            // must a) have one and b) have one that matches.
-            if let Some(def_gran) = def["granularity"].as_str() {
-                if def_gran != gran {
-                    continue;
-                }
-            } else {
-                continue;
-            }
-        }
-
-        if !ignore_opt_in && !user_is_opted_in(editor, def, &target)? {
-            continue;
-        }
-
-        let runtime = match calc_runtime(def, &target)? {
-            Some(t) => t,
-            None => continue,
-        };
-
-        let mut event = json::object! {
-            "target": pkey.clone(),
-            "event_def": def["id"].clone(),
-            "run_time": runtime,
-        };
-
-        if let Some(udata) = user_data {
-            event["user_data"] = json::from(udata.dump());
-        }
-
-        let event = editor.idl().create_from("atev", event)?;
-
-        editor.create(&event)?;
+        create_event_for_object_and_def(
+            editor,
+            def,
+            target,
+            granularity,
+            user_data,
+            ignore_opt_in
+        )?;
     }
 
     Ok(())
 }
 
-// Cannot write this as a doc-test since calc_runtime is a private function.
+/// Take one target and one event def and create an event if we can.
+///
+/// Assumes that the target is appropriate for the event def.
+pub fn create_event_for_object_and_def(
+    editor: &mut Editor,
+    event_def: &JsonValue,
+    target: &JsonValue,
+    granularity: Option<&str>,
+    user_data: Option<&JsonValue>,
+    ignore_opt_in: bool,
+) -> EgResult<Option<JsonValue>> {
+
+    if let Some(gran) = granularity {
+        // If a granularity is provided by the caller, the def
+        // must a) have one and b) have one that matches.
+        if let Some(def_gran) = event_def["granularity"].as_str() {
+            if def_gran != gran {
+                return Ok(None);
+            }
+        } else {
+            return Ok(None);
+        }
+    }
+
+    if !ignore_opt_in && !user_is_opted_in(editor, event_def, target)? {
+        return Ok(None);
+    }
+
+    let runtime = match calc_runtime(event_def, target)? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    let pkey = match editor.idl().get_pkey_value(target) {
+        Some(k) => k,
+        None => {
+            log::warn!("Object has no pkey value: {}", target.dump());
+            return Ok(None);
+        }
+    };
+
+    let mut event = json::object! {
+        "target": pkey,
+        "event_def": event_def["id"].clone(),
+        "run_time": runtime,
+    };
+
+    if let Some(udata) = user_data {
+        event["user_data"] = json::from(udata.dump());
+    }
+
+    let event = editor.idl().create_from("atev", event)?;
+
+    Ok(Some(editor.create(&event)?))
+}
+
+// Non-doc test required since this is a private function.
 #[test]
 fn test_calc_runtime() {
     let event_def = json::object! {
@@ -115,6 +128,9 @@ fn test_calc_runtime() {
     assert_eq!(runtime, Some("2023-08-20T01:05:00-0400".to_string()));
 }
 
+/// Determine the run_time value for an event.
+///
+/// Returns the value as an ISO string.
 fn calc_runtime(event_def: &JsonValue, target: &JsonValue) -> EgResult<Option<String>> {
     if !util::json_bool(&event_def["passive"]) {
         // Active events always run now.
@@ -156,9 +172,11 @@ fn user_is_opted_in(
         None => return Ok(true),
     };
 
+    // If the event def requires an opt-in but defines no user field,
+    // then no one is opted in.
     let usr_field = match event_def["usr_field"].as_str() {
         Some(f) => f,
-        None => return Ok(true),
+        None => return Ok(false),
     };
 
     let user_id = if target[usr_field].is_object() {

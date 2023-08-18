@@ -666,6 +666,13 @@ impl Parser {
         self.get_pkey_info(obj).map(|(_, v)| v)
     }
 
+    pub fn get_classname(&self, obj: &JsonValue) -> EgResult<String> {
+        match obj[CLASSNAME_KEY].as_str() {
+            Some(s) => Ok(s.to_string()),
+            None => Err(format!("Not an IDL object: {}", obj.dump()).into()),
+        }
+    }
+
     /// Get the primary key field and value from an IDL object if one exists.
     pub fn get_pkey_info(&self, obj: &JsonValue) -> Option<(&Field, JsonValue)> {
         if !self.is_idl_object(obj) {
