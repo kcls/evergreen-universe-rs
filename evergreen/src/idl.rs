@@ -653,6 +653,15 @@ impl Parser {
         Ok(())
     }
 
+    pub fn get_class_and_pkey(&self, obj: &JsonValue) -> EgResult<(String, Option<JsonValue>)> {
+        let classname = match obj[CLASSNAME_KEY].as_str() {
+            Some(c) => c.to_string(),
+            None => Err(format!("JsonValue cannot be blessed into an idl::Instance"))?,
+        };
+
+        Ok((classname, self.get_pkey_value(obj)))
+    }
+
     pub fn get_pkey_value(&self, obj: &JsonValue) -> Option<JsonValue> {
         self.get_pkey_info(obj).map(|(_, v)| v)
     }

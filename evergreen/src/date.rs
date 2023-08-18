@@ -1,3 +1,4 @@
+use crate::result::EgResult;
 use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, Months, NaiveDate, TimeZone};
 use chrono_tz::Tz;
 
@@ -101,28 +102,53 @@ pub fn now_local() -> DateTime<FixedOffset> {
 ///
 /// If the datetime string is in the Local timezone, for example, the
 /// DateTime value produced will also be in the local timezone.
-pub fn parse_datetime(dt: &str) -> Result<DateTime<FixedOffset>, String> {
+///
+/// ```
+/// use evergreen::date;
+/// use chrono::{DateTime, FixedOffset, Local};
+///
+/// let dt = date::parse_datetime("2023-07-11T12:00:00-0200");
+/// assert!(dt.is_ok());
+///
+/// let dt2 = date::parse_datetime("2023-07-11T11:00:00-0300");
+/// assert!(dt2.is_ok());
+///
+/// assert_eq!(dt.unwrap(), dt2.unwrap());
+///
+/// let dt = date::parse_datetime("2023-07-11");
+/// assert!(dt.is_ok());
+///
+/// let dt = date::parse_datetime("2023-07-11 HOWDY");
+/// assert!(dt.is_err());
+///
+/// ```
+pub fn parse_datetime(dt: &str) -> EgResult<DateTime<FixedOffset>> {
     if dt.len() > 10 {
-        // Assumes its a full date + time
-        return dt
-            .parse::<DateTime<FixedOffset>>()
-            .or_else(|e| Err(format!("Could not parse datetime string: {e} {dt}")));
+        // Assume its a full date + time
+        return match dt.parse::<DateTime<FixedOffset>>() {
+            Ok(d) => Ok(d),
+            Err(e) => return Err(format!("Could not parse datetime string: {e} {dt}").into()),
+        };
     }
 
     if dt.len() < 10 {
-        return Err(format!("Invalid date string: {dt}"));
+        return Err(format!("Invalid date string: {dt}").into());
     }
 
     // Assumes it's just a YYYY-MM-DD
-    let date = dt
-        .parse::<NaiveDate>()
-        .or_else(|e| Err(format!("Could not parse date string: {e} {dt}")))?;
+    let date = match dt.parse::<NaiveDate>() {
+        Ok(d) => d,
+        Err(e) => return Err(format!("Could not parse date string: {e} {dt}").into()),
+    };
 
     // If we only have a date, use the local timezone.
-    let local_date = Local
+    let local_date = match Local
         .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
         .earliest()
-        .ok_or(format!("Could not parse date string: {dt}"))?;
+    {
+        Some(d) => d,
+        None => return Err(format!("Could not parse date string: {dt}").into()),
+    };
 
     Ok(local_date.into())
 }
@@ -152,7 +178,6 @@ pub fn to_iso(dt: &DateTime<FixedOffset>) -> String {
 /// // String output will vary by locale, but the dates will be equivalent.
 /// assert_eq!(dt, dt2);
 /// ```
-
 pub fn to_local_timezone_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
     let local: DateTime<Local> = dt.into();
 

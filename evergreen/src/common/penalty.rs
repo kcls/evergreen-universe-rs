@@ -95,14 +95,13 @@ pub fn calculate_penalties(
     }
 
     for events in trigger_events {
-        trigger::create_events_for_hook(
-            editor.client_mut(),
-            &events.0, // hook name
+        trigger::create_events_for_object(
+            editor, &events.0, // hook name
             &events.1, // penalty object
             events.2,  // org unit ID
             None,      // granularity
             None,      // user data
-            false,     // block until complete
+            false,     // ignore opt-in
         )?;
     }
 

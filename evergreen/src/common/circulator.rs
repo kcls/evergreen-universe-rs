@@ -959,14 +959,14 @@ impl Circulator {
             return Ok(());
         }
 
-        trigger::create_events_for_hook(
-            self.editor.client_mut(),
+        trigger::create_events_for_object(
+            &mut self.editor,
             action,
             circ,
             self.circ_lib,
             None,
             None,
-            true,
+            false,
         )
     }
 
