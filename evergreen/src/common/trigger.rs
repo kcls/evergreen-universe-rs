@@ -48,7 +48,7 @@ pub fn create_events_for_object(
             target,
             granularity,
             user_data,
-            ignore_opt_in
+            ignore_opt_in,
         )?;
     }
 
@@ -66,7 +66,6 @@ pub fn create_event_for_object_and_def(
     user_data: Option<&JsonValue>,
     ignore_opt_in: bool,
 ) -> EgResult<Option<JsonValue>> {
-
     if let Some(gran) = granularity {
         // If a granularity is provided by the caller, the def
         // must a) have one and b) have one that matches.
