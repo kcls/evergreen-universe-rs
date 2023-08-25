@@ -3,6 +3,11 @@ use crate::result::EgResult;
 use crate::util;
 use std::collections::HashMap;
 
+// Bib record display attributes are used widely. May as well flesh them
+// out and provide a bit of structure.
+
+/// Value for a single display attr which may contain one or
+/// multiple values.
 #[derive(Debug, PartialEq)]
 pub enum DisplayAttrValue {
     Value(String),
@@ -22,22 +27,70 @@ impl DisplayAttrValue {
     }
 }
 
-/// Returns a HashMap mapping bib record IDs to sub-HashMaps mapping
-/// display attribute field names to display attribute values, modeled
-/// by DisplayAttrValue.
-///
-/// Conceptually:
-/// {
-///   123: {
-///     "title": DisplayAttrValue::Value("Gone With the Wind"),
-///     "subject" DisplayAttrValue::List(["War", "Radishes"]),
-///   },
-///   456: ...
-/// }
+pub struct DisplayAttr {
+    name: String,
+    label: String,
+    value: DisplayAttrValue,
+}
+
+impl DisplayAttr {
+    pub fn add_value(&mut self, value: String) {
+        match self.value {
+            DisplayAttrValue::Value(ref s) => {
+                self.value = DisplayAttrValue::List(vec![s.to_owned(), value]);
+            },
+            DisplayAttrValue::List(ref mut l) => {
+                l.push(value);
+            }
+        }
+    }
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn value(&self) -> &DisplayAttrValue {
+        &self.value
+    }
+}
+
+/// Collection of metabib.flat_display_entry data for a given record.
+pub struct DisplayAttrSet {
+    attrs: Vec<DisplayAttr>,
+}
+
+impl DisplayAttrSet {
+    pub fn attrs(&self) -> &Vec<DisplayAttr> {
+        &self.attrs
+    }
+
+    pub fn attr(&self, name: &str) -> Option<&DisplayAttr> {
+        self.attrs.iter().filter(|a| a.name.as_str() == name).next()
+    }
+
+    pub fn attr_mut(&mut self, name: &str) -> Option<&mut DisplayAttr> {
+        self.attrs.iter_mut().filter(|a| a.name.as_str() == name).next()
+    }
+
+    /// Returns the first value for an attribute by name.
+    ///
+    /// For simplicity, returns an empty string if no attribute is found.
+    pub fn first_value(&self, name: &str) -> &str {
+        if let Some(attr) = self.attr(name) {
+            attr.value.first()
+        } else {
+            ""
+        }
+    }
+}
+
+
+/// Returns a HashMap mapping bib record IDs to a DisplayAttrSet.
 pub fn get_display_attrs(
     editor: &mut Editor,
     bib_ids: &[i64],
-) -> EgResult<HashMap<i64, HashMap<String, DisplayAttrValue>>> {
+) -> EgResult<HashMap<i64, DisplayAttrSet>> {
     let mut map = HashMap::new();
     let attrs = editor.search("mfde", json::object! {"source": bib_ids})?;
 
@@ -46,32 +99,24 @@ pub fn get_display_attrs(
 
         // First time seeing this bib record?
         if !map.contains_key(&bib_id) {
-            map.insert(bib_id, HashMap::new());
+            map.insert(bib_id, DisplayAttrSet { attrs: Vec::new() });
         }
+
+        let attr_set = map.get_mut(&bib_id).unwrap();
 
         let attr_name = util::json_string(&attr["name"])?;
+        let attr_label = util::json_string(&attr["label"])?;
         let attr_value = util::json_string(&attr["value"])?;
 
-        let bib_map = map.get_mut(&bib_id).unwrap(); // checked above.
-        let mut bib_value = bib_map.get_mut(&attr_name);
-
-        // New entry for this attribute + bib combo
-        if bib_value.is_none() {
-            bib_map.insert(attr_name, DisplayAttrValue::Value(attr_value));
-            continue;
-        }
-
-        let bib_value = bib_value.as_mut().unwrap();
-
-        // Was a scalar value, but now we need to store multiples.
-        if let DisplayAttrValue::Value(v) = bib_value {
-            let values = vec![v.to_owned(), attr_value];
-            bib_map.insert(attr_name, DisplayAttrValue::List(values));
-            continue;
-        }
-
-        if let DisplayAttrValue::List(ref mut v) = bib_value {
-            v.push(attr_value);
+        if let Some(attr) = attr_set.attr_mut(&attr_name) {
+            attr.add_value(attr_value);
+        } else {
+            let attr = DisplayAttr {
+                name: attr_name,
+                label: attr_label,
+                value: DisplayAttrValue::Value(attr_value)
+            };
+            attr_set.attrs.push(attr);
         }
     }
 
