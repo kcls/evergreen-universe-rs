@@ -7,15 +7,83 @@ use crate::common::settings::Settings;
 use json::JsonValue;
 use chrono::Duration;
 use std::fmt;
+use std::collections::HashMap;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
+/// Slimmed down copy.
+pub struct PotentialCopy {
+    id: i64,
+    status: i64,
+    circ_lib: i64,
+}
+
+/// Tracks info for a single hold target run.
+pub struct HoldTargetContext {
+    /// Hold ID
+    hold_id: i64,
+
+    /// Presence of an error message indicates early exit on error.
+    error_message: Option<String>,
+
+    /// Targeted copy ID.
+    ///
+    /// If we have a target, we succeeded.
+    target: Option<i64>,
+
+    /// Previously targeted copy ID.
+    old_target: Option<i64>,
+
+    /// Lets the caller know we found the copy they were intersted in.
+    found_copy: bool,
+
+    /// Number of potentially targetable copies
+    eligible_copy_count: u64,
+
+    copies: Vec<PotentialCopy>,
+
+    // Final set of potential copies, including those that may not be
+    // currently targetable, that may be eligible for recall processing.
+    recall_copies: Vec<PotentialCopy>,
+
+    // Copies that are targeted, but could contribute to pickup lib
+    // hard (foreign) stalling.  These are Available-status copies.
+    in_use_copies: Vec<PotentialCopy>,
+
+    /// Maps copy IDs to their hold proximity
+    copy_prox_map: HashMap<i64, u64>,
+}
+
+impl HoldTargetContext {
+    fn new(hold_id: i64) -> HoldTargetContext {
+        HoldTargetContext {
+            hold_id,
+            copies: Vec::new(),
+            recall_copies: Vec::new(),
+            in_use_copies: Vec::new(),
+            copy_prox_map: HashMap::new(),
+            eligible_copy_count: 0,
+            error_message: None,
+            target: None,
+            old_target: None,
+            found_copy: false,
+        }
+    }
+}
+
 /// Targets a batch of holds.
 pub struct HoldTargeter {
+
+    /// Editor is required, but stored as an Option so we can give it
+    /// back to the caller when we're done in case the caller has
+    /// additional work to perform before comitting changes.
     editor: Option<Editor>,
 
-    /// Only target this exact hold.
-    one_hold: Option<i64>,
+    settings: Settings,
+
+    current_hold: i64,
+
+    holds_to_target: Option<Vec<i64>>,
 
     retarget_time: Option<String>,
     retarget_interval: Option<String>,
@@ -23,8 +91,10 @@ pub struct HoldTargeter {
     soft_retarget_time: Option<String>,
     next_check_interval: Option<String>,
 
+    /// IDs of org units closed both now and at the next target time.
     closed_orgs: Vec<i64>,
 
+    /// Copy statuses that are hopeless prone.
     hopeless_prone_statuses: Vec<i64>,
 
     /// Number of parallel slots; 0 means we are not running in parallel.
@@ -35,20 +105,26 @@ pub struct HoldTargeter {
 
     /// Target holds newest first by request date.
     newest_first: bool,
+
+    transaction_manged_externally: bool,
 }
 
 impl fmt::Display for HoldTargeter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "targeter:")
+        write!(f, "targeter: [hold={}]", self.current_hold)
     }
 }
 
 impl HoldTargeter {
 
-    pub fn new() -> HoldTargeter {
+    pub fn new(editor: Editor) -> HoldTargeter {
+        let settings = Settings::new(&editor);
+
         HoldTargeter {
-            editor: None,
-            one_hold: None,
+            editor: Some(editor),
+            settings,
+            holds_to_target: None,
+            current_hold: 0,
             retarget_time: None,
             retarget_interval: None,
             soft_retarget_interval: None,
@@ -59,6 +135,26 @@ impl HoldTargeter {
             newest_first: false,
             closed_orgs: Vec::new(),
             hopeless_prone_statuses: Vec::new(),
+            transaction_manged_externally: false,
+        }
+    }
+
+    /// Set this to true if the targeter should avoid making any
+    /// transaction begin / commit calls.
+    ///
+    /// The transaction may still be rolled back in cases where an action
+    /// failed, thus killing the transaction anyway.
+    ///
+    /// This is useful if the caller wants to target a hold within an
+    /// existing transaction.
+    pub fn transaction_manged_externally(&mut self, val: bool) {
+        self.transaction_manged_externally = val;
+    }
+
+    pub fn holds_to_target(&self) -> &Vec<i64> {
+        match self.holds_to_target.as_ref() {
+            Some(r) => r,
+            None => panic!("find_holds_to_target() must be called first"),
         }
     }
 
@@ -91,7 +187,7 @@ impl HoldTargeter {
 
     pub fn init(&mut self) -> EgResult<()> {
 
-        let mut retarget_intvl_binding = None;
+        let mut retarget_intvl_bind = None;
         let retarget_intvl = if let Some(intvl) = self.retarget_interval.as_ref() {
             intvl
         } else {
@@ -102,9 +198,10 @@ impl HoldTargeter {
             };
 
             if let Some(intvl) = self.editor().search("cgf", query)?.get(0) {
-                retarget_intvl_binding = Some(json_string(&intvl["value"])?);
-                retarget_intvl_binding.as_ref().unwrap()
+                retarget_intvl_bind = Some(json_string(&intvl["value"])?);
+                retarget_intvl_bind.as_ref().unwrap()
             } else {
+                // If all else fails, use a one day retarget interval.
                 "24h"
             }
         };
@@ -165,11 +262,10 @@ impl HoldTargeter {
         Ok(())
     }
 
-    pub fn find_holds_to_target(&mut self) -> EgResult<Vec<i64>> {
-        if let Some(id) = self.one_hold {
-            return Ok(vec![id]);
-        }
-
+    /// Find holds that need to be processed.
+    ///
+    /// When targeting a known hold ID, this step can be skipped.
+    pub fn find_holds_to_target(&mut self) -> EgResult<()> {
         let mut query = json::object! {
             "select": {"ahr": ["id"]},
             "from": "ahr",
@@ -265,12 +361,33 @@ impl HoldTargeter {
         let holds = self.editor().json_query(query)?;
 
         // Hold IDs better be numeric...
-        Ok(holds.iter().map(|h| json_int(&h["id"]).unwrap()).collect())
+        self.holds_to_target = Some(
+            holds.iter().map(|h| json_int(&h["id"]).unwrap()).collect());
+
+        Ok(())
     }
-}
 
+    /// Caller may use this method directly when targeting only one hold.
+    ///
+    /// self.init() is still required.
+    pub fn target_hold(&mut self, hold_id: i64) -> EgResult<HoldTargetContext> {
+        self.current_hold = hold_id;
+        let mut context = HoldTargetContext::new(hold_id);
 
-/// Targets one hold.
-pub struct HoldTargeterSingle {
+        if !self.transaction_manged_externally {
+            self.editor().xact_begin()?;
+        }
+
+        // TODO
+
+        if !self.transaction_manged_externally {
+            // Use commit() here to force a disconnect from the cstore
+            // backend so the backends have a chance to cycle on large
+            // data sets.
+            self.editor().commit()?;
+        }
+
+        Ok(context)
+    }
 }
 
