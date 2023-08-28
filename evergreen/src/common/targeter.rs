@@ -1,6 +1,7 @@
 use crate::editor::Editor;
 use crate::util::{json_int, json_bool, json_string};
 use crate::common::org;
+use crate::common::trigger;
 use crate::result::EgResult;
 use crate::date;
 use crate::common::settings::Settings;
@@ -23,8 +24,7 @@ pub struct HoldTargetContext {
     /// Hold ID
     hold_id: i64,
 
-    /// Presence of an error message indicates early exit on error.
-    error_message: Option<String>,
+    hold: JsonValue,
 
     /// Targeted copy ID.
     ///
@@ -55,15 +55,15 @@ pub struct HoldTargetContext {
 }
 
 impl HoldTargetContext {
-    fn new(hold_id: i64) -> HoldTargetContext {
+    fn new(hold_id: i64, hold: JsonValue) -> HoldTargetContext {
         HoldTargetContext {
             hold_id,
+            hold,
             copies: Vec::new(),
             recall_copies: Vec::new(),
             in_use_copies: Vec::new(),
             copy_prox_map: HashMap::new(),
             eligible_copy_count: 0,
-            error_message: None,
             target: None,
             old_target: None,
             found_copy: false,
@@ -81,7 +81,8 @@ pub struct HoldTargeter {
 
     settings: Settings,
 
-    current_hold: i64,
+    /// Hold in process -- mainly for logging.
+    hold_id: i64,
 
     holds_to_target: Option<Vec<i64>>,
 
@@ -111,7 +112,7 @@ pub struct HoldTargeter {
 
 impl fmt::Display for HoldTargeter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "targeter: [hold={}]", self.current_hold)
+        write!(f, "targeter: [hold={}]", self.hold_id)
     }
 }
 
@@ -124,7 +125,7 @@ impl HoldTargeter {
             editor: Some(editor),
             settings,
             holds_to_target: None,
-            current_hold: 0,
+            hold_id: 0,
             retarget_time: None,
             retarget_interval: None,
             soft_retarget_interval: None,
@@ -367,16 +368,37 @@ impl HoldTargeter {
         Ok(())
     }
 
+    pub fn exit(&mut self, msg: &str) -> EgResult<()> {
+        log::error!("{self} targeting stopped: {msg}");
+        return Err(self.editor().die_event_msg(msg));
+    }
+
     /// Caller may use this method directly when targeting only one hold.
     ///
     /// self.init() is still required.
     pub fn target_hold(&mut self, hold_id: i64) -> EgResult<HoldTargetContext> {
-        self.current_hold = hold_id;
-        let mut context = HoldTargetContext::new(hold_id);
+        self.hold_id = hold_id;
 
         if !self.transaction_manged_externally {
             self.editor().xact_begin()?;
         }
+
+        let hold = match self.editor().retrieve("ahr", hold_id)? {
+            Some(h) => h,
+            None => return Err(self.editor().die_event()),
+        };
+
+        if !hold["capture_time"].is_null() ||
+            !hold["cancel_time"].is_null() ||
+            !hold["fulfillment_time"].is_null() ||
+            json_bool(&hold["frozen"]) {
+
+            self.exit("Hold is not eligible for targeting")?;
+        }
+
+        let mut context = HoldTargetContext::new(hold_id, hold);
+
+        self.handle_expired_hold(&mut context)?;
 
         // TODO
 
@@ -388,6 +410,51 @@ impl HoldTargeter {
         }
 
         Ok(context)
+    }
+
+    /// Cancel expired holds and kick off the A/T no-target event.  Returns
+    /// true (i.e. keep going) if the hold is not expired.  Returns false if
+    /// the hold is canceled or a non-recoverable error occcurred.
+    fn handle_expired_hold(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        let hold = &context.hold;
+
+        if let Some(etime) = hold["expire_time"].as_str() {
+            let ex_time = date::parse_datetime(&etime)?;
+
+            if ex_time > date::now_local() {
+                // Hold has not yet expired.
+                return Ok(());
+            }
+        } else {
+            // Hold has no expire time.
+            return Ok(());
+        }
+
+        // -- Hold is expired --
+
+        let hold = &mut context.hold;
+        hold["cancel_time"] = json::from("now");
+        hold["cancel_cause"] = json::from(1); // un-targeted expiration
+
+        self.editor().update(&hold)?;
+
+        let pl_lib = json_int(&hold["pickup_lib"])?;
+
+        trigger::create_events_for_object(
+            self.editor(),
+            "hold_request.cancel.expire_no_target",
+            hold,
+            pl_lib,
+            None,
+            None,
+            false
+        )?;
+
+        // Commit after we've created events so all of our writes
+        // occur within the same transaction.
+        self.editor().xact_commit()?;
+
+        self.exit("Hold is expired")
     }
 }
 

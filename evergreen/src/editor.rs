@@ -269,7 +269,7 @@ impl Editor {
     }
 
     /// Rollback the active transaction, disconnect from the worker,
-    /// and return a stringified variant of the last event.
+    /// and return an EgError-wrapped variant of the last event.
     ///
     /// The raw event can still be accessed via self.last_event().
     pub fn die_event(&mut self) -> EgError {
@@ -279,6 +279,24 @@ impl Editor {
         match self.last_event() {
             Some(e) => EgError::Event(e.clone()),
             None => EgError::Debug("Die-Event Called With No Event".to_string()),
+        }
+    }
+
+    /// Rollback the active transaction, disconnect from the worker,
+    /// and an EgError using the provided message as either the
+    /// debug text on our last_event or as the string contents
+    /// of an EgError::Debug variant.
+    pub fn die_event_msg(&mut self, msg: &str) -> EgError {
+        if let Err(e) = self.rollback() {
+            return e;
+        }
+        match self.last_event() {
+            Some(e) => {
+                let mut e2 = e.clone();
+                e2.set_debug(msg);
+                EgError::Event(e2)
+            }
+            None => EgError::Debug(msg.to_string()),
         }
     }
 
