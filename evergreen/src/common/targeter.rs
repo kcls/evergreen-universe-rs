@@ -1,14 +1,14 @@
-use crate::editor::Editor;
-use crate::util::{json_int, json_bool, json_string};
 use crate::common::org;
-use crate::common::trigger;
-use crate::result::EgResult;
-use crate::date;
 use crate::common::settings::Settings;
-use json::JsonValue;
+use crate::common::trigger;
+use crate::date;
+use crate::editor::Editor;
+use crate::result::EgResult;
+use crate::util::{json_bool, json_int, json_string};
 use chrono::Duration;
-use std::fmt;
+use json::JsonValue;
 use std::collections::HashMap;
+use std::fmt;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
@@ -34,11 +34,14 @@ pub struct HoldTargetContext {
     /// Previously targeted copy ID.
     old_target: Option<i64>,
 
+    /// Caller is specifically interested in this copy.
+    find_copy: i64,
+
     /// Lets the caller know we found the copy they were intersted in.
     found_copy: bool,
 
     /// Number of potentially targetable copies
-    eligible_copy_count: u64,
+    eligible_copy_count: usize,
 
     copies: Vec<PotentialCopy>,
 
@@ -66,6 +69,7 @@ impl HoldTargetContext {
             eligible_copy_count: 0,
             target: None,
             old_target: None,
+            find_copy: 0,
             found_copy: false,
         }
     }
@@ -73,7 +77,6 @@ impl HoldTargetContext {
 
 /// Targets a batch of holds.
 pub struct HoldTargeter {
-
     /// Editor is required, but stored as an Option so we can give it
     /// back to the caller when we're done in case the caller has
     /// additional work to perform before comitting changes.
@@ -117,7 +120,6 @@ impl fmt::Display for HoldTargeter {
 }
 
 impl HoldTargeter {
-
     pub fn new(editor: Editor) -> HoldTargeter {
         let settings = Settings::new(&editor);
 
@@ -187,12 +189,10 @@ impl HoldTargeter {
     }
 
     pub fn init(&mut self) -> EgResult<()> {
-
         let mut retarget_intvl_bind = None;
         let retarget_intvl = if let Some(intvl) = self.retarget_interval.as_ref() {
             intvl
         } else {
-
             let query = json::object! {
                 "name": "circ.holds.retarget_interval",
                 "enabled": "t"
@@ -256,7 +256,10 @@ impl HoldTargeter {
             self.closed_orgs.push(json_int(&co["org_unit"])?);
         }
 
-        for stat in self.editor().search("ccs", json::object! {"hopeless_prone":"t"})? {
+        for stat in self
+            .editor()
+            .search("ccs", json::object! {"hopeless_prone":"t"})?
+        {
             self.hopeless_prone_statuses.push(json_int(&stat["id"])?);
         }
 
@@ -362,8 +365,7 @@ impl HoldTargeter {
         let holds = self.editor().json_query(query)?;
 
         // Hold IDs better be numeric...
-        self.holds_to_target = Some(
-            holds.iter().map(|h| json_int(&h["id"]).unwrap()).collect());
+        self.holds_to_target = Some(holds.iter().map(|h| json_int(&h["id"]).unwrap()).collect());
 
         Ok(())
     }
@@ -376,7 +378,7 @@ impl HoldTargeter {
     /// Caller may use this method directly when targeting only one hold.
     ///
     /// self.init() is still required.
-    pub fn target_hold(&mut self, hold_id: i64) -> EgResult<HoldTargetContext> {
+    pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
         self.hold_id = hold_id;
 
         if !self.transaction_manged_externally {
@@ -388,17 +390,19 @@ impl HoldTargeter {
             None => return Err(self.editor().die_event()),
         };
 
-        if !hold["capture_time"].is_null() ||
-            !hold["cancel_time"].is_null() ||
-            !hold["fulfillment_time"].is_null() ||
-            json_bool(&hold["frozen"]) {
-
+        if !hold["capture_time"].is_null()
+            || !hold["cancel_time"].is_null()
+            || !hold["fulfillment_time"].is_null()
+            || json_bool(&hold["frozen"])
+        {
             self.exit("Hold is not eligible for targeting")?;
         }
 
         let mut context = HoldTargetContext::new(hold_id, hold);
+        context.find_copy = find_copy;
 
         self.handle_expired_hold(&mut context)?;
+        self.get_hold_copies(&mut context)?;
 
         // TODO
 
@@ -440,6 +444,7 @@ impl HoldTargeter {
 
         let pl_lib = json_int(&hold["pickup_lib"])?;
 
+        // Create events that will be fired/processed later.
         trigger::create_events_for_object(
             self.editor(),
             "hold_request.cancel.expire_no_target",
@@ -447,7 +452,7 @@ impl HoldTargeter {
             pl_lib,
             None,
             None,
-            false
+            false,
         )?;
 
         // Commit after we've created events so all of our writes
@@ -456,5 +461,194 @@ impl HoldTargeter {
 
         self.exit("Hold is expired")
     }
-}
 
+    /// Find potential copies for mapping/targeting and add them to
+    /// the copies list on our context.
+    fn get_hold_copies(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        let hold = &context.hold;
+
+        let hold_target = json_int(&hold["target"]).unwrap(); // required.
+        let hold_type = hold["hold_type"].as_str().unwrap(); // required.
+        let org_unit = json_int(&hold["selection_ou"]).unwrap(); // required
+        let org_depth = json_int(&hold["selection_depth"]).unwrap_or(0); // not required
+
+        let mut query = json::object! {
+            "select": {
+                "acp": ["id", "status", "circ_lib"],
+                "ahr": ["current_copy"]
+            },
+            "from": {
+                "acp": {
+                    // Tag copies that are in use by other holds so we don't
+                    // try to target them for our hold.
+                    "ahr": {
+                        "type": "left",
+                        "fkey": "id", // acp.id
+                        "field": "current_copy",
+                        "filter": {
+                            "fulfillment_time": JSON_NULL,
+                            "cancel_time": JSON_NULL,
+                            "id": {"!=": context.hold_id},
+                        }
+                    }
+                }
+            },
+            "where": {
+                "+acp": {
+                    "deleted": "f",
+                    "circ_lib": {
+                        "in": {
+                            "select": {
+                                "aou": [{
+                                    "transform": "actor.org_unit_descendants",
+                                    "column": "id",
+                                    "result_field": "id",
+                                    "params": [org_depth],
+                                }],
+                                },
+                            "from": "aou",
+                            "where": {"id": org_unit},
+                        }
+                    }
+                }
+            }
+        };
+
+        if hold_type != "R" && hold_type != "F" {
+            // Add the holdability filters to the copy query, unless
+            // we're processing a Recall or Force hold, which bypass most
+            // holdability checks.
+
+            query["from"]["acp"]["acpl"] = json::object! {
+                "field": "id",
+                "filter": {"holdable": "t", "deleted": "f"},
+                "fkey": "location",
+            };
+
+            query["from"]["acp"]["ccs"] = json::object! {
+                "field": "id",
+                "filter": {"holdable": "t"},
+                "fkey": "status",
+            };
+
+            query["where"]["+acp"]["holdable"] = json::from("t");
+
+            if json_bool(&hold["mint_condition"]) {
+                query["where"]["+acp"]["mint_condition"] = json::from("t");
+            }
+        }
+
+        if hold_type != "C" && hold_type != "I" && hold_type != "P" {
+            // For volume and higher level holds, avoid targeting copies that
+            // act as instances of monograph parts.
+
+            query["from"]["acp"]["acpm"] = json::object! {
+                "type": "left",
+                "field": "target_copy",
+                "fkey": "id"
+            };
+
+            query["where"]["+acpm"]["id"] = JSON_NULL;
+        }
+
+        // Add the target filters
+        if hold_type == "C" || hold_type == "R" || hold_type == "F" {
+            query["where"]["+acp"]["id"] = json::from(hold_target);
+        } else if hold_type == "V" {
+            query["where"]["+acp"]["call_number"] = json::from(hold_target);
+        } else if hold_type == "P" {
+            query["from"]["acp"]["acpm"] = json::object! {
+                "field" : "target_copy",
+                "fkey" : "id",
+                "filter": {"part": hold_target},
+            };
+        } else if hold_type == "I" {
+            query["from"]["acp"]["sitem"] = json::object! {
+                "field" : "unit",
+                "fkey" : "id",
+                "filter": {"issuance": hold_target},
+            };
+        } else if hold_type == "T" {
+            query["from"]["acp"]["acn"] = json::object! {
+                "field" : "id",
+                "fkey" : "call_number",
+                "join": {
+                    "bre": {
+                        "field" : "id",
+                        "filter": {"id": hold_target},
+                        "fkey"  : "record"
+                    }
+                }
+            };
+        } else {
+            // Metarecord hold
+
+            query["from"]["acp"]["acn"] = json::object! {
+                "field": "id",
+                "fkey": "call_number",
+                "join": {
+                    "bre": {
+                        "field": "id",
+                        "fkey": "record",
+                        "join": {
+                            "mmrsm": {
+                                "field": "source",
+                                "fkey": "id",
+                                "filter": {"metarecord": hold_target},
+                            }
+                        }
+                    }
+                }
+            };
+
+            if let Some(formats) = hold["holdable_formats"].as_str() {
+                // Compile the JSON-encoded metarecord holdable formats
+                // to an Intarray query_int string.
+
+                let query_ints = self.editor().json_query(json::object! {
+                    "from": ["metabib.compile_composite_attr", formats]
+                })?;
+
+                if let Some(query_int) = query_ints.get(0) {
+                    // Only pull potential copies from records that satisfy
+                    // the holdable formats query.
+                    if let Some(qint) = query_int["metabib.compile_composite_attr"].as_str() {
+                        query["from"]["acp"]["acn"]["join"]["bre"]["join"]["mravl"] = json::object! {
+                            "field": "source",
+                            "fkey": "id",
+                            "filter": {"vlist": {"@@": qint}}
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut found_copy = false;
+        context.copies = self
+            .editor()
+            .json_query(query)?
+            .iter()
+            .map(|c| {
+                // While we're looping, see if we found the copy the
+                // caller was interested in.
+                let id = json_int(&c["id"]).unwrap();
+                if id == context.find_copy {
+                    found_copy = true;
+                }
+
+                PotentialCopy {
+                    id,
+                    status: json_int(&c["status"]).unwrap(),
+                    circ_lib: json_int(&c["circ_lib"]).unwrap(),
+                }
+            })
+            .collect();
+
+        context.eligible_copy_count = context.copies.len();
+        context.found_copy = found_copy;
+
+        log::info!("{self} {} potential copies", context.eligible_copy_count);
+
+        Ok(())
+    }
+}

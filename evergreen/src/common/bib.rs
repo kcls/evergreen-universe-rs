@@ -38,7 +38,7 @@ impl DisplayAttr {
         match self.value {
             DisplayAttrValue::Value(ref s) => {
                 self.value = DisplayAttrValue::List(vec![s.to_owned(), value]);
-            },
+            }
             DisplayAttrValue::List(ref mut l) => {
                 l.push(value);
             }
@@ -70,7 +70,10 @@ impl DisplayAttrSet {
     }
 
     pub fn attr_mut(&mut self, name: &str) -> Option<&mut DisplayAttr> {
-        self.attrs.iter_mut().filter(|a| a.name.as_str() == name).next()
+        self.attrs
+            .iter_mut()
+            .filter(|a| a.name.as_str() == name)
+            .next()
     }
 
     /// Returns the first value for an attribute by name.
@@ -84,7 +87,6 @@ impl DisplayAttrSet {
         }
     }
 }
-
 
 /// Returns a HashMap mapping bib record IDs to a DisplayAttrSet.
 pub fn get_display_attrs(
@@ -114,7 +116,7 @@ pub fn get_display_attrs(
             let attr = DisplayAttr {
                 name: attr_name,
                 label: attr_label,
-                value: DisplayAttrValue::Value(attr_value)
+                value: DisplayAttrValue::Value(attr_value),
             };
             attr_set.attrs.push(attr);
         }

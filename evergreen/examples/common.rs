@@ -16,8 +16,12 @@ fn main() -> EgResult<()> {
         println!("TITLE: {}", attr_set.first_value("title"));
 
         for attr in attr_set.attrs() {
-            println!("Bib {bib_id} [{}] ({}) => {}",
-                attr.name(), attr.label(), attr.value().first());
+            println!(
+                "Bib {bib_id} [{}] ({}) => {}",
+                attr.name(),
+                attr.label(),
+                attr.value().first()
+            );
         }
     }
 
