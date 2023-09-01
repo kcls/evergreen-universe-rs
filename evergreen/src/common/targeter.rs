@@ -403,6 +403,8 @@ impl HoldTargeter {
 
         self.handle_expired_hold(&mut context)?;
         self.get_hold_copies(&mut context)?;
+        self.update_copy_maps(&mut context)?;
+        self.handle_hopeless_date(&mut context)?;
 
         // TODO
 
@@ -416,13 +418,32 @@ impl HoldTargeter {
         Ok(context)
     }
 
+    /// Update our in-process hold with the provided key/value pairs.
+    ///
+    /// Refresh our copy of the hold once updated to pick up DB-generated
+    /// values (dates, etc.).
+    fn update_hold(&mut self, context: &mut HoldTargetContext, mut values: JsonValue) -> EgResult<()> {
+        for (field, value) in values.entries() {
+            if field == "id" {
+                // nope
+                continue;
+            }
+            context.hold[field] = values[field].to_owned();
+        }
+
+        self.editor().update(&context.hold)?;
+
+        // this hold id must exist.
+        context.hold = self.editor().retrieve("ahr", context.hold_id)?.unwrap();
+
+        Ok(())
+    }
+
     /// Cancel expired holds and kick off the A/T no-target event.  Returns
     /// true (i.e. keep going) if the hold is not expired.  Returns false if
     /// the hold is canceled or a non-recoverable error occcurred.
     fn handle_expired_hold(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
-        let hold = &context.hold;
-
-        if let Some(etime) = hold["expire_time"].as_str() {
+        if let Some(etime) = context.hold["expire_time"].as_str() {
             let ex_time = date::parse_datetime(&etime)?;
 
             if ex_time > date::now_local() {
@@ -435,20 +456,20 @@ impl HoldTargeter {
         }
 
         // -- Hold is expired --
+        let values = json::object! {
+            "cancel_time": "now",
+            "cancel_cause": 1, // un-targeted expiration
+        };
 
-        let hold = &mut context.hold;
-        hold["cancel_time"] = json::from("now");
-        hold["cancel_cause"] = json::from(1); // un-targeted expiration
+        self.update_hold(context, values)?;
 
-        self.editor().update(&hold)?;
-
-        let pl_lib = json_int(&hold["pickup_lib"])?;
+        let pl_lib = json_int(&context.hold["pickup_lib"])?;
 
         // Create events that will be fired/processed later.
         trigger::create_events_for_object(
             self.editor(),
             "hold_request.cancel.expire_no_target",
-            hold,
+            &context.hold,
             pl_lib,
             None,
             None,
@@ -648,6 +669,63 @@ impl HoldTargeter {
         context.found_copy = found_copy;
 
         log::info!("{self} {} potential copies", context.eligible_copy_count);
+
+        Ok(())
+    }
+
+    /// Tell the DB to update the list of potential copies for our hold
+    /// based on the copies we just found.
+    fn update_copy_maps(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        let ints = context.copies
+            .iter()
+            .map(|c| format!("{}", c.id))
+            .collect::<Vec<String>>()
+            .join(",");
+
+        // "{1,2,3}"
+        let ints = format!("{{{ints}}}");
+
+        let query = json::object! {
+            "from": [
+                "action.hold_request_regen_copy_maps",
+                context.hold_id,
+                ints
+            ]
+        };
+
+        self.editor().json_query(query).map(|_| ())
+    }
+
+    /// Set the hopeless date on a hold when needed.
+    ///
+    /// If no copies were found and hopeless date is not set,
+    /// then set it. Otherwise, all found copies have a hopeless
+    /// status, set the hold as hopeless.  Otherwise, clear the
+    /// date if set.
+    fn handle_hopeless_date(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        let marked_hopeless = !context.hold["hopeless_date"].is_null();
+
+        if context.copies.len() == 0 {
+            if !marked_hopeless {
+                log::info!("{self} Marking hold as hopeless");
+                return self.update_hold(context, json::object! {"hopeless_date": "now"});
+            }
+        }
+
+        // Hope left in any of the statuses?
+        let we_have_hope = context.copies
+            .iter()
+            .any(|c| !self.hopeless_prone_statuses.contains(&c.status));
+
+        if marked_hopeless {
+            if we_have_hope {
+                log::info!("{self} Removing hopeless date");
+                return self.update_hold(context, json::object! {"hopeless_date": JSON_NULL});
+            }
+        } else if !we_have_hope {
+            log::info!("{self} Marking hold as hopeless");
+            return self.update_hold(context, json::object! {"hopeless_date": "now"});
+        }
 
         Ok(())
     }
