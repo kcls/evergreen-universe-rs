@@ -20,6 +20,10 @@ pub struct PotentialCopy {
 }
 
 /// Tracks info for a single hold target run.
+///
+/// Some of these values should in theory be Options instesad of bare
+/// i64's, but testing for "0" works just as well and requires (overall,
+/// I believe) slightly less overhead.
 pub struct HoldTargetContext {
     /// Hold ID
     hold_id: i64,
@@ -29,13 +33,15 @@ pub struct HoldTargetContext {
     /// Targeted copy ID.
     ///
     /// If we have a target, we succeeded.
-    target: Option<i64>,
+    target: i64,
 
     /// Previously targeted copy ID.
-    old_target: Option<i64>,
+    old_target: i64,
 
     /// Caller is specifically interested in this copy.
     find_copy: i64,
+
+    valid_previous_copy: i64,
 
     /// Lets the caller know we found the copy they were intersted in.
     found_copy: bool,
@@ -67,9 +73,10 @@ impl HoldTargetContext {
             in_use_copies: Vec::new(),
             copy_prox_map: HashMap::new(),
             eligible_copy_count: 0,
-            target: None,
-            old_target: None,
+            target: 0,
+            old_target: 0,
             find_copy: 0,
+            valid_previous_copy: 0,
             found_copy: false,
         }
     }
@@ -370,52 +377,25 @@ impl HoldTargeter {
         Ok(())
     }
 
-    pub fn exit(&mut self, msg: &str) -> EgResult<()> {
+    /// Rollback the active transaction.
+    ///
+    /// Unlike begin/commit, we don't care if our transaction is
+    /// externally managed, because its assumed a rollback needs to
+    /// occur.
+    pub fn rollback(&mut self, msg: &str) -> EgResult<()> {
         log::error!("{self} targeting stopped: {msg}");
         return Err(self.editor().die_event_msg(msg));
     }
 
-    /// Caller may use this method directly when targeting only one hold.
-    ///
-    /// self.init() is still required.
-    pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
-        self.hold_id = hold_id;
-
+    pub fn commit(&mut self) -> EgResult<()> {
         if !self.transaction_manged_externally {
-            self.editor().xact_begin()?;
-        }
-
-        let hold = match self.editor().retrieve("ahr", hold_id)? {
-            Some(h) => h,
-            None => return Err(self.editor().die_event()),
-        };
-
-        if !hold["capture_time"].is_null()
-            || !hold["cancel_time"].is_null()
-            || !hold["fulfillment_time"].is_null()
-            || json_bool(&hold["frozen"])
-        {
-            self.exit("Hold is not eligible for targeting")?;
-        }
-
-        let mut context = HoldTargetContext::new(hold_id, hold);
-        context.find_copy = find_copy;
-
-        self.handle_expired_hold(&mut context)?;
-        self.get_hold_copies(&mut context)?;
-        self.update_copy_maps(&mut context)?;
-        self.handle_hopeless_date(&mut context)?;
-
-        // TODO
-
-        if !self.transaction_manged_externally {
-            // Use commit() here to force a disconnect from the cstore
+            // Use commit() here to do a commit+disconnect from the cstore
             // backend so the backends have a chance to cycle on large
             // data sets.
             self.editor().commit()?;
         }
 
-        Ok(context)
+        Ok(())
     }
 
     /// Update our in-process hold with the provided key/value pairs.
@@ -434,25 +414,43 @@ impl HoldTargeter {
         self.editor().update(&context.hold)?;
 
         // this hold id must exist.
-        context.hold = self.editor().retrieve("ahr", context.hold_id)?.unwrap();
+        context.hold = self.editor().retrieve("ahr", context.hold_id)?
+            .ok_or_else(|| self.editor().die_event_msg("Cannot find hold"))?;
 
         Ok(())
     }
 
-    /// Cancel expired holds and kick off the A/T no-target event.  Returns
-    /// true (i.e. keep going) if the hold is not expired.  Returns false if
-    /// the hold is canceled or a non-recoverable error occcurred.
-    fn handle_expired_hold(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+    /// If the hold is not eligible (frozen, etc.) for targeting, rollback
+    /// the transaction and return an error.
+    fn check_hold_eligible(&mut self, context: &HoldTargetContext) -> EgResult<()> {
+        let hold = &context.hold;
+
+        if !hold["capture_time"].is_null()
+            || !hold["cancel_time"].is_null()
+            || !hold["fulfillment_time"].is_null()
+            || json_bool(&hold["frozen"])
+        {
+            self.rollback("Hold is not eligible for targeting")?;
+        }
+
+        Ok(())
+    }
+
+    /// Cancel expired holds and kick off the A/T no-target event.
+    ///
+    /// Returns true if the hold was marked as expired, indicating no
+    /// further targeting is needed.
+    fn hold_is_expired(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
         if let Some(etime) = context.hold["expire_time"].as_str() {
             let ex_time = date::parse_datetime(&etime)?;
 
             if ex_time > date::now_local() {
                 // Hold has not yet expired.
-                return Ok(());
+                return Ok(false);
             }
         } else {
             // Hold has no expire time.
-            return Ok(());
+            return Ok(false);
         }
 
         // -- Hold is expired --
@@ -476,11 +474,12 @@ impl HoldTargeter {
             false,
         )?;
 
+
         // Commit after we've created events so all of our writes
         // occur within the same transaction.
-        self.editor().xact_commit()?;
+        self.commit()?;
 
-        self.exit("Hold is expired")
+        Ok(true)
     }
 
     /// Find potential copies for mapping/targeting and add them to
@@ -728,5 +727,76 @@ impl HoldTargeter {
         }
 
         Ok(())
+    }
+
+    /// If the hold has no usable copies, commit the transaction and return
+    /// true (i.e. stop targeting), false otherwise.
+    fn hold_has_no_copies(
+        &mut self,
+        context: &mut HoldTargetContext,
+        force: bool,
+        process_recalls: bool
+    ) -> EgResult<bool> {
+
+        if !force {
+            // If 'force' is set, the caller is saying that all copies have
+            // failed.  Otherwise, see if we have any copies left to inspect.
+            if context.copies.len() > 0 || context.valid_previous_copy > 0 {
+                return Ok(false);
+            }
+        }
+
+        // At this point, all copies have been inspected and none
+        // have yielded a targetable item.
+
+        if process_recalls {
+            todo!();
+        }
+
+        let values = json::object! {
+            "current_copy": JSON_NULL,
+            "prev_check_time": "now"
+        };
+
+        self.update_hold(context, values)?;
+        self.commit()?;
+
+        Ok(true)
+    }
+
+    /// Caller may use this method directly when targeting only one hold.
+    ///
+    /// self.init() is still required.
+    pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
+        self.hold_id = hold_id;
+
+        if !self.transaction_manged_externally {
+            self.editor().xact_begin()?;
+        }
+
+        let hold = self.editor().retrieve("ahr", hold_id)?
+            .ok_or_else(|| self.editor().die_event_msg("No such hold"))?;
+
+        let mut context = HoldTargetContext::new(hold_id, hold);
+        context.find_copy = find_copy;
+
+        self.check_hold_eligible(&mut context)?;
+
+        if self.hold_is_expired(&mut context)? {
+            return Ok(context);
+        }
+
+        self.get_hold_copies(&mut context)?;
+        self.update_copy_maps(&mut context)?;
+        self.handle_hopeless_date(&mut context)?;
+
+        if self.hold_has_no_copies(&mut context, false, false)? {
+            return Ok(context);
+        }
+
+
+        // TODO
+
+        Ok(context)
     }
 }
