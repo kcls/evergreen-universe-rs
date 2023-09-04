@@ -764,6 +764,121 @@ impl HoldTargeter {
         Ok(true)
     }
 
+    /// Attempts to recall a circulation so its item may be targeted.
+    ///
+    /// Returns true if we tried to recall a circulation but could not find
+    /// any to recall.  False otherwise.
+    fn process_recalls(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
+        if context.recall_copies.len() == 0 {
+            return Ok(false);
+        }
+
+        let pickup_lib = json_int(&context.hold["pickup_lib"])?;
+
+        let recall_threshold =
+            self.settings.get_value_at_org("circ.holds.recall_threshold", pickup_lib)?;
+
+        let recall_threshold = match json_string(&recall_threshold) {
+            Ok(t) => t,
+            Err(_) => return Ok(false), // null / not set
+        };
+
+        let return_interval =
+            self.settings.get_value_at_org("circ.holds.recall_return_interval", pickup_lib)?;
+
+        let return_interval = match json_string(&return_interval) {
+            Ok(t) => t,
+            Err(_) => return Ok(false), // null / not set
+        };
+
+        let thresh_intvl_secs = date::interval_to_seconds(&recall_threshold)?;
+        let return_intvl_secs = date::interval_to_seconds(&return_interval)?;
+
+        let copy_ids = context.recall_copies.iter().map(|c| c.id).collect::<Vec<i64>>();
+
+        // See if we have a circulation linked to our recall copies
+        // that we can recall.
+        let query = json::object! {
+            "target_copy": copy_ids,
+            "checkin_time": JSON_NULL,
+            "duration": {">": recall_threshold}
+        };
+
+        let ops = json::object! {
+            "order_by": [{"class": "circ", "field": "due_date"}],
+            "limit": 1
+        };
+
+        let mut circs = self.editor().search_with_ops("circ", query, ops)?;
+
+        let circ = match circs.pop() {
+            Some(c) => c,
+            // Tried our best to recall a circ but could not find one.
+            None => return Ok(true),
+        };
+
+        log::info!("{self} recalling circ {}", circ["id"]);
+
+        let old_due_date = date::parse_datetime(circ["due_date"].as_str().unwrap())?;
+        let xact_start_date = date::parse_datetime(circ["xact_start"].as_str().unwrap())?;
+        let thresh_date = xact_start_date + Duration::seconds(thresh_intvl_secs);
+        let mut return_date = date::now_local() + Duration::seconds(return_intvl_secs);
+
+        // Give the user a new due date of either a full recall threshold,
+        // or the return interval, whichever is further in the future.
+        if thresh_date > return_date {
+            return_date = thresh_date;
+        }
+
+        // ... but avoid exceeding the old due date.
+        if return_date > old_due_date {
+            return_date = old_due_date;
+        }
+
+        todo!();
+
+        Ok(false)
+    }
+
+
+/*
+sub process_recalls {
+
+    my %update_fields = (
+        due_date => $return_date->iso8601(),
+        renewal_remaining => 0,
+    );
+
+    my $fine_rules =
+        $self->parent->get_ou_setting(
+            $pu_lib, 'circ.holds.recall_fine_rules', $self->editor);
+
+    # If the OU hasn't defined new fine rules for recalls, keep them
+    # as they were
+    if ($fine_rules) {
+        $self->log_hold("applying recall fine rules: $fine_rules");
+        my $rules = OpenSRF::Utils::JSON->JSON2perl($fine_rules);
+        $update_fields{recurring_fine} = $rules->[0];
+        $update_fields{fine_interval} = $rules->[1];
+        $update_fields{max_fine} = $rules->[2];
+    }
+
+    # Copy updated fields into circ object.
+    $circ->$_($update_fields{$_}) for keys %update_fields;
+
+    $e->update_action_circulation($circ)
+        or return $self->exit_targeter(
+            "Error updating circulation object in process_recalls", 1);
+
+    # Create trigger event for notifying current user
+    my $ses = OpenSRF::AppSession->create('open-ils.trigger');
+    $ses->request('open-ils.trigger.event.autocreate',
+        'circ.recall.target', $circ, $circ->circ_lib);
+
+    return 1;
+}
+*/
+
     /// Caller may use this method directly when targeting only one hold.
     ///
     /// self.init() is still required.
