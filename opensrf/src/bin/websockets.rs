@@ -524,7 +524,7 @@ impl Session {
 
         let thread = thread
             .as_str()
-            .ok_or(format!("{self} websocket message has no 'thread' key"))?;
+            .ok_or_else(|| format!("{self} websocket message has no 'thread' key"))?;
 
         if thread.len() > MAX_THREAD_SIZE {
             Err(format!("{self} Thread exceeds max thread size; dropping"))?;
@@ -532,7 +532,7 @@ impl Session {
 
         let service = wrapper["service"]
             .as_str()
-            .ok_or(format!("{self} service name is required"))?;
+            .ok_or_else(|| format!("{self} service name is required"))?;
 
         // recipient is the final destination, but we may put this
         // message into the queue of the router as needed.

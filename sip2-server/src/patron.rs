@@ -845,7 +845,7 @@ impl Session {
     pub fn handle_patron_status(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let barcode = msg
             .get_field_value("AA")
-            .ok_or(format!("handle_patron_status() missing patron barcode"))?;
+            .ok_or_else(|| format!("handle_patron_status() missing patron barcode"))?;
 
         let password_op = msg.get_field_value("AD"); // optional
 

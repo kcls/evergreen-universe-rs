@@ -232,7 +232,7 @@ impl Editor {
         self.requestor
             .as_ref()
             .map(|_| ())
-            .ok_or(format!("Editor requestor is unset").into())
+            .ok_or_else(|| format!("Editor requestor is unset").into())
     }
 
     pub fn set_requestor(&mut self, r: &json::JsonValue) {
@@ -671,7 +671,7 @@ impl Editor {
 
         let idlclass = object[idl::CLASSNAME_KEY]
             .as_str()
-            .ok_or(format!("DELETE called on non-IDL object {object:?}"))?;
+            .ok_or_else(|| format!("DELETE called on non-IDL object {object:?}"))?;
 
         let fmapper = self.get_fieldmapper(idlclass)?;
 

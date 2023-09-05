@@ -60,7 +60,7 @@ impl Session {
 
         let barcode = msg
             .get_field_value("AB")
-            .ok_or(format!("handle_item_info() missing item barcode"))?;
+            .ok_or_else(|| format!("handle_item_info() missing item barcode"))?;
 
         let current_loc_op = msg.get_field_value("AP");
         let return_date = &msg.fixed_fields()[2];
@@ -250,7 +250,7 @@ impl Session {
                 circulator
                     .events()
                     .get(0)
-                    .ok_or(format!("API call failed to return an event"))?
+                    .ok_or_else(|| format!("API call failed to return an event"))?
             }
             Err(err) => {
                 circulator.rollback()?;

@@ -620,12 +620,12 @@ impl Parser {
     pub fn de_flesh_object(&self, obj: &mut JsonValue) -> EgResult<()> {
         let cname = obj[CLASSNAME_KEY]
             .as_str()
-            .ok_or(format!("Not an IDL object: {}", obj.dump()))?;
+            .ok_or_else(|| format!("Not an IDL object: {}", obj.dump()))?;
 
         let idl_class = self
             .classes
             .get(cname)
-            .ok_or(format!("Not an IDL class: {cname}"))?;
+            .ok_or_else(|| format!("Not an IDL class: {cname}"))?;
 
         for (name, field) in idl_class.fields().iter() {
             let value = &obj[name];
@@ -712,7 +712,7 @@ impl Parser {
         let _ = self
             .classes
             .get(classname)
-            .ok_or(format!("IDL no such class {classname}"))?;
+            .ok_or_else(|| format!("IDL no such class {classname}"))?;
 
         /*
         // There may be cases where we want to attach misc. fields

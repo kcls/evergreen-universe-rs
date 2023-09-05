@@ -718,19 +718,15 @@ impl Circulator {
         }
 
         if self.get_option_bool("dont_change_lost_zero") {
-
             // Caller has requested we leave well enough alone, i.e.
             // if an item was lost and paid, it's not eligible to be
             // re-opened for additional billing.
             let circ = self.circ.as_ref().unwrap();
             self.editor.update(circ.clone())?;
-
         } else {
-
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap();
                 circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
-
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -922,14 +918,14 @@ impl Circulator {
         let duedate = match self.circ.as_ref() {
             Some(circ) => circ["due_date"]
                 .as_str()
-                .ok_or(format!("{self} circ has no due date?"))?,
+                .ok_or_else(|| format!("{self} circ has no due date?"))?,
             None => return Ok(()),
         };
 
         let backdate = match self.options.get("backdate") {
             Some(bd) => bd
                 .as_str()
-                .ok_or(format!("{self} bad backdate value: {bd}"))?,
+                .ok_or_else(|| format!("{self} bad backdate value: {bd}"))?,
             None => return Ok(()),
         };
 
@@ -940,11 +936,11 @@ impl Circulator {
 
         new_date = new_date
             .with_hour(orig_date.hour())
-            .ok_or(format!("Could not set backdate hours"))?;
+            .ok_or_else(|| format!("Could not set backdate hours"))?;
 
         new_date = new_date
             .with_minute(orig_date.minute())
-            .ok_or(format!("Could not set backdate minutes"))?;
+            .ok_or_else(|| format!("Could not set backdate minutes"))?;
 
         if new_date > Local::now() {
             log::info!("{self} ignoring future backdate: {new_date}");
@@ -1509,13 +1505,11 @@ impl Circulator {
             params,
         )?;
 
-        let resp = result.ok_or(EgError::Debug(format!(
-            "Booking capture failed to return event"
-        )))?;
+        let resp = result
+            .ok_or_else(|| EgError::Debug(format!("Booking capture failed to return event")))?;
 
-        let mut evt = EgEvent::parse(&resp).ok_or(EgError::Debug(format!(
-            "Booking capture failed to return event"
-        )))?;
+        let mut evt = EgEvent::parse(&resp)
+            .ok_or_else(|| EgError::Debug(format!("Booking capture failed to return event")))?;
 
         if evt.textcode() == "RESERVATION_NOT_FOUND" {
             if let Some(cause) = evt.payload()["fail_cause"].as_str() {

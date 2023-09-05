@@ -214,7 +214,7 @@ impl Shell {
     fn db_translator_mut(&mut self) -> Result<&mut idldb::Translator, String> {
         self.db_translator
             .as_mut()
-            .ok_or(format!("DB connection required"))
+            .ok_or_else(|| format!("DB connection required"))
     }
 
     /// Main entry point.
@@ -715,7 +715,7 @@ impl Shell {
             .idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))?;
+            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
         if idl_class.fields().get(fieldname).is_none() {
             Err(format!("No such IDL field: {fieldname}"))?;
@@ -782,14 +782,14 @@ impl Shell {
 
         let classname = obj[idl::CLASSNAME_KEY]
             .as_str()
-            .ok_or(format!("Not a valid IDL object value: {}", obj.dump()))?;
+            .ok_or_else(|| format!("Not a valid IDL object value: {}", obj.dump()))?;
 
         let idl_class = self
             .ctx()
             .idl()
             .classes()
             .get(classname)
-            .ok_or(format!("Object has an invalid class name {classname}"))?;
+            .ok_or_else(|| format!("Object has an invalid class name {classname}"))?;
 
         // Get the max field name length for improved formatting.
         let mut maxlen = 0;

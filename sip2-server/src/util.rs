@@ -74,7 +74,7 @@ impl Session {
         let requestor = self
             .editor()
             .requestor()
-            .ok_or(format!("Editor requestor is unset"))?;
+            .ok_or_else(|| format!("Editor requestor is unset"))?;
 
         let mut field = &requestor["ws_ou"];
         if field.is_null() {

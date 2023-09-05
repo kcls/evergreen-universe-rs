@@ -433,13 +433,13 @@ where
 
     let mut hold = editor
         .retrieve("ahr", &hold_id)?
-        .ok_or(editor.die_event())?;
+        .ok_or_else(|| editor.die_event())?;
 
     // Resetting captured holds requires a little more care.
     if !hold["capture_time"].is_null() && !hold["current_copy"].is_null() {
         let mut copy = editor
             .retrieve("acp", hold["current_copy"].clone())?
-            .ok_or(editor.die_event())?;
+            .ok_or_else(|| editor.die_event())?;
 
         let copy_status = json_int(&copy["status"])?;
 

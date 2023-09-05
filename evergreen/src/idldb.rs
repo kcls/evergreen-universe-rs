@@ -237,7 +237,7 @@ impl Translator {
         self.idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}").into())
+            .ok_or_else(|| format!("No such IDL class: {classname}").into())
     }
 
     /// Create an IDL object in the database
@@ -286,15 +286,15 @@ impl Translator {
             .idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))?;
+            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
-        let tablename = idl_class.tablename().ok_or(format!(
-            "Cannot query an IDL class that has no tablename: {classname}"
-        ))?;
+        let tablename = idl_class.tablename().ok_or_else(|| {
+            format!("Cannot query an IDL class that has no tablename: {classname}")
+        })?;
 
         let pkey_field = idl_class
             .pkey()
-            .ok_or(format!("Cannot create rows that have no primary key"))?;
+            .ok_or_else(|| format!("Cannot create rows that have no primary key"))?;
 
         let mut query = format!("INSERT INTO {tablename} (");
 
@@ -363,7 +363,7 @@ impl Translator {
         let (pkey_field, pkey_value) = self
             .idl
             .get_pkey_info(obj)
-            .ok_or(format!("Object has no primary key field"))?;
+            .ok_or_else(|| format!("Object has no primary key field"))?;
 
         let mut filter = JsonValue::new_object();
         filter
@@ -393,11 +393,11 @@ impl Translator {
             .idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))?;
+            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
-        let tablename = class.tablename().ok_or(format!(
-            "Cannot query an IDL class that has no tablename: {classname}"
-        ))?;
+        let tablename = class.tablename().ok_or_else(|| {
+            format!("Cannot query an IDL class that has no tablename: {classname}")
+        })?;
 
         let mut param_list: Vec<String> = Vec::new();
         let mut param_index: usize = 1;
@@ -451,15 +451,15 @@ impl Translator {
             .idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))?;
+            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
-        let tablename = class.tablename().ok_or(format!(
-            "Cannot query an IDL class that has no tablename: {classname}"
-        ))?;
+        let tablename = class.tablename().ok_or_else(|| {
+            format!("Cannot query an IDL class that has no tablename: {classname}")
+        })?;
 
         let pkey_field = class
             .pkey_field()
-            .ok_or(format!("IDL class {classname} has no primary key field"))?;
+            .ok_or_else(|| format!("IDL class {classname} has no primary key field"))?;
 
         let mut param_list: Vec<String> = Vec::new();
         let mut param_index: usize = 1;
@@ -494,11 +494,11 @@ impl Translator {
             .idl()
             .classes()
             .get(classname)
-            .ok_or(format!("No such IDL class: {classname}"))?;
+            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
-        let tablename = class.tablename().ok_or(format!(
-            "Cannot query an IDL class that has no tablename: {classname}"
-        ))?;
+        let tablename = class.tablename().ok_or_else(|| {
+            format!("Cannot query an IDL class that has no tablename: {classname}")
+        })?;
 
         let columns = class.real_field_names_sorted().join(", ");
 
@@ -610,10 +610,12 @@ impl Translator {
             let field = &kvp.0;
             let value = &kvp.1;
 
-            let idl_field = class.get_real_field(field).ok_or(format!(
-                "No such real field '{field}' on class '{}'",
-                class.classname()
-            ))?;
+            let idl_field = class.get_real_field(field).ok_or_else(|| {
+                format!(
+                    "No such real field '{field}' on class '{}'",
+                    class.classname()
+                )
+            })?;
 
             strings.push(self.append_json_literal(
                 param_index,
@@ -646,10 +648,12 @@ impl Translator {
             let field = &kvp.0;
             let value = &kvp.1;
 
-            let idl_field = class.get_real_field(field).ok_or(format!(
-                "No such real field '{field}' on class '{}'",
-                class.classname()
-            ))?;
+            let idl_field = class.get_real_field(field).ok_or_else(|| {
+                format!(
+                    "No such real field '{field}' on class '{}'",
+                    class.classname()
+                )
+            })?;
 
             parts.push(format!(
                 "{field} {}",
@@ -692,10 +696,12 @@ impl Translator {
         for (field, subq) in filter.entries() {
             log::trace!("compile_class_filter adding filter on field: {field}");
 
-            let idl_field = class.get_real_field(field).ok_or(format!(
-                "No such real field '{field}' on class '{}'",
-                class.classname()
-            ))?;
+            let idl_field = class.get_real_field(field).ok_or_else(|| {
+                format!(
+                    "No such real field '{field}' on class '{}'",
+                    class.classname()
+                )
+            })?;
 
             let filter = match subq {
                 JsonValue::Array(_) => self.compile_class_filter_array(
@@ -792,7 +798,7 @@ impl Translator {
         let (key, val) = obj
             .entries()
             .next()
-            .ok_or(format!("Invalid query object; {obj:?}"))?;
+            .ok_or_else(|| format!("Invalid query object; {obj:?}"))?;
 
         let operand = key.to_uppercase();
 

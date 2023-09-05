@@ -193,7 +193,7 @@ impl Session {
         let mut result = CheckoutResult::new();
 
         let evt = eg::event::EgEvent::parse(&event)
-            .ok_or(format!("API call {method} failed to return an event"))?;
+            .ok_or_else(|| format!("API call {method} failed to return an event"))?;
 
         if evt.is_success() {
             let circ = &evt.payload()["circ"];

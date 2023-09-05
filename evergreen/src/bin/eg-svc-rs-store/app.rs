@@ -158,7 +158,7 @@ impl Application for RsStoreApplication {
         let idl_file = host_settings
             .value("IDL")
             .as_str()
-            .ok_or(format!("No IDL path!"))?;
+            .ok_or_else(|| format!("No IDL path!"))?;
 
         let idl = idl::Parser::parse_file(idl_file)
             .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
@@ -318,7 +318,7 @@ impl ApplicationWorker for RsStoreWorker {
         let worker_env = env
             .as_any()
             .downcast_ref::<RsStoreEnv>()
-            .ok_or(format!("Unexpected environment type in absorb_env()"))?;
+            .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
 
         // Each worker gets its own client, so we have to tell our
         // client how to pack/unpack network data.

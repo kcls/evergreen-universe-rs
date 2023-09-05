@@ -76,9 +76,9 @@ fn add_hms(part: &str, mut date: DateTime<Local>) -> Result<DateTime<Local>, Str
     let errstr = || format!("Invalid/unsupported hh::mm::ss string: {part}");
     let time_parts = part.split(":").collect::<Vec<&str>>();
 
-    let hours = time_parts.get(0).ok_or(errstr())?;
-    let minutes = time_parts.get(1).ok_or(errstr())?;
-    let seconds = time_parts.get(2).ok_or(errstr())?;
+    let hours = time_parts.get(0).ok_or_else(|| errstr())?;
+    let minutes = time_parts.get(1).ok_or_else(|| errstr())?;
+    let seconds = time_parts.get(2).ok_or_else(|| errstr())?;
 
     // Turn the string values into numeric values.
     let hours = hours.parse::<i64>().or_else(|_| Err(errstr()))?;

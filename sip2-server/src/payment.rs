@@ -298,7 +298,7 @@ impl Session {
             vec![authtoken, args, json::from(last_xact_id)],
         )?;
 
-        let resp = resp.ok_or(format!("Payment API returned no response"))?;
+        let resp = resp.ok_or_else(|| format!("Payment API returned no response"))?;
 
         if let Some(evt) = eg::event::EgEvent::parse(&resp) {
             if let Some(d) = evt.desc() {

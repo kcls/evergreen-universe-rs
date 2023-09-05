@@ -321,16 +321,18 @@ impl GatewayHandler {
     fn parse_request(&self, text: &str) -> Result<ParsedGatewayRequest, String> {
         let mut lines = text.split("\r\n");
 
-        let request = lines.next().ok_or(format!("Request has no request line"))?;
+        let request = lines
+            .next()
+            .ok_or_else(|| format!("Request has no request line"))?;
         let mut request_parts = request.split_whitespace();
 
         let http_method = request_parts // GET, POST, etc.
             .next()
-            .ok_or(format!("Request contains no method"))?;
+            .ok_or_else(|| format!("Request contains no method"))?;
 
         let get_query = request_parts // Relative URL with query params
             .next()
-            .ok_or(format!("Request contains no path"))?;
+            .ok_or_else(|| format!("Request contains no path"))?;
 
         // For now, we don't really care about the headers.
         // Gobble them up and discard them.

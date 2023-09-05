@@ -81,7 +81,7 @@ pub fn calculate_penalties(
 
             let csp = editor
                 .retrieve("csp", csp_id)?
-                .ok_or(format!("DB returned an invalid csp id??"))?;
+                .ok_or_else(|| format!("DB returned an invalid csp id??"))?;
 
             let evt_name = format!("penalty.{}", csp["name"]);
             trigger_events.push((evt_name, new_pen, context_org));

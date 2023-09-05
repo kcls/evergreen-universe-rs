@@ -413,7 +413,9 @@ impl HoldTargeter {
         self.editor().update(context.hold.clone())?;
 
         // this hold id must exist.
-        context.hold = self.editor().retrieve("ahr", context.hold_id)?
+        context.hold = self
+            .editor()
+            .retrieve("ahr", context.hold_id)?
             .ok_or_else(|| self.editor().die_event_msg("Cannot find hold"))?;
 
         Ok(())
@@ -472,7 +474,6 @@ impl HoldTargeter {
             None,
             false,
         )?;
-
 
         // Commit after we've created events so all of our writes
         // occur within the same transaction.
@@ -674,7 +675,8 @@ impl HoldTargeter {
     /// Tell the DB to update the list of potential copies for our hold
     /// based on the copies we just found.
     fn update_copy_maps(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
-        let ints = context.copies
+        let ints = context
+            .copies
             .iter()
             .map(|c| format!("{}", c.id))
             .collect::<Vec<String>>()
@@ -711,7 +713,8 @@ impl HoldTargeter {
         }
 
         // Hope left in any of the statuses?
-        let we_have_hope = context.copies
+        let we_have_hope = context
+            .copies
             .iter()
             .any(|c| !self.hopeless_prone_statuses.contains(&c.status));
 
@@ -734,9 +737,8 @@ impl HoldTargeter {
         &mut self,
         context: &mut HoldTargetContext,
         force: bool,
-        process_recalls: bool
+        process_recalls: bool,
     ) -> EgResult<bool> {
-
         if !force {
             // If 'force' is set, the caller is saying that all copies have
             // failed.  Otherwise, see if we have any copies left to inspect.
@@ -774,16 +776,18 @@ impl HoldTargeter {
 
         let pickup_lib = json_int(&context.hold["pickup_lib"])?;
 
-        let recall_threshold =
-            self.settings.get_value_at_org("circ.holds.recall_threshold", pickup_lib)?;
+        let recall_threshold = self
+            .settings
+            .get_value_at_org("circ.holds.recall_threshold", pickup_lib)?;
 
         let recall_threshold = match json_string(&recall_threshold) {
             Ok(t) => t,
             Err(_) => return Ok(false), // null / not set
         };
 
-        let return_interval =
-            self.settings.get_value_at_org("circ.holds.recall_return_interval", pickup_lib)?;
+        let return_interval = self
+            .settings
+            .get_value_at_org("circ.holds.recall_return_interval", pickup_lib)?;
 
         let return_interval = match json_string(&return_interval) {
             Ok(t) => t,
@@ -793,7 +797,11 @@ impl HoldTargeter {
         let thresh_intvl_secs = date::interval_to_seconds(&recall_threshold)?;
         let return_intvl_secs = date::interval_to_seconds(&return_interval)?;
 
-        let copy_ids = context.recall_copies.iter().map(|c| c.id).collect::<Vec<i64>>();
+        let copy_ids = context
+            .recall_copies
+            .iter()
+            .map(|c| c.id)
+            .collect::<Vec<i64>>();
 
         // See if we have a circulation linked to our recall copies
         // that we can recall.
@@ -837,8 +845,10 @@ impl HoldTargeter {
         circ["due_date"] = json::from(date::to_iso(&return_date));
         circ["renewal_remaining"] = json::from(0);
 
-        let mut fine_rules = self.settings.get_value_at_org(
-            "circ.holds.recall_fine_rules", pickup_lib)?.clone();
+        let mut fine_rules = self
+            .settings
+            .get_value_at_org("circ.holds.recall_fine_rules", pickup_lib)?
+            .clone();
 
         log::debug!("{self} recall fine rules: {}", fine_rules);
 
@@ -869,7 +879,6 @@ impl HoldTargeter {
         Ok(false)
     }
 
-
     /// Caller may use this method directly when targeting only one hold.
     ///
     /// self.init() is still required.
@@ -880,7 +889,9 @@ impl HoldTargeter {
             self.editor().xact_begin()?;
         }
 
-        let hold = self.editor().retrieve("ahr", hold_id)?
+        let hold = self
+            .editor()
+            .retrieve("ahr", hold_id)?
             .ok_or_else(|| self.editor().die_event_msg("No such hold"))?;
 
         let mut context = HoldTargetContext::new(hold_id, hold);
@@ -899,7 +910,6 @@ impl HoldTargeter {
         if self.hold_has_no_copies(&mut context, false, false)? {
             return Ok(context);
         }
-
 
         // TODO
 

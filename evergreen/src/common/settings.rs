@@ -231,7 +231,7 @@ impl Settings {
         // fetch_context_values guarantees a value is applied
         // for this setting in the cache (defaulting to json null).
         self.get_cached_value(context, name)
-            .ok_or(format!("Setting value missing from cache").into())
+            .ok_or_else(|| format!("Setting value missing from cache").into())
     }
 
     pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&JsonValue> {
@@ -330,7 +330,7 @@ impl Settings {
 
         let name = setting["name"]
             .as_str()
-            .ok_or(format!("Setting has no name"))?;
+            .ok_or_else(|| format!("Setting has no name"))?;
 
         let entry = SettingEntry {
             value: value,
