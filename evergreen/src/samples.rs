@@ -64,7 +64,7 @@ impl SampleData {
 
         let acn = e.idl().create_from("acn", seed)?;
 
-        e.create(&acn)
+        e.create(acn)
     }
 
     pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> EgResult<JsonValue> {
@@ -81,7 +81,7 @@ impl SampleData {
 
         let acp = e.idl().create_from("acp", seed)?;
 
-        e.create(&acp)
+        e.create(acp)
     }
 
     pub fn delete_default_acn(&self, e: &mut Editor) -> EgResult<()> {
@@ -90,8 +90,8 @@ impl SampleData {
             json::object! {label: self.acn_label.to_string(), deleted: "f"},
         )?;
 
-        if let Some(acn) = acns.get(0) {
-            e.delete(acn)?;
+        if acns.len() > 0 {
+            e.delete(acns[0].to_owned())?;
         }
 
         Ok(())
@@ -108,7 +108,7 @@ impl SampleData {
 
     pub fn delete_default_acp(&self, e: &mut Editor) -> EgResult<()> {
         if let Ok(acp) = self.get_default_acp(e) {
-            e.delete(&acp)?;
+            e.delete(acp)?;
         }
         Ok(())
     }
@@ -118,7 +118,7 @@ impl SampleData {
         for (k, v) in values.entries() {
             acp[k] = v.to_owned();
         }
-        e.update(&acp)
+        e.update(acp)
     }
 
     /// Create default user with a default card.
@@ -135,7 +135,7 @@ impl SampleData {
 
         let au = e.idl().create_from("au", seed)?;
 
-        let mut au = e.create(&au)?;
+        let mut au = e.create(au)?;
 
         let seed = json::object! {
             barcode: self.au_barcode.to_string(),
@@ -144,11 +144,11 @@ impl SampleData {
 
         let ac = e.idl().create_from("ac", seed)?;
 
-        let ac = e.create(&ac)?;
+        let ac = e.create(ac)?;
 
         // Link the user back to the card
         au["card"] = ac["id"].clone();
-        e.update(&au)?;
+        e.update(au.clone())?;
 
         Ok(au)
     }

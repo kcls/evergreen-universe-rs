@@ -74,7 +74,7 @@ pub fn calculate_penalties(
         } else {
             // This is a new penalty.  Create it.
             let new_pen = editor.idl().create_from("ausp", pen_hash.clone())?;
-            editor.create(&new_pen)?;
+            let new_pen = editor.create(new_pen)?;
 
             // Track new penalties so we can fire related A/T events.
             let csp_id = pen_hash["standing_penalty"].clone();
@@ -91,7 +91,7 @@ pub fn calculate_penalties(
     // Delete applied penalties that are no longer wanted.
     for pen_hash in existing_penalties {
         let del_pen = editor.idl().create_from("ausp", pen_hash.clone())?;
-        editor.delete(&del_pen)?;
+        editor.delete(del_pen)?;
     }
 
     for events in trigger_events {

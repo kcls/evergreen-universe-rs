@@ -604,7 +604,8 @@ impl Editor {
         Err(format!("Unexpected response to method {method}").into())
     }
 
-    pub fn update(&mut self, object: &json::JsonValue) -> EgResult<()> {
+    /// Returns the pkey of the updated object.
+    pub fn update(&mut self, object: json::JsonValue) -> EgResult<()> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for UPDATE"))?;
         }
@@ -630,16 +631,17 @@ impl Editor {
     }
 
     /// Returns the newly created object.
-    pub fn create(&mut self, object: &json::JsonValue) -> EgResult<json::JsonValue> {
+    pub fn create(&mut self, object: json::JsonValue) -> EgResult<json::JsonValue> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for CREATE"))?;
         }
 
-        let idlclass = object[idl::CLASSNAME_KEY]
-            .as_str()
-            .ok_or(format!("CREATE called on non-IDL object: {object:?}"))?;
+        let idlclass = match object[idl::CLASSNAME_KEY].as_str() {
+            Some(s) => s.to_string(),
+            None => return Err(format!("CREATE called on non-IDL object: {object:?}").into()),
+        };
 
-        let fmapper = self.get_fieldmapper(idlclass)?;
+        let fmapper = self.get_fieldmapper(&idlclass)?;
 
         let method = self.app_method(&format!("direct.{fmapper}.create"));
 
@@ -662,7 +664,7 @@ impl Editor {
     /// Delete an IDL Object.
     ///
     /// Response is the PKEY value as a JsonValue.
-    pub fn delete(&mut self, object: &json::JsonValue) -> EgResult<json::JsonValue> {
+    pub fn delete(&mut self, object: json::JsonValue) -> EgResult<json::JsonValue> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for DELETE"))?;
         }

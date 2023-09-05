@@ -557,7 +557,7 @@ impl Circulator {
             };
 
             let alert = self.editor.idl().create_from("aca", alert)?;
-            let mut alert = self.editor.create(&alert)?;
+            let mut alert = self.editor.create(alert)?;
 
             alert["alert_type"] = atype.clone(); // flesh
 
@@ -805,7 +805,7 @@ impl Circulator {
 
         self.editor.idl().de_flesh_object(&mut copy)?;
 
-        self.editor.update(&copy)?;
+        self.editor.update(copy)?;
 
         // Load the updated copy with the usual fleshing.
         self.load_copy()?;

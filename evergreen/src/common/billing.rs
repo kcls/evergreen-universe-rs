@@ -59,7 +59,7 @@ pub fn void_bills(
             bill["note"] = json::from(new_note);
         }
 
-        editor.update(&bill)?;
+        editor.update(bill)?;
         check_open_xact(editor, xact_id)?;
     }
 
@@ -102,7 +102,7 @@ where
 
             log::info!("Closing completed transaction {xact_id} on zero balance");
             xact["xact_finish"] = json::from("now");
-            return editor.update(&xact);
+            return editor.update(xact);
         }
     } else if !xact_open {
         // Transaction closed but money or refund still owed.
@@ -110,7 +110,7 @@ where
         if !zero_owed && !xact_open {
             log::info!("Re-opening transaction {xact_id} on non-zero balance");
             xact["xact_finish"] = json::JsonValue::Null;
-            return editor.update(&xact);
+            return editor.update(xact);
         }
     }
 
@@ -154,7 +154,7 @@ pub fn create_bill(
     };
 
     let bill = editor.idl().create_from("mb", bill)?;
-    editor.create(&bill)
+    editor.create(bill)
 }
 
 /// Void a set of bills (by type) for a transaction or apply
@@ -280,7 +280,8 @@ pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -
         };
 
         let payment = editor.idl().create_from("maa", payment)?;
-        editor.create(&payment)?;
+
+        let payment = editor.create(payment)?;
 
         // Adjust our bill_payment_map
         map.adjustment_amount += amount_to_adjust;
@@ -718,7 +719,7 @@ pub fn generate_fines_for_xact(
                 if let Some(mut circ) = editor.retrieve("circ", xact_id)? {
                     circ["stop_fines"] = json::from("MAXFINES");
                     circ["stop_fines_time"] = json::from("now");
-                    editor.update(&circ)?;
+                    editor.update(circ)?;
                     break;
                 }
             }
@@ -770,7 +771,7 @@ pub fn generate_fines_for_xact(
         };
 
         let bill = editor.idl().create_from("mb", bill)?;
-        editor.create(&bill)?;
+        editor.create(bill)?;
     }
 
     let xact = editor.retrieve("mbt", xact_id)?.unwrap(); // required

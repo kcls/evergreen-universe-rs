@@ -1,4 +1,3 @@
-use crate::common::org;
 use crate::common::settings::Settings;
 use crate::common::trigger;
 use crate::date;
@@ -196,7 +195,7 @@ impl HoldTargeter {
     }
 
     pub fn init(&mut self) -> EgResult<()> {
-        let mut retarget_intvl_bind = None;
+        let retarget_intvl_bind;
         let retarget_intvl = if let Some(intvl) = self.retarget_interval.as_ref() {
             intvl
         } else {
@@ -402,8 +401,8 @@ impl HoldTargeter {
     ///
     /// Refresh our copy of the hold once updated to pick up DB-generated
     /// values (dates, etc.).
-    fn update_hold(&mut self, context: &mut HoldTargetContext, mut values: JsonValue) -> EgResult<()> {
-        for (field, value) in values.entries() {
+    fn update_hold(&mut self, context: &mut HoldTargetContext, values: JsonValue) -> EgResult<()> {
+        for (field, _) in values.entries() {
             if field == "id" {
                 // nope
                 continue;
@@ -411,7 +410,7 @@ impl HoldTargeter {
             context.hold[field] = values[field].to_owned();
         }
 
-        self.editor().update(&context.hold)?;
+        self.editor().update(context.hold.clone())?;
 
         // this hold id must exist.
         context.hold = self.editor().retrieve("ahr", context.hold_id)?
@@ -850,9 +849,11 @@ impl HoldTargeter {
             circ["recurring_fine"] = fine_rules.pop();
         }
 
-        self.editor().update(&circ)?;
-
-        // Create events that will be fired/processed later.
+        // Create events that will be fired/processed later.  Run this
+        // before update(circ) so the editor call can consume the circ.
+        // Trigger gets its values for 'target' from the target value
+        // provided, so it's OK the update call has not yet occurred in
+        // the database.
         trigger::create_events_for_object(
             self.editor(),
             "circ.recall.target",
@@ -862,6 +863,8 @@ impl HoldTargeter {
             None,
             false,
         )?;
+
+        self.editor().update(circ)?;
 
         Ok(false)
     }

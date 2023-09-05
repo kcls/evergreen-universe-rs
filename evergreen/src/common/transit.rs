@@ -19,7 +19,7 @@ where
 
     let mut transit = editor
         .retrieve_with_ops("atc", transit_id.into(), flesh)?
-        .ok_or(editor.die_event())?;
+        .ok_or_else(|| editor.die_event())?;
 
     let mut copy = transit["target_copy"].take();
     transit["target_copy"] = copy["id"].clone();
@@ -50,8 +50,14 @@ where
         }
     }
 
+    let mut reset_hold_id = None;
+    if transit["hold_transit_copy"].is_object() && !skip_hold_reset {
+        // capture this before the transit is consumed below.
+        reset_hold_id = Some(json_int(&transit["hold_transit_copy"]["hold"])?);
+    }
+
     transit["cancel_time"] = json::from("now");
-    editor.update(&transit)?;
+    editor.update(transit)?;
 
     let copy_status = json_int(&copy["status"])?;
 
@@ -77,11 +83,10 @@ where
         copy["editor"] = json::from(editor.requestor_id());
         copy["edit_date"] = json::from("now");
 
-        editor.update(&copy)?;
+        editor.update(copy)?;
     }
 
-    if transit["hold_transit_copy"].is_object() && !skip_hold_reset {
-        let hold_id = json_int(&transit["hold_transit_copy"]["hold"])?;
+    if let Some(hold_id) = reset_hold_id {
         holds::reset_hold(editor, hold_id)?;
     }
 

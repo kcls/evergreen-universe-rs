@@ -368,7 +368,7 @@ impl BibLinker {
 
     fn update_bib_record(
         &mut self,
-        bre: &mut json::JsonValue,
+        mut bre: json::JsonValue,
         record: &marc::Record,
     ) -> Result<(), String> {
         let xml = record.to_xml()?;
@@ -386,7 +386,7 @@ impl BibLinker {
         bre["editor"] = json::from(self.staff_account);
 
         self.editor.xact_begin()?;
-        self.editor.update(&bre)?;
+        self.editor.update(bre)?;
         self.editor.xact_commit()?;
 
         Ok(())
@@ -506,7 +506,7 @@ impl BibLinker {
                 self.editor.connect()?;
             }
 
-            let mut bre = match self.editor.retrieve("bre", rec_id)? {
+            let bre = match self.editor.retrieve("bre", rec_id)? {
                 Some(r) => r,
                 None => {
                     log::warn!("No such bib record: {rec_id}");
@@ -528,7 +528,7 @@ impl BibLinker {
                 }
             };
 
-            if let Err(e) = self.link_one_bib(rec_id, &mut bre, &control_fields, &mut record) {
+            if let Err(e) = self.link_one_bib(rec_id, bre, &control_fields, &mut record) {
                 log::error!("Error processing bib record {rec_id}: {e}");
                 self.editor.disconnect()?;
                 self.editor.connect()?;
@@ -541,7 +541,7 @@ impl BibLinker {
     fn link_one_bib(
         &mut self,
         rec_id: i64,
-        bre: &mut json::JsonValue,
+        bre: json::JsonValue,
         control_fields: &Vec<ControlledField>,
         record: &mut marc::Record,
     ) -> Result<(), String> {

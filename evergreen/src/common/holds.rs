@@ -190,7 +190,7 @@ where
 
     // Target the copy
     targeted_hold["current_copy"] = json::from(copy_id);
-    editor.update(&targeted_hold)?;
+    editor.update(targeted_hold.clone())?;
 
     // len() test required for drain()
     if old_holds.len() > 0 {
@@ -199,10 +199,13 @@ where
             if hold["id"] == targeted_hold["id"] {
                 continue;
             }
+            let hold_id = json_int(&hold["id"])?;
+
             hold["current_copy"].take();
             hold["prev_check_time"].take();
-            editor.update(&hold)?;
-            retarget.push(json_int(&hold["id"])?);
+
+            editor.update(hold)?;
+            retarget.push(hold_id);
         }
     }
 
@@ -445,7 +448,7 @@ where
             copy["editor"] = json::from(editor.requestor_id());
             copy["edit_date"] = json::from("now");
 
-            editor.update(&copy)?;
+            editor.update(copy)?;
         } else if copy_status == C::COPY_STATUS_IN_TRANSIT {
             let query = json::object! {
                 "hold": hold_id.clone(),
@@ -464,7 +467,7 @@ where
     hold["shelf_expire_time"].take();
     hold["current_shelf_lib"].take();
 
-    editor.update(&hold)?;
+    editor.update(hold)?;
     editor.commit()?;
 
     let id = json_int(&hold_id)?; // TODO avoid this translation

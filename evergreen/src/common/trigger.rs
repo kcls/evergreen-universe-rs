@@ -107,7 +107,7 @@ pub fn create_event_for_object_and_def(
 
     let event = editor.idl().create_from("atev", event)?;
 
-    Ok(Some(editor.create(&event)?))
+    Ok(Some(editor.create(event)?))
 }
 
 // Non-doc test required since this is a private function.

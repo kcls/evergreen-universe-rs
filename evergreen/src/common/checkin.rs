@@ -513,7 +513,7 @@ impl Circulator {
             copy: self.copy()["id"].clone(),
         };
 
-        self.editor.create(&aci)?;
+        self.editor.create(aci)?;
 
         Ok(())
     }
@@ -718,15 +718,19 @@ impl Circulator {
         }
 
         if self.get_option_bool("dont_change_lost_zero") {
+
             // Caller has requested we leave well enough alone, i.e.
             // if an item was lost and paid, it's not eligible to be
             // re-opened for additional billing.
-            let circ = self.circ.as_mut().unwrap();
-            self.editor.update(&circ)?;
+            let circ = self.circ.as_ref().unwrap();
+            self.editor.update(circ.clone())?;
+
         } else {
+
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap();
                 circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
+
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -745,8 +749,8 @@ impl Circulator {
                 }
             }
 
-            let circ = self.circ.as_mut().unwrap();
-            self.editor.update(&circ)?;
+            let circ = self.circ.as_ref().unwrap();
+            self.editor.update(circ.clone())?;
             self.handle_checkin_fines()?;
         }
 
@@ -1099,7 +1103,7 @@ impl Circulator {
         circ["stop_fines"] = stop_fines;
         circ["stop_fines_time"] = stop_fines_time;
 
-        self.editor.update(circ)?;
+        self.editor.update(circ.clone())?;
 
         // Update our copy to get in-DB changes.
         self.circ = self.editor.retrieve("circ", circ["id"].clone())?;
@@ -1233,9 +1237,9 @@ impl Circulator {
         }
 
         // Receive the transit
-        let transit = self.transit.as_mut().unwrap();
+        let mut transit = self.transit.take().unwrap();
         transit["dest_recv_time"] = json::from("now");
-        self.editor.update(&transit)?;
+        self.editor.update(transit)?;
 
         // Refresh our copy of the transit.
         self.transit = self.editor.retrieve("atc", transit_id)?;
@@ -1308,9 +1312,12 @@ impl Circulator {
             // no further processing needed.
             self.set_option_true("noop");
 
-            let hold = self.hold.as_mut().unwrap();
+            let mut hold = self.hold.take().unwrap();
+            let hold_id = json_int(&hold["id"])?;
             hold["fulfillment_time"] = json::from("now");
-            self.editor.update(&hold)?;
+            self.editor.update(hold)?;
+
+            self.hold = self.editor.retrieve("ahr", hold_id)?;
 
             return Ok(());
         }
@@ -1372,7 +1379,8 @@ impl Circulator {
 
     /// Set hold shelf values and update the hold.
     fn put_hold_on_shelf(&mut self) -> EgResult<()> {
-        let hold = self.hold.as_mut().unwrap();
+        let mut hold = self.hold.take().unwrap();
+        let hold_id = json_int(&hold["id"])?;
 
         hold["shelf_time"] = json::from("now");
         hold["current_shelf_lib"] = json::from(self.circ_lib);
@@ -1381,8 +1389,8 @@ impl Circulator {
             hold["shelf_expire_time"] = json::from(date);
         }
 
-        self.editor.update(&hold)?;
-        self.hold = self.editor.retrieve("ahr", hold["id"].clone())?;
+        self.editor.update(hold)?;
+        self.hold = self.editor.retrieve("ahr", hold_id)?;
 
         Ok(())
     }
@@ -1476,8 +1484,9 @@ impl Circulator {
             // This updates and refreshes the hold.
             self.put_hold_on_shelf()?;
         } else {
-            self.editor.update(&hold)?;
-            self.hold = self.editor.retrieve("ahr", hold["id"].clone())?;
+            let hold_id = json_int(&hold["id"])?;
+            self.editor.update(hold)?;
+            self.hold = self.editor.retrieve("ahr", hold_id)?;
         }
 
         Ok(true)
@@ -1682,7 +1691,7 @@ impl Circulator {
                 let mut h = (*hold).clone();
                 h["current_shelf_lib"].take();
                 h["shelf_time"].take();
-                self.editor.update(&h)?;
+                self.editor.update(h)?;
             }
         }
 
@@ -1690,11 +1699,11 @@ impl Circulator {
 
         if maybe_remote_hold.is_some() {
             let t = self.editor.idl().create_from("ahtc", transit)?;
-            let t = self.editor.create(&t)?;
+            let t = self.editor.create(t)?;
             self.hold_transit = self.editor.retrieve("ahtc", t["id"].clone())?;
         } else {
             let t = self.editor.idl().create_from("atc", transit)?;
-            let t = self.editor.create(&t)?;
+            let t = self.editor.create(t)?;
             self.transit = self.editor.retrieve("ahtc", t["id"].clone())?;
         }
 
@@ -1918,7 +1927,7 @@ impl Circulator {
         hold["fulfillment_staff"].take();
         hold["fulfillment_lib"].take();
 
-        self.editor.update(&hold)?;
+        self.editor.update(hold)?;
 
         self.update_copy(json::object! {"status": C::COPY_STATUS_ON_HOLDS_SHELF})?;
 
