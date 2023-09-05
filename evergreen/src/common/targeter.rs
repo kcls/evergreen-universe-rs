@@ -1069,6 +1069,245 @@ impl HoldTargeter {
         Ok(())
     }
 
+    /// Force and recall holds bypass validity tests.  Returns the first
+    /// (and presumably only) copy ID in our list of valid copies when a
+    /// F or R hold is encountered.
+    fn attempt_force_recall_target(&self, context: &mut HoldTargetContext) -> Option<i64> {
+        if let Some(ht) = context.hold["hold_type"].as_str() {
+            if ht == "R" || ht == "F" {
+                return context.copies.get(0).map(|c| c.id);
+            }
+        }
+
+        None
+    }
+
+    fn attempt_to_find_copy(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
+        let max_loops = self.settings.get_value_at_org(
+            "circ.holds.max_org_unit_target_loops",
+            json_int(&context.hold["pickup_lib"])?,
+        )?;
+
+        if let Ok(max) = json_int(&max_loops) {
+            return self.target_by_org_loops(context, max);
+        }
+
+        /*
+        # When not using target loops, targeting is based solely on
+        # proximity and org unit target weight.
+        $self->compile_weighted_proximity_map;
+
+        return $self->find_nearest_copy;
+        */
+
+        Ok(None)
+    }
+
+    /// Find libs whose unfulfilled target count is less than the maximum
+    /// configured loop count.  Target copies in order of their circ_lib's
+    /// target count (starting at 0) and moving up.  Copies within each
+    /// loop count group are weighted based on configured hold weight.  If
+    /// no copies in a given group are targetable, move up to the next
+    /// unfulfilled target level.  Keep doing this until all potential
+    /// copies have been tried or max targets loops is exceeded.
+    /// Returns a targetable copy if one is found, undef otherwise.
+    fn target_by_org_loops(
+        &mut self,
+        context: &mut HoldTargetContext,
+        max_loops: i64,
+    ) -> EgResult<Option<i64>> {
+        let query = json::object! {
+            "select": {"aufhl": ["circ_lib", "count"]},
+            "from": "aufhl",
+            "where": {"hold": self.hold_id},
+            "order_by": [{"class": "aufhl", "field": "count"}]
+        };
+
+        let targeted_libs = self.editor().json_query(query)?;
+
+        // Highest per-lib target attempts
+        let mut max_tried = 0;
+        for lib in targeted_libs.iter() {
+            let count = json_int(&lib["count"])?;
+            if count > max_tried {
+                max_tried = count;
+            }
+        }
+
+        log::info!("{self} max lib attempts is {max_tried}");
+        log::info!(
+            "{self} {} libs have been targeted at least once",
+            targeted_libs.len()
+        );
+
+        // loop_iter represents per-lib target attemtps already made.
+        // When loop_iter equals max loops, all libs with targetable copies
+        // have been targeted the maximum number of times.  loop_iter starts
+        // at 0 to pick up libs that have never been targeted.
+        let mut loop_iter = 0;
+
+        while loop_iter < max_loops {
+            loop_iter += 1;
+
+            // Ran out of copies to try before exceeding max target loops.
+            // Nothing else to do here.
+            if context.copies.len() == 0 {
+                return Ok(None);
+            }
+
+            let (iter_copies, remaining_copies) =
+                self.get_copies_at_loop_iter(context, &targeted_libs, loop_iter - 1);
+
+            if iter_copies.len() == 0 {
+                // None at this level.  Bump up a level.
+                context.copies = remaining_copies;
+                continue;
+            }
+
+            context.copies = iter_copies;
+
+            // Update the proximity map to only include the copies
+            // from this loop-depth iteration.
+            self.compile_weighted_proximity_map(context);
+        }
+
+        Ok(None)
+    }
+    /*
+        while (++$loop_iter < $max_loops) {
+            $self->copies($iter_copies);
+
+            # Update the proximity map to only include the copies
+            # from this loop-depth iteration.
+            $self->compile_weighted_proximity_map;
+
+            my $copy = $self->find_nearest_copy;
+            return $copy if $copy; # found one!
+
+            # No targetable copy at the current target loop.
+            # Update our current copy set to the not-yet-tested copies.
+            $self->copies($remaining_copies);
+        }
+
+        # Avoid canceling the hold with exceeds-loops unless at least one
+        # lib has been targeted max_loops times.  Otherwise, the hold goes
+        # back to waiting for another copy (or retargets its current copy).
+        return undef if $max_tried < $max_loops;
+
+        # At least one lib has been targeted max-loops times and zero
+        # other copies are targetable.  All options have been exhausted.
+        return $self->handle_exceeds_target_loops;
+    }
+    */
+
+    /// Returns a map of proximity values to arrays of copy hashes.
+    /// The copy hash arrays are weighted consistent with the org unit hold
+    /// target weight, meaning that a given copy may appear more than once
+    /// in its proximity list.
+    fn compile_weighted_proximity_map(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        // Collect copy proximity info (generated via DB trigger)
+        // from our newly create copy maps.
+        let query = json::object! {
+            "select": {"ahcm": ["target_copy", "proximity"]},
+            "from": "ahcm",
+            "where": {"hold": self.hold_id}
+        };
+
+        let copy_maps = self.editor().json_query(query)?;
+
+        Ok(())
+    }
+    /*
+    sub compile_weighted_proximity_map {
+        my %copy_prox_map =
+            map {$_->{target_copy} => $_->{proximity}} @$hold_copy_maps;
+
+        # Pre-fetch the org setting value for all circ libs so that
+        # later calls can reference the cached value.
+        $self->parent->precache_batch_ou_settings($self->get_copy_circ_libs,
+            'circ.holds.org_unit_target_weight', $self->editor);
+
+        my %prox_map;
+        for my $copy_hash (@{$self->copies}) {
+            my $prox = $copy_prox_map{$copy_hash->{id}};
+            $copy_hash->{proximity} = $prox;
+            $prox_map{$prox} ||= [];
+
+            my $weight = $self->parent->get_ou_setting(
+                $copy_hash->{circ_lib},
+                'circ.holds.org_unit_target_weight', $self->editor) || 1;
+
+            # Each copy is added to the list once per target weight.
+            push(@{$prox_map{$prox}}, $copy_hash) foreach (1 .. $weight);
+        }
+
+        # We need to grab the proximity for copies targeted by other holds
+        # that belong to this pickup lib for hard-stalling tests later. We'll
+        # just grab them all in case it's useful later.
+        for my $copy_hash (@{$self->in_use_copies}) {
+            my $prox = $copy_prox_map{$copy_hash->{id}};
+            $copy_hash->{proximity} = $prox;
+        }
+
+        # We also need the proximity for the previous target.
+        if ($self->{valid_previous_copy}) {
+            my $prox = $copy_prox_map{$self->{valid_previous_copy}->{id}};
+            $self->{valid_previous_copy}->{proximity} = $prox;
+        }
+
+        return $self->{weighted_prox_map} = \%prox_map;
+    }
+    */
+
+    /// Returns 2 vecs.  The first is a list of copies whose circ lib's
+    /// unfulfilled target count matches the provided loop_iter value.  The
+    /// second list is all other copies, returned for convenience.
+    ///
+    /// NOTE this drains context.copies into the two arrays returned!
+    fn get_copies_at_loop_iter(
+        &self,
+        context: &mut HoldTargetContext,
+        targeted_libs: &Vec<JsonValue>,
+        loop_iter: i64,
+    ) -> (Vec<PotentialCopy>, Vec<PotentialCopy>) {
+        let mut iter_copies = Vec::new();
+        let mut remaining_copies = Vec::new();
+
+        while let Some(copy) = context.copies.pop() {
+            let mut match_found = false;
+
+            if loop_iter == 0 {
+                // Start with copies at circ libs that have never been targeted.
+                match_found = !targeted_libs
+                    .iter()
+                    .any(|l| json_int(&l["circ_lib"]).unwrap() == copy.circ_lib);
+            } else {
+                // Find copies at branches whose target count
+                // matches the current (non-zero) loop depth.
+                match_found = targeted_libs.iter().any(|l| {
+                    return json_int(&l["circ_lib"]).unwrap() == copy.circ_lib
+                        && json_int(&l["count"]).unwrap() == loop_iter;
+                });
+            }
+
+            if match_found {
+                iter_copies.push(copy);
+            } else {
+                remaining_copies.push(copy);
+            }
+        }
+
+        log::info!(
+            "{self} {} potential copies at max-loops iter level {loop_iter}. \
+            {} remain to be tested at a higher loop iteration level",
+            iter_copies.len(),
+            remaining_copies.len()
+        );
+
+        (iter_copies, remaining_copies)
+    }
+
+    /// Target one hold by ID.
     pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
         if !self.transaction_manged_externally {
             self.editor().xact_begin()?;
@@ -1153,6 +1392,28 @@ impl HoldTargeter {
         }
 
         self.log_unfulfilled_hold(ctx)?;
+
+        if self.hold_has_no_copies(ctx, false, true)? {
+            // Exit early if we have no copies.
+            return Ok(context);
+        }
+
+        // At this point, the working list of copies has been trimmed to
+        // those that are currently targetable at a superficial level.
+        // (They are holdable and available).  Now the code steps through
+        // these copies in order of priority and pickup lib proximity to
+        // find a copy that is confirmed targetable by policy.
+
+        let mut copy = self.attempt_force_recall_target(ctx);
+        if copy.is_none() {
+            copy = self.attempt_to_find_copy(ctx)?;
+        }
+
+        /*
+        my $copy = $self->attempt_force_recall_target ||
+               $self->attempt_to_find_copy        ||
+               $self->attempt_prev_copy_retarget;
+        */
 
         // TODO
 
