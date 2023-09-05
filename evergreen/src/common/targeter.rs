@@ -17,6 +17,7 @@ pub struct PotentialCopy {
     id: i64,
     status: i64,
     circ_lib: i64,
+    already_targeted: bool,
 }
 
 /// Tracks info for a single hold target run.
@@ -57,7 +58,7 @@ pub struct HoldTargetContext {
 
     // Copies that are targeted, but could contribute to pickup lib
     // hard (foreign) stalling.  These are Available-status copies.
-    in_use_copies: Vec<PotentialCopy>,
+    already_targeted_copies: Vec<PotentialCopy>,
 
     /// Maps copy IDs to their hold proximity
     copy_prox_map: HashMap<i64, u64>,
@@ -70,7 +71,7 @@ impl HoldTargetContext {
             hold,
             copies: Vec::new(),
             recall_copies: Vec::new(),
-            in_use_copies: Vec::new(),
+            already_targeted_copies: Vec::new(),
             copy_prox_map: HashMap::new(),
             eligible_copy_count: 0,
             target: 0,
@@ -661,6 +662,7 @@ impl HoldTargeter {
                     id,
                     status: json_int(&c["status"]).unwrap(),
                     circ_lib: json_int(&c["circ_lib"]).unwrap(),
+                    already_targeted: !c["current_copy"].is_null(),
                 }
             })
             .collect();
@@ -884,12 +886,17 @@ impl HoldTargeter {
 
     /// Trim the copy list to those that are currently targetable and
     /// move checked out items to the recall list.
-    fn filter_copies_by_status(&self, context: &mut HoldTargetContext) {
+    fn filter_copies_by_status_and_targeted(&self, context: &mut HoldTargetContext) {
         let mut targetable = Vec::new();
 
         while let Some(copy) = context.copies.pop() {
             if copy.status == C::COPY_STATUS_CHECKED_OUT {
                 context.recall_copies.push(copy);
+                continue;
+            }
+
+            if copy.already_targeted {
+                context.already_targeted_copies.push(copy);
                 continue;
             }
 
@@ -909,8 +916,8 @@ impl HoldTargeter {
 
         match self.target_hold_internal(hold_id, find_copy) {
             Ok(ctx) => {
-                // Checks transaction_manged_externally internally.
-                // Multiple commits can occur here, but they are no-ops.
+                // This call can result in a secondary commit in some cases,
+                // but it will be a no-op.
                 self.commit()?;
                 Ok(ctx)
             }
@@ -965,12 +972,8 @@ impl HoldTargeter {
 
         // Trim the set of working copies down to those that are
         // currently targetable.
-        self.filter_copies_by_status(ctx);
-
-        /*
-        return unless $self->filter_copies_in_use;
-        return unless $self->filter_closed_date_copies;
-        */
+        self.filter_copies_by_status_and_targeted(ctx);
+        // return unless $self->filter_closed_date_copies;
 
         // TODO
 
