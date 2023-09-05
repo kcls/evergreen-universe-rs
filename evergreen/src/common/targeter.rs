@@ -811,7 +811,7 @@ impl HoldTargeter {
 
         let mut circs = self.editor().search_with_ops("circ", query, ops)?;
 
-        let circ = match circs.pop() {
+        let mut circ = match circs.pop() {
             Some(c) => c,
             // Tried our best to recall a circ but could not find one.
             None => return Ok(true),
@@ -835,49 +835,37 @@ impl HoldTargeter {
             return_date = old_due_date;
         }
 
-        todo!();
+        circ["due_date"] = json::from(date::to_iso(&return_date));
+        circ["renewal_remaining"] = json::from(0);
+
+        let mut fine_rules = self.settings.get_value_at_org(
+            "circ.holds.recall_fine_rules", pickup_lib)?.clone();
+
+        log::debug!("{self} recall fine rules: {}", fine_rules);
+
+        // fine_rules => [fine, interval, max];
+        if fine_rules.is_array() && fine_rules.len() == 3 {
+            circ["max_fine"] = fine_rules.pop();
+            circ["fine_interval"] = fine_rules.pop();
+            circ["recurring_fine"] = fine_rules.pop();
+        }
+
+        self.editor().update(&circ)?;
+
+        // Create events that will be fired/processed later.
+        trigger::create_events_for_object(
+            self.editor(),
+            "circ.recall.target",
+            &circ,
+            json_int(&circ["circ_lib"])?,
+            None,
+            None,
+            false,
+        )?;
 
         Ok(false)
     }
 
-
-/*
-sub process_recalls {
-
-    my %update_fields = (
-        due_date => $return_date->iso8601(),
-        renewal_remaining => 0,
-    );
-
-    my $fine_rules =
-        $self->parent->get_ou_setting(
-            $pu_lib, 'circ.holds.recall_fine_rules', $self->editor);
-
-    # If the OU hasn't defined new fine rules for recalls, keep them
-    # as they were
-    if ($fine_rules) {
-        $self->log_hold("applying recall fine rules: $fine_rules");
-        my $rules = OpenSRF::Utils::JSON->JSON2perl($fine_rules);
-        $update_fields{recurring_fine} = $rules->[0];
-        $update_fields{fine_interval} = $rules->[1];
-        $update_fields{max_fine} = $rules->[2];
-    }
-
-    # Copy updated fields into circ object.
-    $circ->$_($update_fields{$_}) for keys %update_fields;
-
-    $e->update_action_circulation($circ)
-        or return $self->exit_targeter(
-            "Error updating circulation object in process_recalls", 1);
-
-    # Create trigger event for notifying current user
-    my $ses = OpenSRF::AppSession->create('open-ils.trigger');
-    $ses->request('open-ils.trigger.event.autocreate',
-        'circ.recall.target', $circ, $circ->circ_lib);
-
-    return 1;
-}
-*/
 
     /// Caller may use this method directly when targeting only one hold.
     ///
