@@ -1,8 +1,9 @@
 use crate::common::settings::Settings;
 use crate::common::trigger;
 use crate::date;
+use crate::constants as C;
 use crate::editor::Editor;
-use crate::result::EgResult;
+use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_int, json_string};
 use chrono::Duration;
 use json::JsonValue;
@@ -416,7 +417,7 @@ impl HoldTargeter {
         context.hold = self
             .editor()
             .retrieve("ahr", context.hold_id)?
-            .ok_or_else(|| self.editor().die_event_msg("Cannot find hold"))?;
+            .ok_or("Cannot find hold")?;
 
         Ok(())
     }
@@ -751,7 +752,9 @@ impl HoldTargeter {
         // have yielded a targetable item.
 
         if process_recalls {
-            todo!();
+            // Regardless of whether we find a circulation to recall,
+            // we want to clear the hold below.
+            self.process_recalls(context)?;
         }
 
         let values = json::object! {
@@ -765,13 +768,13 @@ impl HoldTargeter {
         Ok(true)
     }
 
-    /// Attempts to recall a circulation so its item may be targeted.
+    /// Attempts to recall a circulation so its item may be used to
+    /// fill the hold once returned.
     ///
-    /// Returns true if we tried to recall a circulation but could not find
-    /// any to recall.  False otherwise.
-    fn process_recalls(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
+    /// Note that recalling (or not) a circ has no direct impact on the hold.
+    fn process_recalls(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         if context.recall_copies.len() == 0 {
-            return Ok(false);
+            return Ok(());
         }
 
         let pickup_lib = json_int(&context.hold["pickup_lib"])?;
@@ -782,7 +785,7 @@ impl HoldTargeter {
 
         let recall_threshold = match json_string(&recall_threshold) {
             Ok(t) => t,
-            Err(_) => return Ok(false), // null / not set
+            Err(_) => return Ok(()), // null / not set
         };
 
         let return_interval = self
@@ -791,7 +794,7 @@ impl HoldTargeter {
 
         let return_interval = match json_string(&return_interval) {
             Ok(t) => t,
-            Err(_) => return Ok(false), // null / not set
+            Err(_) => return Ok(()), // null / not set
         };
 
         let thresh_intvl_secs = date::interval_to_seconds(&recall_threshold)?;
@@ -821,7 +824,7 @@ impl HoldTargeter {
         let mut circ = match circs.pop() {
             Some(c) => c,
             // Tried our best to recall a circ but could not find one.
-            None => return Ok(true),
+            None => return Ok(()),
         };
 
         log::info!("{self} recalling circ {}", circ["id"]);
@@ -862,8 +865,8 @@ impl HoldTargeter {
         // Create events that will be fired/processed later.  Run this
         // before update(circ) so the editor call can consume the circ.
         // Trigger gets its values for 'target' from the target value
-        // provided, so it's OK the update call has not yet occurred in
-        // the database.
+        // provided, so it's OK to create the trigger events before the
+        // circ is updated in the database.
         trigger::create_events_for_object(
             self.editor(),
             "circ.recall.target",
@@ -876,40 +879,98 @@ impl HoldTargeter {
 
         self.editor().update(circ)?;
 
-        Ok(false)
+        Ok(())
+    }
+
+    /// Trim the copy list to those that are currently targetable and
+    /// move checked out items to the recall list.
+    fn filter_copies_by_status(&self, context: &mut HoldTargetContext) {
+        let mut targetable = Vec::new();
+
+        while let Some(copy) = context.copies.pop() {
+            if copy.status == C::COPY_STATUS_CHECKED_OUT {
+                context.recall_copies.push(copy);
+                continue;
+            }
+
+            if copy.status == C::COPY_STATUS_AVAILABLE
+                || copy.status == C::COPY_STATUS_RESHELVING {
+                targetable.push(copy);
+            }
+        }
+
+        context.copies = targetable;
+    }
+
+    pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
+        if !self.transaction_manged_externally {
+            self.editor().xact_begin()?;
+        }
+
+        match self.target_hold_internal(hold_id, find_copy) {
+            Ok(ctx) => {
+                // Checks transaction_manged_externally internally.
+                // Multiple commits can occur here, but they are no-ops.
+                self.commit()?;
+                Ok(ctx)
+            }
+            Err(err) => {
+                // Not every error condition results in a rollback.
+                // Force it regardless of whether our transaction is
+                // managed externally.
+                self.editor().rollback()?;
+
+                // If the caller only provides an error message and the
+                // editor has a last-event, return the editor's last event
+                // with the message added.
+                if let EgError::Debug(ref msg) = err {
+                    log::error!("{self} exited early with error message {msg}");
+
+                    if let Some(mut evt) = self.editor().take_last_event() {
+                        evt.set_debug(msg);
+                        return Err(EgError::Event(evt));
+                    }
+                }
+
+                Err(err)
+            }
+        }
     }
 
     /// Caller may use this method directly when targeting only one hold.
     ///
     /// self.init() is still required.
-    pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
+    fn target_hold_internal(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
         self.hold_id = hold_id;
 
-        if !self.transaction_manged_externally {
-            self.editor().xact_begin()?;
-        }
-
-        let hold = self
-            .editor()
-            .retrieve("ahr", hold_id)?
-            .ok_or_else(|| self.editor().die_event_msg("No such hold"))?;
+        let hold = self.editor().retrieve("ahr", hold_id)?.ok_or("No such hold")?;
 
         let mut context = HoldTargetContext::new(hold_id, hold);
-        context.find_copy = find_copy;
+        let ctx = &mut context; // local shorthand
+        ctx.find_copy = find_copy;
 
-        self.check_hold_eligible(&mut context)?;
+        self.check_hold_eligible(ctx)?;
 
-        if self.hold_is_expired(&mut context)? {
+        if self.hold_is_expired(ctx)? {
             return Ok(context);
         }
 
-        self.get_hold_copies(&mut context)?;
-        self.update_copy_maps(&mut context)?;
-        self.handle_hopeless_date(&mut context)?;
+        self.get_hold_copies(ctx)?;
+        self.update_copy_maps(ctx)?;
+        self.handle_hopeless_date(ctx)?;
 
-        if self.hold_has_no_copies(&mut context, false, false)? {
+        if self.hold_has_no_copies(ctx, false, false)? {
             return Ok(context);
         }
+
+        // Trim the set of working copies down to those that are
+        // currently targetable.
+        self.filter_copies_by_status(ctx);
+
+        /*
+        return unless $self->filter_copies_in_use;
+        return unless $self->filter_closed_date_copies;
+        */
 
         // TODO
 

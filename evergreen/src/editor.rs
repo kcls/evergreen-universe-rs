@@ -243,6 +243,10 @@ impl Editor {
         self.last_event.as_ref()
     }
 
+    pub fn take_last_event(&mut self) -> Option<EgEvent> {
+        self.last_event.take()
+    }
+
     /// Panics if there is no last event
     pub fn last_event_unchecked(&self) -> &EgEvent {
         self.last_event().unwrap()
