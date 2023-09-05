@@ -1,7 +1,7 @@
 use crate::common::settings::Settings;
 use crate::common::trigger;
-use crate::date;
 use crate::constants as C;
+use crate::date;
 use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_int, json_string};
@@ -48,7 +48,7 @@ pub struct HoldTargetContext {
     previous_copy_id: i64,
 
     /// Previous copy that we know to be potentially targetable.
-    valid_previous_copy: i64,
+    valid_previous_copy: Option<PotentialCopy>,
 
     /// Lets the caller know we found the copy they were intersted in.
     found_copy: bool,
@@ -83,7 +83,7 @@ impl HoldTargetContext {
             target: 0,
             old_target: 0,
             find_copy: 0,
-            valid_previous_copy: 0,
+            valid_previous_copy: None,
             previous_copy_id: 0,
             found_copy: false,
         }
@@ -752,7 +752,7 @@ impl HoldTargeter {
         if !force {
             // If 'force' is set, the caller is saying that all copies have
             // failed.  Otherwise, see if we have any copies left to inspect.
-            if context.copies.len() > 0 || context.valid_previous_copy > 0 {
+            if context.copies.len() > 0 || context.valid_previous_copy.is_some() {
                 return Ok(false);
             }
         }
@@ -907,8 +907,7 @@ impl HoldTargeter {
                 continue;
             }
 
-            if copy.status == C::COPY_STATUS_AVAILABLE
-                || copy.status == C::COPY_STATUS_RESHELVING {
+            if copy.status == C::COPY_STATUS_AVAILABLE || copy.status == C::COPY_STATUS_RESHELVING {
                 targetable.push(copy);
             }
         }
@@ -924,7 +923,6 @@ impl HoldTargeter {
 
         while let Some(copy) = context.copies.pop() {
             if self.closed_orgs.contains(&copy.circ_lib) {
-
                 let setting = if copy.circ_lib == pickup_lib {
                     "circ.holds.target_when_closed_if_at_pickup_lib"
                 } else {
@@ -948,7 +946,11 @@ impl HoldTargeter {
     }
 
     /// Returns true if the on-DB permit test says this copy is permitted.
-    fn copy_is_permitted(&mut self, context: &mut HoldTargetContext, copy_id: i64) -> EgResult<bool> {
+    fn copy_is_permitted(
+        &mut self,
+        context: &mut HoldTargetContext,
+        copy_id: i64,
+    ) -> EgResult<bool> {
         let query = json::object! {
             "from": [
                 "action.hold_retarget_permit_test",
@@ -973,7 +975,6 @@ impl HoldTargeter {
 
         Ok(false)
     }
-
 
     /// Returns true if we have decided to retarget the existing copy.
     ///
@@ -1004,6 +1005,7 @@ impl HoldTargeter {
             }
         }
 
+        let mut retain_prev = false;
         if soft_retarget {
             // In soft-retarget mode, exit early if the existing copy is valid.
             if self.copy_is_permitted(context, prev_copy)? {
@@ -1013,16 +1015,58 @@ impl HoldTargeter {
 
             log::info!("{self} previous copy is no longer viable.  Retargeting");
         } else {
-            context.valid_previous_copy = prev_copy;
+            // Previously targeted copy may yet be useful.
+            retain_prev = true;
         }
 
         // Remove the previous copy from the working set of potential
         // copies.  It will be revisited later if needed.
         if let Some(pos) = context.copies.iter().position(|c| c.id == prev_copy) {
-            context.copies.remove(pos);
+            let copy = context.copies.remove(pos);
+            if retain_prev {
+                context.valid_previous_copy = Some(copy);
+            }
         }
 
         Ok(false)
+    }
+
+    /// Store info in the database about the fact that this hold was
+    /// not captured.
+    fn log_unfulfilled_hold(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        if context.previous_copy_id == 0 {
+            return Ok(());
+        }
+
+        log::info!(
+            "{self} hold was not captured with previously targeted copy {}",
+            context.previous_copy_id
+        );
+
+        let circ_lib = if let Some(copy) = context.valid_previous_copy.as_ref() {
+            copy.circ_lib
+        } else {
+            // We don't have a handle on the previous copy to get its
+            // circ lib.  Fetch it.
+
+            let copy = self
+                .editor()
+                .retrieve("acp", context.previous_copy_id)?
+                .ok_or(format!("Cannot find copy {}", context.previous_copy_id))?;
+
+            json_int(&copy["circ_lib"])?
+        };
+
+        let unful = json::object! {
+            "hold": self.hold_id,
+            "circ_lib": circ_lib,
+            "current_copy": context.previous_copy_id
+        };
+
+        let unful = self.editor().idl().create_from("aufh", unful)?;
+        self.editor().create(unful)?;
+
+        Ok(())
     }
 
     pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
@@ -1066,10 +1110,17 @@ impl HoldTargeter {
     /// Caller may use this method directly when targeting only one hold.
     ///
     /// self.init() is still required.
-    fn target_hold_internal(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
+    fn target_hold_internal(
+        &mut self,
+        hold_id: i64,
+        find_copy: i64,
+    ) -> EgResult<HoldTargetContext> {
         self.hold_id = hold_id;
 
-        let hold = self.editor().retrieve("ahr", hold_id)?.ok_or("No such hold")?;
+        let hold = self
+            .editor()
+            .retrieve("ahr", hold_id)?
+            .ok_or("No such hold")?;
 
         let mut context = HoldTargetContext::new(hold_id, hold);
         let ctx = &mut context; // local shorthand
@@ -1100,6 +1151,8 @@ impl HoldTargeter {
             // Exits early if we are retargeting the previous copy.
             return Ok(context);
         }
+
+        self.log_unfulfilled_hold(ctx)?;
 
         // TODO
 
