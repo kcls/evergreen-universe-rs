@@ -13,6 +13,7 @@ use std::fmt;
 const JSON_NULL: JsonValue = JsonValue::Null;
 
 /// Slimmed down copy.
+#[derive(Debug)]
 pub struct PotentialCopy {
     id: i64,
     status: i64,
@@ -25,6 +26,7 @@ pub struct PotentialCopy {
 /// Some of these values should in theory be Options instesad of bare
 /// i64's, but testing for "0" works just as well and requires (overall,
 /// I believe) slightly less overhead.
+#[derive(Debug)]
 pub struct HoldTargetContext {
     /// Hold ID
     hold_id: i64,
@@ -42,6 +44,10 @@ pub struct HoldTargetContext {
     /// Caller is specifically interested in this copy.
     find_copy: i64,
 
+    /// Previous copy.
+    previous_copy_id: i64,
+
+    /// Previous copy that we know to be potentially targetable.
     valid_previous_copy: i64,
 
     /// Lets the caller know we found the copy they were intersted in.
@@ -78,6 +84,7 @@ impl HoldTargetContext {
             old_target: 0,
             find_copy: 0,
             valid_previous_copy: 0,
+            previous_copy_id: 0,
             found_copy: false,
         }
     }
@@ -909,39 +916,151 @@ impl HoldTargeter {
         context.copies = targetable;
     }
 
+    /// Removes copies for consideration when they live at a closed org unit
+    /// and settings prevent targeting when closed.
+    fn filter_closed_date_copies(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        let pickup_lib = json_int(&context.hold["pickup_lib"])?;
+        let mut targetable = Vec::new();
+
+        while let Some(copy) = context.copies.pop() {
+            if self.closed_orgs.contains(&copy.circ_lib) {
+
+                let setting = if copy.circ_lib == pickup_lib {
+                    "circ.holds.target_when_closed_if_at_pickup_lib"
+                } else {
+                    "circ.holds.target_when_closed"
+                };
+
+                let value = self.settings.get_value_at_org(setting, copy.circ_lib)?;
+
+                if json_bool(&value) {
+                    log::info!("{self} skipping copy at closed org unit {}", copy.circ_lib);
+                    continue;
+                }
+            }
+
+            targetable.push(copy);
+        }
+
+        context.copies = targetable;
+
+        Ok(())
+    }
+
+    /// Returns true if the on-DB permit test says this copy is permitted.
+    fn copy_is_permitted(&mut self, context: &mut HoldTargetContext, copy_id: i64) -> EgResult<bool> {
+        let query = json::object! {
+            "from": [
+                "action.hold_retarget_permit_test",
+                context.hold["pickup_lib"].clone(),
+                context.hold["request_lib"].clone(),
+                copy_id,
+                context.hold["usr"].clone(),
+                context.hold["requestor"].clone(),
+            ]
+        };
+
+        let result = self.editor().json_query(query)?;
+
+        if result.len() > 0 && json_bool(&result[0]["success"]) {
+            return Ok(true);
+        }
+
+        // Copy is non-viable.  Remove it from our list.
+        if let Some(pos) = context.copies.iter().position(|c| c.id == copy_id) {
+            context.copies.remove(pos);
+        }
+
+        Ok(false)
+    }
+
+
+    /// Returns true if we have decided to retarget the existing copy.
+    ///
+    /// Otherwise, sets aside the previously targeted copy in case in
+    /// may be of use later... and returns false.
+    fn inspect_previous_target(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
+        let prev_copy = match json_int(&context.hold["current_copy"]) {
+            Ok(c) => c,
+            Err(_) => return Ok(false), // value was null
+        };
+
+        context.previous_copy_id = prev_copy;
+
+        if !context.copies.iter().any(|c| c.id == prev_copy) {
+            return Ok(false);
+        }
+
+        let mut soft_retarget = false;
+        if self.soft_retarget_time.is_some() {
+            // A hold is soft-retarget-able if its prev_check_time is
+            // later then the retarget_time, i.e. it sits between the
+            // soft_retarget_time and the retarget_time.
+
+            if let Some(prev_check_time) = context.hold["prev_check_time"].as_str() {
+                if let Some(retarget_time) = self.retarget_time.as_deref() {
+                    soft_retarget = prev_check_time > retarget_time;
+                }
+            }
+        }
+
+        if soft_retarget {
+            // In soft-retarget mode, exit early if the existing copy is valid.
+            if self.copy_is_permitted(context, prev_copy)? {
+                log::info!("{self} retaining previous copy in soft-retarget");
+                return Ok(true);
+            }
+
+            log::info!("{self} previous copy is no longer viable.  Retargeting");
+        } else {
+            context.valid_previous_copy = prev_copy;
+        }
+
+        // Remove the previous copy from the working set of potential
+        // copies.  It will be revisited later if needed.
+        if let Some(pos) = context.copies.iter().position(|c| c.id == prev_copy) {
+            context.copies.remove(pos);
+        }
+
+        Ok(false)
+    }
+
     pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
         if !self.transaction_manged_externally {
             self.editor().xact_begin()?;
         }
 
-        match self.target_hold_internal(hold_id, find_copy) {
-            Ok(ctx) => {
-                // This call can result in a secondary commit in some cases,
-                // but it will be a no-op.
-                self.commit()?;
-                Ok(ctx)
-            }
-            Err(err) => {
-                // Not every error condition results in a rollback.
-                // Force it regardless of whether our transaction is
-                // managed externally.
-                self.editor().rollback()?;
+        let result = self.target_hold_internal(hold_id, find_copy);
 
-                // If the caller only provides an error message and the
-                // editor has a last-event, return the editor's last event
-                // with the message added.
-                if let EgError::Debug(ref msg) = err {
-                    log::error!("{self} exited early with error message {msg}");
+        if result.is_ok() {
+            let ctx = result.unwrap();
 
-                    if let Some(mut evt) = self.editor().take_last_event() {
-                        evt.set_debug(msg);
-                        return Err(EgError::Event(evt));
-                    }
-                }
+            // This call can result in a secondary commit in some cases,
+            // but it will be a no-op.
+            self.commit()?;
+            return Ok(ctx);
+        }
 
-                Err(err)
+        // Not every error condition results in a rollback.
+        // Force it regardless of whether our transaction is
+        // managed externally.
+        self.editor().rollback()?;
+
+        let err = result.unwrap_err();
+
+        // If the caller only provides an error message and the
+        // editor has a last-event, return the editor's last event
+        // with the message added.
+        if let EgError::Debug(ref msg) = err {
+            log::error!("{self} exited early with error message {msg}");
+
+            if let Some(mut evt) = self.editor().take_last_event() {
+                evt.set_debug(msg);
+                return Err(EgError::Event(evt));
             }
         }
+
+        Err(err)
     }
 
     /// Caller may use this method directly when targeting only one hold.
@@ -959,6 +1078,7 @@ impl HoldTargeter {
         self.check_hold_eligible(ctx)?;
 
         if self.hold_is_expired(ctx)? {
+            // Exit early if the hold is expired.
             return Ok(context);
         }
 
@@ -967,13 +1087,19 @@ impl HoldTargeter {
         self.handle_hopeless_date(ctx)?;
 
         if self.hold_has_no_copies(ctx, false, false)? {
+            // Exit early if we have no copies.
             return Ok(context);
         }
 
         // Trim the set of working copies down to those that are
         // currently targetable.
         self.filter_copies_by_status_and_targeted(ctx);
-        // return unless $self->filter_closed_date_copies;
+        self.filter_closed_date_copies(ctx)?;
+
+        if self.inspect_previous_target(ctx)? {
+            // Exits early if we are retargeting the previous copy.
+            return Ok(context);
+        }
 
         // TODO
 
