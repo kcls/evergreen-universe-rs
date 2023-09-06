@@ -97,6 +97,11 @@ pub fn now_local() -> DateTime<FixedOffset> {
     Local::now().into()
 }
 
+/// Shortcut for date::now_local()
+pub fn now() -> DateTime<FixedOffset> {
+    Local::now().into()
+}
+
 /// Parse an ISO date string and return a date which retains its original
 /// time zone.
 ///

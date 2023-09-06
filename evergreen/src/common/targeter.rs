@@ -7,7 +7,9 @@ use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_int, json_string};
 use chrono::Duration;
 use json::JsonValue;
-use std::collections::HashMap;
+use rand;
+use rand::seq::SliceRandom;
+use std::collections::{HashSet, HashMap};
 use std::fmt;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
@@ -34,13 +36,12 @@ pub struct HoldTargetContext {
 
     hold: JsonValue,
 
+    pickup_lib: i64,
+
     /// Targeted copy ID.
     ///
     /// If we have a target, we succeeded.
     target: i64,
-
-    /// Previously targeted copy ID.
-    old_target: i64,
 
     /// Caller is specifically interested in this copy.
     find_copy: i64,
@@ -65,7 +66,7 @@ pub struct HoldTargetContext {
 
     // Copies that are targeted, but could contribute to pickup lib
     // hard (foreign) stalling.  These are Available-status copies.
-    already_targeted_copies: Vec<PotentialCopy>,
+    otherwise_targeted_copies: Vec<PotentialCopy>,
 
     /// Maps proximities to the weighted list of copy IDs.
     weighted_prox_map: HashMap<i64, Vec<i64>>,
@@ -73,16 +74,19 @@ pub struct HoldTargetContext {
 
 impl HoldTargetContext {
     fn new(hold_id: i64, hold: JsonValue) -> HoldTargetContext {
+        // Required, numeric value.
+        let pickup_lib = json_int(&hold["pickup_lib"]).unwrap();
+
         HoldTargetContext {
             hold_id,
             hold,
+            pickup_lib,
             copies: Vec::new(),
             recall_copies: Vec::new(),
-            already_targeted_copies: Vec::new(),
+            otherwise_targeted_copies: Vec::new(),
             weighted_prox_map: HashMap::new(),
             eligible_copy_count: 0,
             target: 0,
-            old_target: 0,
             find_copy: 0,
             valid_previous_copy: None,
             previous_copy_id: 0,
@@ -126,7 +130,16 @@ pub struct HoldTargeter {
     /// Target holds newest first by request date.
     newest_first: bool,
 
+    /// Should we NOT being/commit hold-specific transactions so
+    /// the caller (who provided the editor) can do it?
+    ///
+    /// NOTE: this should only be used when targeting a single hold
+    /// since each hold requires its own transaction to avoid deadlocks.
+    /// Alternatively, the caller should be prepared to begin/commit
+    /// before/after each call to target_hold().
     transaction_manged_externally: bool,
+
+    thread_rng: rand::rngs::ThreadRng,
 }
 
 impl fmt::Display for HoldTargeter {
@@ -155,6 +168,7 @@ impl HoldTargeter {
             closed_orgs: Vec::new(),
             hopeless_prone_statuses: Vec::new(),
             transaction_manged_externally: false,
+            thread_rng: rand::thread_rng(),
         }
     }
 
@@ -225,7 +239,7 @@ impl HoldTargeter {
 
         let retarget_secs = date::interval_to_seconds(retarget_intvl)?;
 
-        let rt = date::to_iso(&(date::now_local() - Duration::seconds(retarget_secs)));
+        let rt = date::to_iso(&(date::now() - Duration::seconds(retarget_secs)));
 
         log::info!("{self} using retarget time: {rt}");
 
@@ -233,7 +247,7 @@ impl HoldTargeter {
 
         if let Some(sri) = self.soft_retarget_interval.as_ref() {
             let secs = date::interval_to_seconds(sri)?;
-            let srt = date::to_iso(&(date::now_local() - Duration::seconds(secs)));
+            let srt = date::to_iso(&(date::now() - Duration::seconds(secs)));
 
             log::info!("{self} using soft retarget time: {srt}");
 
@@ -249,7 +263,7 @@ impl HoldTargeter {
             None => retarget_secs,
         };
 
-        let next_check_date = date::now_local() + Duration::seconds(next_check_secs);
+        let next_check_date = date::now() + Duration::seconds(next_check_secs);
         let next_check_time = date::to_iso(&next_check_date);
 
         log::info!("{self} next check time {next_check_time}");
@@ -455,7 +469,7 @@ impl HoldTargeter {
         if let Some(etime) = context.hold["expire_time"].as_str() {
             let ex_time = date::parse_datetime(&etime)?;
 
-            if ex_time > date::now_local() {
+            if ex_time > date::now() {
                 // Hold has not yet expired.
                 return Ok(false);
             }
@@ -472,14 +486,12 @@ impl HoldTargeter {
 
         self.update_hold(context, values)?;
 
-        let pl_lib = json_int(&context.hold["pickup_lib"])?;
-
         // Create events that will be fired/processed later.
         trigger::create_events_for_object(
             self.editor(),
             "hold_request.cancel.expire_no_target",
             &context.hold,
-            pl_lib,
+            context.pickup_lib,
             None,
             None,
             false,
@@ -788,11 +800,9 @@ impl HoldTargeter {
             return Ok(());
         }
 
-        let pickup_lib = json_int(&context.hold["pickup_lib"])?;
-
         let recall_threshold = self
             .settings
-            .get_value_at_org("circ.holds.recall_threshold", pickup_lib)?;
+            .get_value_at_org("circ.holds.recall_threshold", context.pickup_lib)?;
 
         let recall_threshold = match json_string(&recall_threshold) {
             Ok(t) => t,
@@ -801,7 +811,7 @@ impl HoldTargeter {
 
         let return_interval = self
             .settings
-            .get_value_at_org("circ.holds.recall_return_interval", pickup_lib)?;
+            .get_value_at_org("circ.holds.recall_return_interval", context.pickup_lib)?;
 
         let return_interval = match json_string(&return_interval) {
             Ok(t) => t,
@@ -843,7 +853,7 @@ impl HoldTargeter {
         let old_due_date = date::parse_datetime(circ["due_date"].as_str().unwrap())?;
         let xact_start_date = date::parse_datetime(circ["xact_start"].as_str().unwrap())?;
         let thresh_date = xact_start_date + Duration::seconds(thresh_intvl_secs);
-        let mut return_date = date::now_local() + Duration::seconds(return_intvl_secs);
+        let mut return_date = date::now() + Duration::seconds(return_intvl_secs);
 
         // Give the user a new due date of either a full recall threshold,
         // or the return interval, whichever is further in the future.
@@ -861,7 +871,7 @@ impl HoldTargeter {
 
         let mut fine_rules = self
             .settings
-            .get_value_at_org("circ.holds.recall_fine_rules", pickup_lib)?
+            .get_value_at_org("circ.holds.recall_fine_rules", context.pickup_lib)?
             .clone();
 
         log::debug!("{self} recall fine rules: {}", fine_rules);
@@ -905,7 +915,7 @@ impl HoldTargeter {
             }
 
             if copy.already_targeted {
-                context.already_targeted_copies.push(copy);
+                context.otherwise_targeted_copies.push(copy);
                 continue;
             }
 
@@ -920,12 +930,11 @@ impl HoldTargeter {
     /// Removes copies for consideration when they live at a closed org unit
     /// and settings prevent targeting when closed.
     fn filter_closed_date_copies(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
-        let pickup_lib = json_int(&context.hold["pickup_lib"])?;
         let mut targetable = Vec::new();
 
         while let Some(copy) = context.copies.pop() {
             if self.closed_orgs.contains(&copy.circ_lib) {
-                let setting = if copy.circ_lib == pickup_lib {
+                let setting = if copy.circ_lib == context.pickup_lib {
                     "circ.holds.target_when_closed_if_at_pickup_lib"
                 } else {
                     "circ.holds.target_when_closed"
@@ -956,7 +965,7 @@ impl HoldTargeter {
         let query = json::object! {
             "from": [
                 "action.hold_retarget_permit_test",
-                context.hold["pickup_lib"].clone(),
+                context.pickup_lib,
                 context.hold["request_lib"].clone(),
                 copy_id,
                 context.hold["usr"].clone(),
@@ -1087,7 +1096,7 @@ impl HoldTargeter {
     fn attempt_to_find_copy(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
         let max_loops = self.settings.get_value_at_org(
             "circ.holds.max_org_unit_target_loops",
-            json_int(&context.hold["pickup_lib"])?,
+            context.pickup_lib
         )?;
 
         if let Ok(max) = json_int(&max_loops) {
@@ -1096,14 +1105,137 @@ impl HoldTargeter {
 
         // When not using target loops, targeting is based solely on
         // proximity and org unit target weight.
-        self.compile_weighted_proximity_map(context);
+        self.compile_weighted_proximity_map(context)?;
 
         self.find_nearest_copy(context)
     }
 
 
+    /// Returns the closest copy by proximity that is a confirmed valid
+    /// targetable copy.
     fn find_nearest_copy(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
-        todo!()
+        let inside_hard_stall = self.inside_hard_stall_interval(context)?;
+        let mut have_local_copies = false;
+
+        // If we're still hard stallin', see if we have any local
+        // copies in use.
+        if inside_hard_stall {
+            have_local_copies = context.otherwise_targeted_copies
+                .iter()
+                .any(|c| c.proximity <= 0);
+        }
+
+        // Pick a copy at random from each tier of the proximity map,
+        // starting at the lowest proximity and working up, until a
+        // copy is found that is suitable for targeting.
+        let mut sorted_proximities: Vec<i64> = context
+            .weighted_prox_map
+            .keys()
+            .map(|i| *i)
+            .collect();
+
+        sorted_proximities.sort();
+
+        let mut already_tested_copies: HashSet<i64> = HashSet::new();
+
+        for prox in sorted_proximities {
+            let copy_ids = match context.weighted_prox_map.get_mut(&prox) {
+                Some(list) => list,
+                None => continue, // Shouldn't happen
+            };
+
+            if copy_ids.len() == 0 {
+                continue;
+            }
+
+            if prox <= 0 {
+                have_local_copies = true;
+            }
+
+            if have_local_copies && inside_hard_stall && prox > 0 {
+                // We have attempted to target all local (prox <= 0)
+                // copies and come up with zilch.
+                //
+                // We're also still in the hard-stall interval and we
+                // have local copies that could be targeted later.
+                // There's nothing else we can do until the stall time
+                // expires or a local copy becomes targetable on a
+                // future targeting run.
+                break;
+            }
+
+            // Clone the list so we can modify at will and avoid a
+            // parallell borrow on the context.
+            let mut copy_ids = copy_ids.clone();
+
+            // Shuffle the weighted list for random selection.
+            copy_ids.shuffle(&mut self.thread_rng);
+
+            for copy_id in copy_ids.iter() {
+                if already_tested_copies.contains(copy_id) {
+                    // No point in testing the same copy twice.
+                    continue;
+                }
+
+                if self.copy_is_permitted(context, *copy_id)? {
+                    return Ok(Some(*copy_id));
+                }
+
+                already_tested_copies.insert(*copy_id);
+            }
+        }
+
+        if have_local_copies && inside_hard_stall {
+            // If we have local copies and we're still hard stallin',
+            // we're no longer interested in non-local copies.  Clear
+            // the valid_previous_copy if it's not local.
+            if let Some(copy) = context.valid_previous_copy.as_ref() {
+                if copy.proximity > 0 {
+                    context.valid_previous_copy = None;
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+
+/*
+    if ($no_copies and $have_local_copies and $self->inside_hard_stall_interval) {
+        # Unset valid_previous_copy if it's not local and we have local copies now
+        $self->{valid_previous_copy} = undef if (
+            $self->{valid_previous_copy}
+            and $self->{valid_previous_copy}->{proximity} > 0
+        );
+    }
+
+    return undef;
+}
+*/
+
+    fn inside_hard_stall_interval(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
+        let interval = self.settings.get_value_at_org(
+            "circ.pickup_hold_stalling.hard", context.pickup_lib)?;
+
+        let interval = match interval.as_str() {
+            Some(s) => s,
+            None => return Ok(false),
+        };
+
+        // Required, string field
+        let req_time = context.hold["request_time"].as_str().unwrap();
+        let req_time = date::parse_datetime(&req_time)?;
+
+        let hard_stall_secs = date::interval_to_seconds(interval)?;
+        let hard_stall_time = req_time.clone() + Duration::seconds(hard_stall_secs);
+
+        log::info!("{self} hard stall deadline is/was {hard_stall_time}");
+
+        let inside = hard_stall_time > date::now();
+
+        log::info!("{self} still within hard stall interval? {inside}");
+
+        Ok(inside)
     }
 
     /// Find libs whose unfulfilled target count is less than the maximum
@@ -1171,7 +1303,7 @@ impl HoldTargeter {
 
             // Update the proximity map to only include the copies
             // from this loop-depth iteration.
-            self.compile_weighted_proximity_map(context);
+            self.compile_weighted_proximity_map(context)?;
 
             if let Some(copy) = self.find_nearest_copy(context)? {
                 // OK for context.copies to be partially cleared at this
@@ -1258,7 +1390,7 @@ impl HoldTargeter {
         // We need to grab the proximity for copies targeted by other
         // holds that belong to this pickup lib for hard-stalling tests
         // later. We'll just grab them all in case it's useful later.
-        for copy in context.already_targeted_copies.iter_mut() {
+        for copy in context.otherwise_targeted_copies.iter_mut() {
             if let Some(prox) = flat_map.get(&copy.id) {
                 copy.proximity = *prox;
             }

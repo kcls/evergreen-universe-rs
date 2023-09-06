@@ -20,6 +20,7 @@ postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 regex = "1.7"                                                                
 getopts = "0.2"
 md5 = "0.7"
+rand = "0.8.5"
 
 # Used by (at least) the parallel export script
 threadpool = "1.8"
