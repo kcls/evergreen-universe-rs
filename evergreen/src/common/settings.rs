@@ -16,11 +16,6 @@ const JSON_NULL: JsonValue = JsonValue::Null;
 // during lookuping.
 const SETTING_NAME_REGEX: &str = "[^a-zA-Z0-9_\\.]";
 
-/// Setting entries cached longer than this will be refreshed on
-/// future lookup.  This is backstop to prevent settings from
-/// sticking around too long in long-running processes.
-const DEFAULT_SETTING_ENTRY_TIMEOUT: u64 = 600; // seconds
-
 /// SettingType may come in handy later when we need to know
 /// more about the types.
 #[derive(Debug, Clone, PartialEq)]
@@ -116,16 +111,12 @@ impl SettingContext {
 /// it's stored in.
 #[derive(Debug)]
 pub struct SettingEntry {
-    value: JsonValue,
-    lookup_time: Instant,
+    value: JsonValue
 }
 
 impl SettingEntry {
     pub fn value(&self) -> &JsonValue {
         &self.value
-    }
-    pub fn lookup_time(&self) -> &Instant {
-        &self.lookup_time
     }
 }
 
@@ -245,12 +236,7 @@ impl Settings {
             None => return None,
         };
 
-        if entry.lookup_time().elapsed().as_secs() >= DEFAULT_SETTING_ENTRY_TIMEOUT {
-            hash.remove(name);
-            None
-        } else {
-            Some(hash.get(name).unwrap().value())
-        }
+        Some(hash.get(name).unwrap().value())
     }
 
     /// Batch setting value fetch.
@@ -333,8 +319,7 @@ impl Settings {
             .ok_or_else(|| format!("Setting has no name"))?;
 
         let entry = SettingEntry {
-            value: value,
-            lookup_time: Instant::now(),
+            value: value
         };
 
         let hash = match self.cache.get_mut(context) {
