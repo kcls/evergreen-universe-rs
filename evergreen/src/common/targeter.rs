@@ -18,6 +18,7 @@ pub struct PotentialCopy {
     id: i64,
     status: i64,
     circ_lib: i64,
+    proximity: i64,
     already_targeted: bool,
 }
 
@@ -66,8 +67,8 @@ pub struct HoldTargetContext {
     // hard (foreign) stalling.  These are Available-status copies.
     already_targeted_copies: Vec<PotentialCopy>,
 
-    /// Maps copy IDs to their hold proximity
-    copy_prox_map: HashMap<i64, u64>,
+    /// Maps proximities to the weighted list of copy IDs.
+    weighted_prox_map: HashMap<i64, Vec<i64>>,
 }
 
 impl HoldTargetContext {
@@ -78,7 +79,7 @@ impl HoldTargetContext {
             copies: Vec::new(),
             recall_copies: Vec::new(),
             already_targeted_copies: Vec::new(),
-            copy_prox_map: HashMap::new(),
+            weighted_prox_map: HashMap::new(),
             eligible_copy_count: 0,
             target: 0,
             old_target: 0,
@@ -669,6 +670,7 @@ impl HoldTargeter {
                     id,
                     status: json_int(&c["status"]).unwrap(),
                     circ_lib: json_int(&c["circ_lib"]).unwrap(),
+                    proximity: -1,
                     already_targeted: !c["current_copy"].is_null(),
                 }
             })
@@ -1215,18 +1217,49 @@ impl HoldTargeter {
 
         let copy_maps = self.editor().json_query(query)?;
 
+        let mut flat_map: HashMap<i64, i64> = HashMap::new();
+
+        for map in copy_maps.iter() {
+            let copy_id = json_int(&map["target_copy"])?;
+            let proximity = json_int(&map["proximity"])?;
+            flat_map.insert(copy_id, proximity);
+        }
+
+        // The weight of a copy at a give proximity is a function
+        // of how many times the copy ID appears in the list
+        // at that proximity.
+        let mut weighted: HashMap<i64, Vec<i64>> = HashMap::new();
+
+        for copy in context.copies.iter_mut() {
+            let prox = flat_map.get(&copy.id).unwrap(); // set above
+            copy.proximity = *prox;
+
+            if weighted.get(prox).is_none() {
+                weighted.insert(*prox, Vec::new());
+            }
+
+            let weight = self.settings.get_value_at_org(
+                "circ.holds.org_unit_target_weight", copy.circ_lib)?;
+
+            let weight = if weight.is_null() {
+                1
+            } else {
+                json_int(&weight)?
+            };
+
+            if let Some(list) = weighted.get_mut(prox) {
+                for _ in 0 .. weight {
+                    list.push(copy.id);
+                }
+            }
+        }
+
+        context.weighted_prox_map = weighted;
+
         Ok(())
     }
     /*
     sub compile_weighted_proximity_map {
-        my %copy_prox_map =
-            map {$_->{target_copy} => $_->{proximity}} @$hold_copy_maps;
-
-        # Pre-fetch the org setting value for all circ libs so that
-        # later calls can reference the cached value.
-        $self->parent->precache_batch_ou_settings($self->get_copy_circ_libs,
-            'circ.holds.org_unit_target_weight', $self->editor);
-
         my %prox_map;
         for my $copy_hash (@{$self->copies}) {
             my $prox = $copy_prox_map{$copy_hash->{id}};
