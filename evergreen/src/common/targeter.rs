@@ -497,10 +497,6 @@ impl HoldTargeter {
             false,
         )?;
 
-        // Commit after we've created events so all of our writes
-        // occur within the same transaction.
-        self.commit()?;
-
         Ok(true)
     }
 
@@ -1199,20 +1195,6 @@ impl HoldTargeter {
         Ok(None)
     }
 
-
-/*
-    if ($no_copies and $have_local_copies and $self->inside_hard_stall_interval) {
-        # Unset valid_previous_copy if it's not local and we have local copies now
-        $self->{valid_previous_copy} = undef if (
-            $self->{valid_previous_copy}
-            and $self->{valid_previous_copy}->{proximity} > 0
-        );
-    }
-
-    return undef;
-}
-*/
-
     fn inside_hard_stall_interval(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
         let interval = self.settings.get_value_at_org(
             "circ.pickup_hold_stalling.hard", context.pickup_lib)?;
@@ -1326,8 +1308,26 @@ impl HoldTargeter {
         Ok(None)
     }
 
+    /// Cancel the hold and fire the no-target A/T event creator.
     fn handle_exceeds_target_loops(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
-        todo!()
+        let values = json::object! {
+            "cancel_time": "now",
+            "cancel_cause": 1, // un-targeted expiration
+        };
+
+        self.update_hold(context, values)?;
+
+        trigger::create_events_for_object(
+            self.editor(),
+            "hold_request.cancel.expire_no_target",
+            &context.hold,
+            context.pickup_lib,
+            None,
+            None,
+            false,
+        )?;
+
+        Ok(())
     }
 
     /// Returns a map of proximity values to arrays of copy hashes.
@@ -1456,6 +1456,20 @@ impl HoldTargeter {
         (iter_copies, remaining_copies)
     }
 
+    /// All we might have left is the copy this hold previously targeted.
+    /// Grab it if we can.
+    fn attempt_prev_copy_retarget(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
+        if let Some(copy_id) = context.valid_previous_copy.as_ref().map(|c| c.id) {
+            log::info!("Attempting to retarget previously targeted copy {}", copy_id);
+
+            if self.copy_is_permitted(context, copy_id)? {
+                return Ok(Some(copy_id));
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Target one hold by ID.
     pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
         if !self.transaction_manged_externally {
@@ -1466,9 +1480,6 @@ impl HoldTargeter {
 
         if result.is_ok() {
             let ctx = result.unwrap();
-
-            // This call can result in a secondary commit in some cases,
-            // but it will be a no-op.
             self.commit()?;
             return Ok(ctx);
         }
@@ -1556,15 +1567,20 @@ impl HoldTargeter {
         let mut copy = self.attempt_force_recall_target(ctx);
         if copy.is_none() {
             copy = self.attempt_to_find_copy(ctx)?;
+
+            // The above can result in a hold cancelation. If so, we're done.
+            if !ctx.hold["cancel_time"].is_null() {
+                return Ok(context);
+            }
+        }
+        if copy.is_none() {
+            copy = self.attempt_prev_copy_retarget(ctx)?;
         }
 
-        /*
-        my $copy = $self->attempt_force_recall_target ||
-               $self->attempt_to_find_copy        ||
-               $self->attempt_prev_copy_retarget;
-        */
-
-        // TODO
+        if let Some(copy) = copy {
+            // At long great last we found a copy to target.
+            todo!()
+        }
 
         Ok(context)
     }
