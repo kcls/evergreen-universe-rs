@@ -1094,15 +1094,16 @@ impl HoldTargeter {
             return self.target_by_org_loops(context, max);
         }
 
-        /*
-        # When not using target loops, targeting is based solely on
-        # proximity and org unit target weight.
-        $self->compile_weighted_proximity_map;
+        // When not using target loops, targeting is based solely on
+        // proximity and org unit target weight.
+        self.compile_weighted_proximity_map(context);
 
-        return $self->find_nearest_copy;
-        */
+        self.find_nearest_copy(context)
+    }
 
-        Ok(None)
+
+    fn find_nearest_copy(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
+        todo!()
     }
 
     /// Find libs whose unfulfilled target count is less than the maximum
@@ -1171,36 +1172,31 @@ impl HoldTargeter {
             // Update the proximity map to only include the copies
             // from this loop-depth iteration.
             self.compile_weighted_proximity_map(context);
+
+            if let Some(copy) = self.find_nearest_copy(context)? {
+                // OK for context.copies to be partially cleared at this
+                // point, because this copy we have found is known
+                // to be permitted.  No more copy checks needed.
+                return Ok(Some(copy));
+            }
+
+           // No targetable copy at the current target leve.
+           // Update our current copy set to the not-yet-tested copies.
+           context.copies = remaining_copies;
+        }
+
+        if max_tried >= max_loops {
+            // At least one lib has been targeted max-loops times and zero
+            // other copies are targetable.  All options have been exhausted.
+            self.handle_exceeds_target_loops(context)?;
         }
 
         Ok(None)
     }
-    /*
-        while (++$loop_iter < $max_loops) {
-            $self->copies($iter_copies);
 
-            # Update the proximity map to only include the copies
-            # from this loop-depth iteration.
-            $self->compile_weighted_proximity_map;
-
-            my $copy = $self->find_nearest_copy;
-            return $copy if $copy; # found one!
-
-            # No targetable copy at the current target loop.
-            # Update our current copy set to the not-yet-tested copies.
-            $self->copies($remaining_copies);
-        }
-
-        # Avoid canceling the hold with exceeds-loops unless at least one
-        # lib has been targeted max_loops times.  Otherwise, the hold goes
-        # back to waiting for another copy (or retargets its current copy).
-        return undef if $max_tried < $max_loops;
-
-        # At least one lib has been targeted max-loops times and zero
-        # other copies are targetable.  All options have been exhausted.
-        return $self->handle_exceeds_target_loops;
+    fn handle_exceeds_target_loops(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        todo!()
     }
-    */
 
     /// Returns a map of proximity values to arrays of copy hashes.
     /// The copy hash arrays are weighted consistent with the org unit hold
@@ -1209,6 +1205,7 @@ impl HoldTargeter {
     fn compile_weighted_proximity_map(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         // Collect copy proximity info (generated via DB trigger)
         // from our newly create copy maps.
+
         let query = json::object! {
             "select": {"ahcm": ["target_copy", "proximity"]},
             "from": "ahcm",
@@ -1229,13 +1226,17 @@ impl HoldTargeter {
         // of how many times the copy ID appears in the list
         // at that proximity.
         let mut weighted: HashMap<i64, Vec<i64>> = HashMap::new();
-
         for copy in context.copies.iter_mut() {
-            let prox = flat_map.get(&copy.id).unwrap(); // set above
-            copy.proximity = *prox;
 
-            if weighted.get(prox).is_none() {
-                weighted.insert(*prox, Vec::new());
+            let prox = match flat_map.get(&copy.id) {
+                Some(p) => *p, // &i64
+                None => continue, // should not happen
+            };
+
+            copy.proximity = prox;
+
+            if weighted.get(&prox).is_none() {
+                weighted.insert(prox, Vec::new());
             }
 
             let weight = self.settings.get_value_at_org(
@@ -1247,10 +1248,26 @@ impl HoldTargeter {
                 json_int(&weight)?
             };
 
-            if let Some(list) = weighted.get_mut(prox) {
+            if let Some(list) = weighted.get_mut(&prox) {
                 for _ in 0 .. weight {
                     list.push(copy.id);
                 }
+            }
+        }
+
+        // We need to grab the proximity for copies targeted by other
+        // holds that belong to this pickup lib for hard-stalling tests
+        // later. We'll just grab them all in case it's useful later.
+        for copy in context.already_targeted_copies.iter_mut() {
+            if let Some(prox) = flat_map.get(&copy.id) {
+                copy.proximity = *prox;
+            }
+        }
+
+        // We also need the proximity for the previous target.
+        if let Some(copy) = context.valid_previous_copy.as_mut() {
+            if let Some(prox) = flat_map.get(&copy.id) {
+                copy.proximity = *prox;
             }
         }
 
@@ -1258,39 +1275,6 @@ impl HoldTargeter {
 
         Ok(())
     }
-    /*
-    sub compile_weighted_proximity_map {
-        my %prox_map;
-        for my $copy_hash (@{$self->copies}) {
-            my $prox = $copy_prox_map{$copy_hash->{id}};
-            $copy_hash->{proximity} = $prox;
-            $prox_map{$prox} ||= [];
-
-            my $weight = $self->parent->get_ou_setting(
-                $copy_hash->{circ_lib},
-                'circ.holds.org_unit_target_weight', $self->editor) || 1;
-
-            # Each copy is added to the list once per target weight.
-            push(@{$prox_map{$prox}}, $copy_hash) foreach (1 .. $weight);
-        }
-
-        # We need to grab the proximity for copies targeted by other holds
-        # that belong to this pickup lib for hard-stalling tests later. We'll
-        # just grab them all in case it's useful later.
-        for my $copy_hash (@{$self->in_use_copies}) {
-            my $prox = $copy_prox_map{$copy_hash->{id}};
-            $copy_hash->{proximity} = $prox;
-        }
-
-        # We also need the proximity for the previous target.
-        if ($self->{valid_previous_copy}) {
-            my $prox = $copy_prox_map{$self->{valid_previous_copy}->{id}};
-            $self->{valid_previous_copy}->{proximity} = $prox;
-        }
-
-        return $self->{weighted_prox_map} = \%prox_map;
-    }
-    */
 
     /// Returns 2 vecs.  The first is a list of copies whose circ lib's
     /// unfulfilled target count matches the provided loop_iter value.  The
