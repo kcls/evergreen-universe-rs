@@ -110,7 +110,7 @@ impl SettingContext {
 /// it's stored in.
 #[derive(Debug)]
 pub struct SettingEntry {
-    value: JsonValue
+    value: JsonValue,
 }
 
 impl SettingEntry {
@@ -316,9 +316,7 @@ impl Settings {
             .as_str()
             .ok_or_else(|| format!("Setting has no name"))?;
 
-        let entry = SettingEntry {
-            value: value
-        };
+        let entry = SettingEntry { value: value };
 
         let hash = match self.cache.get_mut(context) {
             Some(h) => h,

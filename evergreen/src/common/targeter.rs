@@ -9,7 +9,7 @@ use chrono::Duration;
 use json::JsonValue;
 use rand;
 use rand::seq::SliceRandom;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
@@ -1102,14 +1102,12 @@ impl HoldTargeter {
             return Ok(false);
         }
 
-        let max_loops = self.settings.get_value_at_org(
-            "circ.holds.max_org_unit_target_loops",
-            context.pickup_lib
-        )?;
+        let max_loops = self
+            .settings
+            .get_value_at_org("circ.holds.max_org_unit_target_loops", context.pickup_lib)?;
 
         if let Ok(max) = json_int(&max_loops) {
             self.target_by_org_loops(context, max)?;
-
         } else {
             // When not using target loops, targeting is based solely on
             // proximity and org unit target weight.
@@ -1121,7 +1119,6 @@ impl HoldTargeter {
         Ok(!context.hold["cancel_time"].is_null())
     }
 
-
     /// Returns the closest copy by proximity that is a confirmed valid
     /// targetable copy.
     fn find_nearest_copy(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
@@ -1131,7 +1128,8 @@ impl HoldTargeter {
         // If we're still hard stallin', see if we have any local
         // copies in use.
         if inside_hard_stall {
-            have_local_copies = context.otherwise_targeted_copies
+            have_local_copies = context
+                .otherwise_targeted_copies
                 .iter()
                 .any(|c| c.proximity <= 0);
         }
@@ -1139,11 +1137,8 @@ impl HoldTargeter {
         // Pick a copy at random from each tier of the proximity map,
         // starting at the lowest proximity and working up, until a
         // copy is found that is suitable for targeting.
-        let mut sorted_proximities: Vec<i64> = context
-            .weighted_prox_map
-            .keys()
-            .map(|i| *i)
-            .collect();
+        let mut sorted_proximities: Vec<i64> =
+            context.weighted_prox_map.keys().map(|i| *i).collect();
 
         sorted_proximities.sort();
 
@@ -1211,8 +1206,9 @@ impl HoldTargeter {
     }
 
     fn inside_hard_stall_interval(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
-        let interval = self.settings.get_value_at_org(
-            "circ.pickup_hold_stalling.hard", context.pickup_lib)?;
+        let interval = self
+            .settings
+            .get_value_at_org("circ.pickup_hold_stalling.hard", context.pickup_lib)?;
 
         let interval = match interval.as_str() {
             Some(s) => s,
@@ -1309,9 +1305,9 @@ impl HoldTargeter {
                 return Ok(Some(copy));
             }
 
-           // No targetable copy at the current target leve.
-           // Update our current copy set to the not-yet-tested copies.
-           context.copies = remaining_copies;
+            // No targetable copy at the current target leve.
+            // Update our current copy set to the not-yet-tested copies.
+            context.copies = remaining_copies;
         }
 
         if max_tried >= max_loops {
@@ -1374,9 +1370,8 @@ impl HoldTargeter {
         // at that proximity.
         let mut weighted: HashMap<i64, Vec<i64>> = HashMap::new();
         for copy in context.copies.iter_mut() {
-
             let prox = match flat_map.get(&copy.id) {
-                Some(p) => *p, // &i64
+                Some(p) => *p,    // &i64
                 None => continue, // should not happen
             };
 
@@ -1386,8 +1381,9 @@ impl HoldTargeter {
                 weighted.insert(prox, Vec::new());
             }
 
-            let weight = self.settings.get_value_at_org(
-                "circ.holds.org_unit_target_weight", copy.circ_lib)?;
+            let weight = self
+                .settings
+                .get_value_at_org("circ.holds.org_unit_target_weight", copy.circ_lib)?;
 
             let weight = if weight.is_null() {
                 1
@@ -1396,7 +1392,7 @@ impl HoldTargeter {
             };
 
             if let Some(list) = weighted.get_mut(&prox) {
-                for _ in 0 .. weight {
+                for _ in 0..weight {
                     list.push(copy.id);
                 }
             }
@@ -1479,7 +1475,10 @@ impl HoldTargeter {
         }
 
         if let Some(copy_id) = context.valid_previous_copy.as_ref().map(|c| c.id) {
-            log::info!("Attempting to retarget previously targeted copy {}", copy_id);
+            log::info!(
+                "Attempting to retarget previously targeted copy {}",
+                copy_id
+            );
 
             if self.copy_is_permitted(context, copy_id)? {
                 context.target = copy_id;
