@@ -1,4 +1,5 @@
 use eg::common::bib;
+use eg::common::holds;
 use eg::editor::Editor;
 use eg::result::EgResult;
 use evergreen as eg;
@@ -23,6 +24,11 @@ fn main() -> EgResult<()> {
                 attr.value().first()
             );
         }
+    }
+
+    let related = holds::related_to_copy(&mut editor, 3000, 4).unwrap();
+    for hold in related {
+        println!("hold: {hold}");
     }
 
     Ok(())

@@ -2,6 +2,7 @@ use crate::common::settings::Settings;
 use crate::common::trigger;
 use crate::constants as C;
 use crate::date;
+use crate::common::holds;
 use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_int, json_string};
@@ -962,20 +963,20 @@ impl HoldTargeter {
         context: &mut HoldTargetContext,
         copy_id: i64,
     ) -> EgResult<bool> {
-        let query = json::object! {
-            "from": [
-                "action.hold_retarget_permit_test",
-                context.pickup_lib,
-                context.hold["request_lib"].clone(),
-                copy_id,
-                context.hold["usr"].clone(),
-                context.hold["requestor"].clone(),
-            ]
-        };
 
-        let result = self.editor().json_query(query)?;
+        let result = holds::test_copy_for_hold(
+            self.editor(),
+            context.hold["usr"].clone(),
+            copy_id,
+            context.pickup_lib,
+            context.hold["request_lib"].clone(),
+            context.hold["requestor"].clone(),
+            true, // is_retarget
+            None, // overrides
+            true, // check_only
+        )?;
 
-        if result.len() > 0 && json_bool(&result[0]["success"]) {
+        if result.success() {
             return Ok(true);
         }
 

@@ -9,6 +9,92 @@ use crate::result::EgResult;
 use crate::util::{json_bool, json_int};
 use chrono::Duration;
 use json::JsonValue;
+use std::fmt;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HoldType {
+    Copy,
+    Recall,
+    Force,
+    Issuance,
+    Volume,
+    Part,
+    Title,
+    Metarecord,
+}
+
+/// let s: &str = hold_type.into();
+impl From<HoldType> for &'static str {
+    fn from(t: HoldType) -> &'static str {
+        match t {
+            HoldType::Copy => "C",
+            HoldType::Recall => "R",
+            HoldType::Force => "F",
+            HoldType::Volume => "V",
+            HoldType::Issuance => "I",
+            HoldType::Part => "P",
+            HoldType::Title => "T",
+            HoldType::Metarecord => "M"
+        }
+    }
+}
+
+/// let hold_type: HoldType = "T".into();
+impl From<&str> for HoldType {
+    fn from(code: &str) -> HoldType {
+        match code {
+            "C" => HoldType::Copy,
+            "R" => HoldType::Recall,
+            "F" => HoldType::Force,
+            "V" => HoldType::Volume,
+            "I" => HoldType::Issuance,
+            "P" => HoldType::Part,
+            "T" => HoldType::Title,
+            "M" => HoldType::Metarecord,
+            _ => panic!("No such hold type: {}", code),
+        }
+    }
+}
+
+/// Just enough hold information to make business decisions.
+pub struct MinimalHold {
+    id: i64,
+    target: i64,
+    pickup_lib: i64,
+    hold_type: HoldType,
+    /// active == not canceled, not fulfilled, and not frozen.
+    active: bool,
+}
+
+impl MinimalHold {
+    pub fn id(&self) ->  i64 {
+        self.id
+    }
+    pub fn target(&self) ->  i64 {
+        self.target
+    }
+    pub fn pickup_lib(&self) ->  i64 {
+        self.pickup_lib
+    }
+    pub fn hold_type(&self) ->  HoldType {
+        self.hold_type
+    }
+    pub fn active(&self) ->  bool {
+        self.active
+    }
+}
+
+impl fmt::Display for MinimalHold {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let t: &str = self.hold_type.into();
+        write!(f,
+            "hold id={} target={} pickup_lib={} hold_type={} active={}",
+            self.id, self.target, self.pickup_lib, t, self.active
+        )
+    }
+}
+
+
 
 /// Returns an ISO date string if a shelf time was calculated, None
 /// if holds do not expire on the shelf.
@@ -160,8 +246,9 @@ where
             hold["pickup_lib"].clone(),
             hold["request_lib"].clone(),
             hold["requestor"].clone(),
-            true,
-            None,
+            true, // is_retarget
+            None, // overrides
+            true, // check_only
         )?;
 
         if result.success {
@@ -242,6 +329,18 @@ pub struct TestCopyForHoldResult {
     age_protect_only: bool,
 }
 
+impl TestCopyForHoldResult {
+    pub fn success(&self) -> bool {
+        self.success
+    }
+    pub fn permit_results(&self) -> &Vec<HoldPermitResult> {
+        &self.permit_results
+    }
+    pub fn age_protect_only(&self) -> bool {
+        self.age_protect_only
+    }
+}
+
 /// Test if a hold can be used to fill a hold.
 pub fn test_copy_for_hold<T, U, V, W, X>(
     editor: &mut Editor,
@@ -252,6 +351,10 @@ pub fn test_copy_for_hold<T, U, V, W, X>(
     requestor: X,
     is_retarget: bool,
     overrides: Option<Overrides>,
+    // Exit as soon as we know if the permit was allowed or not.
+    // If overrides are provided, this flag is ignored, since
+    // overrides require the function process all the things.
+    check_only: bool,
 ) -> EgResult<TestCopyForHoldResult>
 where
     T: Into<JsonValue>,
@@ -301,6 +404,11 @@ where
 
             return Ok(result);
         }
+    }
+
+    if check_only && overrides.is_none() {
+        // Permit test failed.  No overrides needed.
+        return Ok(result);
     }
 
     let mut pending_results = Vec::new();
@@ -473,3 +581,109 @@ where
     let id = json_int(&hold_id)?; // TODO avoid this translation
     retarget_holds(&mut editor, &[id])
 }
+
+/// json_query order by clause for sorting holds by next to be targeted.
+pub fn json_query_order_by_targetable() -> JsonValue {
+    json::array! [
+        {"class": "pgt", "field": "hold_priority"},
+        {"class": "ahr", "field": "cut_in_line",
+            "direction": "desc", "transform": "coalesce", params: vec!["f"]},
+        {"class": "ahr", "field": "selection_depth", "direction": "desc"},
+        {"class": "ahr", "field": "request_time"}
+    ]
+}
+
+/// Returns a list of active hold IDs with the provided pickup lib that
+/// could potentially target the provided copy.
+///
+/// The list of IDs is sorted in they order they would ideally be fulfilled.
+pub fn related_to_copy(editor: &mut Editor, copy_id: i64, pickup_lib: i64) -> EgResult<Vec<MinimalHold>> {
+
+    // "rhrr" / reporter.hold_request_record calculates the bib record
+    // linked to a hold regardless of hold type in advance for us.
+    // Leverage that.  It's fast.
+    //
+    // TODO reporter.hold_request_record is not currently updated
+    // when items/call numbers are transferred to another call
+    // number/record.
+
+    // copy
+    //   => call_number
+    //     => metarecord source map
+    //       => reporter.hold_request_record
+    //         => hold
+    //           => user
+    //             => profile group
+    let from = json::object! {
+        "acp": {
+            "acn": {
+                "join": {
+                    "mmrsm": {
+                        // ON acn.record = mmrsm.source
+                        "fkey": "record",
+                        "field": "source",
+                        "join": {
+                            "rhrr": {
+                                // ON mmrsm.source = rhrr.bib_record
+                                "fkey": "source",
+                                "field": "bib_record",
+                                "join": {
+                                    "ahr": {
+                                        "join": {
+                                            "au": {
+                                                "field": "id",
+                                                "fkey": "usr",
+                                                "join": "pgt"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    let query = json::object! {
+        "select": {
+            "ahr": [
+                "id",
+                "target",
+                "hold_type",
+                "selection_depth",
+                "request_time",
+                "cut_in_line",
+            ],
+            "pgt": ["hold_priority"]
+        },
+        "from": from,
+        "where": {
+            "+acp": {"id": copy_id},
+            "+ahr": {
+                "pickup_lib": pickup_lib,
+                "frozen": "f",
+                "cancel_time": JsonValue::Null,
+                "fulfillment_time" => JsonValue::Null,
+            }
+        },
+        "order_by": json_query_order_by_targetable(),
+    };
+
+    let mut list = Vec::new();
+    for val in editor.json_query(query)? {
+        let h = MinimalHold {
+            id: json_int(&val["id"])?,
+            target: json_int(&val["target"])?,
+            pickup_lib: pickup_lib,
+            hold_type: val["hold_type"].as_str().unwrap().into(), // required
+            active: true,
+        };
+
+        list.push(h);
+    }
+
+    Ok(list)
+}
+

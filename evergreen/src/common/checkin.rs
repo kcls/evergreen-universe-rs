@@ -269,13 +269,9 @@ impl Circulator {
         let copy = self.copy();
         let copy_id = self.copy_id.unwrap();
 
-        let retarget_mode = match self.options.get("retarget_mode") {
-            Some(r) => match r.as_str() {
-                Some(s) => s,
-                None => "",
-            },
-            None => "",
-        };
+        let retarget_mode = self.options.get("retarget_mode")
+            .map(|v| v.as_str().unwrap_or(""))
+            .unwrap_or("");
 
         // A lot of scenarios can lead to avoiding hold fulfillment checks.
         if !retarget_mode.contains("retarget")
@@ -303,49 +299,11 @@ impl Circulator {
             .map(|p| json_int(&p["id"]).unwrap())
             .collect::<HashSet<_>>();
 
-        // Get the list of potentially retargetable holds
-        // TODO reporter.hold_request_record is not currently updated
-        // when items/call numbers are transferred to another call
-        // number / record.
-        let query = json::object! {
-            select: {
-                ahr: [
-                    "id",
-                    "target",
-                    "hold_type",
-                    "cut_in_line",
-                    "request_time",
-                    "selection_depth"
-                ],
-                pgt: ["hold_priority"]
-            },
-            from: {
-                ahr: {
-                    rhrr: {},
-                    au: {
-                        pgt: {}
-                    }
-                }
-            },
-            where: {
-               fulfillment_time: JsonValue::Null,
-               cancel_time: JsonValue::Null,
-               frozen: "f",
-               pickup_lib: self.circ_lib,
-            },
-            order_by: [
-                {class: "pgt", field: "hold_priority"},
-                {class: "ahr", field: "cut_in_line",
-                    direction: "desc", transform: "coalesce", params: vec!["f"]},
-                {class: "ahr", field: "selection_depth", direction: "desc"},
-                {class: "ahr", field: "request_time"}
-            ]
-        };
+        let hold_data = holds::related_to_copy(&mut self.editor, copy_id, self.circ_lib)?;
 
-        let hold_data = self.editor.json_query(query)?;
         for hold in hold_data.iter() {
-            let target = json_int(&hold["target"])?;
-            let hold_type = hold["hold_type"].as_str().unwrap();
+            let target = hold.target();
+            let hold_type: &str = hold.hold_type().into();
 
             // Copy-level hold that points to a different copy.
             if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
@@ -379,7 +337,7 @@ impl Circulator {
             // We've ruled out a lot of basic scenarios.  Now ask the
             // hold targeter to take over.
             let query = json::object! {
-                hold: hold["id"].clone(),
+                hold: hold.id(),
                 find_copy: copy_id,
             };
 
