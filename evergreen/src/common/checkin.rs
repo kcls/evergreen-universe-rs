@@ -1,6 +1,7 @@
 use crate::common::billing;
 use crate::common::circulator::{CircOp, Circulator};
 use crate::common::holds;
+use crate::common::targeter;
 use crate::common::penalty;
 use crate::common::transit;
 use crate::constants as C;
@@ -301,6 +302,12 @@ impl Circulator {
 
         let hold_data = holds::related_to_copy(&mut self.editor, copy_id, self.circ_lib)?;
 
+        // Since we're targeting a batch of holds, instead of a single hold,
+        // let the targeter manage the transaction.  Otherwise, we could be
+        // targeting a large number of holds within a single transaction
+        // which is no bueno.
+        let mut hold_targeter = targeter::HoldTargeter::new(self.editor.clone());
+
         for hold in hold_data.iter() {
             let target = hold.target();
             let hold_type: &str = hold.hold_type().into();
@@ -334,24 +341,11 @@ impl Circulator {
                 continue;
             }
 
-            // We've ruled out a lot of basic scenarios.  Now ask the
-            // hold targeter to take over.
-            let query = json::object! {
-                hold: hold.id(),
-                find_copy: copy_id,
-            };
+            let ctx = hold_targeter.target_hold(hold.id(), Some(copy_id))?;
 
-            let results = self.editor.client_mut().send_recv_one(
-                "open-ils.hold-targeter",
-                "open-ils.hold-targeter.target",
-                query,
-            )?;
-
-            if let Some(result) = results {
-                if json_bool(&result["found_copy"]) {
-                    log::info!("checkin_retarget_holds() successfully targeted a hold");
-                    break;
-                }
+            if ctx.success() && ctx.found_copy() {
+                log::info!("checkin_retarget_holds() successfully targeted a hold");
+                break;
             }
         }
 

@@ -32,6 +32,9 @@ pub struct PotentialCopy {
 /// I believe) slightly less overhead.
 #[derive(Debug)]
 pub struct HoldTargetContext {
+    /// Did we successfully target our hold?
+    success: bool,
+
     /// Hold ID
     hold_id: i64,
 
@@ -79,6 +82,7 @@ impl HoldTargetContext {
         let pickup_lib = json_int(&hold["pickup_lib"]).unwrap();
 
         HoldTargetContext {
+            success: false,
             hold_id,
             hold,
             pickup_lib,
@@ -93,6 +97,16 @@ impl HoldTargetContext {
             previous_copy_id: 0,
             found_copy: false,
         }
+    }
+
+    pub fn hold_id(&self) -> i64 {
+        self.hold_id
+    }
+    pub fn success(&self) -> bool {
+        self.success
+    }
+    pub fn found_copy(&self) -> bool {
+        self.found_copy
     }
 }
 
@@ -181,7 +195,7 @@ impl HoldTargeter {
     ///
     /// This is useful if the caller wants to target a hold within an
     /// existing transaction.
-    pub fn transaction_manged_externally(&mut self, val: bool) {
+    pub fn set_transaction_manged_externally(&mut self, val: bool) {
         self.transaction_manged_externally = val;
     }
 
@@ -1501,12 +1515,12 @@ impl HoldTargeter {
     /// Target one hold by ID.
     /// Caller should use this method directly when targeting only one hold.
     /// self.init() is still required.
-    pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
+    pub fn target_hold(&mut self, hold_id: i64, find_copy: Option<i64>) -> EgResult<HoldTargetContext> {
         if !self.transaction_manged_externally {
             self.editor().xact_begin()?;
         }
 
-        let result = self.target_hold_internal(hold_id, find_copy);
+        let result = self.target_hold_internal(hold_id, find_copy.unwrap_or(0));
 
         if result.is_ok() {
             let ctx = result.unwrap();
@@ -1605,6 +1619,7 @@ impl HoldTargeter {
         if ctx.target > 0 {
             // At long great last we found a copy to target.
             self.apply_copy_target(ctx)?;
+            ctx.success = true;
         }
 
         // Targeting failed.  Make one last attempt to process a
