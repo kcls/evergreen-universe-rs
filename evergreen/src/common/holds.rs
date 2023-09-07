@@ -34,7 +34,7 @@ impl From<HoldType> for &'static str {
             HoldType::Issuance => "I",
             HoldType::Part => "P",
             HoldType::Title => "T",
-            HoldType::Metarecord => "M"
+            HoldType::Metarecord => "M",
         }
     }
 }
@@ -67,19 +67,19 @@ pub struct MinimalHold {
 }
 
 impl MinimalHold {
-    pub fn id(&self) ->  i64 {
+    pub fn id(&self) -> i64 {
         self.id
     }
-    pub fn target(&self) ->  i64 {
+    pub fn target(&self) -> i64 {
         self.target
     }
-    pub fn pickup_lib(&self) ->  i64 {
+    pub fn pickup_lib(&self) -> i64 {
         self.pickup_lib
     }
-    pub fn hold_type(&self) ->  HoldType {
+    pub fn hold_type(&self) -> HoldType {
         self.hold_type
     }
-    pub fn active(&self) ->  bool {
+    pub fn active(&self) -> bool {
         self.active
     }
 }
@@ -87,14 +87,13 @@ impl MinimalHold {
 impl fmt::Display for MinimalHold {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let t: &str = self.hold_type.into();
-        write!(f,
+        write!(
+            f,
             "hold id={} target={} pickup_lib={} hold_type={} active={}",
             self.id, self.target, self.pickup_lib, t, self.active
         )
     }
 }
-
-
 
 /// Returns an ISO date string if a shelf time was calculated, None
 /// if holds do not expire on the shelf.
@@ -597,8 +596,11 @@ pub fn json_query_order_by_targetable() -> JsonValue {
 /// could potentially target the provided copy.
 ///
 /// The list of IDs is sorted in they order they would ideally be fulfilled.
-pub fn related_to_copy(editor: &mut Editor, copy_id: i64, pickup_lib: i64) -> EgResult<Vec<MinimalHold>> {
-
+pub fn related_to_copy(
+    editor: &mut Editor,
+    copy_id: i64,
+    pickup_lib: i64,
+) -> EgResult<Vec<MinimalHold>> {
     // "rhrr" / reporter.hold_request_record calculates the bib record
     // linked to a hold regardless of hold type in advance for us.
     // Leverage that.  It's fast.
@@ -686,4 +688,3 @@ pub fn related_to_copy(editor: &mut Editor, copy_id: i64, pickup_lib: i64) -> Eg
 
     Ok(list)
 }
-

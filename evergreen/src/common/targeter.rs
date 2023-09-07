@@ -1,8 +1,8 @@
+use crate::common::holds;
 use crate::common::settings::Settings;
 use crate::common::trigger;
 use crate::constants as C;
 use crate::date;
-use crate::common::holds;
 use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_int, json_string};
@@ -419,16 +419,6 @@ impl HoldTargeter {
         Ok(())
     }
 
-    /// Rollback the active transaction.
-    ///
-    /// Unlike begin/commit, we don't care if our transaction is
-    /// externally managed, because its assumed a rollback needs to
-    /// occur.
-    pub fn rollback(&mut self, msg: &str) -> EgResult<()> {
-        log::error!("{self} targeting stopped: {msg}");
-        return Err(self.editor().die_event_msg(msg));
-    }
-
     pub fn commit(&mut self) -> EgResult<()> {
         if !self.transaction_manged_externally {
             // Use commit() here to do a commit+disconnect from the cstore
@@ -464,20 +454,22 @@ impl HoldTargeter {
         Ok(())
     }
 
-    /// If the hold is not eligible (frozen, etc.) for targeting, rollback
-    /// the transaction and return an error.
-    fn check_hold_eligible(&mut self, context: &HoldTargetContext) -> EgResult<()> {
+    /// Return false if the hold is not eligible for targeting (frozen,
+    /// canceled, etc.)
+    fn hold_is_targetable(&mut self, context: &HoldTargetContext) -> bool {
         let hold = &context.hold;
 
-        if !hold["capture_time"].is_null()
-            || !hold["cancel_time"].is_null()
-            || !hold["fulfillment_time"].is_null()
-            || json_bool(&hold["frozen"])
+        if hold["capture_time"].is_null()
+            && hold["cancel_time"].is_null()
+            && hold["fulfillment_time"].is_null()
+            && !json_bool(&hold["frozen"])
         {
-            self.rollback("Hold is not eligible for targeting")?;
+            return true;
         }
 
-        Ok(())
+        log::info!("{self} hold is not targetable");
+
+        false
     }
 
     /// Cancel expired holds and kick off the A/T no-target event.
@@ -714,6 +706,8 @@ impl HoldTargeter {
     /// Tell the DB to update the list of potential copies for our hold
     /// based on the copies we just found.
     fn update_copy_maps(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        log::info!("{self} creating {} hold copy maps", context.copies.len());
+
         let ints = context
             .copies
             .iter()
@@ -801,7 +795,8 @@ impl HoldTargeter {
         };
 
         self.update_hold(context, values)?;
-        self.commit()?;
+
+        log::info!("{self} hold officially has no targetable copies");
 
         Ok(true)
     }
@@ -860,7 +855,10 @@ impl HoldTargeter {
         let mut circ = match circs.pop() {
             Some(c) => c,
             // Tried our best to recall a circ but could not find one.
-            None => return Ok(()),
+            None => {
+                log::info!("{self} no circulations to recall");
+                return Ok(());
+            }
         };
 
         log::info!("{self} recalling circ {}", circ["id"]);
@@ -939,6 +937,13 @@ impl HoldTargeter {
             }
         }
 
+        log::info!(
+            "{self} potential copies checked out={}, otherwise targeted={}, available={}",
+            context.recall_copies.len(),
+            context.otherwise_targeted_copies.len(),
+            targetable.len()
+        );
+
         context.copies = targetable;
     }
 
@@ -977,7 +982,6 @@ impl HoldTargeter {
         context: &mut HoldTargetContext,
         copy_id: i64,
     ) -> EgResult<bool> {
-
         let result = holds::test_copy_for_hold(
             self.editor(),
             context.hold["usr"].clone(),
@@ -991,11 +995,13 @@ impl HoldTargeter {
         )?;
 
         if result.success() {
+            log::info!("{self} copy {copy_id} is permitted");
             return Ok(true);
         }
 
         // Copy is non-viable.  Remove it from our list.
         if let Some(pos) = context.copies.iter().position(|c| c.id == copy_id) {
+            log::info!("{self} copy {copy_id} is not permitted");
             context.copies.remove(pos);
         }
 
@@ -1065,7 +1071,7 @@ impl HoldTargeter {
         }
 
         log::info!(
-            "{self} hold was not captured with previously targeted copy {}",
+            "{self} logging unsuccessful capture of previous copy: {}",
             context.previous_copy_id
         );
 
@@ -1103,6 +1109,7 @@ impl HoldTargeter {
             if ht == "R" || ht == "F" {
                 if let Some(c) = context.copies.get(0) {
                     context.target = c.id;
+                    log::info!("{self} force/recall hold using copy {}", c.id);
                     return;
                 }
             }
@@ -1122,13 +1129,17 @@ impl HoldTargeter {
             .get_value_at_org("circ.holds.max_org_unit_target_loops", context.pickup_lib)?;
 
         if let Ok(max) = json_int(&max_loops) {
-            self.target_by_org_loops(context, max)?;
+            if let Some(copy_id) = self.target_by_org_loops(context, max)? {
+                context.target = copy_id;
+            }
         } else {
             // When not using target loops, targeting is based solely on
             // proximity and org unit target weight.
             self.compile_weighted_proximity_map(context)?;
 
-            self.find_nearest_copy(context)?;
+            if let Some(copy_id) = self.find_nearest_copy(context)? {
+                context.target = copy_id;
+            }
         }
 
         Ok(!context.hold["cancel_time"].is_null())
@@ -1504,6 +1515,8 @@ impl HoldTargeter {
     }
 
     fn apply_copy_target(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        log::info!("{self} successfully targeted copy: {}", context.target);
+
         let values = json::object! {
             "current_copy": context.target,
             "prev_check_time": "now"
@@ -1515,7 +1528,11 @@ impl HoldTargeter {
     /// Target one hold by ID.
     /// Caller should use this method directly when targeting only one hold.
     /// self.init() is still required.
-    pub fn target_hold(&mut self, hold_id: i64, find_copy: Option<i64>) -> EgResult<HoldTargetContext> {
+    pub fn target_hold(
+        &mut self,
+        hold_id: i64,
+        find_copy: Option<i64>,
+    ) -> EgResult<HoldTargetContext> {
         if !self.transaction_manged_externally {
             self.editor().xact_begin()?;
         }
@@ -1568,7 +1585,9 @@ impl HoldTargeter {
         let ctx = &mut context; // local shorthand
         ctx.find_copy = find_copy;
 
-        self.check_hold_eligible(ctx)?;
+        if !self.hold_is_targetable(ctx) {
+            return Ok(context);
+        }
 
         if self.hold_is_expired(ctx)? {
             // Exit early if the hold is expired.
@@ -1620,11 +1639,11 @@ impl HoldTargeter {
             // At long great last we found a copy to target.
             self.apply_copy_target(ctx)?;
             ctx.success = true;
+        } else {
+            // Targeting failed.  Make one last attempt to process a
+            // recall and mark the hold as un-targeted.
+            self.hold_has_no_copies(ctx, true, true)?;
         }
-
-        // Targeting failed.  Make one last attempt to process a
-        // recall and mark the hold as un-targeted.
-        self.hold_has_no_copies(ctx, true, true)?;
 
         Ok(context)
     }

@@ -608,7 +608,7 @@ impl Editor {
         Err(format!("Unexpected response to method {method}").into())
     }
 
-    /// Returns the pkey of the updated object.
+    /// Update an object.
     pub fn update(&mut self, object: json::JsonValue) -> EgResult<()> {
         if !self.has_xact_id() {
             Err(format!("Transaction required for UPDATE"))?;
@@ -623,9 +623,9 @@ impl Editor {
 
         let method = self.app_method(&format!("direct.{fmapper}.update"));
 
-        if let Some(resp) = self.request(&method, object)? {
-            log::debug!("Update call returned {:?}", resp);
-        } else {
+        // Update calls return the pkey of the object on success,
+        // nothing on error.
+        if self.request(&method, object)?.is_none() {
             Err(format!("Update returned no response"))?;
         }
 

@@ -1,8 +1,8 @@
 use crate::common::billing;
 use crate::common::circulator::{CircOp, Circulator};
 use crate::common::holds;
-use crate::common::targeter;
 use crate::common::penalty;
+use crate::common::targeter;
 use crate::common::transit;
 use crate::constants as C;
 use crate::date;
@@ -270,7 +270,9 @@ impl Circulator {
         let copy = self.copy();
         let copy_id = self.copy_id.unwrap();
 
-        let retarget_mode = self.options.get("retarget_mode")
+        let retarget_mode = self
+            .options
+            .get("retarget_mode")
             .map(|v| v.as_str().unwrap_or(""))
             .unwrap_or("");
 
