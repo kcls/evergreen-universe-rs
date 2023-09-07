@@ -7,7 +7,6 @@ use json::JsonValue;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
-use std::time::Instant;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
@@ -231,10 +230,9 @@ impl Settings {
             None => return None,
         };
 
-        let entry = match hash.get(name) {
-            Some(e) => e,
-            None => return None,
-        };
+        if hash.get(name).is_none() {
+            return None;
+        }
 
         Some(hash.get(name).unwrap().value())
     }

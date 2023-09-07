@@ -202,6 +202,10 @@ impl HoldTargeter {
         self.editor = Some(editor);
     }
 
+    /// Useful for callers that set transaction_manged_externally for
+    /// reclaiming the editor so they can commit the transaction.
+    ///
+    /// Panics if self.editor is None.
     pub fn take_editor(&mut self) -> Editor {
         self.editor.take().unwrap()
     }
@@ -1076,34 +1080,45 @@ impl HoldTargeter {
         Ok(())
     }
 
-    /// Force and recall holds bypass validity tests.  Returns the first
-    /// (and presumably only) copy ID in our list of valid copies when a
-    /// F or R hold is encountered.
-    fn attempt_force_recall_target(&self, context: &mut HoldTargetContext) -> Option<i64> {
+    /// Set the 'target' value on the context to the first (and presumably
+    /// only) copy in our list of valid copies if this is a Force or Recall
+    /// hold, which bypass policy checks.
+    fn attempt_force_recall_target(&self, context: &mut HoldTargetContext) {
         if let Some(ht) = context.hold["hold_type"].as_str() {
             if ht == "R" || ht == "F" {
-                return context.copies.get(0).map(|c| c.id);
+                if let Some(c) = context.copies.get(0) {
+                    context.target = c.id;
+                    return;
+                }
             }
         }
-
-        None
     }
 
-    fn attempt_to_find_copy(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
+    /// Returns true if the hold was canceled while looking for a target
+    /// (e.g. hits max target loops).
+    /// Sets context.target if it can.
+    fn attempt_to_find_copy(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
+        if context.target > 0 {
+            return Ok(false);
+        }
+
         let max_loops = self.settings.get_value_at_org(
             "circ.holds.max_org_unit_target_loops",
             context.pickup_lib
         )?;
 
         if let Ok(max) = json_int(&max_loops) {
-            return self.target_by_org_loops(context, max);
+            self.target_by_org_loops(context, max)?;
+
+        } else {
+            // When not using target loops, targeting is based solely on
+            // proximity and org unit target weight.
+            self.compile_weighted_proximity_map(context)?;
+
+            self.find_nearest_copy(context)?;
         }
 
-        // When not using target loops, targeting is based solely on
-        // proximity and org unit target weight.
-        self.compile_weighted_proximity_map(context)?;
-
-        self.find_nearest_copy(context)
+        Ok(!context.hold["cancel_time"].is_null())
     }
 
 
@@ -1423,7 +1438,7 @@ impl HoldTargeter {
         let mut remaining_copies = Vec::new();
 
         while let Some(copy) = context.copies.pop() {
-            let mut match_found = false;
+            let match_found;
 
             if loop_iter == 0 {
                 // Start with copies at circ libs that have never been targeted.
@@ -1458,19 +1473,34 @@ impl HoldTargeter {
 
     /// All we might have left is the copy this hold previously targeted.
     /// Grab it if we can.
-    fn attempt_prev_copy_retarget(&mut self, context: &mut HoldTargetContext) -> EgResult<Option<i64>> {
+    fn attempt_prev_copy_retarget(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        if context.target > 0 {
+            return Ok(());
+        }
+
         if let Some(copy_id) = context.valid_previous_copy.as_ref().map(|c| c.id) {
             log::info!("Attempting to retarget previously targeted copy {}", copy_id);
 
             if self.copy_is_permitted(context, copy_id)? {
-                return Ok(Some(copy_id));
+                context.target = copy_id;
             }
         }
 
-        Ok(None)
+        Ok(())
+    }
+
+    fn apply_copy_target(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+        let values = json::object! {
+            "current_copy": context.target,
+            "prev_check_time": "now"
+        };
+
+        self.update_hold(context, values)
     }
 
     /// Target one hold by ID.
+    /// Caller should use this method directly when targeting only one hold.
+    /// self.init() is still required.
     pub fn target_hold(&mut self, hold_id: i64, find_copy: i64) -> EgResult<HoldTargetContext> {
         if !self.transaction_manged_externally {
             self.editor().xact_begin()?;
@@ -1506,9 +1536,8 @@ impl HoldTargeter {
         Err(err)
     }
 
-    /// Caller may use this method directly when targeting only one hold.
-    ///
-    /// self.init() is still required.
+    /// Runs through the actual targeting logic w/o concern for
+    /// transaction management.
     fn target_hold_internal(
         &mut self,
         hold_id: i64,
@@ -1559,28 +1588,28 @@ impl HoldTargeter {
         }
 
         // At this point, the working list of copies has been trimmed to
-        // those that are currently targetable at a superficial level.
-        // (They are holdable and available).  Now the code steps through
-        // these copies in order of priority and pickup lib proximity to
-        // find a copy that is confirmed targetable by policy.
+        // those that are targetable at a superficial level.  (They are
+        // holdable and available).  Now the code steps through these
+        // copies in order of priority/proximity to find a copy that is
+        // confirmed targetable by policy.
 
-        let mut copy = self.attempt_force_recall_target(ctx);
-        if copy.is_none() {
-            copy = self.attempt_to_find_copy(ctx)?;
+        self.attempt_force_recall_target(ctx);
 
-            // The above can result in a hold cancelation. If so, we're done.
-            if !ctx.hold["cancel_time"].is_null() {
-                return Ok(context);
-            }
-        }
-        if copy.is_none() {
-            copy = self.attempt_prev_copy_retarget(ctx)?;
+        if self.attempt_to_find_copy(ctx)? {
+            // Hold was canceled while seeking a target.
+            return Ok(context);
         }
 
-        if let Some(copy) = copy {
+        self.attempt_prev_copy_retarget(ctx)?;
+
+        if ctx.target > 0 {
             // At long great last we found a copy to target.
-            todo!()
+            self.apply_copy_target(ctx)?;
         }
+
+        // Targeting failed.  Make one last attempt to process a
+        // recall and mark the hold as un-targeted.
+        self.hold_has_no_copies(ctx, true, true)?;
 
         Ok(context)
     }
