@@ -37,38 +37,46 @@ pub fn target(
 ) -> Result<(), String> {
     let worker = app::RsHoldTargeterWorker::downcast(worker)?;
 
-    let editor = Editor::new(worker.client(), worker.env().idl());
-    let mut tgtr = targeter::HoldTargeter::new(editor);
+    let mut tgtr = targeter::HoldTargeter::new(
+        Editor::new(worker.client(), worker.env().idl()));
+
     let mut return_throttle = 1;
     let mut return_count = false;
     let mut find_copy = None;
 
+    // Apply user-supplied options if we have any.
     if let Some(options) = method.params().get(0) {
-
         return_count = util::json_bool(&options["return_count"]);
 
         if let Ok(t) = util::json_int(&options["return_throttle"]) {
             return_throttle = t;
         }
-
         if let Ok(c) = util::json_int(&options["find_copy"]) {
             find_copy = Some(c);
         }
-
-
-        // TODO
+        if let Ok(c) = util::json_int(&options["parallel_count"]) {
+            tgtr.set_parallel_count(c as u8);
+        }
+        if let Ok(c) = util::json_int(&options["parallel_slot"]) {
+            tgtr.set_parallel_slot(c as u8);
+        }
+        if let Some(s) = options["retarget_interval"].as_str() {
+            tgtr.set_retarget_interval(s);
+        }
+        if let Some(s) = options["soft_retarget_interval"].as_str() {
+            tgtr.set_soft_retarget_interval(s);
+        }
+        if let Some(s) = options["next_check_interval"].as_str() {
+            tgtr.set_next_check_interval(s);
+        }
     }
 
     tgtr.init()?;
 
-    let mut list = tgtr.find_holds_to_target()?;
+    let list = tgtr.find_holds_to_target()?;
 
     let total = list.len();
-    let mut counter = 0;
-
-    for id in list.drain(..) {
-        counter += 1;
-
+    for (idx, id) in list.into_iter().enumerate() {
         let ctx = match tgtr.target_hold(id, find_copy) {
             Ok(c) => c,
             Err(e) => {
@@ -77,17 +85,15 @@ pub fn target(
             }
         };
 
-        if counter % return_throttle == 0 {
+        if idx as i64 % return_throttle == 0 {
             if return_count {
-                session.respond(counter)?;
+                session.respond(idx)?;
             } else {
-                // TODO reply with result object of some sort
-                // session.respond(counter);
-                session.respond(counter)?;
+                session.respond(ctx.to_json())?;
             }
         }
 
-        log::info!("Targeted {counter} of {total} holds");
+        log::info!("Targeted {idx} of {total} holds");
     }
 
     Ok(())

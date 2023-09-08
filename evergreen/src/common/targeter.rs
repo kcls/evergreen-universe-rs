@@ -115,6 +115,17 @@ impl HoldTargetContext {
     pub fn found_copy(&self) -> bool {
         self.found_copy
     }
+    /// Returns a summary of this context as a JSON object.
+    pub fn to_json(&self) -> JsonValue {
+        json::object! {
+            "hold": self.hold_id,
+            "success": self.success,
+            "target": self.target,
+            "old_target": self.previous_copy_id,
+            "found_copy": self.found_copy,
+            "eligible_copies": self.eligible_copy_count,
+        }
+    }
 }
 
 /// Targets a batch of holds.
@@ -220,6 +231,14 @@ impl HoldTargeter {
     /// Panics if self.editor is None.
     pub fn take_editor(&mut self) -> Editor {
         self.editor.take().unwrap()
+    }
+
+    pub fn set_parallel_count(&mut self, count: u8) {
+        self.parallel_count = count;
+    }
+
+    pub fn set_parallel_slot(&mut self, slot: u8) {
+        self.parallel_slot = slot;
     }
 
     pub fn set_retarget_interval(&mut self, intvl: &str) {
