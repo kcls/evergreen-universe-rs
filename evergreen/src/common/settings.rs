@@ -246,6 +246,24 @@ impl Settings {
         self.fetch_context_values(&self.default_context.clone(), names)
     }
 
+    /// Fetch (pre-cache) a batch of values for a given org unit.
+    pub fn fetch_values_for_org(&mut self, org_id: i64, names: &[&str]) -> EgResult<()> {
+        let mut ctx = SettingContext::new();
+        ctx.set_org_id(org_id);
+
+        let names: Vec<&str> = names
+            .iter()
+            .filter(|n| self.get_cached_value(&ctx, n).is_none())
+            .map(|n| *n)
+            .collect();
+
+        if names.len() > 0 {
+            self.fetch_context_values(&ctx, names.as_slice())
+        } else {
+            Ok(())
+        }
+    }
+
     /// Batch setting value fetch.
     ///
     /// Returns String Err on load failure or invalid setting name.

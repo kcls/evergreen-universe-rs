@@ -1,6 +1,5 @@
 use eg::common::bib;
 use eg::common::holds;
-use eg::common::targeter;
 use eg::editor::Editor;
 use eg::result::EgResult;
 use evergreen as eg;
@@ -30,14 +29,6 @@ fn main() -> EgResult<()> {
     let related = holds::related_to_copy(&mut editor, 3000, 4).unwrap();
     for hold in related {
         println!("related hold: {hold}");
-    }
-
-    let mut tgtr = targeter::HoldTargeter::new(editor.clone());
-
-    // Retarget some holds.
-    for hold_id in 1..10 {
-        let ctx = tgtr.target_hold(hold_id, None)?;
-        println!("{hold_id} target success={}", ctx.success());
     }
 
     Ok(())

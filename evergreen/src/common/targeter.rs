@@ -15,6 +15,13 @@ use std::fmt;
 
 const JSON_NULL: JsonValue = JsonValue::Null;
 
+const PRECACHE_ORG_SETTINGS: &[&str] = &[
+    "circ.pickup_hold_stalling.hard",
+    "circ.holds.max_org_unit_target_loops",
+    "circ.holds.org_unit_target_weight",
+    "circ.holds.recall_threshold",
+];
+
 /// Slimmed down copy.
 #[derive(Debug)]
 pub struct PotentialCopy {
@@ -673,6 +680,7 @@ impl HoldTargeter {
         }
 
         let mut found_copy = false;
+        let mut circ_libs: HashSet<i64> = HashSet::new();
         context.copies = self
             .editor()
             .json_query(query)?
@@ -685,13 +693,17 @@ impl HoldTargeter {
                     found_copy = true;
                 }
 
-                PotentialCopy {
+                let copy = PotentialCopy {
                     id,
                     status: json_int(&c["status"]).unwrap(),
                     circ_lib: json_int(&c["circ_lib"]).unwrap(),
                     proximity: -1,
                     already_targeted: !c["current_copy"].is_null(),
-                }
+                };
+
+                circ_libs.insert(copy.circ_lib);
+
+                copy
             })
             .collect();
 
@@ -699,6 +711,13 @@ impl HoldTargeter {
         context.found_copy = found_copy;
 
         log::info!("{self} {} potential copies", context.eligible_copy_count);
+
+        // Pre-cache some org unit settings
+        for lib in circ_libs.iter() {
+            log::info!("{self} pre-caching org settings for {lib}");
+            self.settings
+                .fetch_values_for_org(*lib, PRECACHE_ORG_SETTINGS)?;
+        }
 
         Ok(())
     }

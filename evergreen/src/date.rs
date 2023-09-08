@@ -94,12 +94,12 @@ fn add_hms(part: &str, mut date: DateTime<Local>) -> Result<DateTime<Local>, Str
 
 /// Current date/time with a fixed offset matching the local time zone.
 pub fn now_local() -> DateTime<FixedOffset> {
-    Local::now().into()
+    now()
 }
 
-/// Shortcut for date::now_local()
+/// Current date/time with a fixed offset matching the local time zone.
 pub fn now() -> DateTime<FixedOffset> {
-    Local::now().into()
+    to_local_timezone_fixed(Local::now().into())
 }
 
 /// Parse an ISO date string and return a date which retains its original
@@ -167,6 +167,12 @@ pub fn parse_datetime(dt: &str) -> EgResult<DateTime<FixedOffset>> {
 /// ```
 pub fn to_iso(dt: &DateTime<FixedOffset>) -> String {
     dt.format("%FT%T%z").to_string()
+}
+
+/// Same as to_iso but includes milliseconds
+/// e.g. 2023-09-08T10:59:01.687-0400
+pub fn to_iso_millis(dt: &DateTime<FixedOffset>) -> String {
+    dt.format("%FT%T%.3f%z").to_string()
 }
 
 /// Translate a DateTime into the Local timezone while leaving the
