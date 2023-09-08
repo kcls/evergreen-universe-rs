@@ -1,6 +1,10 @@
 use crate::result::EgResult;
-use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, Months, NaiveDate, TimeZone};
+use chrono::{DateTime, Datelike, FixedOffset, Local, NaiveDate, TimeZone};
 use chrono_tz::Tz;
+use regex::{Regex, Captures};
+
+const INTERVAL_PART_REGEX: &str = r#"\s*([\+-]?)\s*(\d+)\s*(\w+)\s*"#;
+const INTERVAL_HMS_REGEX: &str = r#"(\d{2,}):(\d{2}):(\d{2})"#;
 
 /// Turn an interval string into a number of seconds.
 ///
@@ -18,78 +22,55 @@ use chrono_tz::Tz;
 /// assert_eq!(seconds, 62);
 /// ```
 pub fn interval_to_seconds(interval: &str) -> Result<i64, String> {
-    // Avoid generating the error string until we need it.
-    let errstr = || format!("Invalid/unsupported interval string: {interval}");
+    let hms_reg = Regex::new(INTERVAL_HMS_REGEX).unwrap();
+    let part_reg = Regex::new(INTERVAL_PART_REGEX).unwrap();
 
-    let interval = interval.to_lowercase();
-    let parts = interval.split(" ").collect::<Vec<&str>>();
-    let partcount = parts.len();
+    let mut interval = interval.to_lowercase();
+    interval = interval.replace("and", ",");
+    interval = interval.replace(",", " ");
 
-    let start = Local::now();
-    let mut date = Local::now();
-    let mut counter = 0;
+    // Format hh:mm:ss
+    let interval = hms_reg.replace(&interval, |caps: &Captures| {
+        // caps[0] is the full source string
+        format!("{} h {} min {} s", &caps[1], &caps[2], &caps[3])
+    });
 
-    loop {
-        if counter == partcount - 1 {
-            // Final part of the interval string and it only contains
-            // one piece (i.e. no count + value).  Assume it's a simple
-            // "hh:mm:ss" string.
-            date = add_hms(&parts[counter], date).or_else(|_| Err(errstr()))?;
-            break;
-        }
+    let mut amount = 0;
+    for (_, [sign, count, itype]) in part_reg.captures_iter(&interval).map(|c| c.extract()) {
+        let count = match count.parse::<i64>() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("Invalid interval number: {count} {e} from {interval}");
+                continue;
+            }
+        };
 
-        let intvl_count = parts[counter].parse::<i64>().or_else(|_| Err(errstr()))?;
-
-        counter += 1; // move counter to our "interval type" part (e.g. "hours")
-        let intvl_type = parts[counter].replace(",", "");
-
-        if intvl_type.starts_with("s") {
-            date = date + Duration::seconds(intvl_count);
-        } else if intvl_type.starts_with("min") {
-            date = date + Duration::minutes(intvl_count);
-        } else if intvl_type.starts_with("h") {
-            date = date + Duration::hours(intvl_count);
-        } else if intvl_type.starts_with("d") {
-            date = date + Duration::days(intvl_count);
-        } else if intvl_type.starts_with("mon") {
-            date = date + Months::new(intvl_count as u32);
-        } else if intvl_type.starts_with("y") {
-            // No 'Years equivalent
-            date = date + Months::new(intvl_count as u32 * 12);
+        let change = if itype.starts_with("s") {
+            count
+        } else if itype.starts_with("min") {
+            count * 60
+        } else if itype.starts_with("h") {
+            count * 60 * 60
+        } else if itype.starts_with("d") {
+            count * 60 * 60 * 24
+        } else if itype.starts_with("w") {
+            count * 60 * 60 * 24 * 7
+        } else if itype.starts_with("mon") {
+            (count * 60 * 60 * 24 * 365) / 12
+        } else if itype.starts_with("y") {
+            count * 60 * 60 * 24 * 365
         } else {
-            Err(errstr())?;
-        }
+            0
+        };
 
-        counter += 1; // move counter to next chunk
-
-        if counter == partcount {
-            break;
+        if sign == "-" {
+            amount -= change;
+        } else {
+            amount += change;
         }
     }
 
-    let duration = date - start;
-
-    Ok(duration.num_seconds())
-}
-
-fn add_hms(part: &str, mut date: DateTime<Local>) -> Result<DateTime<Local>, String> {
-    let errstr = || format!("Invalid/unsupported hh::mm::ss string: {part}");
-    let time_parts = part.split(":").collect::<Vec<&str>>();
-
-    let hours = time_parts.get(0).ok_or_else(|| errstr())?;
-    let minutes = time_parts.get(1).ok_or_else(|| errstr())?;
-    let seconds = time_parts.get(2).ok_or_else(|| errstr())?;
-
-    // Turn the string values into numeric values.
-    let hours = hours.parse::<i64>().or_else(|_| Err(errstr()))?;
-    let minutes = minutes.parse::<i64>().or_else(|_| Err(errstr()))?;
-    let seconds = seconds.parse::<i64>().or_else(|_| Err(errstr()))?;
-
-    date = date + Duration::hours(hours);
-    date = date + Duration::minutes(minutes);
-    date = date + Duration::seconds(seconds);
-
-    Ok(date)
+    Ok(amount)
 }
 
 /// Current date/time with a fixed offset matching the local time zone.
