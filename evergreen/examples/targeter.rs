@@ -6,7 +6,7 @@ use evergreen as eg;
 use json::JsonValue;
 
 /// Retarget all holds regardless of whether it's time.
-const FULL_RETARGET: bool = true;
+const FULL_RETARGET: bool = false;
 
 fn main() -> EgResult<()> {
     let ctx = eg::init::init()?;

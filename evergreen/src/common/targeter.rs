@@ -129,8 +129,6 @@ pub struct HoldTargeter {
     /// Hold in process -- mainly for logging.
     hold_id: i64,
 
-    holds_to_target: Option<Vec<i64>>,
-
     retarget_time: Option<String>,
     retarget_interval: Option<String>,
     soft_retarget_interval: Option<String>,
@@ -177,7 +175,6 @@ impl HoldTargeter {
         HoldTargeter {
             editor: Some(editor),
             settings,
-            holds_to_target: None,
             hold_id: 0,
             retarget_time: None,
             retarget_interval: None,
@@ -204,13 +201,6 @@ impl HoldTargeter {
     /// existing transaction.
     pub fn set_transaction_manged_externally(&mut self, val: bool) {
         self.transaction_manged_externally = val;
-    }
-
-    pub fn holds_to_target(&self) -> &Vec<i64> {
-        match self.holds_to_target.as_ref() {
-            Some(r) => r,
-            None => panic!("find_holds_to_target() must be called first"),
-        }
     }
 
     /// Panics if we don't have an editor.
@@ -259,9 +249,11 @@ impl HoldTargeter {
                 retarget_intvl_bind.as_ref().unwrap()
             } else {
                 // If all else fails, use a one day retarget interval.
-                "24h"
+                "24 h"
             }
         };
+
+        log::info!("{self} using retarget interval: {retarget_intvl}");
 
         let retarget_secs = date::interval_to_seconds(retarget_intvl)?;
 
@@ -325,7 +317,7 @@ impl HoldTargeter {
     /// Find holds that need to be processed.
     ///
     /// When targeting a known hold ID, this step can be skipped.
-    pub fn find_holds_to_target(&mut self) -> EgResult<()> {
+    pub fn find_holds_to_target(&mut self) -> EgResult<Vec<i64>> {
         let mut query = json::object! {
             "select": {"ahr": ["id"]},
             "from": "ahr",
@@ -420,10 +412,9 @@ impl HoldTargeter {
         // It seems less critical for Redis, but can be added if needed.
         let holds = self.editor().json_query(query)?;
 
-        // Hold IDs better be numeric...
-        self.holds_to_target = Some(holds.iter().map(|h| json_int(&h["id"]).unwrap()).collect());
+        log::info!("{self} found {} holds to target", holds.len());
 
-        Ok(())
+        Ok(holds.iter().map(|h| json_int(&h["id"]).unwrap()).collect())
     }
 
     pub fn commit(&mut self) -> EgResult<()> {
