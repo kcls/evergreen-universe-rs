@@ -6,42 +6,30 @@ use evergreen as eg;
 use json::JsonValue;
 
 /// Retarget all holds regardless of whether it's time.
-const FULL_RETARGET: bool = false;
+const FULL_RETARGET: bool = true;
 
 fn main() -> EgResult<()> {
     let ctx = eg::init::init()?;
     let client = ctx.client();
     let mut editor = Editor::new(client, ctx.idl());
 
-    let hold_ids = editor.json_query(json::object! {
-        "select": {"ahr": ["id"]},
-        "from": "ahr",
-        "where": {
-            "fulfillment_time": JsonValue::Null,
-            "cancel_time": JsonValue::Null,
-            "frozen": "f"
-        }
-    })?;
-
-    println!("We have {} active holds", hold_ids.len());
-
+    let start = date::now();
     let mut tgtr = targeter::HoldTargeter::new(editor.clone());
+    tgtr.set_retarget_interval("0s"); // retarget everything
+    tgtr.init()?;
 
     if FULL_RETARGET {
-        let mut counter = 0;
-        let mut success = 0;
-        let start = date::now();
+        let hold_ids = tgtr.find_holds_to_target()?;
 
-        for hold_id in hold_ids.iter() {
-            let id = eg::util::json_int(&hold_id["id"])?;
-            let ctx = tgtr.target_hold(id, None)?;
+        let mut success = 0;
+        for (idx, id) in hold_ids.iter().enumerate() {
+            let ctx = tgtr.target_hold(*id, None)?;
             if ctx.success() {
                 success += 1;
             }
 
-            counter += 1;
-            if counter % 20 == 0 {
-                println!("Targeted {counter} so far");
+            if idx % 20 == 0 {
+                println!("Targeted {idx} so far");
             }
         }
 
@@ -52,7 +40,10 @@ fn main() -> EgResult<()> {
             duration.num_milliseconds()
         );
 
-        println!("Finished targeting {counter} holds; success count = {success}");
+        println!(
+            "Finished targeting {} holds; success count = {success}",
+            hold_ids.len()
+        );
     } else {
         // Retarget some holds.
         for hold_id in 1..10 {

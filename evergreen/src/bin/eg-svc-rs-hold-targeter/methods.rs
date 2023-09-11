@@ -1,5 +1,5 @@
-use eg::editor::Editor;
 use eg::common::targeter;
+use eg::editor::Editor;
 use eg::util;
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
@@ -13,32 +13,27 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethod] = &[
-    StaticMethod {
-        name: "target",
-        desc: "Target one or more holds",
-        param_count: ParamCount::Range(0, 1),
-        handler: target,
-        params: &[
-            StaticParam {
-                required: false,
-                name: "options",
-                datatype: ParamDataType::Object,
-                desc: "Targeting Options",
-            },
-        ],
-    },
-];
+pub static METHODS: &[StaticMethod] = &[StaticMethod {
+    name: "target",
+    desc: "Target one or more holds",
+    param_count: ParamCount::Range(0, 1),
+    handler: target,
+    params: &[StaticParam {
+        required: false,
+        name: "options",
+        datatype: ParamDataType::Object,
+        desc: "Targeting Options",
+    }],
+}];
 
 pub fn target(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::Method,
 ) -> Result<(), String> {
-    let worker = app::RsHoldTargeterWorker::downcast(worker)?;
+    let worker = app::HoldTargeterWorker::downcast(worker)?;
 
-    let mut tgtr = targeter::HoldTargeter::new(
-        Editor::new(worker.client(), worker.env().idl()));
+    let mut tgtr = targeter::HoldTargeter::new(Editor::new(worker.client(), worker.env().idl()));
 
     let mut return_throttle = 1;
     let mut return_count = false;

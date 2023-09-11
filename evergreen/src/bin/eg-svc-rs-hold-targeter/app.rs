@@ -20,14 +20,14 @@ const APPNAME: &str = "open-ils.rs-hold-targeter";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsHoldTargeterEnv {
+pub struct HoldTargeterEnv {
     /// Global / shared IDL ref
     idl: Arc<idl::Parser>,
 }
 
-impl RsHoldTargeterEnv {
+impl HoldTargeterEnv {
     pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        RsHoldTargeterEnv { idl: idl.clone() }
+        HoldTargeterEnv { idl: idl.clone() }
     }
 
     pub fn idl(&self) -> &Arc<idl::Parser> {
@@ -36,31 +36,31 @@ impl RsHoldTargeterEnv {
 }
 
 /// Implement the needed Env trait
-impl ApplicationEnv for RsHoldTargeterEnv {
+impl ApplicationEnv for HoldTargeterEnv {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
 /// Our main application class.
-pub struct RsHoldTargeterApplication {
+pub struct HoldTargeterApplication {
     /// We load the IDL during service init.
     idl: Option<Arc<idl::Parser>>,
 }
 
-impl RsHoldTargeterApplication {
+impl HoldTargeterApplication {
     pub fn new() -> Self {
-        RsHoldTargeterApplication { idl: None }
+        HoldTargeterApplication { idl: None }
     }
 }
 
-impl Application for RsHoldTargeterApplication {
+impl Application for HoldTargeterApplication {
     fn name(&self) -> &str {
         APPNAME
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsHoldTargeterEnv::new(self.idl.as_ref().unwrap()))
+        Box::new(HoldTargeterEnv::new(self.idl.as_ref().unwrap()))
     }
 
     /// Load the IDL and perform any other needed global startup work.
@@ -102,22 +102,22 @@ impl Application for RsHoldTargeterApplication {
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || Box::new(RsHoldTargeterWorker::new())
+        || Box::new(HoldTargeterWorker::new())
     }
 }
 
 /// Per-thread worker instance.
-pub struct RsHoldTargeterWorker {
-    env: Option<RsHoldTargeterEnv>,
+pub struct HoldTargeterWorker {
+    env: Option<HoldTargeterEnv>,
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, Method>>>,
 }
 
-impl RsHoldTargeterWorker {
+impl HoldTargeterWorker {
     pub fn new() -> Self {
-        RsHoldTargeterWorker {
+        HoldTargeterWorker {
             env: None,
             client: None,
             config: None,
@@ -128,7 +128,7 @@ impl RsHoldTargeterWorker {
 
     /// This will only ever be called after absorb_env(), so we are
     /// guarenteed to have an env.
-    pub fn env(&self) -> &RsHoldTargeterEnv {
+    pub fn env(&self) -> &HoldTargeterEnv {
         self.env.as_ref().unwrap()
     }
 
@@ -139,19 +139,19 @@ impl RsHoldTargeterWorker {
         self.client.as_ref().unwrap()
     }
 
-    /// Cast a generic ApplicationWorker into our RsHoldTargeterWorker.
+    /// Cast a generic ApplicationWorker into our HoldTargeterWorker.
     ///
-    /// This is necessary to access methods/fields on our RsHoldTargeterWorker that
+    /// This is necessary to access methods/fields on our HoldTargeterWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut RsHoldTargeterWorker, String> {
-        match w.as_any_mut().downcast_mut::<RsHoldTargeterWorker>() {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut HoldTargeterWorker, String> {
+        match w.as_any_mut().downcast_mut::<HoldTargeterWorker>() {
             Some(eref) => Ok(eref),
             None => Err(format!("Cannot downcast")),
         }
     }
 }
 
-impl ApplicationWorker for RsHoldTargeterWorker {
+impl ApplicationWorker for HoldTargeterWorker {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -173,7 +173,7 @@ impl ApplicationWorker for RsHoldTargeterWorker {
     ) -> Result<(), String> {
         let worker_env = env
             .as_any()
-            .downcast_ref::<RsHoldTargeterEnv>()
+            .downcast_ref::<HoldTargeterEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
 
         // Each worker gets its own client, so we have to tell our

@@ -1,7 +1,7 @@
 use crate::result::EgResult;
 use chrono::{DateTime, Datelike, FixedOffset, Local, NaiveDate, TimeZone};
 use chrono_tz::Tz;
-use regex::{Regex, Captures};
+use regex::{Captures, Regex};
 
 const INTERVAL_PART_REGEX: &str = r#"\s*([\+-]?)\s*(\d+)\s*(\w+)\s*"#;
 const INTERVAL_HMS_REGEX: &str = r#"(\d{2,}):(\d{2}):(\d{2})"#;

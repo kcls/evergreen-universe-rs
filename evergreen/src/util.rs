@@ -3,6 +3,8 @@ use chrono::prelude::*;
 use chrono::DateTime;
 use json::JsonValue;
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
 
 /// We support a variety of true-ish values.
 ///
@@ -173,8 +175,36 @@ pub fn fpdiff(a: f64, b: f64) -> f64 {
     ((a * 100.00) - (b * 100.00)) / 100.00
 }
 
-/// Add value b to value a while  compensating for common floating point
+/// Add value b to value a while compensating for common floating point
 /// math problems.
 pub fn fpsum(a: f64, b: f64) -> f64 {
     ((a * 100.00) + (b * 100.00)) / 100.00
+}
+
+/// "check", "create", "delete" a lockfile
+pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
+    match action {
+        "check" => match Path::new(path).try_exists() {
+            Ok(b) => return Ok(b),
+            Err(e) => return Err(e.to_string().into()),
+        },
+        "create" => {
+            // create() truncates.  create_new() is still experimental.
+            // So check manually first.
+
+            if lockfile(path, "check")? {
+                return Err(format!("Lockfile already exists: {path}").into());
+            }
+
+            match fs::File::create(path) {
+                Ok(_) => return Ok(true),
+                Err(e) => return Err(e.to_string().into()),
+            }
+        }
+        "delete" => match fs::remove_file(path) {
+            Ok(_) => return Ok(true),
+            Err(e) => return Err(e.to_string().into()),
+        },
+        _ => return Err(format!("Invalid lockfile action: {action}").into()),
+    }
 }
