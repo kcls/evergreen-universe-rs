@@ -368,16 +368,11 @@ impl HoldTargeter {
             {"prev_check_time": {"<=": start_time}},
         ];
 
-        // Parallel < 1 means no parallel
-        let parallel = if self.parallel_count > 0 {
-            self.parallel_count
-        } else {
-            0
-        };
+        let parallel = self.parallel_count;
 
         // The Perl code checks parallel > 0, but a parallel value of 1
         // is also, by definition, non-parallel, so we can skip the
-        // theatrics below for values of 1.
+        // theatrics below for values of <= 1.
         if parallel > 1 {
             // In parallel mode, we need to also grab the metarecord for each hold.
 
@@ -431,7 +426,7 @@ impl HoldTargeter {
 
         // NOTE The perl code runs this query in substream mode.
         // At time of writing, the Rust editor has no substream mode.
-        // It seems less critical for Redis, but can be added if needed.
+        // It seems far less critical for Redis, but can be added if needed.
         let holds = self.editor().json_query(query)?;
 
         log::info!("{self} found {} holds to target", holds.len());

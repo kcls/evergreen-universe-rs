@@ -21,6 +21,7 @@ const CONNECT_TIMEOUT: i32 = 10;
 pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 
 /// Response data propagated from a session to the calling Request.
+#[derive(Debug)]
 struct Response {
     /// Response from an API call as a JsonValue.
     value: Option<JsonValue>,
@@ -40,15 +41,32 @@ pub struct Request {
 
     /// Unique ID per thread/session.
     thread_trace: usize,
+
+    /// Having a local copy of the thread can be handy since our
+    /// session is only accessible via temporary borrow().
+    thread: String,
 }
 
 impl Request {
-    fn new(session: Rc<RefCell<Session>>, thread_trace: usize) -> Request {
+    fn new(thread: String, session: Rc<RefCell<Session>>, thread_trace: usize) -> Request {
         Request {
             session,
+            thread,
             complete: false,
             thread_trace,
         }
+    }
+
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+
+    pub fn thread_trace(&self) -> usize {
+        self.thread_trace
+    }
+
+    pub fn complete(&self) -> bool {
+        self.complete
     }
 
     /// Pull all responses from the bus and return the first.
@@ -79,12 +97,12 @@ impl Request {
     ///     <0 == wait indefinitely
     ///      0 == do not wait/block
     ///     >0 == wait up to this many seconds for a reply.
-    pub fn recv_with_timeout(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
+    pub fn recv_with_timeout(&mut self, mut timeout: i32) -> Result<Option<JsonValue>, String> {
         if self.complete {
-            // If we are marked complete, it means we've read all the
-            // replies, the last of which was a request-complete message.
-            // Nothing left to read.
-            return Ok(None);
+            // If we are marked complete, we've pulled all of our
+            // resposnes from the bus.  However, we could still have
+            // data in the session backlog.
+            timeout = 0;
         }
 
         loop {
@@ -242,6 +260,7 @@ impl Session {
     fn recv(&mut self, thread_trace: usize, timeout: i32) -> Result<Option<Response>, String> {
         let mut timer = util::Timer::new(timeout);
 
+        let mut first_loop = true;
         loop {
             log::trace!(
                 "{self} in recv() for trace {thread_trace} with {} remaining",
@@ -252,8 +271,11 @@ impl Session {
                 return self.unpack_reply(&mut timer, msg);
             }
 
-            if timer.done() {
-                // Nothing in the backlog and all out of time.
+            if first_loop {
+                first_loop = false;
+            } else if timer.done() {
+                // Avoid exiting on first loop so we have at least
+                // one chance to pull data from the network before exiting.
                 return Ok(None);
             }
 
@@ -542,12 +564,15 @@ impl SessionHandle {
 
     /// Issue a new API call and return the Request
     ///
-    /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json::object!{a: "b"}]
+    /// params is a JSON-able thing.  E.g. vec![1,2,3], json::object!{"a": "b"}, etc.
     pub fn request<T>(&mut self, method: &str, params: T) -> Result<Request, String>
     where
         T: Into<ApiParams>,
     {
+        let thread = self.session.borrow().thread().to_string();
+
         Ok(Request::new(
+            thread,
             self.session.clone(),
             self.session.borrow_mut().request(method, params)?,
         ))

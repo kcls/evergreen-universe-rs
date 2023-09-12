@@ -1,18 +1,14 @@
 use eg::init::InitOptions;
 use eg::util;
-use eg::idl;
 use eg::result::EgResult;
 use evergreen as eg;
-use opensrf as osrf;
 use getopts;
-use json::JsonValue;
 use std::thread;
-use std::sync::Arc;
 
 const HELP_TEXT: &str = r#"
 Batch hold targeter.
 
-./eg-hold-targeter --parallel 2 --lockfile /tmp/hold_targeter-LOCK
+./eg-hold-targeter --parallel-count 2 --lockfile /tmp/hold_targeter-LOCK
 
 General Options
     --lockfile [/tmp/hold_targeter-LOCK]
@@ -23,7 +19,7 @@ General Options
 
 Targeting Options
 
-    --parallel <parallel-process-count>
+    --parallel-count <parallel-process-count>
         Number of parallel hold processors to run.  This overrides any
         value found in opensrf.xml
 
@@ -64,37 +60,13 @@ Targeting Options
 
 "#;
 
-fn process_batch(
-    config: Arc<osrf::conf::Config>,
-    idl: Arc<idl::Parser>,
-    mut params: JsonValue,
-    slot: i64
-) -> EgResult<()> {
-    log::info!("Targeter starting slot {slot}");
-
-    let context = eg::init::init_from_parts(config, idl, None)?;
-
-    params["parallel_slot"] = json::from(slot);
-
-    let mut ses = context.client().session("open-ils.rs-hold-targeter");
-    let mut req = ses.request("open-ils.rs-hold-targeter.target", params)?;
-
-    while let Some(resp) = req.recv()? {
-        log::debug!("Targeter responded with: {resp}");
-    }
-
-    log::info!("Targeter finished slot {slot}");
-
-    Ok(())
-}
-
 fn main() -> EgResult<()> {
     let args: Vec<String> = std::env::args().collect();
     let mut options = getopts::Options::new();
 
     options.optflag("", "help", "Show this message");
     options.optopt("", "lockfile", "", "");
-    options.optopt("", "parallel", "", "");
+    options.optopt("", "parallel-count", "", "");
     options.optopt("", "parallel-init-sleep", "", "");
     options.optopt("", "soft-retarget-interval", "", "");
     options.optopt("", "next-check-interval", "", "");
@@ -102,7 +74,8 @@ fn main() -> EgResult<()> {
 
     let params = match options.parse(&args[1..]) {
         Ok(p) => p,
-        Err(e) => return Err(format!("Cannot parse command line params: {e}").into()),
+        Err(e) => return Err(
+            format!("Cannot parse command line params: {e}").into()),
     };
 
     if params.opt_present("help") {
@@ -124,7 +97,7 @@ fn main() -> EgResult<()> {
     };
 
     for key in &[
-        "parallel",
+        "parallel-count",
         "retarget-interval",
         "soft-retarget-interval",
         "next-check-interval",
@@ -134,7 +107,7 @@ fn main() -> EgResult<()> {
         }
     }
 
-    let parallel = util::json_int(&target_options["parallel"]).unwrap_or(1);
+    let parallel = util::json_int(&target_options["parallel_count"]).unwrap_or(1);
     let sleep = match params.opt_str("parallel-init-sleep") {
         Some(s) => match s.parse::<i64>() {
             Ok(v) => v,
@@ -148,31 +121,66 @@ fn main() -> EgResult<()> {
 
     let context = eg::init::init_with_options(&init_ops)?;
 
-    let mut children = Vec::new();
+    let mut requests = Vec::new();
 
     // 'slot' is 1-based at the API level.
-    for slot in 1..parallel + 1 {
+    for slot in 1..(parallel + 1) {
 
-        // Clone some data we can pass to the thread.
-        let ops = target_options.clone();
-        let idl = context.idl().clone();
-        let config = context.config().clone();
+        //println!("parallel {parallel} slot {slot}");
 
-        let handle = thread::spawn(move || {
-            if let Err(e) = process_batch(config, idl, ops, slot) {
-                log::error!("Targeter thread exited with error: {e}");
-            }
-        });
+        let mut target_options = target_options.clone();
+        target_options["parallel_slot"] = json::from(slot);
 
-        children.push(handle);
+        let mut ses = context.client().session("open-ils.rs-hold-targeter");
+        let req = ses.request("open-ils.rs-hold-targeter.target", target_options)?;
+
+        requests.push(req);
 
         if sleep > 0 {
             thread::sleep(std::time::Duration::from_secs(sleep as u64));
         }
     }
 
-    for child in children {
-        let _ = child.join();
+    loop {
+        //thread::sleep(std::time::Duration::from_secs(1)); // XXX
+        //println!("looping with {} requests", requests.len()); // XXX
+
+        if context.client().wait(60)? {
+            for req in requests.iter_mut() {
+                if let Some(resp) = req.recv_with_timeout(0)? {
+                    println!("ses {} has a value {}", req.thread(), resp); // XXX
+                    log::info!("Targeter responded with {resp}");
+                }
+            }
+        }
+
+        loop {
+            // Clean up completed requests
+            let mut rem_thread_trace = None;
+
+            for req in requests.iter() {
+                if req.complete() {
+                    rem_thread_trace = Some(req.thread_trace());
+                    break;
+                }
+            }
+
+            let tt = match rem_thread_trace {
+                Some(t) => t,
+                None => break,
+            };
+
+            let pos = match requests.iter().position(|r| r.thread_trace() == tt) {
+                Some(p) => p,
+                None => continue,
+            };
+
+            requests.remove(pos);
+        }
+
+        if requests.len() == 0 {
+            break;
+        }
     }
 
     if let Some(path) = params.opt_str("lockfile") {

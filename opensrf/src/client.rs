@@ -134,6 +134,27 @@ impl ClientSingleton {
         }
     }
 
+    /// Returns true if any data exists in the backlog within the
+    /// timeout provided.  This is useful for checking network activity
+    /// across multiple active sessions in lieu of polling each
+    /// session for responses.
+    pub fn wait(&mut self, timeout: i32) -> Result<bool, String> {
+        if !self.backlog.is_empty() {
+            return Ok(true);
+        }
+
+        let timer = util::Timer::new(timeout);
+
+        while self.backlog.is_empty() && !timer.done() {
+            if let Some(tm) = self.bus.recv(timer.remaining(), None)? {
+                self.backlog.push(tm);
+                break;
+            }
+        }
+
+        Ok(!self.backlog.is_empty())
+    }
+
     pub fn recv_session(
         &mut self,
         timer: &mut util::Timer,
@@ -336,6 +357,10 @@ impl Client {
 
     pub fn config(&self) -> Arc<conf::Config> {
         self.singleton().borrow().config.clone()
+    }
+
+    pub fn wait(&self, timeout: i32) -> Result<bool, String> {
+        self.singleton().borrow_mut().wait(timeout)
     }
 
     pub fn send_recv_one<T>(
