@@ -375,7 +375,10 @@ impl HoldTargeter {
             0
         };
 
-        if parallel > 0 {
+        // The Perl code checks parallel > 0, but a parallel value of 1
+        // is also, by definition, non-parallel, so we can skip the
+        // theatrics below for values of 1.
+        if parallel > 1 {
             // In parallel mode, we need to also grab the metarecord for each hold.
 
             query["from"] = json::object! {

@@ -1,11 +1,13 @@
-use eg::editor;
-use eg::init;
+use eg::init::InitOptions;
 use eg::util;
+use eg::idl;
+use eg::result::EgResult;
 use evergreen as eg;
+use opensrf as osrf;
 use getopts;
 use json::JsonValue;
 use std::thread;
-use std::thread::JoinHandle;
+use std::sync::Arc;
 
 const HELP_TEXT: &str = r#"
 Batch hold targeter.
@@ -15,9 +17,6 @@ Batch hold targeter.
 General Options
     --lockfile [/tmp/hold_targeter-LOCK]
         Full path to lock file
-
-    --verbose
-        Print process counts
 
     Standard OpenSRF environment variables (e.g. OSRF_CONFIG) are
     also supported.
@@ -65,31 +64,35 @@ Targeting Options
 
 "#;
 
-fn process_batch(params: JsonValue, slot: i64) {
-    println!("Starting targeter slot {slot}");
+fn process_batch(
+    config: Arc<osrf::conf::Config>,
+    idl: Arc<idl::Parser>,
+    mut params: JsonValue,
+    slot: i64
+) -> EgResult<()> {
+    log::info!("Targeter starting slot {slot}");
 
-    let context = match eg::init::init() {
-        Ok(c) => c,
-        Err(e) => panic!("Cannot init to OpenSRF: {}", e),
-    };
+    let context = eg::init::init_from_parts(config, idl, None)?;
+
+    params["parallel_slot"] = json::from(slot);
 
     let mut ses = context.client().session("open-ils.rs-hold-targeter");
-    let mut req = ses
-        .request("open-ils.rs-hold-targeter.target", params)
-        .unwrap();
+    let mut req = ses.request("open-ils.rs-hold-targeter.target", params)?;
 
-    while let Some(resp) = req.recv().unwrap() {
-        println!("Got response: {resp}");
+    while let Some(resp) = req.recv()? {
+        log::debug!("Targeter responded with: {resp}");
     }
+
+    log::info!("Targeter finished slot {slot}");
+
+    Ok(())
 }
 
-fn main() {
+fn main() -> EgResult<()> {
     let args: Vec<String> = std::env::args().collect();
     let mut options = getopts::Options::new();
 
-    options.optflag("", "verbose", "Print progress information");
     options.optflag("", "help", "Show this message");
-
     options.optopt("", "lockfile", "", "");
     options.optopt("", "parallel", "", "");
     options.optopt("", "parallel-init-sleep", "", "");
@@ -99,19 +102,20 @@ fn main() {
 
     let params = match options.parse(&args[1..]) {
         Ok(p) => p,
-        Err(e) => panic!("Error parsing options: {}", e),
+        Err(e) => return Err(format!("Cannot parse command line params: {e}").into()),
     };
 
     if params.opt_present("help") {
         println!("{HELP_TEXT}");
-        return;
+        return Ok(());
     }
 
     if let Some(path) = params.opt_str("lockfile") {
-        if util::lockfile(&path, "check").unwrap() {
-            panic!("Remove lockfile first: {}", path);
+        if util::lockfile(&path, "check")? {
+            // This is a non-starter.
+            return Err(format!("Remove lockfile first: {}", path).into());
         }
-        util::lockfile(&path, "create").unwrap();
+        util::lockfile(&path, "create")?;
     }
 
     let mut target_options = json::object! {
@@ -132,15 +136,34 @@ fn main() {
 
     let parallel = util::json_int(&target_options["parallel"]).unwrap_or(1);
     let sleep = match params.opt_str("parallel-init-sleep") {
-        Some(s) => s.parse::<i64>().unwrap(),
+        Some(s) => match s.parse::<i64>() {
+            Ok(v) => v,
+            Err(e) => return Err(format!("Invalid init-sleep value: {} {}", s, e).into()),
+        }
         None => 0,
     };
 
-    // 'slot' is 1-based at the API level.
+    let mut init_ops = InitOptions::new();
+    init_ops.skip_host_settings = true; // we don't need it.
+
+    let context = eg::init::init_with_options(&init_ops)?;
+
     let mut children = Vec::new();
+
+    // 'slot' is 1-based at the API level.
     for slot in 1..parallel + 1 {
-        let local_ops = target_options.clone();
-        let handle = thread::spawn(move || process_batch(local_ops, slot));
+
+        // Clone some data we can pass to the thread.
+        let ops = target_options.clone();
+        let idl = context.idl().clone();
+        let config = context.config().clone();
+
+        let handle = thread::spawn(move || {
+            if let Err(e) = process_batch(config, idl, ops, slot) {
+                log::error!("Targeter thread exited with error: {e}");
+            }
+        });
+
         children.push(handle);
 
         if sleep > 0 {
@@ -152,9 +175,9 @@ fn main() {
         let _ = child.join();
     }
 
-    println!("All child threads completed");
-
     if let Some(path) = params.opt_str("lockfile") {
-        util::lockfile(&path, "delete").unwrap();
+        util::lockfile(&path, "delete")?;
     }
+
+    Ok(())
 }

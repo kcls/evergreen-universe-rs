@@ -1,4 +1,5 @@
 use crate::idl;
+use crate::result::EgResult;
 use opensrf as osrf;
 use std::env;
 use std::sync::Arc;
@@ -44,11 +45,11 @@ impl InitOptions {
 
 /// Read common command line parameters, parse the core config, apply
 /// the primary connection type, and setup logging.
-pub fn init() -> Result<Context, String> {
+pub fn init() -> EgResult<Context> {
     init_with_options(&InitOptions::new())
 }
 
-pub fn init_with_options(options: &InitOptions) -> Result<Context, String> {
+pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
     let config = osrf::init::init_with_options(&options.osrf_ops)?;
     let config = config.into_shared();
 
@@ -80,6 +81,28 @@ pub fn init_with_options(options: &InitOptions) -> Result<Context, String> {
         .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
 
     client.set_serializer(idl::Parser::as_serializer(&idl));
+
+    Ok(Context {
+        client,
+        config,
+        idl,
+        host_settings,
+    })
+}
+
+/// Create a new connection using pre-compiled context components.  Useful
+/// for spawned threads so they can avoid repetitive processing at
+/// connect time.
+///
+/// The only part that must happen in its own thread is the opensrf connect.
+pub fn init_from_parts(
+    config: Arc<osrf::conf::Config>,
+    idl: Arc<idl::Parser>,
+    host_settings: Option<Arc<osrf::sclient::HostSettings>>
+) -> EgResult<Context> {
+
+    let client = osrf::Client::connect(config.clone())
+        .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
     Ok(Context {
         client,
