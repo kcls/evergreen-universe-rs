@@ -1,6 +1,7 @@
 use eg::init::InitOptions;
 use eg::util;
 use eg::result::EgResult;
+use opensrf::session::MultiSession;
 use evergreen as eg;
 use getopts;
 use std::thread;
@@ -121,20 +122,17 @@ fn main() -> EgResult<()> {
 
     let context = eg::init::init_with_options(&init_ops)?;
 
-    let mut requests = Vec::new();
+    let mut multi_ses = MultiSession::new(
+        context.client().clone(), "open-ils.rs-hold-targeter");
 
     // 'slot' is 1-based at the API level.
     for slot in 1..(parallel + 1) {
 
-        //println!("parallel {parallel} slot {slot}");
-
         let mut target_options = target_options.clone();
         target_options["parallel_slot"] = json::from(slot);
 
-        let mut ses = context.client().session("open-ils.rs-hold-targeter");
-        let req = ses.request("open-ils.rs-hold-targeter.target", target_options)?;
-
-        requests.push(req);
+        multi_ses.request(
+            "open-ils.rs-hold-targeter.target", target_options)?;
 
         if sleep > 0 {
             thread::sleep(std::time::Duration::from_secs(sleep as u64));
@@ -142,46 +140,16 @@ fn main() -> EgResult<()> {
     }
 
     loop {
-        //thread::sleep(std::time::Duration::from_secs(1)); // XXX
-        //println!("looping with {} requests", requests.len()); // XXX
-
-        if context.client().wait(60)? {
-            for req in requests.iter_mut() {
-                if let Some(resp) = req.recv_with_timeout(0)? {
-                    println!("ses {} has a value {}", req.thread(), resp); // XXX
-                    log::info!("Targeter responded with {resp}");
-                }
-            }
-        }
-
-        loop {
-            // Clean up completed requests
-            let mut rem_thread_trace = None;
-
-            for req in requests.iter() {
-                if req.complete() {
-                    rem_thread_trace = Some(req.thread_trace());
-                    break;
-                }
-            }
-
-            let tt = match rem_thread_trace {
-                Some(t) => t,
-                None => break,
-            };
-
-            let pos = match requests.iter().position(|r| r.thread_trace() == tt) {
-                Some(p) => p,
-                None => continue,
-            };
-
-            requests.remove(pos);
-        }
-
-        if requests.len() == 0 {
+        if multi_ses.complete() {
             break;
         }
+
+        if let Some((thread, value)) = multi_ses.recv(60)? {
+            println!("Thread {} has a value {}", thread, value);
+        }
     }
+
+    println!("All done");
 
     if let Some(path) = params.opt_str("lockfile") {
         util::lockfile(&path, "delete")?;

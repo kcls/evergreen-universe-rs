@@ -32,6 +32,7 @@ struct Response {
 }
 
 /// Models a single API call through which the caller can receive responses.
+#[derive(Clone)]
 pub struct Request {
     /// Link to our session so we can ask it for bus data.
     session: Rc<RefCell<Session>>,
@@ -626,6 +627,85 @@ impl ResponseIterator {
         ResponseIterator { request }
     }
 }
+
+/// Minimal multi-session implementation.
+///
+/// Maybe later:
+///     Max parallel / throttling
+pub struct MultiSession {
+    client: Client,
+    service: String,
+    requests: Vec<Request>,
+}
+
+
+impl MultiSession {
+    pub fn new(client: Client, service: &str) -> MultiSession {
+        MultiSession {
+            client,
+            service: service.to_string(),
+            requests: Vec::new(),
+        }
+    }
+
+    pub fn request<T>(&mut self, method: &str, params: T) -> Result<String, String>
+    where
+        T: Into<ApiParams>,
+    {
+
+        let mut ses = self.client.session(&self.service);
+        let req = ses.request(method, params)?;
+        let thread = req.thread().to_string();
+
+        self.requests.push(req);
+
+        Ok(thread)
+    }
+
+    pub fn complete(&mut self) -> bool {
+        self.remove_completed();
+        self.requests.len() == 0
+    }
+
+    /// Wait up to `timeout` seconds for a response to arrive for any
+    /// of our outstanding requests.
+    ///
+    /// Returns (Thread, Response) if found
+    pub fn recv(&mut self, timeout: i32) -> Result<Option<(String, JsonValue)>, String> {
+        // Wait for replies to any sessions on this client to appear
+        // then see if we can find one related specfically to the
+        // requests are managing.
+
+        if self.client.wait(timeout)? {
+            for req in self.requests.iter_mut() {
+                if let Some(resp) = req.recv_with_timeout(0)? {
+                    return Ok(Some((req.thread.to_string(), resp)));
+                }
+            }
+        }
+
+        self.remove_completed();
+
+        Ok(None)
+    }
+
+    fn remove_completed(&mut self) {
+        // We consider a request to be complete only when it has
+        // received a COMPLETE messsage and its reply backlog
+        // has been drained.
+        let test = |r: &Request| r.complete() && r.session.borrow().backlog.is_empty();
+
+        loop {
+            let pos = match self.requests.iter().position(test) {
+                Some(p) => p,
+                None => break,
+            };
+
+            self.requests.remove(pos);
+        }
+    }
+}
+
 
 pub struct ServerSession {
     /// Service name.
