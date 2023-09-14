@@ -98,9 +98,8 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
 pub fn init_from_parts(
     config: Arc<osrf::conf::Config>,
     idl: Arc<idl::Parser>,
-    host_settings: Option<Arc<osrf::sclient::HostSettings>>
+    host_settings: Option<Arc<osrf::sclient::HostSettings>>,
 ) -> EgResult<Context> {
-
     let client = osrf::Client::connect(config.clone())
         .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 

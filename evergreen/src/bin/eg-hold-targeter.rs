@@ -1,9 +1,9 @@
 use eg::init::InitOptions;
-use eg::util;
 use eg::result::EgResult;
-use opensrf::session::MultiSession;
+use eg::util;
 use evergreen as eg;
 use getopts;
+use opensrf::session::MultiSession;
 use std::thread;
 
 const HELP_TEXT: &str = r#"
@@ -58,11 +58,11 @@ Targeting Options
         requested interval.
         Overrides the 'circ.holds.retarget_interval' global_flag value.
 
-
+    --return-throttle
+        Report ongoing status after processing this many holds.
 "#;
 
 fn main() -> EgResult<()> {
-    let args: Vec<String> = std::env::args().collect();
     let mut options = getopts::Options::new();
 
     options.optflag("", "help", "Show this message");
@@ -72,12 +72,12 @@ fn main() -> EgResult<()> {
     options.optopt("", "soft-retarget-interval", "", "");
     options.optopt("", "next-check-interval", "", "");
     options.optopt("", "retarget-interval", "", "");
+    options.optopt("", "return-throttle", "", "");
 
-    let params = match options.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => return Err(
-            format!("Cannot parse command line params: {e}").into()),
-    };
+    let args: Vec<String> = std::env::args().collect();
+
+    let params = options.parse(&args[1..])
+        .or_else(|e| Err(format!("Error parsing params: {e}")))?;
 
     if params.opt_present("help") {
         println!("{HELP_TEXT}");
@@ -86,15 +86,13 @@ fn main() -> EgResult<()> {
 
     if let Some(path) = params.opt_str("lockfile") {
         if util::lockfile(&path, "check")? {
-            // This is a non-starter.
             return Err(format!("Remove lockfile first: {}", path).into());
         }
         util::lockfile(&path, "create")?;
     }
 
     let mut target_options = json::object! {
-        "return_throttle": 20,  // TODO command line
-        "return_count": true,   // instead of per-hold details
+        "return_count": true, // summary counts only
     };
 
     for key in &[
@@ -102,6 +100,7 @@ fn main() -> EgResult<()> {
         "retarget-interval",
         "soft-retarget-interval",
         "next-check-interval",
+        "return-throttle", // is number, but OK for json
     ] {
         if let Some(val) = params.opt_str(key) {
             target_options[key.replace("-", "_")] = json::from(val);
@@ -109,33 +108,28 @@ fn main() -> EgResult<()> {
     }
 
     let parallel = util::json_int(&target_options["parallel_count"]).unwrap_or(1);
-    let sleep = match params.opt_str("parallel-init-sleep") {
-        Some(s) => match s.parse::<i64>() {
-            Ok(v) => v,
-            Err(e) => return Err(format!("Invalid init-sleep value: {} {}", s, e).into()),
-        }
-        None => 0,
-    };
+
+    let mut sleep = 0;
+    if let Some(v) = params.opt_str("parallel-init-sleep") {
+        sleep = v.parse::<u64>().unwrap_or(0);
+    }
 
     let mut init_ops = InitOptions::new();
     init_ops.skip_host_settings = true; // we don't need it.
 
     let context = eg::init::init_with_options(&init_ops)?;
 
-    let mut multi_ses = MultiSession::new(
-        context.client().clone(), "open-ils.rs-hold-targeter");
+    let mut multi_ses = MultiSession::new(context.client().clone(), "open-ils.rs-hold-targeter");
 
     // 'slot' is 1-based at the API level.
     for slot in 1..(parallel + 1) {
-
         let mut target_options = target_options.clone();
         target_options["parallel_slot"] = json::from(slot);
 
-        multi_ses.request(
-            "open-ils.rs-hold-targeter.target", target_options)?;
+        multi_ses.request("open-ils.rs-hold-targeter.target", target_options)?;
 
         if sleep > 0 {
-            thread::sleep(std::time::Duration::from_secs(sleep as u64));
+            thread::sleep(std::time::Duration::from_secs(sleep));
         }
     }
 
@@ -148,8 +142,6 @@ fn main() -> EgResult<()> {
             println!("Thread {} has a value {}", thread, value);
         }
     }
-
-    println!("All done");
 
     if let Some(path) = params.opt_str("lockfile") {
         util::lockfile(&path, "delete")?;

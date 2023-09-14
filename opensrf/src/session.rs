@@ -609,16 +609,10 @@ pub struct ResponseIterator {
 }
 
 impl Iterator for ResponseIterator {
-    type Item = JsonValue;
+    type Item = Result<JsonValue, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.request.recv() {
-            Ok(op) => op,
-            Err(e) => {
-                log::error!("ResponseIterator failed with {e}");
-                None
-            }
-        }
+        self.request.recv().transpose()
     }
 }
 
@@ -630,6 +624,13 @@ impl ResponseIterator {
 
 /// Minimal multi-session implementation.
 ///
+/// Primary use is to blast a series of requests in parallel without
+/// having to be concerned about tracking them all or interacting
+/// with the underlying sessions.
+///
+/// Connecting sessions is not supported, because each session is
+/// responsible for exactly one request.
+///
 /// Maybe later:
 ///     Max parallel / throttling
 pub struct MultiSession {
@@ -637,7 +638,6 @@ pub struct MultiSession {
     service: String,
     requests: Vec<Request>,
 }
-
 
 impl MultiSession {
     pub fn new(client: Client, service: &str) -> MultiSession {
@@ -648,11 +648,14 @@ impl MultiSession {
         }
     }
 
+    /// Create a new underlying session and send a request via the session.
+    ///
+    /// Returns the session thead so the caller can link specific
+    /// request to their responses (see recv()) if needed.
     pub fn request<T>(&mut self, method: &str, params: T) -> Result<String, String>
     where
         T: Into<ApiParams>,
     {
-
         let mut ses = self.client.session(&self.service);
         let req = ses.request(method, params)?;
         let thread = req.thread().to_string();
@@ -662,6 +665,10 @@ impl MultiSession {
         Ok(thread)
     }
 
+    /// True if all requests have been marked complete and have
+    /// empty reply backlogs.
+    ///
+    /// May first mark additional requests as complete as a side effect.
     pub fn complete(&mut self) -> bool {
         self.remove_completed();
         self.requests.len() == 0
@@ -691,8 +698,8 @@ impl MultiSession {
 
     fn remove_completed(&mut self) {
         // We consider a request to be complete only when it has
-        // received a COMPLETE messsage and its reply backlog
-        // has been drained.
+        // received a COMPLETE messsage and its reply backlog has been
+        // drained.
         let test = |r: &Request| r.complete() && r.session.borrow().backlog.is_empty();
 
         loop {
@@ -705,7 +712,6 @@ impl MultiSession {
         }
     }
 }
-
 
 pub struct ServerSession {
     /// Service name.
@@ -730,7 +736,7 @@ pub struct ServerSession {
     /// Replies have the same thread_trace as their request.
     last_thread_trace: usize,
 
-    /// Responses collected to be packaed into an "atomic" response array.
+    /// Responses collected to be packed into an "atomic" response array.
     atomic_resp_queue: Option<Vec<JsonValue>>,
 }
 

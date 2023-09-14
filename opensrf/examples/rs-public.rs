@@ -202,6 +202,7 @@ fn relay(
         &api_name,
         method.params().clone(),
     )? {
+        let resp = resp?;
         session.respond(resp.clone())?;
         session.respond(json::from(format!("Relay count: {}", worker.relay_count)))?
     }

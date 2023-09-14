@@ -22,19 +22,20 @@ fn main() -> Result<(), String> {
 
     let params = vec![
         json::object! {
-            id: vec![1, 2, 3]
+            "id": vec![1, 2, 3]
         },
         json::object! {
-            flesh: 1,
-            flesh_fields: json::object!{
-                au: vec!["home_ou"]
+            "flesh": 1,
+            "flesh_fields": json::object!{
+                "au": vec!["home_ou"]
             }
         },
     ];
 
     for _ in 0..9 {
         // Iterator example
-        for user in ses.send_recv(method, params.clone())? {
+        for res in ses.send_recv(method, params.clone())? {
+            let user = res?;
             println!(
                 "{} {} home_ou={}",
                 user["id"], user["usrname"], user["home_ou"]["name"]
