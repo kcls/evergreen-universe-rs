@@ -30,6 +30,9 @@ threadpool = "1.8"
 pg_interval = "0.4"
 rust_decimal = { version = "1.26", features = ["db-postgres"] }
 
+# HTTP gateway
+httparse = "1.8.0"
+
 # for egsh
 # could be make optional
 # Issues with deriving Default for enums in v10.1.0

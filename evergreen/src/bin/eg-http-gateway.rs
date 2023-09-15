@@ -11,6 +11,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::time::Instant;
 use url::Url;
+use httparse;
 
 const BUFSIZE: usize = 1024;
 const DEFAULT_PORT: u16 = 9682;
@@ -80,6 +81,13 @@ struct GatewayHandler {
     idl: Arc<idl::Parser>,
 }
 
+/// Just the stuff we need.
+struct ParsedHttpRequest {
+    path: String,
+    method: String,
+    body: String,
+}
+
 impl GatewayHandler {
     /// Mutable OpenSRF Bus ref
     ///
@@ -93,8 +101,8 @@ impl GatewayHandler {
     }
 
     fn handle_request(&mut self, request: &mut GatewayRequest) -> Result<(), String> {
-        let text = self.read_request(request)?;
-        let mut req = self.parse_request(&text)?;
+        let http_req = self.read_request(request)?;
+        let mut req = self.parse_request(http_req)?;
 
         // Log the call before we relay it to OpenSRF in case the
         // request exits early on a failure.
@@ -273,43 +281,105 @@ impl GatewayHandler {
 
     /// Pulls the raw request content from the socket and returns it
     /// as a String.
-    fn read_request(&mut self, request: &mut GatewayRequest) -> Result<String, String> {
-        let mut text = String::new();
+    fn read_request(&mut self, request: &mut GatewayRequest) -> Result<ParsedHttpRequest, String> {
+        // It's assumed we don't need a timeout on the tcpstream for
+        // any reads because we sit behind a proxy-like thing
+        // (e.g. nginx) that applies reasonable read/write timeouts
+        // for HTTP clients.
+
+        let mut content_length = None;
+        let mut chars: Vec<u8> = Vec::new();
 
         loop {
+
+            // Pull a chunk of bytes from the stream and see what we can
+            // do with it.
             let mut buffer = [0u8; BUFSIZE];
 
-            // Block on the first call to read() since we know the
-            // client is expecting to send us data.  After the first read,
-            // set the stream to nonblocking and keep pulling values
-            // until we read fewer bytes than we requested.
-            let num_bytes = match request.stream.read(&mut buffer) {
-                Ok(n) => n,
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::WouldBlock => 0,
-                    _ => Err(format!("Error reading HTTP stream: {e}"))?,
-                },
-            };
+            let num_bytes = request.stream.read(&mut buffer)
+                .or_else(|e| Err(format!("Error reading HTTP stream: {e}")))?;
 
-            if num_bytes > 0 {
-                // Append the buffer to the string in progress, removing
-                // any trailing null bytes from our pre-initialized buffer.
-                text.push_str(String::from_utf8_lossy(&buffer).trim_matches(char::from(0)));
+            log::trace!("Read {num_bytes} from the TCP stream");
+
+            for c in buffer.iter() {
+                if *c == 0 {
+                    // Drop any trailing '\0' chars.
+                    break;
+                }
+                chars.push(*c);
             }
 
-            if num_bytes < BUFSIZE {
-                // Reading fewer than the requested number of bytes is
-                // our indication that we've read all available data.
-                return Ok(text);
+            let mut headers = [httparse::EMPTY_HEADER; 64];
+            let mut http_req = httparse::Request::new(&mut headers);
+            let res = http_req.parse(chars.as_slice())
+                .or_else(|e| Err(format!("Error readong HTTP headers: {e}")))?;
+
+            if res.is_partial() {
+                // We haven't read enough data yet.
+                continue;
             }
 
-            // If the read exceeds the buffer size, set our stream to
-            // non-blocking and keep reading until there's nothing left
-            // to read.
-            request
-                .stream
-                .set_nonblocking(true)
-                .or_else(|e| Err(format!("Set nonblocking failed: {e}")))?;
+            let header_byte_count = res.unwrap(); // OK for !is_partial()
+
+            // We have a full set of headers.
+            // See how many bytes of content we hope to read.
+
+            // No need to parse the Content-Length multiple times.
+            if content_length.is_none() {
+                for header in http_req.headers.iter() {
+                    if header.name.to_lowercase().as_str() == "Content-Length" {
+                        let len = String::from_utf8_lossy(&header.value);
+                        if let Ok(size) = len.parse::<usize>() {
+                            content_length = Some(size);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if content_length.is_none() {
+                // GET requests don't have content length...
+                content_length = Some(0);
+            }
+
+            let content_length = content_length.unwrap();
+
+            if chars.len() <= header_byte_count {
+                // We have read zero bytes of the body.
+                // Go back and keep reading data.
+                if content_length == 0 {
+                    // No request body to read.
+                    let body = "".to_string(); // TODO Make an option
+                    let method = http_req.method.unwrap_or("GET").to_string();
+                    let path = http_req.path.unwrap_or("/").to_string();
+
+                    return Ok(ParsedHttpRequest {method, path, body});
+
+                } else {
+                    continue;
+                }
+            }
+
+            let body_bytes = &chars[header_byte_count..];
+            let body_byte_count = body_bytes.len();
+
+            log::trace!("Read {body_byte_count} body bytes, need {content_length}");
+
+            if body_byte_count == content_length {
+                // We've read all the data.
+
+                let body = String::from_utf8_lossy(chars.as_slice()).to_string();
+                let method = http_req.method.unwrap_or("GET").to_string();
+                let path = http_req.path.unwrap_or("/").to_string();
+
+                return Ok(ParsedHttpRequest {method, path, body});
+            }
+
+            if body_byte_count > content_length {
+                return Err(format!("Content exceeds Content-Length header value"));
+            }
+
+            // Keep pulling data
         }
     }
 
@@ -318,44 +388,16 @@ impl GatewayHandler {
     /// * `request` - Full HTTP request text including headers, etc.
     ///
     /// Returns Err if the request cannot be translated.
-    fn parse_request(&self, text: &str) -> Result<ParsedGatewayRequest, String> {
-        let mut lines = text.split("\r\n");
-
-        let request = lines
-            .next()
-            .ok_or_else(|| format!("Request has no request line"))?;
-        let mut request_parts = request.split_whitespace();
-
-        let http_method = request_parts // GET, POST, etc.
-            .next()
-            .ok_or_else(|| format!("Request contains no method"))?;
-
-        let get_query = request_parts // Relative URL with query params
-            .next()
-            .ok_or_else(|| format!("Request contains no path"))?;
-
-        // For now, we don't really care about the headers.
-        // Gobble them up and discard them.
-        while let Some(header) = lines.next() {
-            if header.eq("") {
-                // End of headers.
-                break;
-            }
-            log::trace!("Gateway header: {header}");
-        }
-
-        // Anything after the headers is the request body.
-        // Join the remaining lines into a single string.
-        let body = lines.collect::<Vec<&str>>().join("");
+    fn parse_request(&self, http_req: ParsedHttpRequest) -> Result<ParsedGatewayRequest, String> {
 
         // Parse the GET portion of the URL so we can extract any params
         // found there.
-        let get_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, get_query))
+        let get_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, &http_req.path))
             .or_else(|e| Err(format!("Error parsing request URL: {e}")))?;
 
         // Parse the request body as a URL so we can unpack any
         // POST params and add them to our parameter list.
-        let post_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, body))
+        let post_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, &http_req.body))
             .or_else(|e| Err(format!("Error parsing request body as URL: {e}")))?;
 
         let mut method: Option<String> = None;
@@ -407,7 +449,7 @@ impl GatewayHandler {
             format,
             service: service.unwrap(),
             method: Some(m),
-            http_method: http_method.to_string(),
+            http_method: http_req.method.to_string(),
         })
     }
 
