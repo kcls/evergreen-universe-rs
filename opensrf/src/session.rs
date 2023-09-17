@@ -25,7 +25,7 @@ pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 struct Response {
     /// Response from an API call as a JsonValue.
     value: Option<JsonValue>,
-    /// True if the Request we are a response to is complete.
+    /// True if our originating Request is complete.
     complete: bool,
     /// True if this is a partial response
     partial: bool,
@@ -66,8 +66,20 @@ impl Request {
         self.thread_trace
     }
 
+    /// True if we have received a COMPLETE message from the server.
+    ///
+    /// This does not guarantee all responses have been read.
     pub fn complete(&self) -> bool {
         self.complete
+    }
+
+    /// True if we have received a COMPLETE message from the server
+    /// and all responses from our network backlog have been read.
+    ///
+    /// It's possible to read the COMPLETE message before the caller
+    /// pulls all the data.  
+    pub fn exhausted(&self) -> bool {
+        self.complete() && self.session.borrow().backlog.is_empty()
     }
 
     /// Pull all responses from the bus and return the first.
@@ -668,7 +680,7 @@ impl MultiSession {
     /// True if all requests have been marked complete and have
     /// empty reply backlogs.
     ///
-    /// May first mark additional requests as complete as a side effect.
+    /// May mark additional requests as complete as a side effect.
     pub fn complete(&mut self) -> bool {
         self.remove_completed();
         self.requests.len() == 0
@@ -698,9 +710,9 @@ impl MultiSession {
 
     fn remove_completed(&mut self) {
         // We consider a request to be complete only when it has
-        // received a COMPLETE messsage and its reply backlog has been
+        // received a COMPLETE messsage and its backlog has been
         // drained.
-        let test = |r: &Request| r.complete() && r.session.borrow().backlog.is_empty();
+        let test = |r: &Request| r.exhausted();
 
         loop {
             let pos = match self.requests.iter().position(test) {

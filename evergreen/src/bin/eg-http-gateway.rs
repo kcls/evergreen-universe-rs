@@ -1,6 +1,7 @@
-//! Evergreen HTTP+JSON API Server
+//! Evergreen HTTP+JSON Gateway
 use eg::idl;
 use evergreen as eg;
+use httparse;
 use mptc;
 use opensrf as osrf;
 use osrf::client::DataSerializer;
@@ -11,7 +12,6 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::time::Instant;
 use url::Url;
-use httparse;
 
 const BUFSIZE: usize = 1024;
 const DEFAULT_PORT: u16 = 9682;
@@ -20,8 +20,9 @@ const DUMMY_BASE_URL: &str = "http://localhost";
 const HTTP_CONTENT_TYPE: &str = "Content-Type: text/json";
 
 /// Max time we'll wait for a reply from an OpenSRF request.
-/// TODO configurable?
-const OSRF_RELAY_TIMEOUT: i32 = 120;
+/// Keep this value large and assume the proxy (eg. nginx) we sit
+/// behind had sane read/write timeouts
+const OSRF_RELAY_TIMEOUT: i32 = 300;
 
 struct GatewayRequest {
     stream: TcpStream,
@@ -85,7 +86,8 @@ struct GatewayHandler {
 struct ParsedHttpRequest {
     path: String,
     method: String,
-    body: String,
+    /// Only POST requests will have an HTTP body
+    body: Option<String>,
 }
 
 impl GatewayHandler {
@@ -124,7 +126,7 @@ impl GatewayHandler {
 
         let array = json::JsonValue::Array(replies);
         let data = array.dump();
-        let length = format!("Content-length: {}", data.as_bytes().len());
+        let length = format!("Content-Length: {}", data.as_bytes().len());
 
         let response = match req.http_method.as_str() {
             "HEAD" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n"),
@@ -287,16 +289,19 @@ impl GatewayHandler {
         // (e.g. nginx) that applies reasonable read/write timeouts
         // for HTTP clients.
 
-        let mut content_length = None;
+        let mut header_byte_count = 0;
+        let mut parsed_req = None;
+        let mut content_length = 0;
         let mut chars: Vec<u8> = Vec::new();
 
         loop {
-
             // Pull a chunk of bytes from the stream and see what we can
             // do with it.
             let mut buffer = [0u8; BUFSIZE];
 
-            let num_bytes = request.stream.read(&mut buffer)
+            let num_bytes = request
+                .stream
+                .read(&mut buffer)
                 .or_else(|e| Err(format!("Error reading HTTP stream: {e}")))?;
 
             log::trace!("Read {num_bytes} from the TCP stream");
@@ -309,77 +314,84 @@ impl GatewayHandler {
                 chars.push(*c);
             }
 
-            let mut headers = [httparse::EMPTY_HEADER; 64];
-            let mut http_req = httparse::Request::new(&mut headers);
-            let res = http_req.parse(chars.as_slice())
-                .or_else(|e| Err(format!("Error readong HTTP headers: {e}")))?;
+            if parsed_req.is_none() {
+                // Parse the headers and extract the values we care about.
 
-            if res.is_partial() {
-                // We haven't read enough data yet.
-                continue;
-            }
+                let mut headers = [httparse::EMPTY_HEADER; 64];
+                let mut req = httparse::Request::new(&mut headers);
 
-            let header_byte_count = res.unwrap(); // OK for !is_partial()
+                let res = req
+                    .parse(chars.as_slice())
+                    .or_else(|e| Err(format!("Error readong HTTP headers: {e}")))?;
 
-            // We have a full set of headers.
-            // See how many bytes of content we hope to read.
+                if res.is_partial() {
+                    // We haven't read enough header data yet.
+                    continue;
+                }
 
-            // No need to parse the Content-Length multiple times.
-            if content_length.is_none() {
-                for header in http_req.headers.iter() {
-                    if header.name.to_lowercase().as_str() == "Content-Length" {
+                // httparse::Result contains the byte count of the header
+                // once full parsed.
+                header_byte_count = res.unwrap();
+
+                for header in req.headers.iter() {
+                    if header.name.to_lowercase().as_str() == "content-length" {
                         let len = String::from_utf8_lossy(&header.value);
                         if let Ok(size) = len.parse::<usize>() {
-                            content_length = Some(size);
+                            content_length = size;
                             break;
                         }
                     }
                 }
+
+                let method = req
+                    .method
+                    .map(|v| v.to_string())
+                    .ok_or(format!("Invalid HTTP request"))?;
+
+                let path = req
+                    .path
+                    .map(|v| v.to_string())
+                    .ok_or(format!("Invalid HTTP request"))?;
+
+                parsed_req = Some(ParsedHttpRequest {
+                    method,
+                    path,
+                    body: None,
+                });
             }
 
-            if content_length.is_none() {
-                // GET requests don't have content length...
-                content_length = Some(0);
-            }
+            if chars.len() == header_byte_count {
+                // We have read zero bytes of body data.
+                // There may be none to read.
 
-            let content_length = content_length.unwrap();
-
-            if chars.len() <= header_byte_count {
-                // We have read zero bytes of the body.
-                // Go back and keep reading data.
                 if content_length == 0 {
-                    // No request body to read.
-                    let body = "".to_string(); // TODO Make an option
-                    let method = http_req.method.unwrap_or("GET").to_string();
-                    let path = http_req.path.unwrap_or("/").to_string();
-
-                    return Ok(ParsedHttpRequest {method, path, body});
-
-                } else {
-                    continue;
+                    return Ok(parsed_req.take().unwrap());
                 }
+
+                // We have a non-content content-length.
+                // Keep reading data.
+                continue;
             }
 
             let body_bytes = &chars[header_byte_count..];
             let body_byte_count = body_bytes.len();
 
-            log::trace!("Read {body_byte_count} body bytes, need {content_length}");
+            log::trace!("Read {body_byte_count} body bytes, want {content_length}");
 
             if body_byte_count == content_length {
-                // We've read all the data.
+                // We've read all the body data.
+                let mut parsed_req = parsed_req.take().unwrap();
 
-                let body = String::from_utf8_lossy(chars.as_slice()).to_string();
-                let method = http_req.method.unwrap_or("GET").to_string();
-                let path = http_req.path.unwrap_or("/").to_string();
+                parsed_req.body = Some(String::from_utf8_lossy(chars.as_slice()).to_string());
 
-                return Ok(ParsedHttpRequest {method, path, body});
+                return Ok(parsed_req);
             }
 
             if body_byte_count > content_length {
                 return Err(format!("Content exceeds Content-Length header value"));
             }
 
-            // Keep pulling data
+            // Keep reading data until body_byte_count >= content_length
         }
     }
 
@@ -389,45 +401,47 @@ impl GatewayHandler {
     ///
     /// Returns Err if the request cannot be translated.
     fn parse_request(&self, http_req: ParsedHttpRequest) -> Result<ParsedGatewayRequest, String> {
+        let url_params = match http_req.body {
+            // POST params are in the body
+            Some(b) => format!("{}?{}", DUMMY_BASE_URL, &b),
+            // GET Params are in the path.
+            None => format!("{}{}", DUMMY_BASE_URL, &http_req.path),
+        };
 
-        // Parse the GET portion of the URL so we can extract any params
-        // found there.
-        let get_url = Url::parse(&format!("{}{}", DUMMY_BASE_URL, &http_req.path))
-            .or_else(|e| Err(format!("Error parsing request URL: {e}")))?;
-
-        // Parse the request body as a URL so we can unpack any
-        // POST params and add them to our parameter list.
-        let post_url = Url::parse(&format!("{}?{}", DUMMY_BASE_URL, &http_req.body))
-            .or_else(|e| Err(format!("Error parsing request body as URL: {e}")))?;
+        let parsed_url = Url::parse(&url_params)
+            .or_else(|e| Err(format!("Error parsing request params: {e}")))?;
 
         let mut method: Option<String> = None;
         let mut service: Option<String> = None;
         let mut params: Vec<json::JsonValue> = Vec::new();
         let mut format = GatewayRequestFormat::Fieldmapper;
 
-        // Pack GET and POST params into a single iterator.
-        let query_iter = get_url.query_pairs().chain(post_url.query_pairs());
-
-        for (k, v) in query_iter {
+        for (k, v) in parsed_url.query_pairs() {
             match k.as_ref() {
                 "method" => method = Some(v.to_string()),
                 "service" => service = Some(v.to_string()),
                 "format" => format = v.as_ref().into(),
                 "param" => {
-                    let v =
-                        json::parse(&v).or_else(|e| Err(format!("Cannot parse parameter: {e}")))?;
-                    params.push(v);
+                    let val = json::parse(&v)
+                        .or_else(|e| Err(format!("Cannot parse parameter: {e} : {v}")))?;
+                    params.push(val);
                 }
                 _ => {} // ignore other stuff
             }
         }
+
+        let method = method
+            .as_ref()
+            .ok_or(format!("Request contains no method name"))?;
+
+        let service = service.ok_or(format!("Request contains no service name"))?;
 
         if format.is_raw() {
             // The caller is giving us raw JSON as parameter values.
             // We need to turn them into Fieldmapper-encoded values before
             // passing them to OpenSRF.
             let mut packed_params = Vec::new();
-            let mut iter = params.drain(0..);
+            let mut iter = params.drain(..);
             while let Some(param) = iter.next() {
                 packed_params.push(self.idl.unpack(param));
             }
@@ -435,20 +449,12 @@ impl GatewayHandler {
             params = packed_params;
         }
 
-        if method.is_none() {
-            return Err(format!("Request contains no method name"));
-        }
-
-        if service.is_none() {
-            return Err(format!("Request contains no service name"));
-        }
-
-        let m = osrf::message::Method::new(method.as_ref().unwrap(), params);
+        let osrf_method = osrf::message::Method::new(method, params);
 
         Ok(ParsedGatewayRequest {
             format,
-            service: service.unwrap(),
-            method: Some(m),
+            service: service,
+            method: Some(osrf_method),
             http_method: http_req.method.to_string(),
         })
     }
