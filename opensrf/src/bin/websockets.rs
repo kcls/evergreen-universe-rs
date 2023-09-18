@@ -29,8 +29,8 @@ use ws::protocol::WebSocket;
  * Outbound session thread reads opensrf replies and relays them to the
  * main thread for processing.
  *
- * The Session thread writes responses to the websocket client and
- * tracks connections.
+ * The main session thread writes responses to the websocket client and
+ * tracks connected sessions.
  */
 
 const DEFAULT_PORT: u16 = 7682;
@@ -58,8 +58,7 @@ const MAX_ACTIVE_REQUESTS: usize = 8;
 ///
 /// If we reach MAX_ACTIVE_REQUESTS, we start leaving new requests in
 /// the backlog.  If the size of the baclkog exceeds this amount,
-/// reject future requests until the backlog gets back below this amount.
-/// NOTE: should we kick the client off at this point?
+/// discard all of the pending requests and disconnect the client.
 const MAX_BACKLOG_SIZE: usize = 1000;
 
 const SHUTDOWN_POLL_INTERVAL: i32 = 3;
@@ -477,7 +476,11 @@ impl Session {
                 if tlen >= MAX_MESSAGE_SIZE {
                     log::error!("{self} Dropping huge websocket message size={tlen}");
                 } else if self.request_queue.len() >= MAX_BACKLOG_SIZE {
-                    log::error!("Backlog exceeds max size={}; dropping", MAX_BACKLOG_SIZE);
+                    // Client is getting out of handle.  Let them go.
+                    return Err(format!(
+                        "Backlog exceeds max size={}; dropping connectino", 
+                        MAX_BACKLOG_SIZE
+                    ));
                 } else {
                     log::trace!("{self} Queueing inbound message for processing");
                     self.request_queue.push_back(text);
