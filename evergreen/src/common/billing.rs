@@ -7,7 +7,7 @@ use crate::editor::Editor;
 use crate::result::EgResult;
 use crate::util;
 use crate::util::{json_bool, json_float, json_int, json_string};
-use chrono::{DateTime, Duration, FixedOffset, Local};
+use chrono::Duration;
 use json::JsonValue;
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -526,10 +526,7 @@ pub fn xact_has_payment_within(
     let payment_ts = &payment["payment_ts"].as_str().unwrap();
     let payment_dt = date::parse_datetime(payment_ts)?;
 
-    // Payments made before this time don't count.
-    // "Local" could be replaced with any timezone for the
-    // purposes of finding the window size.
-    let window_start = Local::now() - Duration::seconds(intvl_secs);
+    let window_start = date::now() - Duration::seconds(intvl_secs);
 
     Ok(payment_dt > window_start)
 }
@@ -598,7 +595,7 @@ pub fn generate_fines_for_xact(
 
     let fine_interval = date::interval_to_seconds(fine_interval)?;
     let mut grace_period = date::interval_to_seconds(grace_period.unwrap_or("0s"))?;
-    let now = Local::now();
+    let now = date::now();
 
     if fine_interval == 0 || recurring_fine * 100.0 == 0.0 || max_fine * 100.0 == 0.0 {
         log::info!(
@@ -786,7 +783,7 @@ pub fn extend_grace_period(
     editor: &mut Editor,
     context_org: i64,
     grace_period: i64,
-    mut due_date: DateTime<FixedOffset>,
+    mut due_date: date::EgDate,
     settings: Option<&mut Settings>,
 ) -> EgResult<i64> {
     if grace_period < DAY_OF_SECONDS {
@@ -927,7 +924,7 @@ fn calc_min_void_date(
     editor: &mut Editor,
     circ: &JsonValue,
     backdate: &str,
-) -> EgResult<Option<DateTime<FixedOffset>>> {
+) -> EgResult<Option<date::EgDate>> {
     let fine_interval = json_string(&circ["fine_interval"])?;
     let fine_interval = date::interval_to_seconds(&fine_interval)?;
     let backdate = date::parse_datetime(backdate)?;

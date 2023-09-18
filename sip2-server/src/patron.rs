@@ -2,6 +2,7 @@ use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
 use eg::result::EgResult;
+use eg::date;
 use evergreen as eg;
 use json::JsonValue;
 
@@ -212,7 +213,7 @@ impl Session {
         }
 
         if let Some(expire) = user["expire_date"].as_str() {
-            if let Ok(date) = eg::util::parse_pg_date(expire) {
+            if let Ok(date) = date::parse_pg_date(expire) {
                 patron.expire_date = Some(date.format("%Y%m%d").to_string());
             }
         }
@@ -704,7 +705,7 @@ impl Session {
 
     fn set_patron_privileges(&mut self, user: &JsonValue, patron: &mut Patron) -> EgResult<()> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
-        let expire_date = eg::util::parse_pg_date(&expire_date_str)?;
+        let expire_date = date::parse_pg_date(&expire_date_str)?;
 
         if expire_date < Local::now() {
             // Patron is expired.  Don't bother checking other penalties, etc.

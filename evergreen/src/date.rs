@@ -6,6 +6,9 @@ use regex::{Captures, Regex};
 const INTERVAL_PART_REGEX: &str = r#"\s*([\+-]?)\s*(\d+)\s*(\w+)\s*"#;
 const INTERVAL_HMS_REGEX: &str = r#"(\d{2,}):(\d{2}):(\d{2})"#;
 
+/// Shortcut -- one fewer import for most mods.
+pub type EgDate = DateTime<FixedOffset>;
+
 /// Turn an interval string into a number of seconds.
 ///
 /// Supports a subset of the language, which is typically enough
@@ -74,12 +77,12 @@ pub fn interval_to_seconds(interval: &str) -> Result<i64, String> {
 }
 
 /// Current date/time with a fixed offset matching the local time zone.
-pub fn now_local() -> DateTime<FixedOffset> {
+pub fn now_local() -> EgDate {
     now()
 }
 
 /// Current date/time with a fixed offset matching the local time zone.
-pub fn now() -> DateTime<FixedOffset> {
+pub fn now() -> EgDate {
     to_local_timezone_fixed(Local::now().into())
 }
 
@@ -108,10 +111,10 @@ pub fn now() -> DateTime<FixedOffset> {
 /// assert!(dt.is_err());
 ///
 /// ```
-pub fn parse_datetime(dt: &str) -> EgResult<DateTime<FixedOffset>> {
+pub fn parse_datetime(dt: &str) -> EgResult<EgDate> {
     if dt.len() > 10 {
         // Assume its a full date + time
-        return match dt.parse::<DateTime<FixedOffset>>() {
+        return match dt.parse::<EgDate>() {
             Ok(d) => Ok(d),
             Err(e) => return Err(format!("Could not parse datetime string: {e} {dt}").into()),
         };
@@ -143,16 +146,16 @@ pub fn parse_datetime(dt: &str) -> EgResult<DateTime<FixedOffset>> {
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset, Local};
-/// let dt: DateTime<FixedOffset> = "2023-07-11T12:00:00-0700".parse().unwrap();
+/// let dt: EgDate = "2023-07-11T12:00:00-0700".parse().unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T12:00:00-0700");
 /// ```
-pub fn to_iso(dt: &DateTime<FixedOffset>) -> String {
+pub fn to_iso(dt: &EgDate) -> String {
     dt.format("%FT%T%z").to_string()
 }
 
 /// Same as to_iso but includes milliseconds
 /// e.g. 2023-09-08T10:59:01.687-0400
-pub fn to_iso_millis(dt: &DateTime<FixedOffset>) -> String {
+pub fn to_iso_millis(dt: &EgDate) -> String {
     dt.format("%FT%T%.3f%z").to_string()
 }
 
@@ -161,8 +164,8 @@ pub fn to_iso_millis(dt: &DateTime<FixedOffset>) -> String {
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset, Local};
-/// let dt: DateTime<FixedOffset> = "2023-07-11T12:00:00-0200".parse().unwrap();
-/// let dt2: DateTime<FixedOffset> = date::to_local_timezone_fixed(dt);
+/// let dt: EgDate = "2023-07-11T12:00:00-0200".parse().unwrap();
+/// let dt2: EgDate = date::to_local_timezone_fixed(dt);
 ///
 ///
 /// assert_eq!(dt2.offset(), Local::now().offset());
@@ -170,7 +173,7 @@ pub fn to_iso_millis(dt: &DateTime<FixedOffset>) -> String {
 /// // String output will vary by locale, but the dates will be equivalent.
 /// assert_eq!(dt, dt2);
 /// ```
-pub fn to_local_timezone_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
+pub fn to_local_timezone_fixed(dt: EgDate) -> DateTime<FixedOffset> {
     let local: DateTime<Local> = dt.into();
 
     // Translate back to a fixed time zone using our newly
@@ -189,14 +192,14 @@ pub fn to_local_timezone_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffse
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset};
-/// let dt: DateTime<FixedOffset> = "2023-07-11T12:00:00-0400".parse().unwrap();
+/// let dt: EgDate = "2023-07-11T12:00:00-0400".parse().unwrap();
 /// let dt = date::set_timezone(dt, "GMT").unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T16:00:00+0000");
 /// ```
 pub fn set_timezone(
-    dt: DateTime<FixedOffset>,
+    dt: EgDate,
     timezone: &str,
-) -> Result<DateTime<FixedOffset>, String> {
+) -> Result<EgDate, String> {
     if timezone == "local" {
         return Ok(to_local_timezone_fixed(dt));
     }
@@ -208,7 +211,7 @@ pub fn set_timezone(
 
     let modified = dt.with_timezone(&tz);
 
-    let fixed: DateTime<FixedOffset> = match modified.format("%FT%T%z").to_string().parse() {
+    let fixed: EgDate = match modified.format("%FT%T%z").to_string().parse() {
         Ok(f) => f,
         Err(e) => Err(format!("Cannot reconstruct date: {modified:?} : {e}"))?,
     };
@@ -223,16 +226,16 @@ pub fn set_timezone(
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset};
-/// let dt: DateTime<FixedOffset> = "2023-07-11T01:25:18-0400".parse().unwrap();
+/// let dt: EgDate = "2023-07-11T01:25:18-0400".parse().unwrap();
 /// let dt = date::set_hms(&dt, 23, 59, 59).unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T23:59:59-0400");
 /// ```
 pub fn set_hms(
-    date: &DateTime<FixedOffset>,
+    date: &EgDate,
     hours: u32,
     minutes: u32,
     seconds: u32,
-) -> Result<DateTime<FixedOffset>, String> {
+) -> Result<EgDate, String> {
     let offset = FixedOffset::from_offset(date.offset());
 
     let datetime = match date.date_naive().and_hms_opt(hours, minutes, seconds) {
@@ -241,10 +244,32 @@ pub fn set_hms(
     };
 
     // and_local_timezone() can return multiples in cases where it's ambiguous.
-    let new_date: DateTime<FixedOffset> = match datetime.and_local_timezone(offset).single() {
+    let new_date: EgDate = match datetime.and_local_timezone(offset).single() {
         Some(d) => d,
         None => Err(format!("Error setting timezone for datetime {datetime:?}"))?,
     };
 
     Ok(new_date)
 }
+
+
+/// Create a DateTime from a Postgres date string.
+///
+/// chrono has a parse_from_rfc3339() function, but it does
+/// not like time zones without colons.  Dates, amiright?
+/// ```
+/// let res = evergreen::util::parse_pg_date("2023-02-03T12:23:19-0400");
+/// assert!(res.is_ok());
+///
+/// let d = res.unwrap().to_rfc3339();
+/// assert_eq!(d, "2023-02-03T12:23:19-04:00");
+///
+/// let res = evergreen::util::parse_pg_date("2023-02-03T123");
+/// assert!(res.is_err());
+/// ```
+pub fn parse_pg_date(pg_iso_date: &str) -> EgResult<EgDate> {
+    DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
+        .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}").into()))
+}
+
+

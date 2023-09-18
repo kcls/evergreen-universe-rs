@@ -1,5 +1,6 @@
 //! Evergreen HTTP+JSON Gateway
 use eg::idl;
+use eg::date;
 use evergreen as eg;
 use httparse;
 use mptc;
@@ -10,7 +11,6 @@ use std::env;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
-use std::time::Instant;
 use url::Url;
 
 const BUFSIZE: usize = 1024;
@@ -27,7 +27,7 @@ const OSRF_RELAY_TIMEOUT: i32 = 300;
 struct GatewayRequest {
     stream: TcpStream,
     address: SocketAddr,
-    start_time: Instant,
+    start_time: date::EgDate,
     log_trace: String,
 }
 
@@ -84,7 +84,6 @@ struct ParsedHttpRequest {
     body: Option<String>,
 }
 
-
 struct GatewayHandler {
     bus: Option<osrf::bus::Bus>,
     osrf_conf: Arc<osrf::conf::Config>,
@@ -136,8 +135,8 @@ impl GatewayHandler {
             return Err(format!("Error writing to client: {e}"));
         }
 
-        let duration = request.start_time.elapsed().as_millis();
-        let millis = (duration as f64) / 1000.0;
+        let duration = date::now() - request.start_time;
+        let millis = (duration.num_milliseconds() as f64) / 1000.0;
 
         log::debug!(
             "[{}:{}] Request duration: {:.3}s",
@@ -185,7 +184,7 @@ impl GatewayHandler {
             };
 
             let mut complete = false;
-            let mut batch = self.extract_responses(&request.format, &mut complete, tm)?;
+            let mut batch = self.extract_osrf_responses(&request.format, &mut complete, tm)?;
 
             replies.append(&mut batch);
 
@@ -199,7 +198,7 @@ impl GatewayHandler {
     /// Extract API response values from each response message body.
     ///
     /// Returns Err if we receive an unexpected status/response value.
-    fn extract_responses(
+    fn extract_osrf_responses(
         &mut self,
         format: &GatewayRequestFormat,
         complete: &mut bool,
@@ -220,14 +219,17 @@ impl GatewayHandler {
                         }
                     };
 
-                    // The content of a partial message is a raw JSON string,
-                    // representing a subset of the JSON value response as a whole.
+                    // The content of a partial message is a parital raw 
+                    // JSON string, representing a sub-chunk of the JSON 
+                    // value response as a whole.  These chunks are not 
+                    // parseable as JSON values.  Toss them on the buffer
+                    // for later parsing.
                     if let Some(chunk) = content.as_str() {
                         buf.push_str(chunk);
                     }
 
                     // Not enough data yet to create a reply.  Keep reading,
-                    // which may involve future calls to extract_responses()
+                    // which may involve future calls to extract_osrf_responses()
                     continue;
 
                 } else if resp.status() == &osrf::message::MessageStatus::PartialComplete {
@@ -243,13 +245,9 @@ impl GatewayHandler {
                         buf.push_str(chunk);
                     }
 
-                    // Compile the collected JSON chunks into a single value,
-                    // which is the final response value.
+                    // Parse the collected chunks as a the final JSON value.
                     content = json::parse(&buf)
                         .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
-
-                    // We now have a full content chunk.  We can let the
-                    // remaining format encoding, etc. logic below take over
                 }
 
                 if format.is_raw() {
@@ -599,7 +597,7 @@ impl mptc::RequestStream for GatewayStream {
             stream,
             address,
             log_trace: osrf::logging::Logger::mk_log_trace(),
-            start_time: Instant::now(),
+            start_time: date::now(),
         };
 
         Ok(Box::new(request))

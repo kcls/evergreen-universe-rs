@@ -3,7 +3,7 @@ use crate::editor::Editor;
 use crate::result::EgResult;
 use crate::util;
 use chrono::prelude::Datelike;
-use chrono::{DateTime, Duration, FixedOffset};
+use chrono::Duration;
 use json;
 
 /// Apply a variety of DB transforms to an org unit and return
@@ -61,7 +61,7 @@ pub enum OrgOpenState {
     Never,
     /// Org unit is closed on the requested day and will be open
     /// again on the day representd by this date.
-    OpensOnDate(DateTime<FixedOffset>),
+    OpensOnDate(date::EgDate),
 }
 
 /// Returns an OrgOpenState descibing the open state of the org unit
@@ -76,7 +76,7 @@ pub enum OrgOpenState {
 pub fn next_open_date(
     editor: &mut Editor,
     org_id: i64,
-    date: &DateTime<FixedOffset>,
+    date: &date::EgDate,
 ) -> EgResult<OrgOpenState> {
     let start_date = date.clone();
     let mut date = date.clone();

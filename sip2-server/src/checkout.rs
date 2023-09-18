@@ -2,6 +2,7 @@ use super::item::Item;
 use super::patron::Patron;
 use super::session::Session;
 use eg::result::EgResult;
+use eg::date;
 use evergreen as eg;
 
 const RENEW_METHOD: &str = "open-ils.circ.renew";
@@ -204,7 +205,7 @@ impl Session {
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
                 if self.account().settings().due_date_use_sip_date_format() {
-                    let due_dt = eg::util::parse_pg_date(iso_date)?;
+                    let due_dt = date::parse_pg_date(iso_date)?;
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
                     result.due_date = Some(iso_date.to_string());

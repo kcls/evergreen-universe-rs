@@ -1,6 +1,4 @@
 use crate::result::EgResult;
-use chrono::prelude::*;
-use chrono::DateTime;
 use json::JsonValue;
 use std::collections::HashSet;
 use std::fs;
@@ -100,25 +98,6 @@ pub fn json_string(value: &JsonValue) -> EgResult<String> {
     } else {
         Err(format!("Cannot extract value as a string: {value}").into())
     }
-}
-
-/// Create a DateTime from a Postgres date string.
-///
-/// chrono has a parse_from_rfc3339() function, but it does
-/// not like time zones without colons.  Dates, amiright?
-/// ```
-/// let res = evergreen::util::parse_pg_date("2023-02-03T12:23:19-0400");
-/// assert!(res.is_ok());
-///
-/// let d = res.unwrap().to_rfc3339();
-/// assert_eq!(d, "2023-02-03T12:23:19-04:00");
-///
-/// let res = evergreen::util::parse_pg_date("2023-02-03T123");
-/// assert!(res.is_err());
-/// ```
-pub fn parse_pg_date(pg_iso_date: &str) -> EgResult<DateTime<FixedOffset>> {
-    DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
-        .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}").into()))
 }
 
 /// Turns a PG array string (e.g. '{1,23,456}') into a uniq list of ints.
