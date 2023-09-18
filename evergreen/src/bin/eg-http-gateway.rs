@@ -76,18 +76,20 @@ struct ParsedGatewayRequest {
     http_method: String,
 }
 
-struct GatewayHandler {
-    bus: Option<osrf::bus::Bus>,
-    osrf_conf: Arc<osrf::conf::Config>,
-    idl: Arc<idl::Parser>,
-}
-
 /// Just the stuff we need.
 struct ParsedHttpRequest {
     path: String,
     method: String,
     /// Only POST requests will have an HTTP body
     body: Option<String>,
+}
+
+
+struct GatewayHandler {
+    bus: Option<osrf::bus::Bus>,
+    osrf_conf: Arc<osrf::conf::Config>,
+    idl: Arc<idl::Parser>,
+    partial_buffer: Option<String>,
 }
 
 impl GatewayHandler {
@@ -120,10 +122,6 @@ impl GatewayHandler {
             }
         };
 
-        // TODO consider replying with chunks of data as responses
-        // arrive from opensrf instead of saving them all into
-        // an array and writing the array.
-
         let array = json::JsonValue::Array(replies);
         let data = array.dump();
         let length = format!("Content-Length: {}", data.as_bytes().len());
@@ -131,7 +129,7 @@ impl GatewayHandler {
         let response = match req.http_method.as_str() {
             "HEAD" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n"),
             "GET" | "POST" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}"),
-            _ => format!("HTTP/1.1 405 Method Not Allowed"),
+            _ => format!("HTTP/1.1 405 Method Not Allowed\r\n"),
         };
 
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
@@ -202,7 +200,7 @@ impl GatewayHandler {
     ///
     /// Returns Err if we receive an unexpected status/response value.
     fn extract_responses(
-        &self,
+        &mut self,
         format: &GatewayRequestFormat,
         complete: &mut bool,
         tm: osrf::message::TransportMessage,
@@ -212,6 +210,47 @@ impl GatewayHandler {
         for resp in tm.body().iter() {
             if let osrf::message::Payload::Result(resp) = resp.payload() {
                 let mut content = resp.content().to_owned();
+
+                if resp.status() == &osrf::message::MessageStatus::Partial {
+                    let buf = match self.partial_buffer.as_mut() {
+                        Some(b) => b,
+                        None => {
+                            self.partial_buffer = Some(String::new());
+                            self.partial_buffer.as_mut().unwrap()
+                        }
+                    };
+
+                    // The content of a partial message is a raw JSON string,
+                    // representing a subset of the JSON value response as a whole.
+                    if let Some(chunk) = content.as_str() {
+                        buf.push_str(chunk);
+                    }
+
+                    // Not enough data yet to create a reply.  Keep reading,
+                    // which may involve future calls to extract_responses()
+                    continue;
+
+                } else if resp.status() == &osrf::message::MessageStatus::PartialComplete {
+
+                    // Take + clear the partial buffer.
+                    let mut buf = match self.partial_buffer.take() {
+                        Some(b) => b,
+                        None => String::new(),
+                    };
+
+                    // Append any trailing content if available.
+                    if let Some(chunk) = content.as_str() {
+                        buf.push_str(chunk);
+                    }
+
+                    // Compile the collected JSON chunks into a single value,
+                    // which is the final response value.
+                    content = json::parse(&buf)
+                        .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
+
+                    // We now have a full content chunk.  We can let the
+                    // remaining format encoding, etc. logic below take over
+                }
 
                 if format.is_raw() {
                     // JSON values arrive as Fieldmapper-encoded objects.
@@ -225,17 +264,14 @@ impl GatewayHandler {
                 }
 
                 replies.push(content);
+
             } else if let osrf::message::Payload::Status(stat) = resp.payload() {
-                // TODO partial messages not supported (yet).  Result of
-                // osrf::client::Client not being Send-able, requiring
-                // us to use raw osrf::bus::Bus.  Reconsider.
                 match stat.status() {
                     osrf::message::MessageStatus::Complete => {
                         *complete = true;
-                        break;
                     }
                     osrf::message::MessageStatus::Ok | osrf::message::MessageStatus::Continue => {
-                        break
+                        // Keep reading in case there's more data in the message.
                     }
                     _ => return Err(stat.to_json_value()),
                 }
@@ -319,6 +355,8 @@ impl GatewayHandler {
 
                 let mut headers = [httparse::EMPTY_HEADER; 64];
                 let mut req = httparse::Request::new(&mut headers);
+
+                log::trace!("Parsing chars: {}", String::from_utf8_lossy(chars.as_slice()));
 
                 let res = req
                     .parse(chars.as_slice())
@@ -417,6 +455,7 @@ impl GatewayHandler {
         let mut format = GatewayRequestFormat::Fieldmapper;
 
         for (k, v) in parsed_url.query_pairs() {
+
             match k.as_ref() {
                 "method" => method = Some(v.to_string()),
                 "service" => service = Some(v.to_string()),
@@ -571,6 +610,7 @@ impl mptc::RequestStream for GatewayStream {
             bus: None,
             idl: self.eg_ctx.idl().clone(),
             osrf_conf: self.eg_ctx.config().clone(),
+            partial_buffer: None,
         };
 
         Box::new(handler)
