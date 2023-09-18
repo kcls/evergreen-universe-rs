@@ -146,7 +146,7 @@ pub fn parse_datetime(dt: &str) -> EgResult<EgDate> {
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset, Local};
-/// let dt: EgDate = "2023-07-11T12:00:00-0700".parse().unwrap();
+/// let dt: date::EgDate = "2023-07-11T12:00:00-0700".parse().unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T12:00:00-0700");
 /// ```
 pub fn to_iso(dt: &EgDate) -> String {
@@ -164,8 +164,8 @@ pub fn to_iso_millis(dt: &EgDate) -> String {
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset, Local};
-/// let dt: EgDate = "2023-07-11T12:00:00-0200".parse().unwrap();
-/// let dt2: EgDate = date::to_local_timezone_fixed(dt);
+/// let dt: date::EgDate = "2023-07-11T12:00:00-0200".parse().unwrap();
+/// let dt2: date::EgDate = date::to_local_timezone_fixed(dt);
 ///
 ///
 /// assert_eq!(dt2.offset(), Local::now().offset());
@@ -192,7 +192,7 @@ pub fn to_local_timezone_fixed(dt: EgDate) -> DateTime<FixedOffset> {
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset};
-/// let dt: EgDate = "2023-07-11T12:00:00-0400".parse().unwrap();
+/// let dt: date::EgDate = "2023-07-11T12:00:00-0400".parse().unwrap();
 /// let dt = date::set_timezone(dt, "GMT").unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T16:00:00+0000");
 /// ```
@@ -226,7 +226,7 @@ pub fn set_timezone(
 /// ```
 /// use evergreen::date;
 /// use chrono::{DateTime, FixedOffset};
-/// let dt: EgDate = "2023-07-11T01:25:18-0400".parse().unwrap();
+/// let dt: date::EgDate = "2023-07-11T01:25:18-0400".parse().unwrap();
 /// let dt = date::set_hms(&dt, 23, 59, 59).unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T23:59:59-0400");
 /// ```
@@ -258,13 +258,13 @@ pub fn set_hms(
 /// chrono has a parse_from_rfc3339() function, but it does
 /// not like time zones without colons.  Dates, amiright?
 /// ```
-/// let res = evergreen::util::parse_pg_date("2023-02-03T12:23:19-0400");
+/// let res = evergreen::date::parse_pg_date("2023-02-03T12:23:19-0400");
 /// assert!(res.is_ok());
 ///
 /// let d = res.unwrap().to_rfc3339();
 /// assert_eq!(d, "2023-02-03T12:23:19-04:00");
 ///
-/// let res = evergreen::util::parse_pg_date("2023-02-03T123");
+/// let res = evergreen::date::parse_pg_date("2023-02-03T123");
 /// assert!(res.is_err());
 /// ```
 pub fn parse_pg_date(pg_iso_date: &str) -> EgResult<EgDate> {
