@@ -420,7 +420,7 @@ impl GatewayHandler {
                 // We've read all the body data.
                 let mut parsed_req = parsed_req.take().unwrap();
 
-                parsed_req.body = Some(String::from_utf8_lossy(chars.as_slice()).to_string());
+                parsed_req.body = Some(String::from_utf8_lossy(body_bytes).to_string());
 
                 return Ok(parsed_req);
             }
