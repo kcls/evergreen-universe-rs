@@ -257,7 +257,7 @@ impl GatewayHandler {
                     content = self.idl.unpack(content);
 
                     if format == &GatewayRequestFormat::RawSlim {
-                        content = self.scrub_nulls(content);
+                        content = idl::scrub_nulls(content);
                     }
                 }
 
@@ -277,42 +277,6 @@ impl GatewayHandler {
         }
 
         Ok(replies)
-    }
-
-    /// Remove all JSON NULL's.
-    ///
-    /// Used to support the RawSlim format.  Useful since raw JSON
-    /// versions of Fieldmapper/IDL objects often have lots of null
-    /// values, especially with virtual fields.
-    fn scrub_nulls(&self, mut value: json::JsonValue) -> json::JsonValue {
-        if value.is_object() {
-            let mut hash = json::JsonValue::new_object();
-            loop {
-                let key = match value.entries().next() {
-                    Some((k, _)) => k.to_owned(),
-                    None => break,
-                };
-
-                let scrubbed = self.scrub_nulls(value.remove(&key));
-                if !scrubbed.is_null() {
-                    hash.insert(&key, scrubbed).unwrap();
-                }
-            }
-
-            hash
-        } else if value.is_array() {
-            let mut arr = json::JsonValue::new_array();
-            while value.len() > 0 {
-                let scrubbed = self.scrub_nulls(value.array_remove(0));
-                if !scrubbed.is_null() {
-                    arr.push(scrubbed).unwrap();
-                }
-            }
-
-            arr
-        } else {
-            value
-        }
     }
 
     /// Pulls the raw request content from the socket and returns it

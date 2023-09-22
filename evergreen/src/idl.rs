@@ -864,3 +864,66 @@ pub fn unbless(hash: &mut JsonValue) {
         hash.remove(field);
     }
 }
+
+/// Remove NULL values from JSON objects, recursive.
+///
+/// Does not remove NULL Array values, since that would change
+/// value positions.
+pub fn scrub_nulls(mut value: json::JsonValue) -> json::JsonValue {
+    if value.is_object() {
+        let mut hash = json::JsonValue::new_object();
+        loop {
+            let key = match value.entries().next() {
+                Some((k, _)) => k.to_owned(),
+                None => break,
+            };
+
+            let scrubbed = scrub_nulls(value.remove(&key));
+            if !scrubbed.is_null() {
+                hash.insert(&key, scrubbed).unwrap();
+            }
+        }
+
+        hash
+    } else if value.is_array() {
+        let mut arr = json::JsonValue::new_array();
+        while value.len() > 0 {
+            let scrubbed = scrub_nulls(value.array_remove(0));
+            arr.push(scrubbed).unwrap();
+        }
+
+        arr
+    } else {
+        value
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DataFormat {
+    /// Traditional class + payload hash with a payload array.
+    Fieldmapper,
+    /// IDL objects are modeled as key/value pairs, with one reserved
+    /// hash key of "_classname" to contain the short IDL class key.
+    Hash,
+    /// Hash whose NULL values have been removed via idl::scrub_nulls().
+    ScrubbedHash
+}
+
+impl From<&str> for DataFormat {
+    fn from(s: &str) -> DataFormat {
+        match s {
+            "hash" => Self::Hash,
+            "hashslim" => Self::ScrubbedHash,
+            _ => Self::Fieldmapper,
+        }
+    }
+}
+
+impl DataFormat {
+    pub fn is_hash(&self) -> bool {
+        self == &Self::Hash || self == &Self::ScrubbedHash
+    }
+}
+
+
+
