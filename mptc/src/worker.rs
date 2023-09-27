@@ -140,23 +140,32 @@ impl Worker {
             return;
         }
 
-        while self.request_count < self.max_requests {
+        loop {
             self.request_count += 1;
-
-            if let Err(e) = self.set_as_idle() {
-                log::debug!("{self} exiting on set_as_idle() failure: {e}");
-                break;
-            }
 
             if let Err(e) = self.process_one_request() {
                 log::error!("{self} Request failed: {e}");
                 break;
             }
+
+            if self.request_count == self.max_requests {
+                // All done
+                // No need to set_as_idle here since we're just
+                // about to set_as_done.
+                break;
+            }
+
+            // Request complete.  Set ourselves as idle, but only if
+            // we're going back into the listen pool.
+            if let Err(e) = self.set_as_idle() {
+                log::debug!("{self} exiting on set_as_idle() failure: {e}");
+                break;
+            }
         }
 
-        log::debug!("{self} exiting on max requests (or error)");
-
         self.set_as_done().ok(); // we're done.  ignore errors.
+
+        log::debug!("{self} exiting on max requests (or error)");
 
         if let Err(e) = self.handler.worker_end() {
             log::error!("{self} handler returned on error on exit: {e}");
@@ -169,6 +178,11 @@ impl Worker {
             Ok(r) => r,
             Err(e) => Err(format!("{self} exiting on failed receive: {e}"))?,
         };
+
+        // NOTE no need to report our status as Active to the main
+        // server, since it applies that state to this worker
+        // just before sending us the request we're about to process.
+        // At this point, the server already thinks we're active.
 
         self.handler.process(request)
     }

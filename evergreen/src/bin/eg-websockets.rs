@@ -270,8 +270,14 @@ impl Session {
     ///
     /// Once any thread completes, a shutdown is broadcast, and
     /// all 3 of our session threads shut down.
-    fn run(conf: Arc<conf::Config>, idl: Arc<idl::Parser>, stream: TcpStream, max_parallel: usize) -> EgResult<()> {
-        let client_ip = stream.peer_addr()
+    fn run(
+        conf: Arc<conf::Config>,
+        idl: Arc<idl::Parser>,
+        stream: TcpStream,
+        max_parallel: usize,
+    ) -> EgResult<()> {
+        let client_ip = stream
+            .peer_addr()
             .or_else(|e| Err(format!("Could not determine client IP address: {e}")))?;
 
         log::debug!("Starting new session for {client_ip}");
@@ -279,7 +285,8 @@ impl Session {
         // Split the TcpStream into a read/write pair so each endpoint
         // can be managed within its own thread.
         let instream = stream;
-        let outstream = instream.try_clone()
+        let outstream = instream
+            .try_clone()
             .or_else(|e| Err(format!("Fatal error splitting client streams: {e}")))?;
 
         // Wrap each endpoint in a WebSocket container.
@@ -682,6 +689,7 @@ impl Session {
             }
         }
 
+        // TODO avoid hash-ifying the opensrf message bits.
         if let Some(format) = self.format.as_ref() {
             if format.is_hash() {
                 // The caller wants data returned in HASH format.
@@ -809,7 +817,12 @@ impl mptc::RequestHandler for WebsocketHandler {
         let stream = request.stream.take().unwrap();
 
         // Run the WS session until it exits
-        if let Err(e) = Session::run(self.osrf_conf.clone(), self.idl.clone(), stream, self.max_parallel) {
+        if let Err(e) = Session::run(
+            self.osrf_conf.clone(),
+            self.idl.clone(),
+            stream,
+            self.max_parallel,
+        ) {
             log::error!("Session ended with error: {e}");
         }
 
@@ -941,8 +954,7 @@ fn main() {
         MAX_PARALLEL_REQUESTS
     };
 
-    let stream =
-        WebsocketServer::start(eg_ctx, max_parallel, address, port).expect("Start stream");
+    let stream = WebsocketServer::start(eg_ctx, max_parallel, address, port).expect("Start stream");
 
     let mut server = mptc::Server::new(Box::new(stream));
 
@@ -957,6 +969,8 @@ fn main() {
     if let Ok(n) = env::var("EG_WEBSOCKETS_MAX_REQUESTS") {
         server.set_max_worker_requests(n.parse::<usize>().expect("Invalid max-requests"));
     }
+
+    server.set_max_worker_requests(1);
 
     server.run();
 }
