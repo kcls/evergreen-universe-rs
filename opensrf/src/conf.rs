@@ -144,6 +144,9 @@ impl Router {
     pub fn client(&self) -> &BusClient {
         &self.client
     }
+    pub fn client_mut(&mut self) -> &mut BusClient {
+        &mut self.client
+    }
     pub fn trusted_server_domains(&self) -> &Vec<String> {
         &self.trusted_server_domains
     }
@@ -483,6 +486,9 @@ impl Config {
     pub fn routers(&self) -> &Vec<Router> {
         &self.routers
     }
+    pub fn routers_mut(&mut self) -> Vec<&mut Router> {
+        self.routers.iter_mut().collect()
+    }
 
     pub fn log_protect(&self) -> &Vec<String> {
         &self.log_protect
@@ -491,6 +497,10 @@ impl Config {
     pub fn gateway(&self) -> Option<&BusClient> {
         self.gateway.as_ref()
     }
+    pub fn gateway_mut(&mut self) -> Option<&mut BusClient> {
+        self.gateway.as_mut()
+    }
+
     pub fn client(&self) -> &BusClient {
         &self.client
     }
