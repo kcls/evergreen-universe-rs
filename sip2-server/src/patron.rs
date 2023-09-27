@@ -1,8 +1,8 @@
 use super::conf;
 use super::session::Session;
 use chrono::prelude::*;
-use eg::result::EgResult;
 use eg::date;
+use eg::result::EgResult;
 use evergreen as eg;
 use json::JsonValue;
 

@@ -5,25 +5,25 @@ use evergreen as eg;
 use mptc;
 
 use opensrf as osrf;
-use osrf::client::DataSerializer;
 use osrf::addr::{RouterAddress, ServiceAddress};
 use osrf::bus::Bus;
+use osrf::client::DataSerializer;
 use osrf::conf;
 use osrf::init;
 use osrf::logging::Logger;
 use osrf::message;
 
+use std::any::Any;
+use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fmt;
-use std::any::Any;
-use std::sync::Arc;
-use std::sync::mpsc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::collections::{HashMap, VecDeque};
-use std::thread;
-use std::thread::JoinHandle;
 use std::net::TcpListener;
 use std::net::{SocketAddr, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
+use std::thread::JoinHandle;
 
 use tungstenite as ws;
 use ws::protocol::Message as WebSocketMessage;
@@ -57,7 +57,7 @@ const MAX_PARALLEL_REQUESTS: usize = 8;
 /// discard all of the pending requests and disconnect the client.
 const MAX_BACKLOG_SIZE: usize = 1000;
 
-/// How often the outbound thread wakes from opensrf recv() calls 
+/// How often the outbound thread wakes from opensrf recv() calls
 /// see if it's time to exit its thread.
 const SHUTDOWN_POLL_INTERVAL: i32 = 3;
 
@@ -476,7 +476,7 @@ impl Session {
                 } else if self.request_queue.len() >= MAX_BACKLOG_SIZE {
                     // Client is getting out of handle.  Let them go.
                     return Err(format!(
-                        "Backlog exceeds max size={}; dropping connectino", 
+                        "Backlog exceeds max size={}; dropping connectino",
                         MAX_BACKLOG_SIZE
                     ));
                 } else {
@@ -742,11 +742,10 @@ impl Session {
     }
 }
 
-
-
 /* ------------------------------------------------------------------------ */
 
 ///  TODO this layer is probably unnecessary. replace with Session.
+///
 struct WebsocketSessionRequest {
     stream: Option<TcpStream>,
 }
@@ -771,8 +770,7 @@ struct WebsocketHandler {
     max_parallel: usize,
 }
 
-impl WebsocketHandler {
-}
+impl WebsocketHandler {}
 
 impl mptc::RequestHandler for WebsocketHandler {
     fn worker_start(&mut self) -> Result<(), String> {
@@ -780,8 +778,6 @@ impl mptc::RequestHandler for WebsocketHandler {
     }
 
     fn worker_end(&mut self) -> Result<(), String> {
-        // Bus will be cleaned up on thread exit -> Drop
-        // TODO force disconnect of WS client?
         Ok(())
     }
 
@@ -791,21 +787,24 @@ impl mptc::RequestHandler for WebsocketHandler {
         let mut request = WebsocketSessionRequest::downcast(&mut request);
 
         // Take the stream so we can give it to the Session
-        // TODO: remove the extra WebsocketSessionRequest layer?
         let stream = request.stream.take().unwrap();
 
         // Run the WS session until it exits
         Session::run(self.osrf_conf.clone(), stream, self.max_parallel);
-  
+
         Ok(())
     }
 }
 
 /// The main websockets network entry point.
-struct WebsocketStream {
+///
+/// This acts as a stream-generator for mptc.  Each WS client has
+/// its own data stream which, for the purposes of WS, produces a
+/// single mptc::Request, which is an inbound websocket connection
+/// request from a WS client.
+struct WebsocketServer {
     listener: TcpListener,
     eg_ctx: eg::init::Context,
-
 
     /// Maximum number of active/parallel websocket requests to
     /// relay to OpenSRF at a time.  Once exceeded, new messages
@@ -813,18 +812,22 @@ struct WebsocketStream {
     max_parallel: usize,
 }
 
-impl WebsocketStream {
-
-    /// Start listening on the WS port for connections and return 
-    /// the WebsocketStream instance.
-    fn start(eg_ctx: eg::init::Context, max_parallel: usize, address: &str, port: u16) -> EgResult<Self> {
+impl WebsocketServer {
+    /// Start listening on the WS port for connections and return
+    /// the WebsocketServer instance.
+    fn start(
+        eg_ctx: eg::init::Context,
+        max_parallel: usize,
+        address: &str,
+        port: u16,
+    ) -> EgResult<Self> {
         let hostport = format!("{}:{}", address, port);
         log::info!("WS server starting at {hostport}");
 
         let listener = TcpListener::bind(hostport)
             .or_else(|e| Err(format!("Could not start websockets server: {e}")))?;
 
-        Ok(WebsocketStream { 
+        Ok(WebsocketServer {
             eg_ctx,
             listener,
             max_parallel,
@@ -832,8 +835,7 @@ impl WebsocketStream {
     }
 }
 
-impl mptc::RequestStream for WebsocketStream {
-
+impl mptc::RequestStream for WebsocketServer {
     /// Returns the next client request stream.
     fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
         let session_stream_res = match self.listener.incoming().next() {
@@ -846,7 +848,7 @@ impl mptc::RequestStream for WebsocketStream {
             Err(e) => return Err(format!("Error accepting new connection")),
         };
 
-        let request = WebsocketSessionRequest { 
+        let request = WebsocketSessionRequest {
             stream: Some(session_stream),
         };
 
@@ -854,13 +856,11 @@ impl mptc::RequestStream for WebsocketStream {
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
-        Box::new(
-            WebsocketHandler { 
-                osrf_conf: self.eg_ctx.config().clone(),
-                idl: self.eg_ctx.idl().clone(),
-                max_parallel: self.max_parallel,
-            }
-        )
+        Box::new(WebsocketHandler {
+            osrf_conf: self.eg_ctx.config().clone(),
+            idl: self.eg_ctx.idl().clone(),
+            max_parallel: self.max_parallel,
+        })
     }
 
     fn reload(&mut self) -> Result<(), String> {
@@ -910,7 +910,8 @@ fn main() {
         MAX_PARALLEL_REQUESTS
     };
 
-    let stream = WebsocketStream::start(eg_ctx, max_parallel, &address, port).expect("Start stream");
+    let stream =
+        WebsocketServer::start(eg_ctx, max_parallel, &address, port).expect("Start stream");
 
     let mut server = mptc::Server::new(Box::new(stream));
 

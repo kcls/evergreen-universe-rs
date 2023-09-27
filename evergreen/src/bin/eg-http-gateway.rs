@@ -1,6 +1,6 @@
 //! Evergreen HTTP+JSON Gateway
-use eg::idl;
 use eg::date;
+use eg::idl;
 use evergreen as eg;
 use httparse;
 use mptc;
@@ -219,9 +219,9 @@ impl GatewayHandler {
                         }
                     };
 
-                    // The content of a partial message is a parital raw 
-                    // JSON string, representing a sub-chunk of the JSON 
-                    // value response as a whole.  These chunks are not 
+                    // The content of a partial message is a parital raw
+                    // JSON string, representing a sub-chunk of the JSON
+                    // value response as a whole.  These chunks are not
                     // parseable as JSON values.  Toss them on the buffer
                     // for later parsing.
                     if let Some(chunk) = content.as_str() {
@@ -231,9 +231,7 @@ impl GatewayHandler {
                     // Not enough data yet to create a reply.  Keep reading,
                     // which may involve future calls to extract_osrf_responses()
                     continue;
-
                 } else if resp.status() == &osrf::message::MessageStatus::PartialComplete {
-
                     // Take + clear the partial buffer.
                     let mut buf = match self.partial_buffer.take() {
                         Some(b) => b,
@@ -262,7 +260,6 @@ impl GatewayHandler {
                 }
 
                 replies.push(content);
-
             } else if let osrf::message::Payload::Status(stat) = resp.payload() {
                 match stat.status() {
                     osrf::message::MessageStatus::Complete => {
@@ -318,7 +315,10 @@ impl GatewayHandler {
                 let mut headers = [httparse::EMPTY_HEADER; 64];
                 let mut req = httparse::Request::new(&mut headers);
 
-                log::trace!("Parsing chars: {}", String::from_utf8_lossy(chars.as_slice()));
+                log::trace!(
+                    "Parsing chars: {}",
+                    String::from_utf8_lossy(chars.as_slice())
+                );
 
                 let res = req
                     .parse(chars.as_slice())
@@ -417,7 +417,6 @@ impl GatewayHandler {
         let mut format = GatewayRequestFormat::Fieldmapper;
 
         for (k, v) in parsed_url.query_pairs() {
-
             match k.as_ref() {
                 "method" => method = Some(v.to_string()),
                 "service" => service = Some(v.to_string()),

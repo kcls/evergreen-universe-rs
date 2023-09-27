@@ -1,7 +1,7 @@
 use super::session::Session;
 use eg::constants as C;
-use eg::result::EgResult;
 use eg::date;
+use eg::result::EgResult;
 use evergreen as eg;
 
 /// A copy object with SIP-related data collected and attached.

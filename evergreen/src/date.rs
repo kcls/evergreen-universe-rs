@@ -196,10 +196,7 @@ pub fn to_local_timezone_fixed(dt: EgDate) -> DateTime<FixedOffset> {
 /// let dt = date::set_timezone(dt, "GMT").unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T16:00:00+0000");
 /// ```
-pub fn set_timezone(
-    dt: EgDate,
-    timezone: &str,
-) -> Result<EgDate, String> {
+pub fn set_timezone(dt: EgDate, timezone: &str) -> Result<EgDate, String> {
     if timezone == "local" {
         return Ok(to_local_timezone_fixed(dt));
     }
@@ -230,12 +227,7 @@ pub fn set_timezone(
 /// let dt = date::set_hms(&dt, 23, 59, 59).unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T23:59:59-0400");
 /// ```
-pub fn set_hms(
-    date: &EgDate,
-    hours: u32,
-    minutes: u32,
-    seconds: u32,
-) -> Result<EgDate, String> {
+pub fn set_hms(date: &EgDate, hours: u32, minutes: u32, seconds: u32) -> Result<EgDate, String> {
     let offset = FixedOffset::from_offset(date.offset());
 
     let datetime = match date.date_naive().and_hms_opt(hours, minutes, seconds) {
@@ -251,7 +243,6 @@ pub fn set_hms(
 
     Ok(new_date)
 }
-
 
 /// Create a DateTime from a Postgres date string.
 ///
@@ -271,5 +262,3 @@ pub fn parse_pg_date(pg_iso_date: &str) -> EgResult<EgDate> {
     DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
         .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}").into()))
 }
-
-

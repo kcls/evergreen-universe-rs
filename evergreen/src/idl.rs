@@ -906,7 +906,7 @@ pub enum DataFormat {
     /// hash key of "_classname" to contain the short IDL class key.
     Hash,
     /// Hash whose NULL values have been removed via idl::scrub_nulls().
-    ScrubbedHash
+    ScrubbedHash,
 }
 
 impl From<&str> for DataFormat {
@@ -924,6 +924,3 @@ impl DataFormat {
         self == &Self::Hash || self == &Self::ScrubbedHash
     }
 }
-
-
-

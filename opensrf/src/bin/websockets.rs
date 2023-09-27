@@ -478,7 +478,7 @@ impl Session {
                 } else if self.request_queue.len() >= MAX_BACKLOG_SIZE {
                     // Client is getting out of handle.  Let them go.
                     return Err(format!(
-                        "Backlog exceeds max size={}; dropping connectino", 
+                        "Backlog exceeds max size={}; dropping connectino",
                         MAX_BACKLOG_SIZE
                     ));
                 } else {
