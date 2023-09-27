@@ -9,7 +9,6 @@ use osrf::addr::{RouterAddress, ServiceAddress};
 use osrf::bus::Bus;
 use osrf::client::DataSerializer;
 use osrf::conf;
-use osrf::init;
 use osrf::logging::Logger;
 use osrf::message;
 
@@ -214,6 +213,8 @@ struct Session {
     /// OpenSRF config
     conf: Arc<conf::Config>,
 
+    idl: Arc<idl::Parser>,
+
     /// All messages flow to the main thread via this channel.
     to_main_rx: mpsc::Receiver<ChannelMessage>,
 
@@ -248,6 +249,13 @@ struct Session {
     max_parallel: usize,
 
     log_trace: Option<String>,
+
+    /// Any time we receive a 'format' request in a message, we
+    /// set that as our default format going forward for this
+    /// client session.  It's assumed that clients will generally
+    /// use a single format for the duration of their connection,
+    /// but it's not required.
+    format: Option<idl::DataFormat>,
 }
 
 impl fmt::Display for Session {
@@ -257,63 +265,47 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn run(conf: Arc<conf::Config>, stream: TcpStream, max_parallel: usize) {
-        let client_ip = match stream.peer_addr() {
-            Ok(ip) => ip,
-            Err(e) => {
-                log::error!("Could not determine client IP address: {e}");
-                return;
-            }
-        };
+    /// Create a thread-local OpenSRF bus connections and spawn our
+    /// Inbound and Outbound threads.
+    ///
+    /// Once any thread completes, a shutdown is broadcast, and
+    /// all 3 of our session threads shut down.
+    fn run(conf: Arc<conf::Config>, idl: Arc<idl::Parser>, stream: TcpStream, max_parallel: usize) -> EgResult<()> {
+        let client_ip = stream.peer_addr()
+            .or_else(|e| Err(format!("Could not determine client IP address: {e}")))?;
 
         log::debug!("Starting new session for {client_ip}");
 
         // Split the TcpStream into a read/write pair so each endpoint
         // can be managed within its own thread.
         let instream = stream;
-        let outstream = match instream.try_clone() {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Fatal error splitting client streams: {e}");
-                return;
-            }
-        };
+        let outstream = instream.try_clone()
+            .or_else(|e| Err(format!("Fatal error splitting client streams: {e}")))?;
 
         // Wrap each endpoint in a WebSocket container.
-
-        let receiver = match ws::accept(instream) {
-            Ok(c) => c,
-            Err(e) => {
-                log::error!("Error accepting new connection: {}", e);
-                return;
-            }
-        };
+        let receiver = ws::accept(instream)
+            .or_else(|e| Err(format!("Error accepting new connection: {}", e)))?;
 
         let sender = WebSocket::from_raw_socket(outstream, ws::protocol::Role::Server, None);
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let busconf = conf.gateway().unwrap(); // previously verified
+        let gateway = conf.gateway();
+        let busconf = gateway.as_ref().unwrap(); // previously verified
 
-        let osrf_sender = match Bus::new(&busconf) {
-            Ok(b) => b,
-            Err(e) => {
-                log::error!("Error connecting to OpenSRF: {e}");
-                return;
-            }
-        };
+        let osrf_sender = Bus::new(busconf)?;
+        let mut osrf_receiver = Bus::new(busconf)?;
 
-        let mut osrf_receiver = match Bus::new(&busconf) {
-            Ok(b) => b,
-            Err(e) => {
-                log::error!("Error connecting to OpenSRF: {e}");
-                return;
-            }
-        };
-
-        // Outbound OpenSRF connection must share the same address
-        // as the inbound connection so it can receive replies to
-        // requests relayed by the inbound connection.
+        // The main Session thread has an OpenSRF bus connection that
+        // only ever calls send() / send_to() -- never recv().  The
+        // Outbound thread, which listens for response on the OpenSRF
+        // bus has a bus connection that only ever calls recv().  (Note
+        // the lower-level Bus API never mingles send/receive actions).
+        // In this, we have a split-brain bus connections that won't
+        // step each other's toes.
+        //
+        // It also means the bus receiver must have the same bus address
+        // as the sender so it can act as its receiver.
         osrf_receiver.set_address(osrf_sender.address());
 
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -336,10 +328,12 @@ impl Session {
             to_main_rx,
             sender,
             conf,
+            idl,
             osrf_sender,
             max_parallel,
             reqs_in_flight: 0,
             log_trace: None,
+            format: None,
             shutdown_session: shutdown,
             osrf_sessions: HashMap::new(),
             request_queue: VecDeque::new(),
@@ -352,6 +346,8 @@ impl Session {
 
         session.listen();
         session.shutdown(in_thread, out_thread);
+
+        Ok(())
     }
 
     fn shutdown(&mut self, in_thread: JoinHandle<()>, out_thread: JoinHandle<()>) {
@@ -517,6 +513,16 @@ impl Session {
         let log_xid = wrapper["log_xid"].take();
         let mut msg_list = wrapper["osrf_msg"].take();
 
+        // NOTE no changes are needed to support the different inbound
+        // formats, because the IDL-as-serializer will a) ignore Fieldmapper
+        // objects during pack/serialization because they don't look
+        // like our internal IDL data representation and b) will properly
+        // pack/serialize any data that comes in using our internal
+        // flat-hash representation.
+        if let Some(format) = wrapper["format"].as_str() {
+            self.format = Some(format.into());
+        }
+
         if let Some(xid) = log_xid.as_str() {
             self.log_trace = Some(xid.to_string());
         } else {
@@ -676,6 +682,19 @@ impl Session {
             }
         }
 
+        if let Some(format) = self.format.as_ref() {
+            if format.is_hash() {
+                // The caller wants data returned in HASH format.
+                body = self.idl.unpack(body);
+                if format == &idl::DataFormat::Hash {
+                    // NOTE this has the side effect of potentially
+                    // scrubbing NULL values from the OpenSRF parts
+                    // of the message, but this is assumed to be OK.
+                    body = idl::scrub_hash_nulls(body);
+                }
+            }
+        }
+
         let mut obj = json::object! {
             oxrf_xid: tm.osrf_xid(),
             thread: tm.thread(),
@@ -784,13 +803,15 @@ impl mptc::RequestHandler for WebsocketHandler {
     /// For websockets, a request is a long-running session.
     /// process() is called exactly once per session
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
-        let mut request = WebsocketSessionRequest::downcast(&mut request);
+        let request = WebsocketSessionRequest::downcast(&mut request);
 
         // Take the stream so we can give it to the Session
         let stream = request.stream.take().unwrap();
 
         // Run the WS session until it exits
-        Session::run(self.osrf_conf.clone(), stream, self.max_parallel);
+        if let Err(e) = Session::run(self.osrf_conf.clone(), self.idl.clone(), stream, self.max_parallel) {
+            log::error!("Session ended with error: {e}");
+        }
 
         Ok(())
     }
@@ -845,7 +866,7 @@ impl mptc::RequestStream for WebsocketServer {
 
         let session_stream = match session_stream_res {
             Ok(s) => s,
-            Err(e) => return Err(format!("Error accepting new connection")),
+            Err(e) => return Err(format!("Error accepting new connection: {e}")),
         };
 
         let request = WebsocketSessionRequest {
@@ -870,7 +891,8 @@ impl mptc::RequestStream for WebsocketServer {
 }
 
 fn main() {
-    let address = env::var("EG_WEBSOCKETS_ADDRESS").unwrap_or(DEFAULT_LISTEN_ADDRESS.to_string());
+    let env_addr = env::var("EG_WEBSOCKETS_ADDRESS");
+    let address = env_addr.as_deref().unwrap_or(DEFAULT_LISTEN_ADDRESS);
 
     let port = match env::var("EG_WEBSOCKETS_PORT") {
         Ok(v) => v.parse::<u16>().expect("Invalid port number"),
@@ -880,6 +902,7 @@ fn main() {
     let init_ops = eg::init::InitOptions {
         // As a gateway, we generally won't have access to the host
         // settings, since that's typically on a private domain.
+        // Plus, we don't need them.
         skip_host_settings: true,
 
         // Skip logging so we can use the loging config in
@@ -890,7 +913,15 @@ fn main() {
         },
     };
 
-    // Connect to OpenSRF, parse the IDL
+    // Connect to OpenSRF, parse the IDL.
+    // NOTE since we are not likely to be connected to a private domain,
+    // the IDL parsed will be the IDL found at the default path, defined
+    // in eg::init.  To override, set the EG_IDL_FILE environment
+    // variable
+    //
+    // In theory, we could have a websocket gateway that does not need
+    // the IDL, but given the supported data formats, the IDL is
+    // required.  This could be made configurable.
     let eg_ctx = eg::init::init_with_options(&init_ops).expect("Evergreen init");
 
     // Setup logging with the gateway config
@@ -911,7 +942,7 @@ fn main() {
     };
 
     let stream =
-        WebsocketServer::start(eg_ctx, max_parallel, &address, port).expect("Start stream");
+        WebsocketServer::start(eg_ctx, max_parallel, address, port).expect("Start stream");
 
     let mut server = mptc::Server::new(Box::new(stream));
 

@@ -764,8 +764,7 @@ impl Parser {
 }
 
 impl DataSerializer for Parser {
-    /// Creates a clone of the provided JsonValue, replacing any
-    /// IDL-classed arrays with classed hashes.
+    /// Replaces IDL-classed arrays with classed hashes
     fn unpack(&self, value: JsonValue) -> JsonValue {
         if !value.is_array() && !value.is_object() {
             return value;
@@ -808,8 +807,8 @@ impl DataSerializer for Parser {
         obj
     }
 
-    /// Creates a clone of the provided JsonValue, replacing any
-    /// IDL-classed hashes with IDL-classed arrays.
+    /// Replaces IDL-classed flat hashes with Fieldmapper (array payload)
+    /// hashes.
     fn pack(&self, mut value: JsonValue) -> JsonValue {
         if !value.is_array() && !value.is_object() {
             return value;
@@ -865,11 +864,12 @@ pub fn unbless(hash: &mut JsonValue) {
     }
 }
 
-/// Remove NULL values from JSON objects, recursive.
+/// Remove NULL values from JSON objects (hashes) recursively.
 ///
-/// Does not remove NULL Array values, since that would change
-/// value positions.
-pub fn scrub_nulls(mut value: json::JsonValue) -> json::JsonValue {
+/// Does not remove NULL Array values, since that would change value
+/// positions, but may modify a hash/object which is a member of an
+/// array.
+pub fn scrub_hash_nulls(mut value: json::JsonValue) -> json::JsonValue {
     if value.is_object() {
         let mut hash = json::JsonValue::new_object();
         loop {
@@ -878,17 +878,18 @@ pub fn scrub_nulls(mut value: json::JsonValue) -> json::JsonValue {
                 None => break,
             };
 
-            let scrubbed = scrub_nulls(value.remove(&key));
+            let scrubbed = scrub_hash_nulls(value.remove(&key));
             if !scrubbed.is_null() {
                 hash.insert(&key, scrubbed).unwrap();
             }
         }
 
         hash
-    } else if value.is_array() {
+    } else if let json::JsonValue::Array(mut list) = value {
         let mut arr = json::JsonValue::new_array();
-        while value.len() > 0 {
-            let scrubbed = scrub_nulls(value.array_remove(0));
+
+        for val in list.drain(..) {
+            let scrubbed = scrub_hash_nulls(val);
             arr.push(scrubbed).unwrap();
         }
 
@@ -900,20 +901,23 @@ pub fn scrub_nulls(mut value: json::JsonValue) -> json::JsonValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataFormat {
-    /// Traditional class + payload hash with a payload array.
+    /// Traditional hash with a class key an array payload.
     Fieldmapper,
-    /// IDL objects are modeled as key/value pairs, with one reserved
-    /// hash key of "_classname" to contain the short IDL class key.
+    /// IDL objects modeled as key/value pairs in a flat hash, with one
+    /// reserved hash key of "_classname" to contain the short IDL class
+    /// key.  No NULL values are included.
     Hash,
-    /// Hash whose NULL values have been removed via idl::scrub_nulls().
-    ScrubbedHash,
+    /// Same as 'Hash' with NULL values included.  Useful for seeing
+    /// all of the key names for an IDL object, regardless of
+    /// whether a value is present for every key.
+    HashFull,
 }
 
 impl From<&str> for DataFormat {
     fn from(s: &str) -> DataFormat {
         match s {
             "hash" => Self::Hash,
-            "hashslim" => Self::ScrubbedHash,
+            "hashfull" => Self::HashFull,
             _ => Self::Fieldmapper,
         }
     }
@@ -921,6 +925,6 @@ impl From<&str> for DataFormat {
 
 impl DataFormat {
     pub fn is_hash(&self) -> bool {
-        self == &Self::Hash || self == &Self::ScrubbedHash
+        self == &Self::Hash || self == &Self::HashFull
     }
 }

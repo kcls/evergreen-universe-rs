@@ -45,34 +45,11 @@ impl mptc::Request for GatewayRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum GatewayRequestFormat {
-    Fieldmapper,
-    RawSlim,
-    Raw,
-}
-
-impl From<&str> for GatewayRequestFormat {
-    fn from(s: &str) -> GatewayRequestFormat {
-        match s {
-            "raw" => Self::Raw,
-            "rawslim" => Self::RawSlim,
-            _ => Self::Fieldmapper,
-        }
-    }
-}
-
-impl GatewayRequestFormat {
-    fn is_raw(&self) -> bool {
-        self == &Self::Raw || self == &Self::RawSlim
-    }
-}
-
 #[derive(Debug)]
 struct ParsedGatewayRequest {
     service: String,
     method: Option<osrf::message::Method>,
-    format: GatewayRequestFormat,
+    format: idl::DataFormat,
     http_method: String,
 }
 
@@ -200,7 +177,7 @@ impl GatewayHandler {
     /// Returns Err if we receive an unexpected status/response value.
     fn extract_osrf_responses(
         &mut self,
-        format: &GatewayRequestFormat,
+        format: &idl::DataFormat,
         complete: &mut bool,
         tm: osrf::message::TransportMessage,
     ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
@@ -248,14 +225,14 @@ impl GatewayHandler {
                         .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
                 }
 
-                if format.is_raw() {
+                if format.is_hash() {
                     // JSON values arrive as Fieldmapper-encoded objects.
                     // Unpacking them via the IDL turns them back
-                    // into raw JSON objects.
+                    // into flat hashes.
                     content = self.idl.unpack(content);
 
-                    if format == &GatewayRequestFormat::RawSlim {
-                        content = idl::scrub_nulls(content);
+                    if format == &idl::DataFormat::Hash {
+                        content = idl::scrub_hash_nulls(content);
                     }
                 }
 
@@ -414,7 +391,7 @@ impl GatewayHandler {
         let mut method: Option<String> = None;
         let mut service: Option<String> = None;
         let mut params: Vec<json::JsonValue> = Vec::new();
-        let mut format = GatewayRequestFormat::Fieldmapper;
+        let mut format = idl::DataFormat::Fieldmapper;
 
         for (k, v) in parsed_url.query_pairs() {
             match k.as_ref() {
@@ -436,18 +413,12 @@ impl GatewayHandler {
 
         let service = service.ok_or(format!("Request contains no service name"))?;
 
-        if format.is_raw() {
-            // The caller is giving us raw JSON as parameter values.
-            // We need to turn them into Fieldmapper-encoded values before
-            // passing them to OpenSRF.
-            let mut packed_params = Vec::new();
-            let mut iter = params.drain(..);
-            while let Some(param) = iter.next() {
-                packed_params.push(self.idl.unpack(param));
-            }
-            drop(iter);
-            params = packed_params;
-        }
+        // NOTE no changes are needed to support the different inbound
+        // formats, because the IDL-as-serializer will a) ignore Fieldmapper
+        // objects during pack/serialization because they don't look
+        // like our internal IDL data representation and b) will properly
+        // pack/serialize any data that comes in using our internal
+        // flat-hash representation.
 
         let osrf_method = osrf::message::Method::new(method, params);
 

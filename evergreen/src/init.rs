@@ -103,6 +103,8 @@ pub fn init_from_parts(
     let client = osrf::Client::connect(config.clone())
         .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
+    client.set_serializer(idl::Parser::as_serializer(&idl));
+
     Ok(Context {
         client,
         config,
