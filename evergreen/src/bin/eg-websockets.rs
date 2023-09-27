@@ -1,18 +1,13 @@
-//! Evergreen Websocket Gateway
-use eg::idl;
-use eg::result::EgResult;
-use evergreen as eg;
-use mptc;
-
 use opensrf as osrf;
 use osrf::addr::{RouterAddress, ServiceAddress};
 use osrf::bus::Bus;
-use osrf::client::DataSerializer;
 use osrf::conf;
 use osrf::logging::Logger;
 use osrf::message;
-
-use std::any::Any;
+use osrf::client::DataSerializer;
+use evergreen as eg;
+use eg::idl;
+use eg::result::EgResult;
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fmt;
@@ -23,12 +18,28 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
-
 use tungstenite as ws;
 use ws::protocol::Message as WebSocketMessage;
 use ws::protocol::WebSocket;
 
+/* Server spawns a new client session per connection.
+ *
+ * Each client session is composed of 3 threads: Inbound, Main, and Outbound.
+ *
+ * Inbound session thread reads websocket requests and relays them to
+ * the main thread for processing.
+ *
+ * Outbound session thread reads opensrf replies and relays them to the
+ * main thread for processing.
+ *
+ * The main session thread writes responses to the websocket client and
+ * tracks connected sessions.
+ */
+
 const DEFAULT_PORT: u16 = 7682;
+
+/// How many websocket clients we allow before block new connections.
+const MAX_WS_CLIENTS: usize = 256;
 
 /// Prevent huge session threads
 const MAX_THREAD_SIZE: usize = 256;
@@ -44,20 +55,15 @@ const WEBSOCKET_INGRESS: &str = "ws-translator-v3";
 const DEFAULT_LISTEN_ADDRESS: &str = "127.0.0.1";
 
 /// Max active parallel requests
-///
-/// How many requests do we relay to the opensrf network at a time.
-/// Allows us to prevent flooding services with API calls.
-const MAX_PARALLEL_REQUESTS: usize = 8;
+const MAX_ACTIVE_REQUESTS: usize = 8;
 
 /// Max size of the backlog queue
 ///
-/// If we reach MAX_PARALLEL_REQUESTS, we start leaving new requests in
+/// If we reach MAX_ACTIVE_REQUESTS, we start leaving new requests in
 /// the backlog.  If the size of the baclkog exceeds this amount,
 /// discard all of the pending requests and disconnect the client.
 const MAX_BACKLOG_SIZE: usize = 1000;
 
-/// How often the outbound thread wakes from opensrf recv() calls
-/// see if it's time to exit its thread.
 const SHUTDOWN_POLL_INTERVAL: i32 = 3;
 
 /// ChannelMessage's are delivered to the main thread.  There are 2
@@ -265,11 +271,6 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    /// Create a thread-local OpenSRF bus connections and spawn our
-    /// Inbound and Outbound threads.
-    ///
-    /// Once any thread completes, a shutdown is broadcast, and
-    /// all 3 of our session threads shut down.
     fn run(
         conf: Arc<conf::Config>,
         idl: Arc<idl::Parser>,
@@ -339,8 +340,8 @@ impl Session {
             osrf_sender,
             max_parallel,
             reqs_in_flight: 0,
-            log_trace: None,
             format: None,
+            log_trace: None,
             shutdown_session: shutdown,
             osrf_sessions: HashMap::new(),
             request_queue: VecDeque::new(),
@@ -444,7 +445,7 @@ impl Session {
 
     /// handle_inbound_message tosses inbound messages onto a queue.
     /// Here we pop them off the queue and relay them to OpenSRF,
-    /// taking the MAX_PARALLEL_REQUESTS limit into consideration.
+    /// taking the MAX_ACTIVE_REQUESTS limit into consideration.
     fn process_message_queue(&mut self) -> Result<(), String> {
         while self.reqs_in_flight < self.max_parallel {
             if let Some(text) = self.request_queue.pop_front() {
@@ -459,7 +460,7 @@ impl Session {
 
         if self.request_queue.len() > 0 {
             log::warn!(
-                "{self} MAX_PARALLEL_REQUESTS reached. {} messages queued",
+                "{self} MAX_ACTIVE_REQUESTS reached. {} messages queued",
                 self.request_queue.len()
             );
         }
@@ -520,7 +521,7 @@ impl Session {
         let log_xid = wrapper["log_xid"].take();
         let mut msg_list = wrapper["osrf_msg"].take();
 
-        // NOTE no changes are needed to support the different inbound
+        // NOTE no data changes are needed to support the different inbound
         // formats, because the IDL-as-serializer will a) ignore Fieldmapper
         // objects during pack/serialization because they don't look
         // like our internal IDL data representation and b) will properly
@@ -689,7 +690,6 @@ impl Session {
             }
         }
 
-        // TODO avoid hash-ifying the opensrf message bits.
         if let Some(format) = self.format.as_ref() {
             if format.is_hash() {
                 // The caller wants data returned in HASH format.
@@ -769,149 +769,97 @@ impl Session {
     }
 }
 
-/* ------------------------------------------------------------------------ */
-
-///  TODO this layer is probably unnecessary. replace with Session.
-///
-struct WebsocketSessionRequest {
-    stream: Option<TcpStream>,
-}
-
-impl WebsocketSessionRequest {
-    pub fn downcast(h: &mut Box<dyn mptc::Request>) -> &mut WebsocketSessionRequest {
-        h.as_any_mut()
-            .downcast_mut::<WebsocketSessionRequest>()
-            .expect("WebsocketSessionRequest::downcast() given wrong type!")
-    }
-}
-
-impl mptc::Request for WebsocketSessionRequest {
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-struct WebsocketHandler {
-    osrf_conf: Arc<osrf::conf::Config>,
-    idl: Arc<idl::Parser>,
+/// Listens for websocket connections and spawn a Session thread per
+/// connection.  Blocks new connections once max clients is reached.
+struct Server {
+    eg_ctx: eg::init::Context,
+    port: u16,
+    address: String,
+    max_clients: usize,
     max_parallel: usize,
 }
 
-impl WebsocketHandler {}
-
-impl mptc::RequestHandler for WebsocketHandler {
-    fn worker_start(&mut self) -> Result<(), String> {
-        Ok(())
+impl Server {
+    fn new(
+        eg_ctx: eg::init::Context,
+        address: String,
+        port: u16,
+        max_clients: usize,
+        max_parallel: usize,
+    ) -> Self {
+        Server {
+            eg_ctx,
+            port,
+            address,
+            max_clients,
+            max_parallel,
+        }
     }
 
-    fn worker_end(&mut self) -> Result<(), String> {
-        Ok(())
+    fn run(&mut self) {
+        let hostport = format!("{}:{}", self.address, self.port);
+
+        log::info!("Server listening for connections at {hostport}");
+
+        let server = match TcpListener::bind(hostport) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Could not start websockets server: {e}");
+                return;
+            }
+        };
+
+        let mut handles: Vec<JoinHandle<()>> = Vec::new();
+
+        for connection_res in server.incoming() {
+            let stream = match connection_res {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("Error accepting new connection: {}", e);
+                    continue;
+                }
+            };
+
+            log::debug!("Server thread received new client connection");
+
+            handles = self.cleanup_handles(&mut handles);
+
+            if handles.len() >= self.max_clients {
+                log::warn!("Max websocket clients reached.  Ignoring new connection");
+                stream.shutdown(std::net::Shutdown::Both).ok();
+                continue;
+            }
+
+            let conf = self.eg_ctx.config().clone();
+            let idl = self.eg_ctx.idl().clone();
+            let max_parallel = self.max_parallel;
+
+            handles.push(thread::spawn(move || {
+                if let Err(e) = Session::run(conf, idl, stream, max_parallel) {
+                    log::error!("Session exited with error: {e}");
+                }
+            }));
+        }
     }
 
-    /// For websockets, a request is a long-running session.
-    /// process() is called exactly once per session
-    fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
-        let request = WebsocketSessionRequest::downcast(&mut request);
+    /// Remove completed threads from our list of join handles.
+    fn cleanup_handles(&mut self, handles: &mut Vec<JoinHandle<()>>) -> Vec<JoinHandle<()>> {
+        let mut active: Vec<JoinHandle<()>> = Vec::new();
 
-        // Take the stream so we can give it to the Session
-        let stream = request.stream.take().unwrap();
-
-        // Run the WS session until it exits
-        if let Err(e) = Session::run(
-            self.osrf_conf.clone(),
-            self.idl.clone(),
-            stream,
-            self.max_parallel,
-        ) {
-            log::error!("Session ended with error: {e}");
+        while handles.len() > 0 {
+            let handle = handles.remove(0);
+            if handle.is_finished() {
+                handle.join().ok();
+            } else {
+                active.push(handle);
+            }
         }
 
-        Ok(())
-    }
-}
-
-/// The main websockets network entry point.
-///
-/// This acts as a stream-generator for mptc.  Each WS client has
-/// its own data stream which, for the purposes of WS, produces a
-/// single mptc::Request, which is an inbound websocket connection
-/// request from a WS client.
-struct WebsocketServer {
-    listener: TcpListener,
-    eg_ctx: eg::init::Context,
-
-    /// Maximum number of active/parallel websocket requests to
-    /// relay to OpenSRF at a time.  Once exceeded, new messages
-    /// are queued for delivery and relayed as soon as possible.
-    max_parallel: usize,
-}
-
-impl WebsocketServer {
-    /// Start listening on the WS port for connections and return
-    /// the WebsocketServer instance.
-    fn start(
-        eg_ctx: eg::init::Context,
-        max_parallel: usize,
-        address: &str,
-        port: u16,
-    ) -> EgResult<Self> {
-        let hostport = format!("{}:{}", address, port);
-        log::info!("WS server starting at {hostport}");
-
-        let listener = TcpListener::bind(hostport)
-            .or_else(|e| Err(format!("Could not start websockets server: {e}")))?;
-
-        Ok(WebsocketServer {
-            eg_ctx,
-            listener,
-            max_parallel,
-        })
-    }
-}
-
-impl mptc::RequestStream for WebsocketServer {
-    /// Returns the next client request stream.
-    fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
-        let session_stream_res = match self.listener.incoming().next() {
-            Some(s) => s,
-            None => return Err(format!("WS incoming() retruend None??")),
-        };
-
-        let session_stream = match session_stream_res {
-            Ok(s) => s,
-            Err(e) => return Err(format!("Error accepting new connection: {e}")),
-        };
-
-        let request = WebsocketSessionRequest {
-            stream: Some(session_stream),
-        };
-
-        Ok(Box::new(request))
-    }
-
-    fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
-        Box::new(WebsocketHandler {
-            osrf_conf: self.eg_ctx.config().clone(),
-            idl: self.eg_ctx.idl().clone(),
-            max_parallel: self.max_parallel,
-        })
-    }
-
-    fn reload(&mut self) -> Result<(), String> {
-        // TODO
-        Ok(())
+        active
     }
 }
 
 fn main() {
-    let env_addr = env::var("EG_WEBSOCKETS_ADDRESS");
-    let address = env_addr.as_deref().unwrap_or(DEFAULT_LISTEN_ADDRESS);
-
-    let port = match env::var("EG_WEBSOCKETS_PORT") {
-        Ok(v) => v.parse::<u16>().expect("Invalid port number"),
-        _ => DEFAULT_PORT,
-    };
-
     let init_ops = eg::init::InitOptions {
         // As a gateway, we generally won't have access to the host
         // settings, since that's typically on a private domain.
@@ -948,29 +896,23 @@ fn main() {
         .init()
         .expect("Logger Init");
 
-    let max_parallel = if let Ok(n) = env::var("EG_WEBSOCKETS_MAX_PARALLEL") {
-        n.parse::<usize>().expect("Invalid max-parallel")
-    } else {
-        MAX_PARALLEL_REQUESTS
+    let address = env::var("EG_WEBSOCKETS_ADDRESS").unwrap_or(DEFAULT_LISTEN_ADDRESS.to_string());
+
+    let port = match env::var("EG_WEBSOCKETS_PORT") {
+        Ok(v) => v.parse::<u16>().expect("Invalid port number"),
+        _ => DEFAULT_PORT,
     };
 
-    let stream = WebsocketServer::start(eg_ctx, max_parallel, address, port).expect("Start stream");
+    let max_clients = match env::var("EG_WEBSOCKETS_MAX_CLIENTS") {
+        Ok(v) => v.parse::<usize>().expect("Invalid max-clients value"),
+        _ => MAX_WS_CLIENTS,
+    };
 
-    let mut server = mptc::Server::new(Box::new(stream));
+    let max_parallel = match env::var("EG_WEBSOCKETS_MAX_PARALLEL") {
+        Ok(v) => v.parse::<usize>().expect("Invalid max-parallel value"),
+        _ => MAX_ACTIVE_REQUESTS,
+    };
 
-    if let Ok(n) = env::var("EG_WEBSOCKETS_MAX_WORKERS") {
-        server.set_max_workers(n.parse::<usize>().expect("Invalid max-workers"));
-    }
-
-    if let Ok(n) = env::var("EG_WEBSOCKETS_MIN_WORKERS") {
-        server.set_min_workers(n.parse::<usize>().expect("Invalid min-workers"));
-    }
-
-    if let Ok(n) = env::var("EG_WEBSOCKETS_MAX_REQUESTS") {
-        server.set_max_worker_requests(n.parse::<usize>().expect("Invalid max-requests"));
-    }
-
-    server.set_max_worker_requests(1);
-
+    let mut server = Server::new(eg_ctx, address, port, max_clients, max_parallel);
     server.run();
 }
