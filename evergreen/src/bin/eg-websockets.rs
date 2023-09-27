@@ -1,13 +1,13 @@
+use eg::idl;
+use eg::result::EgResult;
+use evergreen as eg;
 use opensrf as osrf;
 use osrf::addr::{RouterAddress, ServiceAddress};
 use osrf::bus::Bus;
+use osrf::client::DataSerializer;
 use osrf::conf;
 use osrf::logging::Logger;
 use osrf::message;
-use osrf::client::DataSerializer;
-use evergreen as eg;
-use eg::idl;
-use eg::result::EgResult;
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fmt;
@@ -655,13 +655,13 @@ impl Session {
 
     /// Package an OpenSRF response as a websocket message and
     /// send the message to this Session's websocket client.
-    fn relay_to_websocket(&mut self, tm: message::TransportMessage) -> Result<(), String> {
-        let msg_list = tm.body();
+    fn relay_to_websocket(&mut self, mut tm: message::TransportMessage) -> Result<(), String> {
+        let mut msg_list = tm.take_body();
 
         let mut body = json::JsonValue::new_array();
         let mut transport_error = false;
 
-        for msg in msg_list.iter() {
+        for msg in msg_list.iter_mut() {
             if let osrf::message::Payload::Status(s) = msg.payload() {
                 match *s.status() {
                     message::MessageStatus::Complete => self.subtract_reqs(),
@@ -683,23 +683,29 @@ impl Session {
                     }
                     _ => {}
                 }
+            } else if let osrf::message::Payload::Result(ref mut r) = msg.payload_mut() {
+                // Unpack (hashify) the result content instead of the
+                // response message as a whole, because opensrf uses
+                // the same class/payload encoding that the IDL/Fieldmapper
+                // does.  We don't want to modify the opensrf messages,
+                // just the result content.  (I mean, we could, but that
+                // would break existing opensrf parsers).
+                if let Some(format) = self.format.as_ref() {
+                    if format.is_hash() {
+                        // The caller wants result data returned in HASH format
+                        let mut content = r.take_content();
+                        content = self.idl.unpack(content);
+                        if format == &idl::DataFormat::Hash {
+                            // Caller wants a default slim hash
+                            content = idl::scrub_hash_nulls(content);
+                        }
+                        r.set_content(content);
+                    }
+                }
             }
 
             if let Err(e) = body.push(msg.to_json_value()) {
                 Err(format!("{self} Error building message response: {e}"))?;
-            }
-        }
-
-        if let Some(format) = self.format.as_ref() {
-            if format.is_hash() {
-                // The caller wants data returned in HASH format.
-                body = self.idl.unpack(body);
-                if format == &idl::DataFormat::Hash {
-                    // NOTE this has the side effect of potentially
-                    // scrubbing NULL values from the OpenSRF parts
-                    // of the message, but this is assumed to be OK.
-                    body = idl::scrub_hash_nulls(body);
-                }
             }
         }
 

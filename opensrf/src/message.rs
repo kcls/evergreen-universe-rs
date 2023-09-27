@@ -238,6 +238,10 @@ impl TransportMessage {
         &mut self.body
     }
 
+    pub fn take_body(&mut self) -> Vec<Message> {
+        std::mem::replace(&mut self.body, Vec::new())
+    }
+
     pub fn osrf_xid(&self) -> &str {
         &self.osrf_xid
     }
@@ -390,6 +394,9 @@ impl Message {
 
     pub fn payload(&self) -> &Payload {
         &self.payload
+    }
+    pub fn payload_mut(&mut self) -> &mut Payload {
+        &mut self.payload
     }
 
     pub fn api_level(&self) -> u8 {
@@ -564,6 +571,14 @@ impl Result {
 
     pub fn content(&self) -> &json::JsonValue {
         &self.content
+    }
+
+    pub fn take_content(&mut self) -> json::JsonValue {
+        self.content.take()
+    }
+
+    pub fn set_content(&mut self, v: json::JsonValue) {
+        self.content = v
     }
 
     pub fn status(&self) -> &MessageStatus {
