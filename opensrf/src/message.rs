@@ -755,6 +755,14 @@ impl Method {
         &self.params
     }
 
+    pub fn take_params(&mut self) -> Vec<json::JsonValue> {
+        std::mem::replace(&mut self.params, Vec::new())
+    }
+
+    pub fn set_params(&mut self, params: Vec<json::JsonValue>) {
+        self.params = params
+    }
+
     /// Return a ref to the param at the specififed index.
     ///
     /// Returns NULL if the param is not set.

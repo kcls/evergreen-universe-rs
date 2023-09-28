@@ -51,8 +51,29 @@ tungstenite = "0.19.0"
 # For gateway
 url = "2.3"
 
-[[example]]
-name = "basic-requests"
+[[bin]]
+name = "eg-websockets"
+path = "src/bin/websockets.rs"
+
+[[bin]]
+name = "eg-http-gateway"
+path = "src/bin/http-gateway.rs"
+
+[[bin]]
+name = "eg-hold-targeter"
+path = "src/bin/hold-targeter.rs"
+
+[[bin]]
+name = "eg-marc-export"
+path = "src/bin/marc-export.rs"
+
+[[bin]]
+name = "eg-bib-to-auth-linker"
+path = "src/bin/bib-to-auth-linker.rs"
+
+[[bin]]
+name = "eg-parallel-ingest"
+path = "src/bin/parallel-ingest.rs"
 
 [[bin]]
 # End-to-end test for open-ils.rs-store

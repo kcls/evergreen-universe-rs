@@ -521,16 +521,6 @@ impl Session {
         let log_xid = wrapper["log_xid"].take();
         let mut msg_list = wrapper["osrf_msg"].take();
 
-        // NOTE no data changes are needed to support the different inbound
-        // formats, because the IDL-as-serializer will a) ignore Fieldmapper
-        // objects during pack/serialization because they don't look
-        // like our internal IDL data representation and b) will properly
-        // pack/serialize any data that comes in using our internal
-        // flat-hash representation.
-        if let Some(format) = wrapper["format"].as_str() {
-            self.format = Some(format.into());
-        }
-
         if let Some(xid) = log_xid.as_str() {
             self.log_trace = Some(xid.to_string());
         } else {
@@ -578,6 +568,12 @@ impl Session {
             msg_list = list;
         }
 
+        let mut format_hash = false;
+        if let Some(format) = wrapper["format"].as_str() {
+            self.format = Some(format.into());
+            format_hash = self.format.as_ref().unwrap().is_hash();
+        }
+
         let mut body_vec: Vec<message::Message> = Vec::new();
 
         loop {
@@ -601,6 +597,21 @@ impl Session {
                 }
                 message::MessageType::Request => {
                     self.reqs_in_flight += 1;
+
+                    // Inbound requests using a hash format need to be
+                    // turned into Fieldmapper objects before they
+                    // are relayed to the API.
+                    if format_hash {
+                        if let osrf::message::Payload::Method(ref mut meth) = msg.payload_mut() {
+                            let mut new_params = Vec::new();
+                            let mut params = meth.take_params();
+                            for p in params.drain(..) {
+                                new_params.push(self.idl.pack(p));
+                            }
+                            meth.set_params(new_params);
+                        }
+                    }
+
                     self.log_request(service, &msg)?;
                 }
                 message::MessageType::Disconnect => {

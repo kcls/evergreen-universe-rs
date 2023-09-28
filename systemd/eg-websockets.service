@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenSRF Websockets
+Description=Evergreen Websockets
 Requires=redis-server.service
 After=redis-server.service
 #Wants=opensrf-#router.service
@@ -9,4 +9,4 @@ After=redis-server.service
 Type=simple
 User=opensrf
 Group=opensrf
-ExecStart=/usr/local/bin/opensrf-websockets
+ExecStart=/usr/local/bin/eg-websockets
