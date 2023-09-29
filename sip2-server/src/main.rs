@@ -14,8 +14,8 @@ mod session;
 mod util;
 
 const DEFAULT_CONFIG_1: &str = "/usr/local/etc/eg-sip2-server.yml";
-const DEFAULT_CONFIG_2: &str = "/usr/local/etc/eg-sip2-server.example.yml";
-const DEFAULT_CONFIG_3: &str = "./sip2-server/conf/eg-sip2-server.yml";
+const DEFAULT_CONFIG_2: &str = "./sip2-server/conf/eg-sip2-server.yml";
+const DEFAULT_CONFIG_3: &str = "/usr/local/etc/eg-sip2-server.example.yml";
 const DEFAULT_CONFIG_4: &str = "./sip2-server/conf/eg-sip2-server.example.yml";
 
 fn main() {
@@ -47,10 +47,16 @@ fn main() {
         }
     };
 
+    // Support env vars as well?
     let max_workers = stream.sip_config().max_clients();
+    let min_workers = stream.sip_config().min_workers();
+    let max_worker_requests = stream.sip_config().max_worker_requests();
+
     let mut s = mptc::Server::new(Box::new(stream));
 
     s.set_max_workers(max_workers);
+    s.set_min_workers(min_workers);
+    s.set_max_worker_requests(max_worker_requests);
 
     s.run();
 }

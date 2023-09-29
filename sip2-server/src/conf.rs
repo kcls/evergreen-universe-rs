@@ -232,6 +232,8 @@ pub struct Config {
     sip_address: String,
     sip_port: u16,
     max_clients: usize,
+    min_workers: usize,
+    max_worker_requests: usize,
     ascii: bool,
     setting_groups: HashMap<String, SipSettings>,
     accounts: HashMap<String, SipAccount>,
@@ -246,6 +248,8 @@ impl Config {
             sip_address: String::from("localhost"),
             sip_port: 6001,
             max_clients: 256,
+            min_workers: 10,
+            max_worker_requests: 1000,
             ascii: true,
             setting_groups: HashMap::new(),
             accounts: HashMap::new(),
@@ -275,6 +279,14 @@ impl Config {
 
         if let Some(v) = root["max-clients"].as_i64() {
             self.max_clients = v as usize;
+        }
+
+        if let Some(v) = root["min-workers"].as_i64() {
+            self.min_workers = v as usize;
+        }
+
+        if let Some(v) = root["max-worker-requests"].as_i64() {
+            self.max_worker_requests = v as usize;
         }
 
         if let Some(v) = root["ascii"].as_bool() {
@@ -448,6 +460,12 @@ impl Config {
     }
     pub fn max_clients(&self) -> usize {
         self.max_clients
+    }
+    pub fn min_workers(&self) -> usize {
+        self.min_workers
+    }
+    pub fn max_worker_requests(&self) -> usize {
+        self.max_worker_requests
     }
     pub fn ascii(&self) -> bool {
         self.ascii
