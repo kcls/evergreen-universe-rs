@@ -244,10 +244,9 @@ impl Worker {
         };
 
         // NOTE no need to report our status as Active to the main
-        // server, since it applies that state to its tracking data for
-        // this worker just before sending us the request we're about
-        // to process.  At this point, the server already thinks we're
-        // active.
+        // server, since it applies the Active state to its tracking
+        // data for this worker just before sending us the request we're
+        // about to process.  IOW, the server alread knows we're active.
 
         self.handler.process(request)?;
 
