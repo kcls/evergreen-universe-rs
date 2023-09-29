@@ -522,7 +522,6 @@ impl GatewayStream {
 impl mptc::RequestStream for GatewayStream {
     /// Returns the next client request stream.
     fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
-
         // TODO apply timeout to our TCP listener (see sip2-server) and
         // return None on timeouts to the mptc::Server can wake
         // periodically and check for signals.

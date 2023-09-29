@@ -2,15 +2,15 @@ use super::conf;
 use super::conf::Config;
 use super::session::Session;
 use evergreen as eg;
+use mptc;
 use opensrf as osrf;
 use socket2::{Domain, Socket, Type};
+use std::any::Any;
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::any::Any;
-use mptc;
 
 /// If we get this many TCP errors in a row, with no successful connections
 /// in between, exit.
@@ -53,10 +53,10 @@ pub struct SessionFactory {
 
 impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
-        log::debug!("SessionFactory connecting to opensrf");
-
         let bus = osrf::bus::Bus::new(self.osrf_conf.client())?;
         self.osrf_bus = Some(bus);
+
+        log::debug!("SessionFactory connected OK to opensrf");
 
         Ok(())
     }
@@ -67,14 +67,16 @@ impl mptc::RequestHandler for SessionFactory {
         Ok(())
     }
 
+    /// Build a new Session from a SipConnectRequest and let the
+    /// Session manage the rest of the communication.
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let request = SipConnectRequest::downcast(&mut request);
 
         let sip_conf = self.sip_config.clone();
         let org_cache = self.org_cache.clone();
         let shutdown = self.shutdown.clone();
-        let idl = self.idl.clone();
         let osrf_conf = self.osrf_conf.clone();
+        let idl = self.idl.clone();
 
         // Set in worker_start
         let osrf_bus = self.osrf_bus.take().unwrap();
@@ -83,8 +85,9 @@ impl mptc::RequestHandler for SessionFactory {
         // this request.
         let stream = request.stream.take().unwrap();
 
-        let mut session =
-            Session::new(sip_conf, osrf_conf, osrf_bus, idl, stream, shutdown, org_cache);
+        let mut session = Session::new(
+            sip_conf, osrf_conf, osrf_bus, idl, stream, shutdown, org_cache,
+        );
 
         if let Err(e) = session.start() {
             // This is not necessarily an error.  The client may simply
@@ -94,14 +97,16 @@ impl mptc::RequestHandler for SessionFactory {
         }
 
         // Take our bus back so we don't have to reconnect in between
-        // SIP clients.  The session is done with it.
+        // SIP clients.  This SIP Session is done with it.
         let mut bus = session.take_bus();
 
         // Remove any trailing data on the Bus.
         bus.clear_bus()?;
 
-        // TODO set a new bus address to avoid any lingering cross-talk
-        // from previous sessions.
+        // Apply a new Bus address to prevent any possibility of
+        // trailing message cross-talk.  (Note, it wouldn't do anything,
+        // since messages would refer to unknown sessions, but still..).
+        bus.generate_address();
 
         self.osrf_bus = Some(bus);
 
@@ -134,10 +139,8 @@ pub struct Server {
     tcp_listener: TcpListener,
 }
 
-
 impl mptc::RequestStream for Server {
     fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
-
         let stream = match self.tcp_listener.accept() {
             Ok((stream, _addr)) => {
                 self.tcp_error_count = 0;
@@ -152,7 +155,10 @@ impl mptc::RequestStream for Server {
                         return Ok(None);
                     }
                     _ => {
-                        log::error!("SIPServer accept() failed: error_count={} {e}", self.tcp_error_count);
+                        log::error!(
+                            "SIPServer accept() failed: error_count={} {e}",
+                            self.tcp_error_count
+                        );
                         self.tcp_error_count += 1;
 
                         if self.tcp_error_count > MAX_TCP_ERRORS {
@@ -171,7 +177,9 @@ impl mptc::RequestStream for Server {
             }
         };
 
-        Ok(Some(Box::new(SipConnectRequest { stream: Some(stream) })))
+        Ok(Some(Box::new(SipConnectRequest {
+            stream: Some(stream),
+        })))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
@@ -196,19 +204,26 @@ impl mptc::RequestStream for Server {
         // Fails if we cannot talk to OpenSRF.
         self.precache()?;
 
+        // No need to inform our worker sessions that we're reloading.
+        // mptc will clear/reload idle workers, and there's no need to
+        // force-exit a connected session.
+
         Ok(())
     }
 
     fn shutdown(&mut self) {
         // Tell our Session workers it's time to finish any active
         // requests then exit.
+        // This only affects active Sessions.  mptc will notify its
+        // own idle workers.
+        log::info!("Server received mptc shutdown request");
+
         self.shutdown.store(true, Ordering::Relaxed);
         self.eg_ctx.client().clear().ok();
     }
 }
 
 impl Server {
-
     pub fn sip_config(&self) -> &Config {
         &self.sip_config
     }
@@ -216,11 +231,7 @@ impl Server {
     pub fn setup(sip_config_file: &str, eg_ctx: eg::init::Context) -> Result<Server, String> {
         let sip_config = Server::load_config(sip_config_file)?;
 
-        let bind = format!(
-            "{}:{}",
-            sip_config.sip_address(),
-            sip_config.sip_port()
-        );
+        let bind = format!("{}:{}", sip_config.sip_address(), sip_config.sip_port());
 
         let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
             .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
@@ -296,4 +307,3 @@ impl Server {
         Ok(())
     }
 }
-

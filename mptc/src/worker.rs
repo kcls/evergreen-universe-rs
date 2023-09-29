@@ -1,7 +1,13 @@
 use super::{Request, RequestHandler};
 use std::fmt;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
+use std::time::SystemTime;
+
+const SHUTDOWN_POLL_INTERVAL: u64 = 5;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WorkerState {
@@ -56,9 +62,6 @@ pub struct WorkerInstance {
     pub worker_id: u64,
     pub state: WorkerState,
     pub join_handle: thread::JoinHandle<()>,
-
-    /// Channel for sending request data to a specific worker.
-    /// TODO String will be some other type/trait.
     pub to_worker_tx: mpsc::Sender<Box<dyn Request>>,
 }
 
@@ -88,6 +91,9 @@ pub struct Worker {
     worker_id: u64,
     max_requests: usize,
     request_count: usize,
+    start_time_epoch: u64,
+    shutdown: Arc<AtomicBool>,
+    shutdown_before: Arc<AtomicU64>,
     to_parent_tx: mpsc::Sender<WorkerStateEvent>,
     to_worker_rx: mpsc::Receiver<Box<dyn Request>>,
     handler: Box<dyn RequestHandler>,
@@ -97,13 +103,23 @@ impl Worker {
     pub fn new(
         worker_id: u64,
         max_requests: usize,
+        shutdown: Arc<AtomicBool>,
+        shutdown_before: Arc<AtomicU64>,
         to_parent_tx: mpsc::Sender<WorkerStateEvent>,
         to_worker_rx: mpsc::Receiver<Box<dyn Request>>,
         handler: Box<dyn RequestHandler>,
     ) -> Worker {
+        let epoch = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
         Worker {
             worker_id,
             max_requests,
+            start_time_epoch: epoch,
+            shutdown,
+            shutdown_before,
             to_parent_tx,
             to_worker_rx,
             request_count: 0,
@@ -126,10 +142,31 @@ impl Worker {
         };
 
         if let Err(e) = self.to_parent_tx.send(evt) {
-            Err(format!("Error notifying parent of state change: {e}"))
+            // If we're here, our parent server has exited or failed in
+            // some unrecoverable way.  Tell our fellow workers it's
+            // time to shut down.
+            self.shutdown.store(true, Ordering::Relaxed);
+
+            return Err(format!("Error notifying parent of state change: {e}"));
         } else {
             Ok(())
         }
+    }
+
+    fn should_shut_down(&self) -> bool {
+        if self.shutdown.load(Ordering::Relaxed) {
+            log::debug!("{self} received shutdown, exiting run loop");
+            println!("{self} received shutdown, exiting run loop");
+            return true;
+        }
+
+        let sdbf = self.shutdown_before.load(Ordering::Relaxed);
+        if sdbf > self.start_time_epoch {
+            log::info!("{self} shutdown_before of {sdbf} issued.  That includes us");
+            return true;
+        }
+
+        return false;
     }
 
     pub fn run(&mut self) {
@@ -141,10 +178,25 @@ impl Worker {
         }
 
         loop {
-
-            if let Err(e) = self.process_one_request() {
-                log::error!("{self} Request failed: {e}");
+            if self.should_shut_down() {
                 break;
+            }
+
+            let work_done = match self.process_one_request() {
+                Ok(b) => b,
+                Err(e) => {
+                    log::error!("{self} error processing request: {e}; exiting");
+                    // If we're here, our parent server has exited
+                    // or failed in some unrecoverable way.
+                    // Tell our fellow workers it's time to shut down.
+                    self.shutdown.store(true, Ordering::Relaxed);
+                    break;
+                }
+            };
+
+            if !work_done {
+                // Go back and keep listening for requests.
+                continue;
             }
 
             self.request_count += 1;
@@ -166,7 +218,7 @@ impl Worker {
 
         self.set_as_done().ok(); // we're done.  ignore errors.
 
-        log::debug!("{self} exiting on max requests (or error)");
+        log::debug!("{self} exiting main listen loop");
 
         if let Err(e) = self.handler.worker_end() {
             log::error!("{self} handler returned on error on exit: {e}");
@@ -174,18 +226,32 @@ impl Worker {
     }
 
     /// Returns result of true of this worker should exit.
-    fn process_one_request(&mut self) -> Result<(), String> {
-        let request = match self.to_worker_rx.recv() {
+    fn process_one_request(&mut self) -> Result<bool, String> {
+        let recv_result = self
+            .to_worker_rx
+            .recv_timeout(Duration::from_secs(SHUTDOWN_POLL_INTERVAL));
+
+        let request = match recv_result {
             Ok(r) => r,
-            Err(e) => Err(format!("{self} exiting on failed receive: {e}"))?,
+            Err(e) => {
+                match e {
+                    // recv_timeout will fail for a timeout or for a
+                    // disconnect error.
+                    std::sync::mpsc::RecvTimeoutError::Timeout => return Ok(false),
+                    _ => return Err(format!("Error receiving request from parent: {e}")),
+                }
+            }
         };
 
         // NOTE no need to report our status as Active to the main
-        // server, since it applies that state to this worker
-        // just before sending us the request we're about to process.
-        // At this point, the server already thinks we're active.
+        // server, since it applies that state to its tracking data for
+        // this worker just before sending us the request we're about
+        // to process.  At this point, the server already thinks we're
+        // active.
 
-        self.handler.process(request)
+        self.handler.process(request)?;
+
+        return Ok(true);
     }
 }
 

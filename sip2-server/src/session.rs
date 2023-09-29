@@ -59,7 +59,6 @@ pub struct Session {
 }
 
 impl Session {
-
     pub fn new(
         sip_config: Arc<conf::Config>,
         osrf_conf: Arc<osrf::conf::Config>,
@@ -67,7 +66,7 @@ impl Session {
         idl: Arc<eg::idl::Parser>,
         stream: net::TcpStream,
         shutdown: Arc<AtomicBool>,
-        org_cache: HashMap<i64, json::JsonValue>
+        org_cache: HashMap<i64, json::JsonValue>,
     ) -> Self {
         if let Ok(a) = stream.peer_addr() {
             log::info!("New SIP connection from {a}");
@@ -231,6 +230,8 @@ impl Session {
                 .sip_connection
                 .recv_with_timeout(conf::SIP_SHUTDOWN_POLL_INTERVAL)
                 .or_else(|e| Err(format!("{self} SIP recv() failed: {e}")))?;
+
+            log::trace!("{self} waking from SIP message receive poll");
 
             let sip_req = match sip_req_op {
                 Some(r) => r,

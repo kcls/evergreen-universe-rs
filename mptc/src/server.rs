@@ -1,11 +1,11 @@
 use super::worker::{Worker, WorkerInstance, WorkerState, WorkerStateEvent};
 use super::{Request, RequestStream};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 pub struct Server {
     worker_id_gen: u64,
@@ -20,6 +20,12 @@ pub struct Server {
 
     reload: Arc<AtomicBool>,
     shutdown: Arc<AtomicBool>,
+
+    // Contains the epoch seconds at which the most recent reload
+    // request was issued.  With this,  workers can tell if they
+    // need to shut down (as part of a reload) by comparing their
+    // start time with the shutdown request time.
+    shutdown_before: Arc<AtomicU64>,
 
     /// All inbound requests arrive via this stream.
     stream: Box<dyn RequestStream>,
@@ -43,6 +49,7 @@ impl Server {
             max_worker_reqs: super::DEFAULT_MAX_WORKER_REQS,
             reload: Arc::new(AtomicBool::new(false)),
             shutdown: Arc::new(AtomicBool::new(false)),
+            shutdown_before: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -83,6 +90,8 @@ impl Server {
         let to_parent_tx = self.to_parent_tx.clone();
         let max_reqs = self.max_worker_reqs;
         let handler = self.stream.new_handler();
+        let shutdown = self.shutdown.clone();
+        let shutdown_before = self.shutdown_before.clone();
 
         log::trace!(
             "Starting worker with idle={} active={}",
@@ -96,7 +105,15 @@ impl Server {
         ) = mpsc::channel();
 
         let handle = thread::spawn(move || {
-            let mut w = Worker::new(worker_id, max_reqs, to_parent_tx, rx, handler);
+            let mut w = Worker::new(
+                worker_id,
+                max_reqs,
+                shutdown,
+                shutdown_before,
+                to_parent_tx,
+                rx,
+                handler,
+            );
             w.run();
         });
 
@@ -203,6 +220,14 @@ impl Server {
                 log::info!("Reload request received.");
                 self.reload.store(false, Ordering::Relaxed);
 
+                // Tell any workers that started before now to shut
+                // themselves down.
+                let epoch = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                self.shutdown_before.store(epoch, Ordering::Relaxed);
+
                 if let Err(e) = self.stream.reload() {
                     log::error!("Reload command failed, exiting. {e}");
                     return true;
@@ -250,11 +275,12 @@ impl Server {
         self.start_workers();
 
         loop {
-
             match self.stream.next() {
-                Ok(req_op) => if let Some(req) = req_op {
-                    self.dispatch_request(req);
-                },
+                Ok(req_op) => {
+                    if let Some(req) = req_op {
+                        self.dispatch_request(req);
+                    }
+                }
                 Err(e) => {
                     log::error!("Exiting on stream error: {e}");
                     break;
@@ -320,12 +346,14 @@ impl Server {
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
         if let Err(e) =
-            signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone()) {
+            signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone())
+        {
             return Err(format!("Cannot register HUP signal: {e}"));
         }
 
         if let Err(e) =
-            signal_hook::flag::register(signal_hook::consts::SIGINT, self.shutdown.clone()) {
+            signal_hook::flag::register(signal_hook::consts::SIGINT, self.shutdown.clone())
+        {
             return Err(format!("Cannot register INT signal: {e}"));
         }
 
