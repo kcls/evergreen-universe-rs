@@ -69,14 +69,14 @@ struct TcpEchoStream {
 }
 
 impl mptc::RequestStream for TcpEchoStream {
-    fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
+    fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
         let (stream, _addr) = self
             .listener
             .accept()
             .or_else(|e| Err(format!("Accept failed: {e}")))?;
 
         let request = TcpEchoRequest { stream: stream };
-        Ok(Box::new(request))
+        Ok(Some(Box::new(request)))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
@@ -87,6 +87,9 @@ impl mptc::RequestStream for TcpEchoStream {
 
     fn reload(&mut self) -> Result<(), String> {
         Ok(())
+    }
+
+    fn shutdown(&mut self) {
     }
 }
 
