@@ -2,107 +2,236 @@ use super::conf;
 use super::conf::Config;
 use super::session::Session;
 use evergreen as eg;
-use signal_hook;
+use mptc;
+use opensrf as osrf;
 use socket2::{Domain, Socket, Type};
+use std::any::Any;
 use std::collections::HashMap;
-use std::net;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use threadpool::ThreadPool;
 
-pub struct Server {
-    ctx: eg::init::Context,
-    sip_config: Config,
-    sip_config_file: String,
-    sesid: usize,
-    /// If this ever contains a true, we shut down.
+/// If we get this many TCP errors in a row, with no successful connections
+/// in between, exit.
+const MAX_TCP_ERRORS: usize = 100;
+
+/// Wraps the TCP stream created by the initial connection from a SIP client.
+struct SipConnectRequest {
+    stream: Option<TcpStream>,
+}
+
+impl SipConnectRequest {
+    pub fn downcast(h: &mut Box<dyn mptc::Request>) -> &mut SipConnectRequest {
+        h.as_any_mut()
+            .downcast_mut::<SipConnectRequest>()
+            .expect("SipConnectRequest::downcast() given wrong type!")
+    }
+}
+
+impl mptc::Request for SipConnectRequest {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+pub struct SessionFactory {
     shutdown: Arc<AtomicBool>,
-    reload: Arc<AtomicBool>,
+
+    sip_config: Arc<Config>,
+
+    idl: Arc<eg::idl::Parser>,
+
+    osrf_conf: Arc<osrf::conf::Config>,
+
+    /// OpenSRF bus.
+    osrf_bus: Option<osrf::bus::Bus>,
+
     /// Cache of org unit shortnames and IDs.
     org_cache: HashMap<i64, json::JsonValue>,
 }
 
-impl Server {
-    pub fn new(sip_config_file: &str, ctx: eg::init::Context) -> Server {
-        let sip_config = Server::load_config(sip_config_file).expect("Error reading config");
+impl mptc::RequestHandler for SessionFactory {
+    fn worker_start(&mut self) -> Result<(), String> {
+        let bus = osrf::bus::Bus::new(self.osrf_conf.client())?;
+        self.osrf_bus = Some(bus);
 
-        Server {
-            ctx,
-            sesid: 0,
-            sip_config,
-            sip_config_file: sip_config_file.to_string(),
-            org_cache: HashMap::new(),
-            reload: Arc::new(AtomicBool::new(false)),
-            shutdown: Arc::new(AtomicBool::new(false)),
+        log::debug!("SessionFactory connected OK to opensrf");
+
+        Ok(())
+    }
+
+    fn worker_end(&mut self) -> Result<(), String> {
+        log::debug!("SessionFactory worker_end()");
+        // OpenSRF bus will disconnect and cleanup once
+        Ok(())
+    }
+
+    /// Build a new Session from a SipConnectRequest and let the
+    /// Session manage the rest of the communication.
+    fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
+        let request = SipConnectRequest::downcast(&mut request);
+
+        let sip_conf = self.sip_config.clone();
+        let org_cache = self.org_cache.clone();
+        let shutdown = self.shutdown.clone();
+        let osrf_conf = self.osrf_conf.clone();
+        let idl = self.idl.clone();
+
+        // Set in worker_start
+        let osrf_bus = self.osrf_bus.take().unwrap();
+
+        // request.stream is set in the call to next() that produced
+        // this request.
+        let stream = request.stream.take().unwrap();
+
+        let mut session = Session::new(
+            sip_conf, osrf_conf, osrf_bus, idl, stream, shutdown, org_cache,
+        );
+
+        if let Err(e) = session.start() {
+            // This is not necessarily an error.  The client may simply
+            // have disconnected.  There is no "disconnect" message in
+            // SIP -- you just chop off the socket.
+            log::info!("{session} exited with message: {e}");
         }
+
+        // Take our bus back so we don't have to reconnect in between
+        // SIP clients.  This SIP Session is done with it.
+        let mut bus = session.take_bus();
+
+        // Remove any trailing data on the Bus.
+        bus.clear_bus()?;
+
+        // Apply a new Bus address to prevent any possibility of
+        // trailing message cross-talk.  (Note, it wouldn't do anything,
+        // since messages would refer to unknown sessions, but still..).
+        bus.generate_address();
+
+        self.osrf_bus = Some(bus);
+
+        Ok(())
     }
+}
 
-    fn load_config(filename: &str) -> Result<Config, String> {
-        let mut sip_conf = conf::Config::new();
-        sip_conf.read_yaml(filename)?;
-        Ok(sip_conf)
-    }
+/// Listens for SIP client connections and passes them off to mptc:: for
+/// relaying to a Session worker.
+pub struct Server {
+    eg_ctx: eg::init::Context,
 
-    fn sighup(&mut self) {
-        log::info!("SIGHUP received.  Reloading config");
-        match Server::load_config(&self.sip_config_file) {
-            Ok(c) => self.sip_config = c,
-            Err(e) => log::error!("Error reloading config.  Using old config. {e}"),
-        }
-        self.reload.store(false, Ordering::Relaxed);
-    }
+    /// Parsed config
+    sip_config: Arc<Config>,
 
-    /// Pre-cache data that's universally useful.
-    fn precache(&mut self) -> Result<(), String> {
-        let mut e = eg::Editor::new(self.ctx.client(), self.ctx.idl());
+    /// Path the SIP config so it can be reloaded on request.
+    sip_config_file: String,
 
-        let search = json::object! {
-            id: {"!=": json::JsonValue::Null},
+    /// Set to true of the mptc::Server tells us it's time to shutdown.
+    ///
+    /// Read by our Sessions
+    shutdown: Arc<AtomicBool>,
+
+    /// Cache of org unit shortnames and IDs.
+    org_cache: Option<HashMap<i64, json::JsonValue>>,
+
+    tcp_error_count: usize,
+
+    /// Inbound SIP connections start here.
+    tcp_listener: TcpListener,
+}
+
+impl mptc::RequestStream for Server {
+    fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
+        let stream = match self.tcp_listener.accept() {
+            Ok((stream, _addr)) => {
+                self.tcp_error_count = 0;
+                stream
+            }
+            Err(e) => {
+                match e.kind() {
+                    std::io::ErrorKind::WouldBlock => {
+                        // No connection received within the timeout.
+                        // Return None to the mptc::Server so it can
+                        // perform housekeeping.
+                        return Ok(None);
+                    }
+                    _ => {
+                        log::error!(
+                            "SIPServer accept() failed: error_count={} {e}",
+                            self.tcp_error_count
+                        );
+                        self.tcp_error_count += 1;
+
+                        if self.tcp_error_count > MAX_TCP_ERRORS {
+                            // Net IO errors can happen for all kinds of reasons.
+                            // https://doc.rust-lang.org/stable/std/io/enum.ErrorKind.html
+                            // Concern is some of these errors could put
+                            // us into an infinite loop of "stuff is broken".
+                            // Break out of the loop if we've hit too many.
+                            return Err(format!("SIPServer exited on too many connect errors"));
+                        }
+
+                        // Error, but not too many yet.
+                        return Ok(None);
+                    }
+                }
+            }
         };
 
-        let orgs = e.search("aou", search)?;
-
-        for org in orgs {
-            self.org_cache
-                .insert(eg::util::json_int(&org["id"])?, org.clone());
-        }
-
-        Ok(())
+        Ok(Some(Box::new(SipConnectRequest {
+            stream: Some(stream),
+        })))
     }
 
-    fn setup_signal_handlers(&self) -> Result<(), String> {
-        // TERM and INT result in a graceful shutdown
-        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-            if let Err(e) = signal_hook::flag::register(sig, self.shutdown.clone()) {
-                Err(format!("Cannot register signal handler: {e}"))?;
-            }
-        }
+    fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
+        let sf = SessionFactory {
+            shutdown: self.shutdown.clone(),
+            sip_config: self.sip_config.clone(),
+            idl: self.eg_ctx.idl().clone(),
+            osrf_conf: self.eg_ctx.config().clone(),
+            osrf_bus: None, // set in worker_start
+            org_cache: self.org_cache.as_ref().unwrap().clone(),
+        };
 
-        // HUP causes us to reload our configuration.
-        if let Err(e) =
-            signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone())
-        {
-            Err(format!("Cannot register HUP signal: {e}"))?;
-        }
-
-        Ok(())
+        Box::new(sf)
     }
 
-    pub fn serve(&mut self) -> Result<(), String> {
-        log::info!("SIP2Meditor server starting");
+    fn reload(&mut self) -> Result<(), String> {
+        match Server::load_config(&self.sip_config_file) {
+            Ok(c) => self.sip_config = Arc::new(c),
+            Err(e) => log::error!("Error reloading config.  Using old config. {e}"),
+        }
 
-        self.setup_signal_handlers()?;
+        // Fails if we cannot talk to OpenSRF.
         self.precache()?;
 
-        let pool = ThreadPool::new(self.sip_config.max_clients());
+        // No need to inform our worker sessions that we're reloading.
+        // mptc will clear/reload idle workers, and there's no need to
+        // force-exit a connected session.
 
-        let bind = format!(
-            "{}:{}",
-            self.sip_config.sip_address(),
-            self.sip_config.sip_port()
-        );
+        Ok(())
+    }
+
+    fn shutdown(&mut self) {
+        // Tell our Session workers it's time to finish any active
+        // requests then exit.
+        // This only affects active Sessions.  mptc will notify its
+        // own idle workers.
+        log::info!("Server received mptc shutdown request");
+
+        self.shutdown.store(true, Ordering::Relaxed);
+        self.eg_ctx.client().clear().ok();
+    }
+}
+
+impl Server {
+    pub fn sip_config(&self) -> &Config {
+        &self.sip_config
+    }
+
+    pub fn setup(sip_config_file: &str, eg_ctx: eg::init::Context) -> Result<Server, String> {
+        let sip_config = Server::load_config(sip_config_file)?;
+
+        let bind = format!("{}:{}", sip_config.sip_address(), sip_config.sip_port());
 
         let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
             .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
@@ -134,117 +263,47 @@ impl Server {
             .set_read_timeout(Some(polltime))
             .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
 
-        let listener: TcpListener = socket.into();
+        let tcp_listener: TcpListener = socket.into();
 
-        let mut error_count = 0;
+        let mut server = Server {
+            eg_ctx,
+            tcp_listener,
+            sip_config: Arc::new(sip_config),
+            sip_config_file: sip_config_file.to_string(),
+            org_cache: None,
+            tcp_error_count: 0,
+            shutdown: Arc::new(AtomicBool::new(false)),
+        };
 
-        loop {
-            // Check flags after every block on accept(), which may result
-            // in a 'continue', bypassing the mid-loop checks.
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
+        server.precache()?;
 
-            if self.reload.load(Ordering::Relaxed) {
-                self.sighup();
-            }
+        Ok(server)
+    }
 
-            let client_socket = match listener.accept() {
-                Ok((s, _)) => s,
-                Err(e) => {
-                    match e.kind() {
-                        std::io::ErrorKind::WouldBlock => {
-                            // Poll timeout -- circle back and try again.
-                            continue;
-                        }
-                        _ => {
-                            log::error!("SIPServer accept() failed: error_count={error_count} {e}");
-                            error_count += 1;
-                            if error_count > 100 {
-                                // Net IO errors can happen for all kinds of reasons.
-                                // https://doc.rust-lang.org/stable/std/io/enum.ErrorKind.html
-                                // Concern is some of these errors could put
-                                // us into an infinite loop of "stuff is broken".
-                                // Break out of the loop if we've hit too many.
-                                log::error!("SIPServer exited on too many connect errors");
-                                break;
-                            }
-                            // Error, but not too many yet.
-                            continue;
-                        }
-                    }
-                }
-            };
+    fn load_config(filename: &str) -> Result<Config, String> {
+        let mut sip_conf = conf::Config::new();
+        sip_conf.read_yaml(filename)?;
+        Ok(sip_conf)
+    }
 
-            // And check flags before processing messages
-            if self.shutdown.load(Ordering::Relaxed) {
-                break;
-            }
+    /// Pre-cache data that's universally useful.
+    fn precache(&mut self) -> Result<(), String> {
+        let mut e = eg::Editor::new(self.eg_ctx.client(), self.eg_ctx.idl());
 
-            if self.reload.load(Ordering::Relaxed) {
-                self.sighup();
-            }
+        let search = json::object! {
+            id: {"!=": json::JsonValue::Null},
+        };
 
-            let sesid = self.next_sesid();
-            self.dispatch(&pool, client_socket.into(), sesid, self.shutdown.clone());
+        let orgs = e.search("aou", search)?;
+
+        let mut map = HashMap::new();
+
+        for org in orgs {
+            map.insert(eg::util::json_int(&org["id"])?, org.clone());
         }
 
-        self.ctx.client().clear().ok();
-
-        log::debug!("Server shutting down; waiting for threads to complete");
-
-        pool.join();
-
-        log::info!("All threads complete.  Shutting down");
+        self.org_cache = Some(map);
 
         Ok(())
-    }
-
-    fn next_sesid(&mut self) -> usize {
-        self.sesid += 1;
-        self.sesid
-    }
-
-    /// Pass the new SIP TCP stream off to a thread for processing.
-    fn dispatch(
-        &self,
-        pool: &ThreadPool,
-        stream: TcpStream,
-        sesid: usize,
-        shutdown: Arc<AtomicBool>,
-    ) {
-        log::info!(
-            "Accepting new SIP connection; active={} pending={}",
-            pool.active_count(),
-            pool.queued_count()
-        );
-
-        let threads = pool.active_count() + pool.queued_count();
-        let maxcon = self.sip_config.max_clients();
-
-        log::debug!("Working thread count = {threads}");
-
-        // It does no good to queue up a new connection if we hit max
-        // threads, because active threads have a long life time, even
-        // when they are not currently busy.
-        if threads >= maxcon {
-            log::warn!("Max clients={maxcon} reached.  Rejecting new connections");
-
-            if let Err(e) = stream.shutdown(net::Shutdown::Both) {
-                log::error!("Error shutting down SIP TCP connection: {}", e);
-            }
-
-            return;
-        }
-
-        // Hand the stream off for processing.
-        let conf = self.sip_config.clone();
-        let idl = self.ctx.idl().clone();
-        let osrf_config = self.ctx.config().clone();
-        let org_cache = self.org_cache.clone();
-
-        pool.execute(move || {
-            Session::run(conf, osrf_config, idl, stream, sesid, shutdown, org_cache)
-        });
     }
 }

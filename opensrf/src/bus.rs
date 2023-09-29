@@ -73,6 +73,11 @@ impl Bus {
         self.address = addr.clone();
     }
 
+    /// Generates a new ClientAddress and applies it to this Bus.
+    pub fn generate_address(&mut self) {
+        self.address = ClientAddress::new(self.domain());
+    }
+
     pub fn domain(&self) -> &str {
         &self.domain
     }

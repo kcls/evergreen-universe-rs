@@ -33,21 +33,25 @@ const INSTITUTION_SUPPORTS: &str = "YYYNYNYYNYYNNNYN";
 /* --------------------------------------------------------- */
 
 /// Manages a single SIP client connection.
+///
+/// May process multiple connections over time.
 pub struct Session {
-    /// Unique session identifier; mostly for logging.
-    sesid: usize,
-
     sip_connection: sip2::Connection,
 
     /// If true, the server is shutting down, so we should exit.
     shutdown: Arc<AtomicBool>,
-    sip_config: conf::Config,
+
+    sip_config: Arc<conf::Config>,
+
+    /// Created in worker_start.
     osrf_client: osrf::Client,
 
     /// Used for pulling trivial data from Evergreen, i.e. no API required.
+    ///
+    /// Created at the beginning of each client session, then discarded.
     editor: eg::editor::Editor,
 
-    // We won't have some values until the SIP client logs in.
+    /// SIP account, set after the client logs in.
     account: Option<conf::SipAccount>,
 
     /// Cache of org unit shortnames and IDs.
@@ -55,41 +59,29 @@ pub struct Session {
 }
 
 impl Session {
-    /// Our thread starts here.  If anything fails, we just log and exit
-    pub fn run(
-        sip_config: conf::Config,
-        osrf_config: Arc<osrf::Config>,
+    pub fn new(
+        sip_config: Arc<conf::Config>,
+        osrf_conf: Arc<osrf::conf::Config>,
+        osrf_bus: osrf::bus::Bus,
         idl: Arc<eg::idl::Parser>,
         stream: net::TcpStream,
-        sesid: usize,
         shutdown: Arc<AtomicBool>,
         org_cache: HashMap<i64, json::JsonValue>,
-    ) {
-        match stream.peer_addr() {
-            Ok(a) => log::info!("New SIP connection from {a}"),
-            Err(e) => {
-                log::error!("SIP connection has no peer addr? {e}");
-                return;
-            }
+    ) -> Self {
+        if let Ok(a) = stream.peer_addr() {
+            log::info!("New SIP connection from {a}");
         }
 
         let mut con = sip2::Connection::from_stream(stream);
         con.set_ascii(sip_config.ascii());
 
-        let osrf_client = match osrf::Client::connect(osrf_config.clone()) {
-            Ok(c) => c,
-            Err(e) => {
-                log::error!("Cannot connect to OpenSRF: {e}");
-                return;
-            }
-        };
+        let osrf_client = osrf::Client::from_bus(osrf_bus, osrf_conf);
 
         osrf_client.set_serializer(eg::idl::Parser::as_serializer(&idl));
 
         let editor = eg::Editor::new(&osrf_client, &idl);
 
-        let mut ses = Session {
-            sesid,
+        Session {
             editor,
             shutdown,
             sip_config,
@@ -97,14 +89,13 @@ impl Session {
             org_cache,
             account: None,
             sip_connection: con,
-        };
-
-        if let Err(e) = ses.start() {
-            // This is not necessarily an error.  The client may simply
-            // have disconnected.  There is no "disconnect" message in
-            // SIP -- you just chop off the socket.
-            log::info!("{ses} exited with message: {e}");
         }
+    }
+
+    /// Panics if our client has no bus.  Use with caution and only
+    /// after this Session has completed.
+    pub fn take_bus(&mut self) -> osrf::bus::Bus {
+        self.osrf_client.take_bus()
     }
 
     pub fn org_cache(&self) -> &HashMap<i64, json::JsonValue> {
@@ -226,7 +217,7 @@ impl Session {
     /// Wait for SIP requests in a loop and send replies.
     ///
     /// Exits when the shutdown signal is set or on unrecoverable error.
-    fn start(&mut self) -> EgResult<()> {
+    pub fn start(&mut self) -> EgResult<()> {
         log::debug!("{self} starting");
 
         loop {
@@ -240,12 +231,7 @@ impl Session {
                 .recv_with_timeout(conf::SIP_SHUTDOWN_POLL_INTERVAL)
                 .or_else(|e| Err(format!("{self} SIP recv() failed: {e}")))?;
 
-            // May have received a shutdown signal while waiting for
-            // the next SIP message to arrive.
-            if self.shutdown.load(Ordering::Relaxed) {
-                log::debug!("{self} Shutdown notice received, exiting listen loop");
-                break;
-            }
+            log::trace!("{self} waking from SIP message receive poll");
 
             let sip_req = match sip_req_op {
                 Some(r) => r,
@@ -278,6 +264,7 @@ impl Session {
             AuthSession::logout(&self.osrf_client, self.authtoken()?).ok();
         }
 
+        // Remove any cruft we may have left on the bus.
         self.osrf_client.clear()?;
 
         Ok(())
@@ -417,9 +404,9 @@ impl Session {
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ref acct) = self.account {
-            write!(f, "SIPSession({} {})", self.sesid, acct.sip_username())
+            write!(f, "SIPSession({})", acct.sip_username())
         } else {
-            write!(f, "SIPSession({})", self.sesid)
+            write!(f, "SIPSession")
         }
     }
 }

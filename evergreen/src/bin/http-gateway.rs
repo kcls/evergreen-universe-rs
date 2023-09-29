@@ -521,7 +521,10 @@ impl GatewayStream {
 
 impl mptc::RequestStream for GatewayStream {
     /// Returns the next client request stream.
-    fn next(&mut self) -> Result<Box<dyn mptc::Request>, String> {
+    fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
+        // TODO apply timeout to our TCP listener (see sip2-server) and
+        // return None on timeouts to the mptc::Server can wake
+        // periodically and check for signals.
         let (stream, address) = match self.listener.accept() {
             Ok((s, a)) => (s, a),
             Err(e) => Err(format!("accept() failed: {e}"))?,
@@ -534,7 +537,7 @@ impl mptc::RequestStream for GatewayStream {
             start_time: date::now(),
         };
 
-        Ok(Box::new(request))
+        Ok(Some(Box::new(request)))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
@@ -549,7 +552,13 @@ impl mptc::RequestStream for GatewayStream {
     }
 
     fn reload(&mut self) -> Result<(), String> {
+        // We have no config file to reload.
         Ok(())
+    }
+
+    fn shutdown(&mut self) {
+        // Our wokers only handle one request, then exit.  No
+        // need to notify them of emminent shutdown.
     }
 }
 

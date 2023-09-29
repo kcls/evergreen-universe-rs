@@ -8,6 +8,14 @@ sip-port: 6001
 # new connection attempts are rejected.
 max-clients: 128
 
+# Always keep at least this many workers running, some of which 
+# may be idle and waiting for new connections.
+min-workers: 10
+
+# Max number of SIP sessions a single worker will handle before
+# exiting and allowing thread resources to be freed.
+max-worker-requests: 1000
+
 # If true, remove non-ASCII characters from SIP response messages, 
 # i.e. those delivered back to a SIP client in response to a request.
 ascii: true
