@@ -39,7 +39,12 @@ pub trait RequestHandler: Send {
 
 pub trait RequestStream {
     /// Returns the next incoming request in the stream.
-    fn next(&mut self) -> Result<Box<dyn Request>, String>;
+    ///
+    /// If the implementer wants the main server to periodically check
+    /// for signals, apply timeout logic in the implementation for
+    /// next() and simply return Ok(None) after waking and having
+    /// nothing to process.
+    fn next(&mut self) -> Result<Option<Box<dyn Request>>, String>;
 
     /// Factory for creating new RequestHandler instances.
     fn new_handler(&mut self) -> Box<dyn RequestHandler>;
@@ -49,5 +54,9 @@ pub trait RequestStream {
     /// If the RequestStream cannot reload, it should revert to its
     /// previous state and continue functioning.  It should only return
     /// an Err() if it cannot proceed.
+    /// SIGHUP
     fn reload(&mut self) -> Result<(), String>;
+
+    /// Graceful shutdown request (SIGINT)
+    fn shutdown(&mut self);
 }

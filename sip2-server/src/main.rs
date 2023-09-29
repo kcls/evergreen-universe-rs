@@ -1,3 +1,4 @@
+use mptc;
 use evergreen as eg;
 use std::env;
 use std::path::Path;
@@ -38,7 +39,18 @@ fn main() {
 
     log::info!("SIP2 Server starting with config {config_file}");
 
-    if let Err(e) = server::Server::new(config_file, ctx).serve() {
-        log::error!("SIP Server exited with error: {e}");
-    }
+    let stream = match server::Server::setup(config_file, ctx) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("SIP Server exited with error: {e}");
+            return;
+        }
+    };
+
+    let max_workers = stream.sip_config().max_clients();
+    let mut s = mptc::Server::new(Box::new(stream));
+
+    s.set_max_workers(max_workers);
+
+    s.run();
 }

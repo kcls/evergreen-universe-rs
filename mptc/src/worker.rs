@@ -141,12 +141,13 @@ impl Worker {
         }
 
         loop {
-            self.request_count += 1;
 
             if let Err(e) = self.process_one_request() {
                 log::error!("{self} Request failed: {e}");
                 break;
             }
+
+            self.request_count += 1;
 
             if self.request_count == self.max_requests {
                 // All done

@@ -19,6 +19,7 @@ pub struct Server {
     max_worker_reqs: usize,
 
     reload: Arc<AtomicBool>,
+    shutdown: Arc<AtomicBool>,
 
     /// All inbound requests arrive via this stream.
     stream: Box<dyn RequestStream>,
@@ -41,6 +42,7 @@ impl Server {
             max_workers: super::DEFAULT_MAX_WORKERS,
             max_worker_reqs: super::DEFAULT_MAX_WORKER_REQS,
             reload: Arc::new(AtomicBool::new(false)),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -198,13 +200,19 @@ impl Server {
     fn housekeeping(&mut self, block: bool) -> bool {
         loop {
             if self.reload.load(Ordering::Relaxed) {
-                log::info!("Reload request received.  Reloading config");
+                log::info!("Reload request received.");
                 self.reload.store(false, Ordering::Relaxed);
 
                 if let Err(e) = self.stream.reload() {
                     log::error!("Reload command failed, exiting. {e}");
                     return true;
                 }
+            }
+
+            if self.shutdown.load(Ordering::Relaxed) {
+                log::info!("Graceful shutdown request received.");
+                self.stream.shutdown();
+                return true;
             }
 
             if block {
@@ -242,8 +250,11 @@ impl Server {
         self.start_workers();
 
         loop {
+
             match self.stream.next() {
-                Ok(r) => self.dispatch_request(r),
+                Ok(req_op) => if let Some(req) = req_op {
+                    self.dispatch_request(req);
+                },
                 Err(e) => {
                     log::error!("Exiting on stream error: {e}");
                     break;
@@ -308,11 +319,16 @@ impl Server {
     }
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
-        let res = signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone());
-
-        match res {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Cannot register HUP signal: {e}")),
+        if let Err(e) =
+            signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone()) {
+            return Err(format!("Cannot register HUP signal: {e}"));
         }
+
+        if let Err(e) =
+            signal_hook::flag::register(signal_hook::consts::SIGINT, self.shutdown.clone()) {
+            return Err(format!("Cannot register INT signal: {e}"));
+        }
+
+        Ok(())
     }
 }

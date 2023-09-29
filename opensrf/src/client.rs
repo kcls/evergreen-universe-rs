@@ -26,7 +26,9 @@ pub trait DataSerializer {
 /// messages pulled from the bus that have not yet been processed by
 /// higher-up modules.
 pub struct ClientSingleton {
-    bus: bus::Bus,
+    /// Make it possible to clear our Bus so the caller may take it
+    /// back once they are done with this client.
+    bus: Option<bus::Bus>,
 
     /// Our primary domain
     domain: String,
@@ -48,21 +50,21 @@ pub struct ClientSingleton {
 impl ClientSingleton {
     fn new(config: Arc<conf::Config>) -> Result<ClientSingleton, String> {
         let bus = bus::Bus::new(config.client())?;
-        ClientSingleton::from_bus(bus, config)
+        Ok(ClientSingleton::from_bus(bus, config))
     }
 
     /// Create a new singleton instance from a previously setup Bus.
-    fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> Result<ClientSingleton, String> {
+    fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> ClientSingleton {
         let domain = config.client().domain().name().to_string();
 
-        Ok(ClientSingleton {
+        ClientSingleton {
             config,
             domain,
-            bus: bus,
+            bus: Some(bus),
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
             serializer: None,
-        })
+        }
     }
 
     pub fn serializer(&self) -> &Option<Arc<dyn DataSerializer>> {
@@ -75,7 +77,7 @@ impl ClientSingleton {
 
     /// Full bus address as a string
     fn address(&self) -> &str {
-        self.bus.address().as_str()
+        self.bus().address().as_str()
     }
 
     /// Our primary bus domain
@@ -83,19 +85,50 @@ impl ClientSingleton {
         &self.domain
     }
 
+    /// Ref to our Bus.
+    ///
+    /// Panics if bus is unset.
     pub fn bus(&self) -> &bus::Bus {
-        &self.bus
+        match self.bus.as_ref() {
+            Some(b) => b,
+            None => panic!("Client has no Bus connection!"),
+        }
     }
 
+    /// Mut ref to our Bus.
+    ///
+    /// Panics if our Bus is unset.
     pub fn bus_mut(&mut self) -> &mut bus::Bus {
-        &mut self.bus
+        match self.bus.as_mut() {
+            Some(b) => b,
+            None => panic!("Client has no Bus connection!"),
+        }
+    }
+
+    /// Clear and return our Bus connection.
+    ///
+    /// Panics if our Bus is unset.
+    ///
+    /// Generally, take/set_bus are only used in unique scenarios.
+    /// Use with caution, since an unset Bus means the client cannot
+    /// be used and the thread will exit if the client is used.
+    pub fn take_bus(&mut self) -> bus::Bus {
+        match self.bus.take() {
+            Some(b) => b,
+            None => panic!("Client has to Bus connection!"),
+        }
+    }
+
+    /// Give this client a bus to use.
+    pub fn set_bus(&mut self, bus: bus::Bus) {
+        self.bus = Some(bus);
     }
 
     pub fn get_domain_bus(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
         log::trace!("Loading bus connection for domain: {domain}");
 
         if domain.eq(self.domain()) {
-            Ok(&mut self.bus)
+            Ok(self.bus_mut())
         } else {
             if self.remote_bus_map.contains_key(domain) {
                 return Ok(self.remote_bus_map.get_mut(domain).unwrap());
@@ -146,7 +179,7 @@ impl ClientSingleton {
         let timer = util::Timer::new(timeout);
 
         while self.backlog.is_empty() && !timer.done() {
-            if let Some(tm) = self.bus.recv(timer.remaining(), None)? {
+            if let Some(tm) = self.bus_mut().recv(timer.remaining(), None)? {
                 self.backlog.push(tm);
                 break;
             }
@@ -172,7 +205,7 @@ impl ClientSingleton {
 
             // See what we can pull from the message bus
 
-            if let Some(tm) = self.bus.recv(timer.remaining(), None)? {
+            if let Some(tm) = self.bus_mut().recv(timer.remaining(), None)? {
                 self.backlog.push(tm);
             }
 
@@ -193,7 +226,7 @@ impl ClientSingleton {
         // Always use the address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
             addr.as_str(),
-            self.bus.address().as_str(),
+            self.bus().address().as_str(),
             &util::random_number(16),
         );
 
@@ -214,7 +247,7 @@ impl ClientSingleton {
         // sitting in the bus, they may be received here instead
         // of the expected router response.  self.bus.clear() before
         // send is one option, but pretty heavy-handed.
-        match self.bus.recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
+        match self.bus_mut().recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
             Some(tm) => match tm.router_reply() {
                 Some(reply) => match json::parse(reply) {
                     Ok(jv) => Ok(Some(jv)),
@@ -272,18 +305,32 @@ impl Client {
         })
     }
 
-    pub fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> Result<Client, String> {
+    pub fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> Client {
         // This performs the actual bus-level connection.
-        let singleton = ClientSingleton::from_bus(bus, config)?;
+        let singleton = ClientSingleton::from_bus(bus, config);
 
         let address = singleton.bus().address().clone();
         let domain = singleton.domain().to_string();
 
-        Ok(Client {
+        Client {
             address,
             domain,
             singleton: Rc::new(RefCell::new(singleton)),
-        })
+        }
+    }
+
+    /// Panics if bus is unset.
+    ///
+    /// Most callers will never need this.
+    pub fn take_bus(&self) -> bus::Bus {
+        self.singleton.borrow_mut().take_bus()
+    }
+
+    /// Apply a new bus.
+    ///
+    /// Most callers will never need this.
+    pub fn set_bus(&self, bus: bus::Bus) {
+        self.singleton.borrow_mut().set_bus(bus);
     }
 
     pub fn singleton(&self) -> &Rc<RefCell<ClientSingleton>> {
