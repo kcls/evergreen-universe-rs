@@ -5,7 +5,6 @@ use evergreen as eg;
 use httparse;
 use mptc;
 use opensrf as osrf;
-use osrf::client::DataSerializer;
 use std::any::Any;
 use std::env;
 use std::io::{Read, Write};
@@ -226,12 +225,13 @@ impl GatewayHandler {
                 }
 
                 if format.is_hash() {
-                    // JSON values arrive as Fieldmapper-encoded objects.
-                    // Unpacking them via the IDL turns them back
-                    // into flat hashes.
-                    content = self.idl.unpack(content);
+                    // JSON replies arrive from opensrf as Fieldmapper-encoded
+                    // objects.  Decode them into flat hashes for the caller.
+                    content = self.idl.decode(content);
 
                     if format == &idl::DataFormat::Hash {
+                        // If the caller specifically requests the Hash
+                        // format remove all the null hash values as well.
                         content = idl::scrub_hash_nulls(content);
                     }
                 }
@@ -303,6 +303,7 @@ impl GatewayHandler {
 
                 if res.is_partial() {
                     // We haven't read enough header data yet.
+                    // Go back to pulling bytes from the socket.
                     continue;
                 }
 
@@ -345,7 +346,7 @@ impl GatewayHandler {
                     return Ok(parsed_req.take().unwrap());
                 }
 
-                // We have a non-content content-length.
+                // We have a non-zero content-length.
                 // Keep reading data.
                 continue;
             }
@@ -393,14 +394,29 @@ impl GatewayHandler {
         let mut params: Vec<json::JsonValue> = Vec::new();
         let mut format = idl::DataFormat::Fieldmapper;
 
+        // First see if the caller requested a format so we can
+        // apply the needed changes while parsing the data below.
+        for (k, v) in parsed_url.query_pairs() {
+            if k.as_ref() == "format" {
+                format = v.as_ref().into();
+            }
+        }
+
         for (k, v) in parsed_url.query_pairs() {
             match k.as_ref() {
                 "method" => method = Some(v.to_string()),
                 "service" => service = Some(v.to_string()),
-                "format" => format = v.as_ref().into(),
                 "param" => {
-                    let val = json::parse(&v)
+                    let mut val = json::parse(&v)
                         .or_else(|e| Err(format!("Cannot parse parameter: {e} : {v}")))?;
+
+                    if format.is_hash() {
+                        // Caller is sending flat-hash parameters.
+                        // Translate them into Fieldmapper parameters
+                        // before relaying them to opensrf.
+                        val = self.idl.encode(val);
+                    }
+
                     params.push(val);
                 }
                 _ => {} // ignore other stuff
@@ -412,13 +428,6 @@ impl GatewayHandler {
             .ok_or(format!("Request contains no method name"))?;
 
         let service = service.ok_or(format!("Request contains no service name"))?;
-
-        // NOTE no changes are needed to support the different inbound
-        // formats, because the IDL-as-serializer will a) ignore Fieldmapper
-        // objects during pack/serialization because they don't look
-        // like our internal IDL data representation and b) will properly
-        // pack/serialize any data that comes in using our internal
-        // flat-hash representation.
 
         let osrf_method = osrf::message::Method::new(method, params);
 

@@ -16,6 +16,38 @@ use std::fs;
 use std::ops::Index;
 use std::sync::Arc;
 
+/// Various forms an IDL-classed object can take internally and on
+/// the wire.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DataFormat {
+    /// Traditional hash with a class key an array payload.
+    Fieldmapper,
+    /// IDL objects modeled as key/value pairs in a flat hash, with one
+    /// reserved hash key of "_classname" to contain the short IDL class
+    /// key.  No NULL values are included.
+    Hash,
+    /// Same as 'Hash' with NULL values included.  Useful for seeing
+    /// all of the key names for an IDL object, regardless of
+    /// whether a value is present for every key.
+    HashFull,
+}
+
+impl From<&str> for DataFormat {
+    fn from(s: &str) -> DataFormat {
+        match s {
+            "hash" => Self::Hash,
+            "hashfull" => Self::HashFull,
+            _ => Self::Fieldmapper,
+        }
+    }
+}
+
+impl DataFormat {
+    pub fn is_hash(&self) -> bool {
+        self == &Self::Hash || self == &Self::HashFull
+    }
+}
+
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
 const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
 const OILS_NS_PERSIST: &str = "http://open-ils.org/spec/opensrf/IDL/persistence/v1";
@@ -761,55 +793,10 @@ impl Parser {
 
         Ok(())
     }
-}
 
-impl DataSerializer for Parser {
-    /// Replaces IDL-classed arrays with classed hashes
-    fn unpack(&self, value: JsonValue) -> JsonValue {
-        if !value.is_array() && !value.is_object() {
-            return value;
-        }
-
-        let mut obj: JsonValue;
-
-        if classified::ClassifiedJson::can_declassify(&value) {
-            let mut unpacked = classified::ClassifiedJson::declassify(value).unwrap();
-            let json_arr = unpacked.take_json();
-            if json_arr.is_array() {
-                obj = self.array_to_hash(unpacked.class(), json_arr);
-            } else {
-                panic!("IDL-encoded objects should be arrays");
-            }
-        } else {
-            obj = value;
-        }
-
-        if obj.is_array() {
-            let mut arr = JsonValue::new_array();
-            while obj.len() > 0 {
-                arr.push(self.unpack(obj.array_remove(0))).unwrap();
-            }
-
-            return arr;
-        } else if obj.is_object() {
-            let mut hash = JsonValue::new_object();
-            loop {
-                let key = match obj.entries().next() {
-                    Some((k, _)) => k.to_owned(),
-                    None => break,
-                };
-                hash.insert(&key, self.unpack(obj.remove(&key))).ok();
-            }
-
-            return hash;
-        }
-
-        obj
-    }
-
-    /// Replaces IDL-classed flat hashes with Fieldmapper (array payload)
-    /// hashes.
-    fn pack(&self, mut value: JsonValue) -> JsonValue {
+    /// Translate and IDL-classed flat hash into an array-based
+    /// Fieldmapper object, recursively.
+    pub fn encode(&self, mut value: JsonValue) -> JsonValue {
         if !value.is_array() && !value.is_object() {
             return value;
         }
@@ -852,6 +839,63 @@ impl DataSerializer for Parser {
         } else {
             value // should not get here
         }
+    }
+
+    /// Translate an array-based Fieldmapper object into an IDL-classed
+    /// flat hash object, recursively.
+    pub fn decode(&self, value: JsonValue) -> JsonValue {
+        if !value.is_array() && !value.is_object() {
+            return value;
+        }
+
+        let mut obj: JsonValue;
+
+        if classified::ClassifiedJson::can_declassify(&value) {
+            let mut unpacked = classified::ClassifiedJson::declassify(value).unwrap();
+            let json_arr = unpacked.take_json();
+            if json_arr.is_array() {
+                obj = self.array_to_hash(unpacked.class(), json_arr);
+            } else {
+                panic!("IDL-encoded objects should be arrays");
+            }
+        } else {
+            obj = value;
+        }
+
+        if obj.is_array() {
+            let mut arr = JsonValue::new_array();
+            while obj.len() > 0 {
+                arr.push(self.unpack(obj.array_remove(0))).unwrap();
+            }
+
+            return arr;
+        } else if obj.is_object() {
+            let mut hash = JsonValue::new_object();
+            loop {
+                let key = match obj.entries().next() {
+                    Some((k, _)) => k.to_owned(),
+                    None => break,
+                };
+                hash.insert(&key, self.unpack(obj.remove(&key))).ok();
+            }
+
+            return hash;
+        }
+
+        obj
+    }
+}
+
+impl DataSerializer for Parser {
+    /// Replaces IDL-classed arrays with classed hashes
+    fn unpack(&self, value: JsonValue) -> JsonValue {
+        self.decode(value)
+    }
+
+    /// Replaces IDL-classed flat hashes with Fieldmapper (array payload)
+    /// hashes.
+    fn pack(&self, value: JsonValue) -> JsonValue {
+        self.encode(value)
     }
 }
 
@@ -899,32 +943,4 @@ pub fn scrub_hash_nulls(mut value: json::JsonValue) -> json::JsonValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum DataFormat {
-    /// Traditional hash with a class key an array payload.
-    Fieldmapper,
-    /// IDL objects modeled as key/value pairs in a flat hash, with one
-    /// reserved hash key of "_classname" to contain the short IDL class
-    /// key.  No NULL values are included.
-    Hash,
-    /// Same as 'Hash' with NULL values included.  Useful for seeing
-    /// all of the key names for an IDL object, regardless of
-    /// whether a value is present for every key.
-    HashFull,
-}
 
-impl From<&str> for DataFormat {
-    fn from(s: &str) -> DataFormat {
-        match s {
-            "hash" => Self::Hash,
-            "hashfull" => Self::HashFull,
-            _ => Self::Fieldmapper,
-        }
-    }
-}
-
-impl DataFormat {
-    pub fn is_hash(&self) -> bool {
-        self == &Self::Hash || self == &Self::HashFull
-    }
-}

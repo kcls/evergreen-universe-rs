@@ -4,7 +4,6 @@ use evergreen as eg;
 use opensrf as osrf;
 use osrf::addr::{RouterAddress, ServiceAddress};
 use osrf::bus::Bus;
-use osrf::client::DataSerializer;
 use osrf::conf;
 use osrf::logging::Logger;
 use osrf::message;
@@ -606,7 +605,7 @@ impl Session {
                             let mut new_params = Vec::new();
                             let mut params = meth.take_params();
                             for p in params.drain(..) {
-                                new_params.push(self.idl.pack(p));
+                                new_params.push(self.idl.encode(p));
                             }
                             meth.set_params(new_params);
                         }
@@ -695,7 +694,7 @@ impl Session {
                     _ => {}
                 }
             } else if let osrf::message::Payload::Result(ref mut r) = msg.payload_mut() {
-                // Unpack (hashify) the result content instead of the
+                // Decode (hashify) the result content instead of the
                 // response message as a whole, because opensrf uses
                 // the same class/payload encoding that the IDL/Fieldmapper
                 // does.  We don't want to modify the opensrf messages,
@@ -705,7 +704,7 @@ impl Session {
                     if format.is_hash() {
                         // The caller wants result data returned in HASH format
                         let mut content = r.take_content();
-                        content = self.idl.unpack(content);
+                        content = self.idl.decode(content);
                         if format == &idl::DataFormat::Hash {
                             // Caller wants a default slim hash
                             content = idl::scrub_hash_nulls(content);
