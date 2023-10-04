@@ -1,8 +1,14 @@
 use crate::result::EgResult;
 use json::JsonValue;
+use socket2::{Domain, Socket, Type};
 use std::collections::HashSet;
 use std::fs;
+use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
+use std::time::Duration;
+
+// Typical value for SOMAXCONN
+const CONNECT_TCP_BACKLOG: i32 = 128;
 
 /// We support a variety of true-ish values.
 ///
@@ -186,4 +192,76 @@ pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
         },
         _ => return Err(format!("Invalid lockfile action: {action}").into()),
     }
+}
+
+/// Bind to the provided host:port while applying a read timeout to the
+/// TcpListener.
+///
+/// Applying a timeout to the TcpListener allows TCP servers to
+/// periodically stop listening for new connections and perform
+/// housekeeping duties (check for signals, etc.)
+///
+/// If you don't need a read timeout, the standard TcpListener::bind()
+/// approach should suffice.
+///
+/// * `address` - Bind and listen at this address
+/// * `port` - Bind and listen at this port.
+/// * `read_timeout` - Read timeout in seconds applied to the listening socket.
+///
+/// Example:
+///
+/// loop {
+///    let mut tcp_listener = eg::util::tcp_listener("127.0.0.1", 9898, 5)?;
+///
+///    let client_stream = match self.tcp_listener.accept() {
+///        Ok(stream, _addr) => stream,
+///        Err(e) => match e.kind() {
+///            std::io::ErrorKind::WouldBlock => {
+///                // Read timed out.  This is OK.
+///                self.check_for_signals_and_stuff();
+///                continue;
+///            },
+///            _ => {
+///                // Some other error occurred.
+///                eprintln!("TCP accept error {e}");
+///                break;
+///            }
+///        }
+///    }
+///
+///    // ...
+/// }
+pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<TcpListener> {
+    let bind = format!("{address}:{port}");
+
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
+        .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
+
+    // When we stop/start the service, the address may briefly linger
+    // from open (idle) client connections.
+    socket
+        .set_reuse_address(true)
+        .or_else(|e| Err(format!("Error setting reuse address: {e}")))?;
+
+    let address: SocketAddr = bind
+        .parse()
+        .or_else(|e| Err(format!("Error parsing listen address: {bind}: {e}")))?;
+
+    socket
+        .bind(&address.into())
+        .or_else(|e| Err(format!("Error binding to address: {bind}: {e}")))?;
+
+    socket
+        .listen(CONNECT_TCP_BACKLOG)
+        .or_else(|e| Err(format!("Error listending on socket {bind}: {e}")))?;
+
+    // We need a read timeout so we can wake periodically to check
+    // for shutdown signals.
+    let polltime = Duration::from_secs(read_timeout);
+
+    socket
+        .set_read_timeout(Some(polltime))
+        .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
+
+    Ok(socket.into())
 }

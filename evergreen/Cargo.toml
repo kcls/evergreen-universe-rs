@@ -44,9 +44,11 @@ atty = "0.2"
 # so I'm starting here.
 serde_json = "1.0.96"
 
-
 # For websockets
 tungstenite = "0.19.0"
+
+# For websockets, http-gateway, maybe more
+socket2 = "0.5"
 
 # For gateway
 url = "2.3"

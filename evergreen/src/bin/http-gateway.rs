@@ -22,6 +22,7 @@ const HTTP_CONTENT_TYPE: &str = "Content-Type: text/json";
 /// Keep this value large and assume the proxy (eg. nginx) we sit
 /// behind had sane read/write timeouts
 const OSRF_RELAY_TIMEOUT: i32 = 300;
+const GATEWAY_POLL_TIMEOUT: u64 = 5;
 
 struct GatewayRequest {
     stream: TcpStream,
@@ -103,10 +104,10 @@ impl GatewayHandler {
                         Ok(list) => {
                             response["payload"] = json::JsonValue::Array(list);
                             response["status"] = json::from(200);
-                        },
+                        }
                         Err(e) => log::error!("relay_to_osrf() failed: {e}"),
                     }
-                },
+                }
                 Err(e) => log::error!("parse_request() failed: {e}"),
             },
             Err(e) => log::error!("read_request() failed: {e}"),
@@ -549,17 +550,18 @@ struct GatewayStream {
     eg_ctx: eg::init::Context,
 }
 
-
 // TODO
 // Use a tcp listener w/ a timeout -- see sip2-server for an example.
 impl GatewayStream {
     fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> Result<Self, String> {
-        let hostport = format!("{}:{}", address, port);
+        log::info!("EG Gateway listening at {address}:{port}");
 
-        log::info!("EG Gateway listening at {hostport}");
-
-        let listener = TcpListener::bind(&hostport)
-            .or_else(|e| Err(format!("Cannot listen for connections on {hostport}: {e}")))?;
+        let listener =
+            eg::util::tcp_listener(address, port, GATEWAY_POLL_TIMEOUT).or_else(|e| {
+                Err(format!(
+                    "Cannot listen for connections on {address}:{port} {e}"
+                ))
+            })?;
 
         let stream = GatewayStream { listener, eg_ctx };
 
@@ -570,12 +572,13 @@ impl GatewayStream {
 impl mptc::RequestStream for GatewayStream {
     /// Returns the next client request stream.
     fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
-        // TODO apply timeout to our TCP listener (see sip2-server) and
-        // return None on timeouts to the mptc::Server can wake
-        // periodically and check for signals.
         let (stream, address) = match self.listener.accept() {
             Ok((s, a)) => (s, a),
-            Err(e) => Err(format!("accept() failed: {e}"))?,
+            Err(e) => match e.kind() {
+                // socket read timeout.
+                std::io::ErrorKind::WouldBlock => return Ok(None),
+                _ => return Err(format!("accept() failed: {e}")),
+            },
         };
 
         let request = GatewayRequest {
@@ -585,7 +588,7 @@ impl mptc::RequestStream for GatewayStream {
             start_time: date::now(),
         };
 
-        Ok(Some(Box::new(request)))
+        return Ok(Some(Box::new(request)));
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {

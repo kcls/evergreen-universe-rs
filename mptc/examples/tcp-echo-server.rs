@@ -89,8 +89,7 @@ impl mptc::RequestStream for TcpEchoStream {
         Ok(())
     }
 
-    fn shutdown(&mut self) {
-    }
+    fn shutdown(&mut self) {}
 }
 
 fn main() {

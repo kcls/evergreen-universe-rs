@@ -942,5 +942,3 @@ pub fn scrub_hash_nulls(mut value: json::JsonValue) -> json::JsonValue {
         value
     }
 }
-
-

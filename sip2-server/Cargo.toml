@@ -14,6 +14,8 @@ getopts = "0.2"
 threadpool = "1.8"
 json = "0.12"                                                                
 chrono = "0.4"
+
+# TODO remove me when eg util exists
 socket2 = "0.5"
 
 [[bin]]

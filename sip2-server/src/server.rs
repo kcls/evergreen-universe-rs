@@ -4,13 +4,11 @@ use super::session::Session;
 use evergreen as eg;
 use mptc;
 use opensrf as osrf;
-use socket2::{Domain, Socket, Type};
 use std::any::Any;
 use std::collections::HashMap;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 /// If we get this many TCP errors in a row, with no successful connections
 /// in between, exit.
@@ -231,39 +229,11 @@ impl Server {
     pub fn setup(sip_config_file: &str, eg_ctx: eg::init::Context) -> Result<Server, String> {
         let sip_config = Server::load_config(sip_config_file)?;
 
-        let bind = format!("{}:{}", sip_config.sip_address(), sip_config.sip_port());
-
-        let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
-            .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
-
-        // When we stop/start the service, the address may briefly linger
-        // from open (idle) client connections.
-        socket
-            .set_reuse_address(true)
-            .or_else(|e| Err(format!("Error setting reuse address: {e}")))?;
-
-        let address: SocketAddr = bind
-            .parse()
-            .or_else(|e| Err(format!("Error parsing listen address: {bind}: {e}")))?;
-
-        socket
-            .bind(&address.into())
-            .or_else(|e| Err(format!("Error binding to address: {bind}: {e}")))?;
-
-        // 128 == backlog
-        socket
-            .listen(128)
-            .or_else(|e| Err(format!("Error listending on socket {bind}: {e}")))?;
-
-        // We need a read timeout so we can wake periodically to check
-        // for shutdown signals.
-        let polltime = Duration::from_secs(conf::SIP_SHUTDOWN_POLL_INTERVAL);
-
-        socket
-            .set_read_timeout(Some(polltime))
-            .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
-
-        let tcp_listener: TcpListener = socket.into();
+        let tcp_listener = eg::util::tcp_listener(
+            sip_config.sip_address(),
+            sip_config.sip_port(),
+            conf::SIP_SHUTDOWN_POLL_INTERVAL,
+        )?;
 
         let mut server = Server {
             eg_ctx,
