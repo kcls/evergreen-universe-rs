@@ -101,10 +101,22 @@ impl SessionInbound {
         // the Session thread for processing.
 
         loop {
+            // Check before going back to wait for the next ws message.
+            if self.shutdown_session.load(Ordering::Relaxed) {
+                break;
+            }
+
             let message = match receiver.read_message() {
                 Ok(m) => m,
                 Err(e) => {
                     match e {
+                        // Read timeout is possible since the TcpListener
+                        // which is the source of our client stream
+                        // was setup with its own timeout.
+                        ws::error::Error::Io(ref io_err) => match io_err.kind() {
+                            std::io::ErrorKind::WouldBlock => continue,
+                            _ => log::error!("Error reading inbound message: {e:?}"),
+                        },
                         ws::error::Error::ConnectionClosed | ws::error::Error::AlreadyClosed => {
                             log::debug!("Connection closed normally")
                         }
@@ -119,11 +131,6 @@ impl SessionInbound {
             if self.to_main_tx.send(channel_msg).is_err() {
                 // Likely the main thread has exited.
                 log::error!("{self} Cannot sent message to Session.  Exiting");
-                break;
-            }
-
-            // Check before going back to wait for the next ws message.
-            if self.shutdown_session.load(Ordering::Relaxed) {
                 break;
             }
         }
