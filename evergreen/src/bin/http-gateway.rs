@@ -80,28 +80,54 @@ impl GatewayHandler {
     }
 
     fn handle_request(&mut self, request: &mut GatewayRequest) -> Result<(), String> {
-        let http_req = self.read_request(request)?;
-        let mut req = self.parse_request(http_req)?;
-
-        // Log the call before we relay it to OpenSRF in case the
-        // request exits early on a failure.
-        self.log_request(&request, &req);
-
-        let mut leader = "HTTP/1.1 200 OK";
-
-        let replies = match self.relay_to_osrf(&mut req) {
-            Ok(r) => r,
-            Err(e) => {
-                leader = "HTTP/1.1 400 Bad Request";
-                vec![e] // Return the raw error message as JSON.
-            }
+        // For now we asssume any error is the result of a bad request.
+        // We could make the various read/parsers return something
+        // more meaningful to separate, e.g., 4XX and 5XX errors.
+        let mut response = json::object! {
+            status: 400,
+            payload: [],
         };
 
-        let array = json::JsonValue::Array(replies);
-        let data = array.dump();
+        let mut http_req = None;
+
+        match self.read_request(request) {
+            Ok(htreq) => match self.parse_request(htreq) {
+                Ok(hreq) => {
+                    http_req = Some(hreq);
+
+                    // Log the call before we relay it to OpenSRF in case the
+                    // request exits early on a failure.
+                    self.log_request(&request, http_req.as_ref().unwrap());
+
+                    match self.relay_to_osrf(http_req.as_mut().unwrap()) {
+                        Ok(list) => {
+                            response["payload"] = json::JsonValue::Array(list);
+                            response["status"] = json::from(200);
+                        },
+                        Err(e) => log::error!("relay_to_osrf() failed: {e}"),
+                    }
+                },
+                Err(e) => log::error!("parse_request() failed: {e}"),
+            },
+            Err(e) => log::error!("read_request() failed: {e}"),
+        }
+
+        let data = response.dump();
         let length = format!("Content-Length: {}", data.as_bytes().len());
 
-        let response = match req.http_method.as_str() {
+        let leader = if response["status"] == json::JsonValue::Number(200.into()) {
+            "HTTP/1.1 200 OK"
+        } else {
+            "HTTP/1.1 400 Bad Request"
+        };
+
+        // It's possible http_req failed to parse successfully
+        let http_method = match http_req.as_ref() {
+            Some(req) => req.http_method.as_str(),
+            None => "GET",
+        };
+
+        let response = match http_method {
             "HEAD" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n"),
             "GET" | "POST" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}"),
             _ => format!("HTTP/1.1 405 Method Not Allowed\r\n"),
@@ -471,6 +497,16 @@ impl GatewayHandler {
             method.method(),
             log_params
         );
+
+        // Also log as INFO e.g. gateway.xx.log
+        log::info!(
+            "[{}:{}] {} {} {}",
+            request.address,
+            request.log_trace,
+            req.service,
+            method.method(),
+            log_params
+        );
     }
 }
 
@@ -513,6 +549,9 @@ struct GatewayStream {
     eg_ctx: eg::init::Context,
 }
 
+
+// TODO
+// Use a tcp listener w/ a timeout -- see sip2-server for an example.
 impl GatewayStream {
     fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> Result<Self, String> {
         let hostport = format!("{}:{}", address, port);

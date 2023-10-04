@@ -225,7 +225,7 @@ impl Worker {
         }
     }
 
-    /// Returns result of true of this worker should exit.
+    /// Returns result of true if this worker performed any work.
     fn process_one_request(&mut self) -> Result<bool, String> {
         let recv_result = self
             .to_worker_rx
@@ -235,20 +235,23 @@ impl Worker {
             Ok(r) => r,
             Err(e) => {
                 match e {
-                    // recv_timeout will fail for a timeout or for a
-                    // disconnect error.
+                    // Timeouts are expected.
                     std::sync::mpsc::RecvTimeoutError::Timeout => return Ok(false),
+                    // Other errors are not.
                     _ => return Err(format!("Error receiving request from parent: {e}")),
                 }
             }
         };
 
-        // NOTE no need to report our status as Active to the main
-        // server, since it applies the Active state to its tracking
-        // data for this worker just before sending us the request we're
-        // about to process.  IOW, the server alread knows we're active.
+        // NOTE no need to report our status as Active to the parent
+        // server, since it applies the Active state to this worker's
+        // metadata just before sending us this request.
 
-        self.handler.process(request)?;
+        if let Err(e) = self.handler.process(request) {
+            // This is not necessarily an existential crisis, probably
+            // just a malformed request, etc.
+            log::error!("{self} error processing request: {e}");
+        }
 
         return Ok(true);
     }
