@@ -693,7 +693,8 @@ impl Session {
 
         for msg in msg_list.iter_mut() {
             if let osrf::message::Payload::Status(s) = msg.payload() {
-                match *s.status() {
+                let stat = *s.status();
+                match stat {
                     message::MessageStatus::Complete => self.subtract_reqs(),
                     message::MessageStatus::Ok => {
                         self.subtract_reqs();
@@ -701,17 +702,18 @@ impl Session {
                         self.osrf_sessions
                             .insert(tm.thread().to_string(), tm.from().to_string());
                     }
-
-                    // Any response whose status is >= 400 (bad-request) is
-                    // treated as an error and any stateful connection (if
-                    // active) is severed.
-                    s if s as usize >= message::MessageStatus::BadRequest as usize => {
-                        self.subtract_reqs();
-                        transport_error = true;
+                    // We don't need to analyze every non-error message.
+                    s if (s as usize) < 400 => {}
+                    _ => {
                         log::error!("{self} Request returned unexpected status: {:?}", msg);
+                        self.subtract_reqs();
                         self.osrf_sessions.remove(tm.thread());
+
+                        if stat.is_4xx() {
+                            // roughly: service-not-found.
+                            transport_error = true;
+                        }
                     }
-                    _ => {}
                 }
             } else if let osrf::message::Payload::Result(ref mut r) = msg.payload_mut() {
                 // Decode (hashify) the result content instead of the

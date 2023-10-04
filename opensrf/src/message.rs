@@ -150,6 +150,17 @@ impl fmt::Display for MessageStatus {
     }
 }
 
+impl MessageStatus {
+    pub fn is_4xx(&self) -> bool {
+        let num = *self as isize;
+        num >= 400 && num < 500
+    }
+    pub fn is_5xx(&self) -> bool {
+        let num = *self as isize;
+        num >= 500
+    }
+}
+
 /// The message payload is the core of the message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
