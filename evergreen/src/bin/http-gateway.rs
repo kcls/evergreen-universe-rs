@@ -550,8 +550,6 @@ struct GatewayStream {
     eg_ctx: eg::init::Context,
 }
 
-// TODO
-// Use a tcp listener w/ a timeout -- see sip2-server for an example.
 impl GatewayStream {
     fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> Result<Self, String> {
         log::info!("EG Gateway listening at {address}:{port}");
@@ -635,6 +633,9 @@ fn main() {
     };
 
     // Connect to OpenSRF, parse the IDL
+    // NOTE: Since we are not fetching host settings, we use
+    // the default IDL path unless it's overridden with the
+    // EG_IDL_FILE environment variable.
     let eg_ctx = eg::init::init_with_options(&init_ops).expect("Evergreen init");
 
     // Setup logging with the gateway config
