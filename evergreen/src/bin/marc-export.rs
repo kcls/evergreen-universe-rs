@@ -205,8 +205,8 @@ fn create_sql(ops: &ExportOptions) -> String {
     }
 
     let order_by = match ops.newest_first {
-        true => "ORDER BY create_date DESC",
-        false => "ORDER BY create_date ASC",
+        true => "ORDER BY create_date DESC, id DESC",
+        false => "ORDER BY create_date ASC, id",
     };
 
     // OFFSET is set in the main query loop.
