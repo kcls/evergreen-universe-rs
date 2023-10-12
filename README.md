@@ -2,6 +2,16 @@
 
 Rust bindings, libs, and binaries for Evergreen and related projects.
 
+## UBUNTU 22.04 2023-10-11 NOTE
+
+A depenency uses a version of 'time' which is not compatible with the
+version of rust installed by Ubuntu 22.04.  Fix it like so from within
+the checkout after getting the dependency error.
+
+```sh
+cargo update -p time@0.3.29 --precise 0.3.23                                   
+```sh
+
 ## Included Packages
 
 ### MPTC
