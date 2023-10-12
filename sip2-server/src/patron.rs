@@ -1,6 +1,5 @@
 use super::conf;
 use super::session::Session;
-use chrono::prelude::*;
 use eg::date;
 use eg::result::EgResult;
 use evergreen as eg;
@@ -707,7 +706,7 @@ impl Session {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
         let expire_date = date::parse_pg_date(&expire_date_str)?;
 
-        if expire_date < Local::now() {
+        if expire_date < eg::date::now() {
             // Patron is expired.  Don't bother checking other penalties, etc.
 
             patron.charge_denied = true;

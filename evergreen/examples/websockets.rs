@@ -24,13 +24,13 @@ const THREAD_COUNT: usize = 10;
 const DEFAULT_URI: &str = "ws://127.0.0.1:7682";
 
 /// How many times we repeat the entire batch.
-const NUM_ITERS: usize = 2;
+const NUM_ITERS: usize = 5;
 
 /// If non-zero, have each thread pause this many ms between requests.
 /// Helpful for focusing on endurance / real-world traffic patterns more
 /// than per-request speed.
-const REQ_PAUSE: u64 = 10;
-//const REQ_PAUSE: u64 = 0;
+//const REQ_PAUSE: u64 = 10;
+const REQ_PAUSE: u64 = 0;
 
 // Since we're testing Websockets, which is a public-facing gateway,
 // the destination service must be a public service.
@@ -64,7 +64,8 @@ fn main() {
 
     println!("Batch requests processed: {}", reqs_per_batch * NUM_ITERS);
 
-    test_formats();
+    // uncomment to test creating a record bucket using hash-based values.
+    // test_formats();
 }
 
 fn run_thread() {
