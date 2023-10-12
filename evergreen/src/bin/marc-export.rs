@@ -1,6 +1,7 @@
 use evergreen::db::DatabaseConnection;
 use getopts;
 use marc::Record;
+use rust_decimal::Decimal;
 use std::io::prelude::*;
 use std::{env, fs, io};
 
@@ -42,6 +43,7 @@ const ITEMS_QUERY: &str = r#"
 "#;
 
 /// Map MARC subfields to SQL row field names.
+/// Some are handled manually but left here for documentation.
 const ITEM_SUBFIELD_MAP: &[&(&str, &str)] = &[
     &("b", "owning_lib"),
     &("b", "circ_lib"),
@@ -52,7 +54,7 @@ const ITEM_SUBFIELD_MAP: &[&(&str, &str)] = &[
     &("g", "circ_modifier"),
     &("p", "barcode"),
     &("s", "status"),
-    &("y", "price"),
+    // &("y", "price"),
     &("t", "copy_number"),
     // Handled separately
     // &("x", "ref"),
@@ -69,6 +71,7 @@ struct ExportOptions {
     newest_first: bool,
     batch_size: u64,
     export_items: bool,
+    money: String,
     location_code: Option<String>,
     destination: ExportDestination,
     query_file: Option<String>,
@@ -91,6 +94,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optopt("", "query-file", "", "");
     opts.optopt("", "batch-size", "", "");
     opts.optopt("", "location-code", "", "");
+    opts.optopt("", "money", "", "");
 
     opts.optflag("", "items", "");
     opts.optflag("", "to-xml", "");
@@ -120,6 +124,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
             min_id: params.opt_get_default("min-id", -1).unwrap(),
             max_id: params.opt_get_default("max-id", -1).unwrap(),
             location_code: params.opt_str("location-code"),
+            money: params.opt_get_default("money", "$".to_string()).unwrap(),
             batch_size: params
                 .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
                 .unwrap(),
@@ -143,10 +148,10 @@ Synopsis
 
 Options
 
-    --min-id
+    --min-id <record-id>
         Only export records whose ID is >= this value.
 
-    --max-id
+    --max-id <record-id>
         Only export records whose ID is <= this value.
 
     --batch-size
@@ -170,10 +175,14 @@ Options
         Includes holdings (copies / items) in the export.  Items are
         added as MARC 852 fields.
 
-    --db-host
-    --db-port
-    --db-user
-    --db-name
+    --money <symbol>
+        Copy price is preceded by this currency symbol.
+        Defaults to $.
+
+    --db-host <host>
+    --db-port <port>
+    --db-user <user>
+    --db-name <database>
         Database connection options.  PG environment vars are used
         as defaults when available.
 
@@ -327,6 +336,15 @@ fn add_items(
                     subfields.push(&value);
                 }
             }
+        }
+
+        // PG 'numeric' types require a Decimal destination.
+        let price: Option<Decimal> = row.get("price");
+        let price_binding;
+        if let Some(p) = price {
+            price_binding = format!("{}{}", ops.money, p.to_string());
+            subfields.push("y");
+            subfields.push(price_binding.as_str());
         }
 
         // These bools are all required fields. try_get() not required.

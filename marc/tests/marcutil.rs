@@ -115,9 +115,15 @@ fn delete_values() {
 fn delete_fields() {
     let mut record = Record::from_xml(MARC_XML).next().unwrap();
 
-    record.add_data_field("200", " ", " ", vec!["a", "baz"]).unwrap();
-    record.add_data_field("200", " ", " ", vec!["a", "foo"]).unwrap();
-    record.add_data_field("200", " ", " ", vec!["b", "xasdf"]).unwrap();
+    record
+        .add_data_field("200", " ", " ", vec!["a", "baz"])
+        .unwrap();
+    record
+        .add_data_field("200", " ", " ", vec!["a", "foo"])
+        .unwrap();
+    record
+        .add_data_field("200", " ", " ", vec!["b", "xasdf"])
+        .unwrap();
 
     assert_eq!(record.get_fields("200").len(), 3);
 
