@@ -10,7 +10,7 @@ the checkout after getting the dependency error.
 
 ```sh
 cargo update -p time@0.3.29 --precise 0.3.23                                   
-```sh
+```
 
 ## Included Packages
 
