@@ -2,11 +2,14 @@
 
 Rust bindings, libs, and binaries for Evergreen and related projects.
 
-## UBUNTU 22.04 2023-10-11 NOTE
+## UBUNTU 22.04 2023-10-11 DEPENDENCY ISSUE
 
-A depenency uses a version of 'time' which is not compatible with the
-version of rust installed by Ubuntu 22.04.  Fix it like so from within
-the checkout after getting the dependency error.
+### Problem During Build
+
+error: package `time v0.3.29` cannot be built because it requires rustc 
+1.67.0 or newer, while the currently active rustc version is 1.66.1
+
+### Fix
 
 ```sh
 cargo update -p time@0.3.29 --precise 0.3.23                                   
