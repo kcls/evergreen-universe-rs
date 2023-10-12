@@ -14,6 +14,8 @@ const MARCXML_XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance";
 const MARCXML_SCHEMA_LOCATION: &str =
     "http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd";
 
+// TODO replace inline error messages with Results.
+
 /// Replace non-ASCII characters and special characters with escaped
 /// XML entities.
 pub fn escape_xml(value: &str) -> String {
@@ -47,6 +49,11 @@ fn format(formatted: bool, value: &mut String, depth: u8) {
             value.push_str(" ");
         }
     }
+}
+
+pub struct XmlOptions {
+    pub formatted: bool,
+    pub with_xml_declaration: bool,
 }
 
 struct XmlParseContext {
@@ -265,25 +272,38 @@ impl Record {
 
     /// Creates the XML representation of a MARC record as a String.
     pub fn to_xml(&self) -> Result<String, String> {
-        self.to_xml_shared(false)
+        self.to_xml_shared(XmlOptions {
+            formatted: false,
+            with_xml_declaration: true,
+        })
     }
 
     /// Creates the XML representation of a MARC record as a formatted
     /// string using 2-space indentation.
     pub fn to_xml_formatted(&self) -> Result<String, String> {
-        self.to_xml_shared(true)
+        self.to_xml_shared(XmlOptions {
+            formatted: true,
+            with_xml_declaration: true,
+        })
+    }
+
+    pub fn to_xml_ops(&self, options: XmlOptions) -> Result<String, String> {
+        self.to_xml_shared(options)
     }
 
     /// Create the actual XML.
-    fn to_xml_shared(&self, formatted: bool) -> Result<String, String> {
+    fn to_xml_shared(&self, options: XmlOptions) -> Result<String, String> {
         // We could use XmlWriter here, but manual creation works fine
         // and offers more flexibility.
 
-        let mut xml = String::from(r#"<?xml version="1.0"?>"#);
+        let mut xml = match options.with_xml_declaration {
+            true => String::from(r#"<?xml version="1.0"?>"#),
+            _ => String::new(),
+        };
 
         // Document root
 
-        if formatted {
+        if options.formatted {
             xml += &format!(
                 "\n<record\n  xmlns=\"{}\"\n  xmlns:xsi=\"{}\"\n  xsi:schemaLocation=\"{}\">",
                 MARCXML_NAMESPACE, MARCXML_XSI_NAMESPACE, MARCXML_SCHEMA_LOCATION
@@ -297,13 +317,13 @@ impl Record {
 
         // Leader
 
-        format(formatted, &mut xml, 2);
+        format(options.formatted, &mut xml, 2);
         xml += &format!("<leader>{}</leader>", &escape_xml(&self.leader));
 
         // Control Fields
 
         for cfield in &self.control_fields {
-            format(formatted, &mut xml, 2);
+            format(options.formatted, &mut xml, 2);
 
             xml += &format!(
                 r#"<controlfield tag="{}">{}</controlfield>"#,
@@ -315,7 +335,7 @@ impl Record {
         // Data Fields
 
         for field in &self.fields {
-            format(formatted, &mut xml, 2);
+            format(options.formatted, &mut xml, 2);
 
             xml += &format!(
                 r#"<datafield tag="{}" ind1="{}" ind2="{}">"#,
@@ -325,7 +345,7 @@ impl Record {
             );
 
             for sf in &field.subfields {
-                format(formatted, &mut xml, 4);
+                format(options.formatted, &mut xml, 4);
 
                 xml += &format!(
                     r#"<subfield code="{}">{}</subfield>"#,
@@ -334,12 +354,12 @@ impl Record {
                 );
             }
 
-            format(formatted, &mut xml, 2);
+            format(options.formatted, &mut xml, 2);
 
             xml += "</datafield>";
         }
 
-        format(formatted, &mut xml, 0);
+        format(options.formatted, &mut xml, 0);
 
         xml += "</record>";
 

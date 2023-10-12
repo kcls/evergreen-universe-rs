@@ -6,16 +6,74 @@ use std::{env, fs, io};
 
 const XML_COLLECTION_HEADER: &str = r#"<collection xmlns="http://www.loc.gov/MARC21/slim">"#;
 const XML_COLLECTION_FOOTER: &str = "</collection>";
+const DEFAULT_BATCH_SIZE: u64 = 1000;
 
+const ITEMS_QUERY: &str = r#"
+    SELECT
+        olib.shortname as owning_lib,
+        clib.shortname as circ_lib,
+        acpl.name as acpl_name,
+        acnp.label as call_number_prefix,
+        acn.label as call_number,
+        acns.label as call_number_suffix,
+        acp.circ_modifier,
+        acp.barcode,
+        ccs.name as status,
+        acp.copy_number,
+        acp.price,
+        acp.ref,
+        acp.holdable,
+        acp.circulate,
+        acp.opac_visible
+    FROM
+        asset.copy acp
+        JOIN config.copy_status ccs ON ccs.id = acp.status
+        JOIN asset.copy_location acpl ON acpl.id = acp.location
+        JOIN asset.call_number acn ON acn.id = acp.call_number
+        JOIN asset.call_number_prefix acnp ON acnp.id = acn.prefix
+        JOIN asset.call_number_suffix acns ON acns.id = acn.suffix
+        JOIN actor.org_unit olib ON olib.id = acn.owning_lib
+        JOIN actor.org_unit clib ON clib.id = acp.circ_lib
+    WHERE
+        NOT acp.deleted
+        AND NOT acn.deleted
+        AND record = $1
+"#;
+
+/// Map MARC subfields to SQL row field names.
+const ITEM_SUBFIELD_MAP: &[&(&str, &str)] = &[
+    &("b", "owning_lib"),
+    &("b", "circ_lib"),
+    &("b", "acpl_name"),
+    &("k", "call_number_prefix"),
+    &("j", "call_number"),
+    &("m", "call_number_suffix"),
+    &("g", "circ_modifier"),
+    &("p", "barcode"),
+    &("s", "status"),
+    &("y", "price"),
+    &("t", "copy_number"),
+    // Handled separately
+    // &("x", "ref"),
+    // &("x", "holdable"),
+    // &("x", "circulate"),
+    // &("x", "opac_visible"),
+];
+
+// TODO holdings location code
 struct ExportOptions {
     min_id: i64,
     max_id: i64,
     to_xml: bool,
     newest_first: bool,
+    batch_size: u64,
+    export_items: bool,
     destination: ExportDestination,
     query_file: Option<String>,
+    verbose: bool,
 }
 
+#[derive(PartialEq)]
 enum ExportDestination {
     Stdout,
     File(String),
@@ -25,14 +83,17 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     let args: Vec<String> = env::args().collect();
     let mut opts = getopts::Options::new();
 
-    opts.optopt("", "min-id", "Minimum record ID", "MIN_REC_ID");
-    opts.optopt("", "max-id", "Maximum record ID", "MAX_REC_ID");
-    opts.optopt("", "out-file", "Output File", "OUTPUT_FILE");
-    opts.optopt("", "query-file", "SQL Query File", "QUERY_FILE");
+    opts.optopt("", "min-id", "", "");
+    opts.optopt("", "max-id", "", "");
+    opts.optopt("", "out-file", "", "");
+    opts.optopt("", "query-file", "", "");
+    opts.optopt("", "batch-size", "", "");
 
-    opts.optflag("", "to-xml", "Export to XML");
-    opts.optflag("", "newest-first", "Newest First");
-    opts.optflag("h", "help", "Help");
+    opts.optflag("", "items", "");
+    opts.optflag("", "to-xml", "");
+    opts.optflag("", "newest-first", "");
+    opts.optflag("h", "help", "");
+    opts.optflag("v", "verbose", "");
 
     DatabaseConnection::append_options(&mut opts);
 
@@ -55,7 +116,12 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
             destination,
             min_id: params.opt_get_default("min-id", -1).unwrap(),
             max_id: params.opt_get_default("max-id", -1).unwrap(),
+            batch_size: params
+                .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
+                .unwrap(),
             newest_first: params.opt_present("newest-first"),
+            export_items: params.opt_present("items"),
+            verbose: params.opt_present("verbose"),
             to_xml: params.opt_present("to-xml"),
             query_file: params.opt_get("query-file").unwrap(),
         },
@@ -79,6 +145,11 @@ Options
     --max-id
         Only export records whose ID is <= this value.
 
+    --batch-size
+        Number of records to pull from the database per batch.
+        Batching the records means not having to load every record
+        into memory at once.
+
     --out-file
         Write data to this file.
         Otherwise, writes to STDOUT.
@@ -91,12 +162,20 @@ Options
         Export records newest to oldest by create date.
         Otherwise, export oldests to newest.
 
+    --items
+        Includes holdings (copies / items) in the export.  Items are
+        added as MARC 852 fields.
+
     --db-host
     --db-port
     --db-user
     --db-name
         Database connection options.  PG environment vars are used
         as defaults when available.
+
+    --verbose
+        Print debug info to STDOUT.  This is not compatible with
+        printing record data to STDOUT.
 
     --help Print help message
 
@@ -109,7 +188,7 @@ fn create_sql(ops: &ExportOptions) -> String {
         return fs::read_to_string(fname).unwrap();
     }
 
-    let select = "SELECT bre.marc";
+    let select = "SELECT bre.id, bre.marc";
     let from = "FROM biblio.record_entry bre";
     let mut filter = String::from("WHERE NOT bre.deleted");
 
@@ -126,7 +205,11 @@ fn create_sql(ops: &ExportOptions) -> String {
         false => "ORDER BY create_date ASC",
     };
 
-    format!("{select} {from} {filter} {order_by}")
+    // OFFSET is set in the main query loop.
+    format!(
+        "{select} {from} {filter} {order_by} LIMIT {}",
+        ops.batch_size
+    )
 }
 
 fn export(con: &mut DatabaseConnection, ops: &ExportOptions) -> Result<(), String> {
@@ -138,25 +221,73 @@ fn export(con: &mut DatabaseConnection, ops: &ExportOptions) -> Result<(), Strin
 
     con.connect()?;
 
-    let query = create_sql(ops);
-
     if ops.to_xml {
         write(&mut writer, &XML_COLLECTION_HEADER.as_bytes())?;
     }
 
-    for row in con.client().query(&query[..], &[]).unwrap() {
-        let marc_xml: &str = row.get("marc");
+    let mut offset = 0;
+    loop {
+        let mut query = create_sql(ops);
 
-        if ops.to_xml {
-            // No need to parse the record if we going XML to XML.
-            write(&mut writer, &marc_xml.as_bytes())?;
-            continue;
+        query += &format!(" OFFSET {offset}");
+
+        if ops.verbose {
+            println!("Record batch SQL: {query}");
         }
 
-        if let Some(record) = Record::from_xml(&marc_xml).next() {
-            let binary = record.to_binary()?;
-            write(&mut writer, &binary)?;
+        let mut some_found = false;
+        for row in con.client().query(&query[..], &[]).unwrap() {
+            some_found = true;
+
+            let marc_xml: &str = row.get("marc");
+
+            let mut record = match Record::from_xml(&marc_xml).next() {
+                Some(r) => r,
+                None => {
+                    eprintln!("No record built from XML: \n{marc_xml}");
+                    continue;
+                }
+            };
+
+            if ops.export_items {
+                let record_id: i64 = row.get("id");
+                add_items(record_id, con, ops, &mut record)?;
+            }
+
+            if ops.to_xml {
+                let options = marc::xml::XmlOptions {
+                    formatted: false,
+                    with_xml_declaration: false,
+                };
+
+                let xml = match record.to_xml_ops(options) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("Error creating XML from record: {e}");
+                        continue;
+                    }
+                };
+
+                write(&mut writer, xml.as_bytes())?;
+            } else {
+                let binary = match record.to_binary() {
+                    Ok(b) => b,
+                    Err(e) => {
+                        eprintln!("Error creating binary from record: {e}");
+                        continue;
+                    }
+                };
+
+                write(&mut writer, &binary)?;
+            }
         }
+
+        if !some_found {
+            // All batches processed.
+            break;
+        }
+
+        offset += ops.batch_size;
     }
 
     if ops.to_xml {
@@ -168,6 +299,51 @@ fn export(con: &mut DatabaseConnection, ops: &ExportOptions) -> Result<(), Strin
     Ok(())
 }
 
+/// Append holdings data to this MARC record.
+fn add_items(
+    record_id: i64,
+    con: &mut DatabaseConnection,
+    _ops: &ExportOptions,
+    record: &mut Record,
+) -> Result<(), String> {
+    for row in con.client().query(&ITEMS_QUERY[..], &[&record_id]).unwrap() {
+        let mut subfields = Vec::new();
+
+        for (subfield, field) in ITEM_SUBFIELD_MAP {
+            if let Ok(value) = row.try_get::<&str, &str>(field) {
+                subfields.push(*subfield);
+                subfields.push(&value);
+            }
+        }
+
+        // These bools are all required fields.  no try_get() needed.
+
+        if row.get::<&str, bool>("ref") {
+            subfields.push("x");
+            subfields.push("reference");
+        }
+
+        if !row.get::<&str, bool>("holdable") {
+            subfields.push("x");
+            subfields.push("unholdable");
+        }
+
+        if !row.get::<&str, bool>("circulate") {
+            subfields.push("x");
+            subfields.push("noncirculating");
+        }
+
+        if !row.get::<&str, bool>("opac_visible") {
+            subfields.push("x");
+            subfields.push("hidden");
+        }
+
+        record.add_data_field("852", "4", " ", subfields)?;
+    }
+
+    Ok(())
+}
+
 fn write(writer: &mut Box<dyn Write>, bytes: &[u8]) -> Result<(), String> {
     match writer.write(bytes) {
         Ok(_) => Ok(()),
@@ -175,8 +351,19 @@ fn write(writer: &mut Box<dyn Write>, bytes: &[u8]) -> Result<(), String> {
     }
 }
 
+fn check_options(ops: &ExportOptions) -> Result<(), String> {
+    if ops.verbose && ops.destination == ExportDestination::Stdout {
+        return Err(format!(
+            "--verbose is not compatible with exporting to STDOUT"
+        ));
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
     if let Some((options, mut connection)) = read_options() {
+        check_options(&options)?;
         export(&mut connection, &options)
     } else {
         Ok(())
