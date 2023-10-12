@@ -38,7 +38,7 @@ const ITEMS_QUERY: &str = r#"
     WHERE
         NOT acp.deleted
         AND NOT acn.deleted
-        AND record = $1
+        AND acn.record = $1
 "#;
 
 /// Map MARC subfields to SQL row field names.

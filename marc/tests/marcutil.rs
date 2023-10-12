@@ -110,3 +110,18 @@ fn delete_values() {
     assert_eq!(list.len(), 1);
     assert_eq!(field.subfields.len(), 2);
 }
+
+#[test]
+fn delete_fields() {
+    let mut record = Record::from_xml(MARC_XML).next().unwrap();
+
+    record.add_data_field("200", " ", " ", vec!["a", "baz"]).unwrap();
+    record.add_data_field("200", " ", " ", vec!["a", "foo"]).unwrap();
+    record.add_data_field("200", " ", " ", vec!["b", "xasdf"]).unwrap();
+
+    assert_eq!(record.get_fields("200").len(), 3);
+
+    record.remove_fields("200");
+
+    assert_eq!(record.get_fields("200").len(), 0);
+}
