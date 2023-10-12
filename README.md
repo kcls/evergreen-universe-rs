@@ -6,8 +6,10 @@ Rust bindings, libs, and binaries for Evergreen and related projects.
 
 ### Problem During Build
 
+```sh
 error: package `time v0.3.29` cannot be built because it requires rustc 
 1.67.0 or newer, while the currently active rustc version is 1.66.1
+```
 
 ### Fix
 
