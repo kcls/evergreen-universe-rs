@@ -294,4 +294,15 @@ impl Record {
         }
         vec
     }
+
+    /// Remove all occurrences of fields with the provided tag.
+    pub fn remove_fields(&mut self, tag: &str) {
+        loop {
+            if let Some(pos) = self.fields.iter().position(|f| f.tag.as_str() == tag) {
+                self.fields.remove(pos);
+            } else {
+                return;
+            }
+        }
+    }
 }

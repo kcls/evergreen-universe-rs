@@ -7,6 +7,7 @@ use std::{env, fs, io};
 const XML_COLLECTION_HEADER: &str = r#"<collection xmlns="http://www.loc.gov/MARC21/slim">"#;
 const XML_COLLECTION_FOOTER: &str = "</collection>";
 const DEFAULT_BATCH_SIZE: u64 = 1000;
+const HOLDINGS_SUBFIELD: &str = "852";
 
 const ITEMS_QUERY: &str = r#"
     SELECT
@@ -68,6 +69,7 @@ struct ExportOptions {
     newest_first: bool,
     batch_size: u64,
     export_items: bool,
+    location_code: Option<String>,
     destination: ExportDestination,
     query_file: Option<String>,
     verbose: bool,
@@ -88,6 +90,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optopt("", "out-file", "", "");
     opts.optopt("", "query-file", "", "");
     opts.optopt("", "batch-size", "", "");
+    opts.optopt("", "location-code", "", "");
 
     opts.optflag("", "items", "");
     opts.optflag("", "to-xml", "");
@@ -116,6 +119,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
             destination,
             min_id: params.opt_get_default("min-id", -1).unwrap(),
             max_id: params.opt_get_default("max-id", -1).unwrap(),
+            location_code: params.opt_str("location-code"),
             batch_size: params
                 .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
                 .unwrap(),
@@ -303,20 +307,29 @@ fn export(con: &mut DatabaseConnection, ops: &ExportOptions) -> Result<(), Strin
 fn add_items(
     record_id: i64,
     con: &mut DatabaseConnection,
-    _ops: &ExportOptions,
+    ops: &ExportOptions,
     record: &mut Record,
 ) -> Result<(), String> {
+    record.remove_fields(HOLDINGS_SUBFIELD);
+
     for row in con.client().query(&ITEMS_QUERY[..], &[&record_id]).unwrap() {
         let mut subfields = Vec::new();
 
+        if let Some(lc) = ops.location_code.as_ref() {
+            subfields.push("a");
+            subfields.push(lc);
+        }
+
         for (subfield, field) in ITEM_SUBFIELD_MAP {
             if let Ok(value) = row.try_get::<&str, &str>(field) {
-                subfields.push(*subfield);
-                subfields.push(&value);
+                if value != "" {
+                    subfields.push(*subfield);
+                    subfields.push(&value);
+                }
             }
         }
 
-        // These bools are all required fields.  no try_get() needed.
+        // These bools are all required fields. try_get() not required.
 
         if row.get::<&str, bool>("ref") {
             subfields.push("x");
@@ -338,7 +351,7 @@ fn add_items(
             subfields.push("hidden");
         }
 
-        record.add_data_field("852", "4", " ", subfields)?;
+        record.add_data_field(HOLDINGS_SUBFIELD, "4", " ", subfields)?;
     }
 
     Ok(())
