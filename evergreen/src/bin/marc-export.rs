@@ -68,10 +68,11 @@ struct ExportOptions {
     min_id: i64,
     max_id: i64,
     to_xml: bool,
-    newest_first: bool,
     batch_size: u64,
     export_items: bool,
-    money: String,
+    currency_symbol: String,
+    libraries: Vec<String>,
+    library_ids: Option<String>,
     location_code: Option<String>,
     destination: ExportDestination,
     query_file: Option<String>,
@@ -94,11 +95,11 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optopt("", "query-file", "", "");
     opts.optopt("", "batch-size", "", "");
     opts.optopt("", "location-code", "", "");
-    opts.optopt("", "money", "", "");
+    opts.optopt("", "currency-symbol", "", "");
+    opts.optmulti("", "library", "", "");
 
     opts.optflag("", "items", "");
     opts.optflag("", "to-xml", "");
-    opts.optflag("", "newest-first", "");
     opts.optflag("h", "help", "");
     opts.optflag("v", "verbose", "");
 
@@ -124,11 +125,14 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
             min_id: params.opt_get_default("min-id", -1).unwrap(),
             max_id: params.opt_get_default("max-id", -1).unwrap(),
             location_code: params.opt_str("location-code"),
-            money: params.opt_get_default("money", "$".to_string()).unwrap(),
+            libraries: params.opt_strs("library"),
+            library_ids: None,
+            currency_symbol: params
+                .opt_get_default("currency-symbol", "$".to_string())
+                .unwrap(),
             batch_size: params
                 .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
                 .unwrap(),
-            newest_first: params.opt_present("newest-first"),
             export_items: params.opt_present("items"),
             verbose: params.opt_present("verbose"),
             to_xml: params.opt_present("to-xml"),
@@ -157,7 +161,7 @@ Options
     --batch-size
         Number of records to pull from the database per batch.
         Batching the records means not having to load every record
-        into memory at once.
+        into memory up front before output writing can begin.
 
     --out-file
         Write data to this file.
@@ -167,16 +171,16 @@ Options
         Path to a file containing an SQL query.  The query must
         produce rows that have a column named "marc".
 
-    --newest-first
-        Export records newest to oldest by create date.
-        Otherwise, export oldests to newest.
-
     --items
         Includes holdings (copies / items) in the export.  Items are
         added as MARC 852 fields.
 
-    --money <symbol>
-        Copy price is preceded by this currency symbol.
+    --library <shortname>
+        Limit to records that have holdings at the specified library
+        by shortname.  Repeatable.
+
+    --currency-symbol <symbol>
+        Money values (e.g. copy price) are preceded by this symbol.
         Defaults to $.
 
     --db-host <host>
@@ -196,13 +200,27 @@ Options
     );
 }
 
-fn create_sql(ops: &ExportOptions) -> String {
+fn create_records_sql(ops: &ExportOptions) -> String {
     if let Some(fname) = &ops.query_file {
         return fs::read_to_string(fname).unwrap();
     }
 
-    let select = "SELECT bre.id, bre.marc";
-    let from = "FROM biblio.record_entry bre";
+    let select = "SELECT DISTINCT bre.id, bre.marc";
+    let mut from = "FROM biblio.record_entry bre".to_string();
+
+    // TODO also check for presence of at least one copy and/or URI?
+    if let Some(ids) = ops.library_ids.as_ref() {
+        from += &format!(
+            r#"
+            JOIN asset.call_number acn ON (
+                acn.record = bre.id
+                AND acn.owning_lib IN ({ids})
+                AND NOT acn.deleted
+            )
+        "#
+        );
+    }
+
     let mut filter = String::from("WHERE NOT bre.deleted");
 
     if ops.min_id > -1 {
@@ -213,10 +231,8 @@ fn create_sql(ops: &ExportOptions) -> String {
         filter = format!("{} AND id < {}", filter, ops.max_id);
     }
 
-    let order_by = match ops.newest_first {
-        true => "ORDER BY create_date DESC, id DESC",
-        false => "ORDER BY create_date ASC, id",
-    };
+    // Ordering by ID makes exports more consistent-ish
+    let order_by = "ORDER BY bre.id";
 
     // OFFSET is set in the main query loop.
     format!(
@@ -225,7 +241,34 @@ fn create_sql(ops: &ExportOptions) -> String {
     )
 }
 
-fn export(con: &mut DatabaseConnection, ops: &ExportOptions) -> Result<(), String> {
+/// Translate library filter shortnames into org unit IDs
+fn set_library_ids(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), String> {
+    if ops.libraries.len() == 0 {
+        return Ok(());
+    }
+
+    let mut lib_ids = Vec::new();
+
+    let query = "select id from actor.org_unit where shortname=any($1::text[])";
+
+    for row in con.client().query(&query[..], &[&ops.libraries]).unwrap() {
+        lib_ids.push(row.get::<&str, i32>("id"));
+    }
+
+    // Turn the list of know-good i64s into a comma-separated list
+    // of IDs as a whole string.
+    ops.library_ids = Some(
+        lib_ids
+            .iter()
+            .map(|i| format!("{i}"))
+            .collect::<Vec<String>>()
+            .join(","),
+    );
+
+    Ok(())
+}
+
+fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), String> {
     // Where are we spewing bytes?
     let mut writer: Box<dyn Write> = match &ops.destination {
         ExportDestination::File(fname) => Box::new(fs::File::create(fname).unwrap()),
@@ -234,18 +277,20 @@ fn export(con: &mut DatabaseConnection, ops: &ExportOptions) -> Result<(), Strin
 
     con.connect()?;
 
+    set_library_ids(con, ops)?;
+
     if ops.to_xml {
         write(&mut writer, &XML_COLLECTION_HEADER.as_bytes())?;
     }
 
     let mut offset = 0;
     loop {
-        let mut query = create_sql(ops);
+        let mut query = create_records_sql(ops);
 
         query += &format!(" OFFSET {offset}");
 
         if ops.verbose {
-            println!("Record batch SQL: {query}");
+            println!("Record batch SQL:\n{query}");
         }
 
         let mut some_found = false;
@@ -342,7 +387,7 @@ fn add_items(
         let price: Option<Decimal> = row.get("price");
         let price_binding;
         if let Some(p) = price {
-            price_binding = format!("{}{}", ops.money, p.to_string());
+            price_binding = format!("{}{}", ops.currency_symbol, p.to_string());
             subfields.push("y");
             subfields.push(price_binding.as_str());
         }
@@ -393,9 +438,9 @@ fn check_options(ops: &ExportOptions) -> Result<(), String> {
 }
 
 fn main() -> Result<(), String> {
-    if let Some((options, mut connection)) = read_options() {
+    if let Some((mut options, mut connection)) = read_options() {
         check_options(&options)?;
-        export(&mut connection, &options)
+        export(&mut connection, &mut options)
     } else {
         Ok(())
     }
