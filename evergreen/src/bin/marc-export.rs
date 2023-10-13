@@ -330,7 +330,7 @@ fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
                 // Make sure the ID values provided are numeric before
                 // we trust them.  Silently ignore any other data.
                 if let Ok(id) = line.trim().parse::<i64>() {
-                    ids.push_str(&format!("{id},"));
+                    ids += &format!("{id},");
                 }
             }
             Err(e) => return Err(format!("Error reading stdin: {e}")),
@@ -355,7 +355,7 @@ fn set_library_ids(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Res
     let query = "select id from actor.org_unit where shortname=any($1::text[])";
 
     for row in con.client().query(&query[..], &[&ops.libraries]).unwrap() {
-        ids.push_str(&format!("{},", row.get::<&str, i32>("id")));
+        ids += &format!("{},", row.get::<&str, i32>("id"));
     }
 
     ids.pop(); // trailing ","

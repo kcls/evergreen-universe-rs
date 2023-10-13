@@ -14,7 +14,7 @@ pub struct Controlfield {
 impl Controlfield {
     pub fn new(tag: &str, content: Option<&str>) -> Result<Self, String> {
         if tag.bytes().len() != TAG_SIZE {
-            return Err(format!("Invalid tag: {tag}"));
+            return Err(format!("Invalid tag: '{tag}' bytelen={}", tag.bytes().len()));
         }
         Ok(Controlfield {
             tag: tag.to_string(),
@@ -40,7 +40,8 @@ pub struct Subfield {
 impl Subfield {
     pub fn new(code: &str, content: Option<&str>) -> Result<Self, String> {
         if code.bytes().len() != SF_CODE_SIZE {
-            return Err(format!("Invalid subfield code: {code}"));
+            return Err(format!(
+                "Invalid subfield code: '{code}' bytelen={}", code.bytes().len()));
         }
 
         Ok(Subfield {
@@ -69,7 +70,7 @@ pub struct Field {
 impl Field {
     pub fn new(tag: &str) -> Result<Self, String> {
         if tag.bytes().len() != TAG_SIZE {
-            return Err(format!("Invalid tag: {tag}"));
+            return Err(format!("Invalid tag: '{tag}' bytelen={}", tag.bytes().len()));
         }
 
         Ok(Field {
@@ -93,7 +94,8 @@ impl Field {
 
         let i = match ind.bytes().len() {
             2.. => {
-                return Err(format!("Invalid indicator value: '{ind}'"));
+                return Err(format!(
+                    "Invalid indicator value: '{ind}' bytelen={}", ind.bytes().len()));
             }
             1 => bytes[0] as char,
             _ => ' ',
@@ -171,7 +173,8 @@ impl Record {
     /// of bytes.
     pub fn set_leader(&mut self, leader: &str) -> Result<(), String> {
         if leader.bytes().len() != LEADER_SIZE {
-            return Err(format!("Invalid leader: {leader}"));
+            return Err(format!(
+                "Invalid leader: '{leader}' bytelen={}", leader.bytes().len()));
         }
 
         self.leader = leader.to_string();
@@ -217,7 +220,7 @@ impl Record {
         let mut field = Controlfield::new(tag, Some(content))?;
 
         if tag >= "010" || tag <= "000" {
-            return Err(format!("Invalid control field tag: {tag}"));
+            return Err(format!("Invalid control field tag: '{tag}'"));
         }
 
         field.set_content(content);
@@ -254,7 +257,7 @@ impl Record {
         subfields: Vec<&str>,
     ) -> Result<(), String> {
         if tag < "010" {
-            return Err(format!("Invalid data field tag: {tag}"));
+            return Err(format!("Invalid data field tag: '{tag}'"));
         }
 
         let mut field = Field::new(tag)?;
