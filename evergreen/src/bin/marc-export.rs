@@ -86,6 +86,8 @@ struct ExportOptions {
     /// Parsed ISO date string
     modified_since: Option<String>,
 
+    pretty_print_xml: bool,
+
     query_file: Option<String>,
     verbose: bool,
 }
@@ -110,6 +112,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optopt("", "modified-since", "", "");
     opts.optmulti("", "library", "", "");
 
+    opts.optflag("", "pretty-print-xml", "");
     opts.optflag("", "items", "");
     opts.optflag("", "to-xml", "");
     opts.optflag("h", "help", "");
@@ -146,6 +149,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
         ExportOptions {
             destination,
             modified_since,
+            pretty_print_xml: params.opt_present("pretty-print-xml"),
             min_id: params.opt_get_default("min-id", -1).unwrap(),
             max_id: params.opt_get_default("max-id", -1).unwrap(),
             location_code: params.opt_str("location-code"),
@@ -352,7 +356,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
 
             if ops.to_xml {
                 let options = marc::xml::XmlOptions {
-                    formatted: false,
+                    formatted: ops.pretty_print_xml,
                     with_xml_declaration: false,
                 };
 
@@ -387,6 +391,9 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
     }
 
     if ops.to_xml {
+        if ops.pretty_print_xml {
+            write(&mut writer, "\n".as_bytes())?;
+        }
         write(&mut writer, &XML_COLLECTION_FOOTER.as_bytes())?;
     }
 
