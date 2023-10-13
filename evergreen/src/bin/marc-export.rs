@@ -269,21 +269,21 @@ fn create_records_sql(ops: &ExportOptions) -> String {
     let mut filter = String::from("WHERE NOT bre.deleted");
 
     if ops.min_id > -1 {
-        filter = format!("{filter} AND id >= {}", ops.min_id);
+        filter = format!("{filter} AND bre.id >= {}", ops.min_id);
     }
 
     if ops.max_id > -1 {
-        filter = format!("{filter} AND id < {}", ops.max_id);
+        filter = format!("{filter} AND bre.id < {}", ops.max_id);
     }
 
     if let Some(record_ids) = ops.record_ids.as_ref() {
-        filter = format!("{filter} AND id in ({record_ids})");
+        filter = format!("{filter} AND bre.id in ({record_ids})");
     }
 
     if let Some(since) = ops.modified_since.as_ref() {
         // edit_date is set at create time, so there's no
         // need to additionally check create_date.
-        filter = format!("{filter} AND edit_date >= '{since}'");
+        filter = format!("{filter} AND bre.edit_date >= '{since}'");
     }
 
     // We have to order by something to support paging.
@@ -296,18 +296,21 @@ fn create_records_sql(ops: &ExportOptions) -> String {
     )
 }
 
+/// Read record IDs, one per line, from STDIN for use in
+/// the main record query.
 fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
     if !ops.pipe {
         return Ok(());
     }
 
-    let mut buffer = String::new();
+    let mut ids = String::new();
+    let mut line = String::new();
+
     let stdin = io::stdin();
-    let mut ids = Vec::new();
 
     loop {
-        buffer.clear();
-        match stdin.read_line(&mut buffer) {
+        line.clear();
+        match stdin.read_line(&mut line) {
             Ok(count) => {
                 if count == 0 {
                     break; // EOF
@@ -315,21 +318,19 @@ fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
 
                 // Make sure the ID values provided are numeric before
                 // we trust them.  Silently ignore any other data.
-                if let Ok(id) = buffer.trim().parse::<i64>() {
-                    ids.push(id);
+                if let Ok(id) = line.trim().parse::<i64>() {
+                    ids.push_str(&format!("{id},"));
                 }
             }
             Err(e) => return Err(format!("Error reading stdin: {e}")),
         }
     }
 
-    let ids = ids
-        .iter()
-        .map(|i| format!("{i}"))
-        .collect::<Vec<String>>()
-        .join(",");
+    ids.pop(); // remove trailing ","
+    if ids.len() > 0 {
+        ops.record_ids = Some(ids);
+    }
 
-    ops.record_ids = Some(ids);
     Ok(())
 }
 
@@ -339,23 +340,15 @@ fn set_library_ids(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Res
         return Ok(());
     }
 
-    let mut lib_ids = Vec::new();
-
+    let mut ids = String::new();
     let query = "select id from actor.org_unit where shortname=any($1::text[])";
 
     for row in con.client().query(&query[..], &[&ops.libraries]).unwrap() {
-        lib_ids.push(row.get::<&str, i32>("id"));
+        ids.push_str(&format!("{},", row.get::<&str, i32>("id")));
     }
 
-    // Turn the list of know-good i64s into a comma-separated list
-    // of IDs as a whole string.
-    ops.library_ids = Some(
-        lib_ids
-            .iter()
-            .map(|i| format!("{i}"))
-            .collect::<Vec<String>>()
-            .join(","),
-    );
+    ids.pop(); // trailing ","
+    ops.library_ids = Some(ids);
 
     Ok(())
 }
