@@ -178,7 +178,7 @@ impl Record {
         Ok(())
     }
 
-    /// Apply a leader value from a str
+    /// Apply a leader value from a set of bytes
     ///
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
@@ -210,10 +210,13 @@ impl Record {
         self.fields.iter_mut().filter(|f| f.tag.eq(tag)).collect()
     }
 
+    /// Add a control field with data.
+    ///
+    /// Controlfields are those with tag 001 .. 009
     pub fn add_control_field(&mut self, tag: &str, content: &str) -> Result<(), String> {
         let mut field = Controlfield::new(tag, Some(content))?;
 
-        if tag >= "010" {
+        if tag >= "010" || tag <= "000" {
             return Err(format!("Invalid control field tag: {tag}"));
         }
 
@@ -238,6 +241,11 @@ impl Record {
         Ok(())
     }
 
+    /// Add a new datafield with the given tag, indicators, and list of
+    /// subfields.
+    ///
+    /// * `subfields` - List of subfield code, followed by subfield value.
+    ///     e.g. vec!["a", "My Title", "b", "More Title Stuff"]
     pub fn add_data_field(
         &mut self,
         tag: &str,
@@ -255,6 +263,7 @@ impl Record {
 
         let mut sf_op: Option<Subfield> = None;
 
+        // Traverse the subfields list as subfield/value pairs.
         for part in subfields {
             if sf_op.is_none() {
                 sf_op = Some(Subfield::new(part, None)?);
@@ -285,6 +294,7 @@ impl Record {
         Ok(())
     }
 
+    /// Returns a list of values for the specified tag and subfield.
     pub fn get_values(&self, tag: &str, sfcode: &str) -> Vec<&str> {
         let mut vec = Vec::new();
         for field in self.get_fields(tag) {

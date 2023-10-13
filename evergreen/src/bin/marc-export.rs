@@ -148,7 +148,11 @@ fn print_help() {
 
 Synopsis
 
-    cargo run -- --out-file /tmp/records.mrc
+    # Export all bib records as XML
+    eg-marc-export --to-xml --out-file /tmp/records.xml
+
+    # Export bib records that have holdings at BR1 including holdings.
+    eg-marc-export --to-xml --out-file /tmp/records.xml --items --library BR1
 
 Options
 
@@ -159,17 +163,16 @@ Options
         Only export records whose ID is <= this value.
 
     --batch-size
-        Number of records to pull from the database per batch.
-        Batching the records means not having to load every record
-        into memory up front before output writing can begin.
+        Number of records to pull from the database per batch.  Batching
+        the records means not having to load every record into memory up
+        front before output writing can begin.
 
     --out-file
-        Write data to this file.
-        Otherwise, writes to STDOUT.
+        Write data to this file.  Otherwise, writes to STDOUT.
 
     --query-file
-        Path to a file containing an SQL query.  The query must
-        produce rows that have a column named "marc".
+        Path to a file containing an SQL query.  The query must produce
+        rows that have a columns named "id" and "marc".
 
     --items
         Includes holdings (copies / items) in the export.  Items are
@@ -187,8 +190,8 @@ Options
     --db-port <port>
     --db-user <user>
     --db-name <database>
-        Database connection options.  PG environment vars are used
-        as defaults when available.
+        Database connection options.  PG environment vars are used as
+        defaults when available.
 
     --verbose
         Print debug info to STDOUT.  This is not compatible with
@@ -231,7 +234,7 @@ fn create_records_sql(ops: &ExportOptions) -> String {
         filter = format!("{} AND id < {}", filter, ops.max_id);
     }
 
-    // Ordering by ID makes exports more consistent-ish
+    // We have to order by something to support paging.
     let order_by = "ORDER BY bre.id";
 
     // OFFSET is set in the main query loop.
