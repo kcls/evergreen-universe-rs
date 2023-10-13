@@ -65,13 +65,20 @@ const ITEM_SUBFIELD_MAP: &[&(&str, &str)] = &[
     // &("x", "opac_visible"),
 ];
 
-// TODO holdings location code
 struct ExportOptions {
     min_id: i64,
     max_id: i64,
+
+    /// Output to XML.  Default is binary MARC21.
+    /// All data is UTF-8.
     to_xml: bool,
+
+    /// How many records to pull from the database within each query batch.
     batch_size: u64,
+
+    /// Export items / copies in addition to records.
     export_items: bool,
+
     currency_symbol: String,
 
     /// List of org unit shortnames
@@ -80,7 +87,10 @@ struct ExportOptions {
     /// Comma-separated list of org unit IDs
     library_ids: Option<String>,
 
+    /// MARC holdings location code.
     location_code: Option<String>,
+
+    /// Where to write the exported records
     destination: ExportDestination,
 
     /// Parsed ISO date string
@@ -116,6 +126,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optopt("", "location-code", "", "");
     opts.optopt("", "currency-symbol", "", "");
     opts.optopt("", "modified-since", "", "");
+
     opts.optmulti("", "library", "", "");
 
     opts.optflag("", "pretty-print-xml", "");
@@ -269,21 +280,21 @@ fn create_records_sql(ops: &ExportOptions) -> String {
     let mut filter = String::from("WHERE NOT bre.deleted");
 
     if ops.min_id > -1 {
-        filter = format!("{filter} AND bre.id >= {}", ops.min_id);
+        filter += &format!(" AND bre.id >= {}", ops.min_id);
     }
 
     if ops.max_id > -1 {
-        filter = format!("{filter} AND bre.id < {}", ops.max_id);
+        filter += &format!(" AND bre.id < {}", ops.max_id);
     }
 
     if let Some(record_ids) = ops.record_ids.as_ref() {
-        filter = format!("{filter} AND bre.id in ({record_ids})");
+        filter += &format!(" AND bre.id in ({record_ids})");
     }
 
     if let Some(since) = ops.modified_since.as_ref() {
         // edit_date is set at create time, so there's no
         // need to additionally check create_date.
-        filter = format!("{filter} AND bre.edit_date >= '{since}'");
+        filter += &format!(" AND bre.edit_date >= '{since}'");
     }
 
     // We have to order by something to support paging.
