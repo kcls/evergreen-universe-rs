@@ -88,6 +88,12 @@ struct ExportOptions {
 
     pretty_print_xml: bool,
 
+    /// Load bib record IDs via pipe / stdin.
+    pipe: bool,
+
+    /// Comma-separated list of bib record IDs
+    record_ids: Option<String>,
+
     query_file: Option<String>,
     verbose: bool,
 }
@@ -113,6 +119,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optmulti("", "library", "", "");
 
     opts.optflag("", "pretty-print-xml", "");
+    opts.optflag("", "pipe", "");
     opts.optflag("", "items", "");
     opts.optflag("", "to-xml", "");
     opts.optflag("h", "help", "");
@@ -149,6 +156,8 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
         ExportOptions {
             destination,
             modified_since,
+            pipe: params.opt_present("pipe"),
+            record_ids: None,
             pretty_print_xml: params.opt_present("pretty-print-xml"),
             min_id: params.opt_get_default("min-id", -1).unwrap(),
             max_id: params.opt_get_default("max-id", -1).unwrap(),
@@ -267,6 +276,10 @@ fn create_records_sql(ops: &ExportOptions) -> String {
         filter = format!("{filter} AND id < {}", ops.max_id);
     }
 
+    if let Some(record_ids) = ops.record_ids.as_ref() {
+        filter = format!("{filter} AND id in ({record_ids})");
+    }
+
     if let Some(since) = ops.modified_since.as_ref() {
         // edit_date is set at create time, so there's no
         // need to additionally check create_date.
@@ -281,6 +294,43 @@ fn create_records_sql(ops: &ExportOptions) -> String {
         "{select} {from} {filter} {order_by} LIMIT {}",
         ops.batch_size
     )
+}
+
+fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
+    if !ops.pipe {
+        return Ok(());
+    }
+
+    let mut buffer = String::new();
+    let stdin = io::stdin();
+    let mut ids = Vec::new();
+
+    loop {
+        buffer.clear();
+        match stdin.read_line(&mut buffer) {
+            Ok(count) => {
+                if count == 0 {
+                    break; // EOF
+                }
+
+                // Make sure the ID values provided are numeric before
+                // we trust them.  Silently ignore any other data.
+                if let Ok(id) = buffer.trim().parse::<i64>() {
+                    ids.push(id);
+                }
+            }
+            Err(e) => return Err(format!("Error reading stdin: {e}")),
+        }
+    }
+
+    let ids = ids
+        .iter()
+        .map(|i| format!("{i}"))
+        .collect::<Vec<String>>()
+        .join(",");
+
+    ops.record_ids = Some(ids);
+    Ok(())
 }
 
 /// Translate library filter shortnames into org unit IDs
@@ -320,6 +370,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
     con.connect()?;
 
     set_library_ids(con, ops)?;
+    set_pipe_ids(ops)?;
 
     if ops.to_xml {
         write(&mut writer, &XML_COLLECTION_HEADER.as_bytes())?;
