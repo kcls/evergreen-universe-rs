@@ -1,4 +1,6 @@
-use evergreen::db::DatabaseConnection;
+use eg::date;
+use eg::db::DatabaseConnection;
+use evergreen as eg;
 use getopts;
 use marc::Record;
 use rust_decimal::Decimal;
@@ -71,10 +73,19 @@ struct ExportOptions {
     batch_size: u64,
     export_items: bool,
     currency_symbol: String,
+
+    /// List of org unit shortnames
     libraries: Vec<String>,
+
+    /// Comma-separated list of org unit IDs
     library_ids: Option<String>,
+
     location_code: Option<String>,
     destination: ExportDestination,
+
+    /// Parsed ISO date string
+    modified_since: Option<String>,
+
     query_file: Option<String>,
     verbose: bool,
 }
@@ -96,6 +107,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optopt("", "batch-size", "", "");
     opts.optopt("", "location-code", "", "");
     opts.optopt("", "currency-symbol", "", "");
+    opts.optopt("", "modified-since", "", "");
     opts.optmulti("", "library", "", "");
 
     opts.optflag("", "items", "");
@@ -119,9 +131,21 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
 
     let connection = DatabaseConnection::new_from_options(&params);
 
+    let mut modified_since = None;
+    if let Some(mod_since) = params.opt_str("modified-since") {
+        match date::parse_datetime(&mod_since) {
+            Ok(d) => modified_since = Some(date::to_iso(&d)),
+            Err(e) => {
+                eprintln!("Invalid modified-since value: {e}");
+                return None;
+            }
+        }
+    }
+
     Some((
         ExportOptions {
             destination,
+            modified_since,
             min_id: params.opt_get_default("min-id", -1).unwrap(),
             max_id: params.opt_get_default("max-id", -1).unwrap(),
             location_code: params.opt_str("location-code"),
@@ -182,6 +206,11 @@ Options
         Limit to records that have holdings at the specified library
         by shortname.  Repeatable.
 
+    --modified-since <ISO date>
+        Export record modified on or after the provided date(time).
+        E.g. --modified-since 2023-10-12
+        E.g. --modified-since 2023-10-12T11:29:03-0400
+
     --currency-symbol <symbol>
         Money values (e.g. copy price) are preceded by this symbol.
         Defaults to $.
@@ -211,7 +240,7 @@ fn create_records_sql(ops: &ExportOptions) -> String {
     let select = "SELECT DISTINCT bre.id, bre.marc";
     let mut from = "FROM biblio.record_entry bre".to_string();
 
-    // TODO also check for presence of at least one copy and/or URI?
+    // Also check for presence of at least one copy and/or URI?
     if let Some(ids) = ops.library_ids.as_ref() {
         from += &format!(
             r#"
@@ -227,11 +256,17 @@ fn create_records_sql(ops: &ExportOptions) -> String {
     let mut filter = String::from("WHERE NOT bre.deleted");
 
     if ops.min_id > -1 {
-        filter = format!("{} AND id >= {}", filter, ops.min_id);
+        filter = format!("{filter} AND id >= {}", ops.min_id);
     }
 
     if ops.max_id > -1 {
-        filter = format!("{} AND id < {}", filter, ops.max_id);
+        filter = format!("{filter} AND id < {}", ops.max_id);
+    }
+
+    if let Some(since) = ops.modified_since.as_ref() {
+        // edit_date is set at create time, so there's no
+        // need to additionally check create_date.
+        filter = format!("{filter} AND edit_date >= '{since}'");
     }
 
     // We have to order by something to support paging.
