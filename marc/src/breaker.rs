@@ -3,38 +3,90 @@ use super::Field;
 use super::Record;
 use super::Subfield;
 
-const MARC_BREAKER_SF_DELIMITER: &str = "$";
-const MARC_BREAKER_SF_DELIMITER_ESCAPE: &str = "{dollar}";
+// b"$"
+const MARC_BREAKER_SF_DELIMITER_STR: &str = "$";
+const MARC_BREAKER_SF_DELIMITER: &[u8] = &[36];
+
+// b"{dollar}"
+const MARC_BREAKER_SF_DELIMITER_ESCAPE: &[u8] = &[123, 100, 111, 108, 108, 97, 114, 125];
+
+/// Returns the index of a matching subsequence of bytes
+/// ```
+/// use marc::breaker::replace_byte_sequence;
+///
+/// let s = b"hello joe";
+/// let v = replace_byte_sequence(s, b"ll", b"jj");
+/// assert_eq!(v, b"hejjo joe");
+///
+/// let v = replace_byte_sequence(s, b"he", b"HE");
+/// assert_eq!(v, b"HEllo joe");
+///
+/// let v = replace_byte_sequence(s, b"joe", b"xx");
+/// assert_eq!(v, b"hello xx");
+///
+/// let v = replace_byte_sequence(s, b"o", b"Z");
+/// assert_eq!(v, b"hellZ jZe")
+/// ```
+pub fn replace_byte_sequence(source: &[u8], target: &[u8], replace: &[u8]) -> Vec<u8> {
+    let mut result = Vec::new();
+
+    let source_len = source.len();
+    let target_len = target.len();
+
+    let mut index = 0;
+
+    while index < source_len {
+        let part = &source[index..];
+
+        if part.len() >= target_len {
+            if &part[..target_len] == target {
+                result.extend(replace);
+                index += target_len;
+                continue
+            }
+        }
+
+        // No match; add the next byte
+        result.push(part[0]);
+
+        index += 1;
+    }
+
+    result
+}
 
 /// Replace bare subfield delimiter values with their escaped version.
-pub fn escape_to_breaker(value: &str) -> String {
-    value.replace(MARC_BREAKER_SF_DELIMITER, MARC_BREAKER_SF_DELIMITER_ESCAPE)
+pub fn escape_to_breaker(value: &[u8]) -> Vec<u8> {
+    replace_byte_sequence(value, MARC_BREAKER_SF_DELIMITER, MARC_BREAKER_SF_DELIMITER_ESCAPE)
 }
 
 /// Replace escaped subfield delimiter values with the bare version.
-pub fn unescape_from_breaker(value: &str) -> String {
-    value.replace(MARC_BREAKER_SF_DELIMITER_ESCAPE, MARC_BREAKER_SF_DELIMITER)
+pub fn unescape_from_breaker(value: &[u8]) -> Vec<u8> {
+    replace_byte_sequence(value, MARC_BREAKER_SF_DELIMITER_ESCAPE, MARC_BREAKER_SF_DELIMITER)
 }
+
 
 impl Controlfield {
     pub fn to_breaker(&self) -> String {
-        if self.content.len() > 0 {
-            format!("{} {}", self.tag, escape_to_breaker(&self.content))
-        } else {
-            format!("{}", self.tag)
-        }
-    }
-}
-
-impl Subfield {
-    pub fn to_breaker(&self) -> String {
-        format!(
-            "${}{}",
-            escape_to_breaker(&self.code),
-            escape_to_breaker(&self.content),
+        format!("{}{}",
+            self.tag,
+            String::from_utf8_lossy(&escape_to_breaker(&self.content))
         )
     }
 }
+
+
+impl Subfield {
+    pub fn to_breaker(&self) -> String {
+        format!("{}{}{}",
+            MARC_BREAKER_SF_DELIMITER_STR,
+            self.code,
+            String::from_utf8_lossy(&escape_to_breaker(&self.content))
+        )
+    }
+}
+
+/*
 
 impl Field {
     pub fn to_breaker(&self) -> String {
@@ -143,3 +195,4 @@ impl Record {
         Ok(())
     }
 }
+*/
