@@ -384,7 +384,10 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
     loop {
         let mut query = create_records_sql(ops);
 
-        query += &format!(" OFFSET {offset}");
+        if ops.query_file.is_none() {
+            // Internally built SQL is paged
+            query += &format!(" OFFSET {offset}");
+        }
 
         if ops.verbose {
             println!("Record batch SQL:\n{query}");
@@ -437,8 +440,9 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
             }
         }
 
-        if !some_found {
+        if !some_found || ops.query_file.is_some() {
             // All batches processed.
+            // Query files are processed in one big batch.
             break;
         }
 
