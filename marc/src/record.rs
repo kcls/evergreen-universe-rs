@@ -64,22 +64,44 @@ impl Leader {
             value: [' ' as u8; LEADER_SIZE],
         }
     }
-
-    pub fn from_bytes(bytes: &[u8]) -> Result<Leader, String> {
-        if bytes.len() != LEADER_SIZE {
-            return Err(format!("Invalid leader: {:?}", bytes));
-        }
-
-        let mut value = [0; LEADER_SIZE];
-        for (idx, val) in bytes.iter().enumerate() {
-            value[idx] = *val;
-        }
-
-        Ok(Leader { value })
+    pub fn value(&self) -> &[u8; LEADER_SIZE] {
+        &self.value
     }
-
     pub fn to_string(&self) -> String {
         String::from_utf8_lossy(&self.value).to_string()
+    }
+}
+
+impl TryFrom<&[u8]> for Leader {
+    type Error = String;
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() != LEADER_SIZE {
+            return Err(format!("Invalid leader: {:?}", value));
+        }
+
+        let mut leader = [0; LEADER_SIZE];
+        for (idx, val) in value.iter().enumerate() {
+            leader[idx] = *val;
+        }
+
+        Ok(Leader { value: leader })
+    }
+}
+
+impl TryFrom<&str> for Leader {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Leader::try_from(value.as_bytes())
+    }
+}
+
+impl fmt::Display for Leader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut s = String::new();
+        for i in 0..24 {
+            s += &format!("{}", self.value[i] as char);
+        }
+        write!(f, "{s}")
     }
 }
 
