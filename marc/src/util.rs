@@ -43,3 +43,20 @@ pub fn replace_byte_sequence(source: &[u8], target: &[u8], replace: &[u8]) -> Ve
 
     result
 }
+
+pub fn bytes_to_utf8(bytes: &[u8]) -> Result<String, String> {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => Ok(s.to_string()),
+        Err(e) => Err(format!("Invalid utf8 byte sequence: {bytes:?} {e}")),
+    }
+}
+
+pub fn utf8_to_bytes(s: &str, length: Option<usize>) -> Result<Vec<u8>, String> {
+    let bytes = s.as_bytes();
+    if let Some(len) = length {
+        if bytes.len() != len {
+            return Err(format!("Byte length does not match: {bytes:?} {len}"));
+        }
+    }
+    Ok(bytes.to_vec())
+}

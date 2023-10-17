@@ -4,6 +4,13 @@ use marc::ControlField;
 use marc::Field;
 use marc::Record;
 
+// Avoiding newlines / formatting for testing purposes.
+const MARC_XML: &str = r#"<?xml version="1.0"?><record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd"><leader>07649cim a2200913 i 4500</leader><controlfield tag="001">233</controlfield><controlfield tag="003">CONS</controlfield><controlfield tag="005">20140128084328.0</controlfield><controlfield tag="008">140128s2013    nyuopk|zqdefhi n  | ita d</controlfield><datafield tag="010" ind1=" " ind2=" "><subfield code="a">  2013565186</subfield></datafield><datafield tag="020" ind1=" " ind2=" "><subfield code="a">9781480328532</subfield></datafield><datafield tag="020" ind1=" " ind2=" "><subfield code="a">1480328537</subfield></datafield><datafield tag="024" ind1="1" ind2=" "><subfield code="a">884088883249</subfield></datafield><datafield tag="028" ind1="3" ind2="2"><subfield code="a">HL50498721</subfield><subfield code="b">Hal Leonard</subfield><subfield code="q">(bk.)</subfield></datafield></record>"#;
+
+const EMPTY_MARC_XML: &str = r#"<?xml version="1.0"?><record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd"><leader>                        </leader></record>"#;
+
+const MARC_BINARY: &str = r#"00260nz  a2200109O  450000100030000000300050000300500170000800800410002503500180006610000480008490100180013254CONS19981117195632.0970601 nbacannbabn           a ana     d  a(CONIFER)48741 aHandel, George Frideric, 1685-1759.xOperas  c54tauthority"#;
+
 const MARK_BREAKER: &str = r#"=LDR 02675cam a2200481Ii 4500
 =001 ocn953985896
 =003 OCoLC
@@ -82,4 +89,21 @@ fn breaker_round_trip() {
     assert_eq!(MARK_BREAKER, breaker);
 }
 
+#[test]
+fn xml_round_trip() {
+    let record = Record::from_xml(MARC_XML).next().expect("Parsed an XML record");
 
+    let xml = record.to_xml().unwrap();
+
+    assert_eq!(MARC_XML, xml);
+}
+
+#[test]
+fn xml_breaker_round_trip() {
+    let record = Record::from_xml(MARC_XML).next().expect("Parsed an XML record");
+    let breaker = record.to_breaker();
+    let record = Record::from_breaker(&breaker).expect("Parsed Breaker");
+    let xml = record.to_xml().expect("Generated some XML");
+
+    assert_eq!(MARC_XML, xml);
+}

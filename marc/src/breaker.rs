@@ -127,6 +127,9 @@ impl Record {
         }
 
         let tag = &line_bytes[0..3];
+
+        // There is a space between the tag and the 1st indicator.
+
         if tag == b"LDR" {
             if len > 4 {
                 let mut leader = Leader::default();
@@ -136,8 +139,7 @@ impl Record {
             return;
         }
 
-        // There is a space between the tag and the 1st indicator.
-        let tag = Tag::from(&[tag[0], tag[1], tag[2]]);
+        let tag: Tag = tag.into();
 
         if tag.is_control_tag() {
             let mut cf = ControlField::new(tag, &[]);

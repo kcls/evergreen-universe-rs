@@ -1,8 +1,8 @@
-const U8_ZERO: u8 = '0' as u8;
-const U8_SPACE: u8 = ' ' as u8;
+pub const U8_ZERO: u8 = '0' as u8;
+pub const U8_SPACE: u8 = ' ' as u8;
 
-const LEADER_LEN: usize = 24;
-const TAG_LEN: usize = 3;
+pub const LEADER_LEN: usize = 24;
+pub const TAG_LEN: usize = 3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tag {
@@ -18,9 +18,6 @@ impl Tag {
     pub fn value(&self) -> &[u8; TAG_LEN] {
         &self.value
     }
-    pub fn value_mut(&mut self) -> &mut [u8; TAG_LEN] {
-        &mut self.value
-    }
     pub fn is_control_tag(&self) -> bool {
         self.value[0] == U8_ZERO && self.value[1] == U8_ZERO
     }
@@ -35,17 +32,41 @@ impl From<&[u8; TAG_LEN]> for Tag {
     }
 }
 
+/// Translate a byte slice into a Tag.
+/// Panics if the slice is the wrong length
+impl From<&[u8]> for Tag {
+    fn from(value: &[u8]) -> Tag {
+        if value.len() != TAG_LEN {
+            panic!("Invalid slice for tag: {value:?}");
+        }
+        let v = [value[0], value[1], value[2]];
+        Tag::new(&v)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Leader {
     value: [u8; LEADER_LEN],
 }
 
 impl Leader {
+    pub fn new(bytes: [u8; LEADER_LEN]) -> Leader {
+        Leader {
+            value: bytes
+        }
+    }
     pub fn default() -> Leader {
         Leader {
             value: [U8_SPACE; LEADER_LEN],
         }
     }
+
+    /// Returns the char at the specified zero-based index.
+    /// Panics if index exceeds LEADER_LEN.
+    pub fn char_at(&self, index: usize) -> char {
+        self.value[index] as char
+    }
+
     pub fn value(&self) -> &[u8; LEADER_LEN] {
         &self.value
     }
@@ -61,6 +82,21 @@ impl Leader {
         }
     }
 }
+
+/// Translate a byte slice into a Leader.
+/// Panics if the slice is the wrong length
+impl From<&[u8]> for Leader {
+    fn from(value: &[u8]) -> Leader {
+        if value.len() != LEADER_LEN {
+            panic!("Invalid slice for leader: {value:?}");
+        }
+        let mut leader = Leader::default();
+        leader.set_value(value);
+        leader
+    }
+}
+
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlField {
@@ -103,6 +139,9 @@ impl Subfield {
     pub fn code(&self) -> u8 {
         self.code
     }
+    pub fn code_char(&self) -> char {
+        self.code as char
+    }
     pub fn content(&self) -> &[u8] {
         self.content.as_slice()
     }
@@ -132,6 +171,9 @@ impl Field {
     pub fn subfields(&self) -> &[Subfield] {
         self.subfields.as_slice()
     }
+    pub fn subfields_mut(&mut self) -> &mut Vec<Subfield> {
+        &mut self.subfields
+    }
     pub fn tag(&self) -> &Tag {
         &self.tag
     }
@@ -140,6 +182,12 @@ impl Field {
     }
     pub fn ind1(&self) -> u8 {
         self.ind1
+    }
+    pub fn ind1_char(&self) -> char {
+        self.ind1 as char
+    }
+    pub fn ind2_char(&self) -> char {
+        self.ind2 as char
     }
     pub fn set_ind1(&mut self, ind: u8) {
         self.ind1 = ind;
@@ -250,6 +298,4 @@ impl Record {
         };
     }
 }
-
-
 
