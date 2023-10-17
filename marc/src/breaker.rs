@@ -1,61 +1,15 @@
-use super::Controlfield;
-use super::Field;
-use super::Leader;
-use super::Tag;
-use super::Record;
-use super::Subfield;
+/// Extend marc::Record and its components with tools for reading/writing
+/// MARC breaker text.
+///
+/// Breaker text is assumed to be UTF8.
+use super::{Tag, Leader, Subfield, Field, ControlField, Record};
+use super::util;
 
 // b"$"
 pub const MARC_BREAKER_SF_DELIMITER_STR: &str = "$";
-pub const MARC_BREAKER_SF_DELIMITER: &[u8] = &[36];
-
+pub const MARC_BREAKER_SF_DELIMITER: &[u8] = &[b'$'];
 // b"{dollar}"
 pub const MARC_BREAKER_SF_DELIMITER_ESCAPE: &[u8] = &[123, 100, 111, 108, 108, 97, 114, 125];
-
-/// Returns the index of a matching subsequence of bytes
-/// ```
-/// use marc::breaker::replace_byte_sequence;
-///
-/// let s = b"hello joe";
-/// let v = replace_byte_sequence(s, b"ll", b"jj");
-/// assert_eq!(v, b"hejjo joe");
-///
-/// let v = replace_byte_sequence(s, b"he", b"HE");
-/// assert_eq!(v, b"HEllo joe");
-///
-/// let v = replace_byte_sequence(s, b"joe", b"xx");
-/// assert_eq!(v, b"hello xx");
-///
-/// let v = replace_byte_sequence(s, b"o", b"Z");
-/// assert_eq!(v, b"hellZ jZe")
-/// ```
-pub fn replace_byte_sequence(source: &[u8], target: &[u8], replace: &[u8]) -> Vec<u8> {
-    let mut result = Vec::new();
-
-    let source_len = source.len();
-    let target_len = target.len();
-
-    let mut index = 0;
-
-    while index < source_len {
-        let part = &source[index..];
-
-        if part.len() >= target_len {
-            if &part[..target_len] == target {
-                result.extend(replace);
-                index += target_len;
-                continue
-            }
-        }
-
-        // No match; add the next byte
-        result.push(part[0]);
-
-        index += 1;
-    }
-
-    result
-}
 
 /// Replace bare subfield delimiter values with their escaped version.
 /// ```
@@ -65,7 +19,11 @@ pub fn replace_byte_sequence(source: &[u8], target: &[u8], replace: &[u8]) -> Ve
 /// assert_eq!(b"My money is {dollar}9.25 or {dollar}0.00", e.as_slice());
 /// ```
 pub fn escape_to_breaker(value: &[u8]) -> Vec<u8> {
-    replace_byte_sequence(value, MARC_BREAKER_SF_DELIMITER, MARC_BREAKER_SF_DELIMITER_ESCAPE)
+    util::replace_byte_sequence(
+        value,
+        MARC_BREAKER_SF_DELIMITER,
+        MARC_BREAKER_SF_DELIMITER_ESCAPE
+    )
 }
 
 /// Replace escaped subfield delimiter values with the bare version.
@@ -76,153 +34,156 @@ pub fn escape_to_breaker(value: &[u8]) -> Vec<u8> {
 /// assert_eq!(b"My money is $9.25 or $0.00", e.as_slice());
 /// ```
 pub fn unescape_from_breaker(value: &[u8]) -> Vec<u8> {
-    replace_byte_sequence(value, MARC_BREAKER_SF_DELIMITER_ESCAPE, MARC_BREAKER_SF_DELIMITER)
+    util::replace_byte_sequence(
+        value,
+        MARC_BREAKER_SF_DELIMITER_ESCAPE,
+        MARC_BREAKER_SF_DELIMITER
+    )
 }
 
-
-impl Controlfield {
+impl ControlField {
     pub fn to_breaker(&self) -> String {
         format!("={} {}",
-            self.tag,
-            String::from_utf8_lossy(&escape_to_breaker(&self.content))
+            String::from_utf8_lossy(self.tag().value()),
+            String::from_utf8_lossy(&escape_to_breaker(self.content()))
         )
     }
 }
-
 
 impl Subfield {
     pub fn to_breaker(&self) -> String {
         format!("{}{}{}",
             MARC_BREAKER_SF_DELIMITER_STR,
-            self.code as char,
-            String::from_utf8_lossy(&escape_to_breaker(&self.content))
+            self.code() as char,
+            String::from_utf8_lossy(&escape_to_breaker(self.content()))
         )
     }
 }
 
+
 impl Field {
     pub fn to_breaker(&self) -> String {
+        let ind1 = self.ind1() as char;
+        let ind2 = self.ind2() as char;
+
         let mut s = format!("={} {}{}",
-            self.tag,
-            if self.ind1 as char == ' ' { '\\' } else { self.ind1 as char },
-            if self.ind2 as char == ' ' { '\\' } else { self.ind2 as char },
+            String::from_utf8_lossy(self.tag().value()),
+            if ind1 == ' ' { '\\' } else { ind1 },
+            if ind2 == ' ' { '\\' } else { ind2 }
         );
-        for sf in &self.subfields {
-            s += sf.to_breaker().as_str();
+        for sf in self.subfields() {
+            s += &sf.to_breaker();
         }
 
         s
     }
 }
 
-
 impl Record {
     /// Creates the MARC Breaker representation of this record as a String.
     pub fn to_breaker(&self) -> String {
         let mut s = format!("=LDR {}", String::from_utf8_lossy(
-            &escape_to_breaker(self.leader.value().as_slice())));
+            &escape_to_breaker(self.leader().value())));
 
-        for cfield in &self.control_fields {
+        for cfield in self.control_fields() {
             s += &format!("\n{}", cfield.to_breaker());
         }
 
-        for field in &self.fields {
+        for field in self.fields() {
             s += &format!("\n{}", field.to_breaker());
         }
 
         s
     }
 
-
     /// Creates a new MARC Record from a MARC Breaker string.
     pub fn from_breaker(breaker: &str) -> Result<Self, String> {
-        let mut record = Record::new();
+        let mut record = Record::default();
 
         for line in breaker.lines() {
-            record.add_breaker_line(line)?;
+            record.add_breaker_line(line);
         }
 
         Ok(record)
     }
 
+
     /// Process one line of breaker text
-    fn add_breaker_line(&mut self, line: &str) -> Result<(), String> {
-        if line.len() == 0 {
-            return Ok(());
+    fn add_breaker_line(&mut self, line: &str) {
+        let line_bytes = line.as_bytes();
+        let mut len = line_bytes.len();
+
+        if len == 0 {
+            return;
         }
 
-        // skip the opening "="
-        let line = &line[1..];
-        let len = line.len();
+        // Skip the opening '='
+        let line_bytes = &line_bytes[1..];
+        len -= 1;
 
         if len < 3 {
-            // Skip invalid lines
-            return Ok(());
+            // Not enough content to do anything with.
+            return;
         }
 
-        let tag = &line[..3];
-
-        if tag.eq("LDR") {
+        let tag = &line_bytes[0..3];
+        if tag == b"LDR" {
             if len > 4 {
-                let leader: Leader = line[4..].try_into()?;
+                let mut leader = Leader::default();
+                leader.set_value(&line_bytes[4..]);
                 self.set_leader(leader);
             }
-            return Ok(());
+            return;
         }
 
         // There is a space between the tag and the 1st indicator.
-        let tag: Tag = tag.try_into()?;
+        let tag = Tag::from(&[tag[0], tag[1], tag[2]]);
 
-        if tag.is_control_field() {
-            let mut cf = Controlfield::new(tag, &[]);
+        if tag.is_control_tag() {
+            let mut cf = ControlField::new(tag, &[]);
             if len > 4 {
-                cf.set_content(unescape_from_breaker(&line[4..].as_bytes()).as_slice());
+                cf.set_content(unescape_from_breaker(&line_bytes[4..]).as_slice());
             }
-            self.control_fields.push(cf);
-            return Ok(());
+            self.control_fields_mut().push(cf);
+            return;
+        }
+
+        if !tag.is_data_tag() {
+            // Tag is something funk, not a LDR, control field or data field
+            // Ignore it.
+            return;
         }
 
         let mut field = Field::new(tag);
 
+        // index 3 is a space between the tag and first indicator.
+
         if len > 4 {
-            let ind = &line[4..5].replace("\\", " ");
-            let bytes = ind.as_bytes();
-            if bytes.len() > 1 {
-                // Can happen if an indicator is a non-ascii character.
-                return Err(format!("Invalid indicator bytes: {bytes:?}"));
-            }
-            field.set_ind1(bytes[0]);
+            let mut ind = line_bytes[4] as char;
+            if ind == '\\' { ind = ' '; }
+            field.set_ind1(ind as u8);
         }
 
         if len > 5 {
-            let ind = &line[5..6].replace("\\", " ");
-            let bytes = ind.as_bytes();
-            if bytes.len() > 1 {
-                // Can happen if an indicator is a non-ascii character.
-                return Err(format!("Invalid indicator bytes: {bytes:?}"));
-            }
-            field.set_ind2(bytes[0]);
+            let mut ind = line_bytes[5] as char;
+            if ind == '\\' { ind = ' '; }
+            field.set_ind2(ind as u8);
         }
 
         if len > 6 {
-            for sf in line[6..].split(MARC_BREAKER_SF_DELIMITER_STR) {
+
+            for sf in line_bytes[6..].split(|b| b == &MARC_BREAKER_SF_DELIMITER[0]) {
                 if sf.len() == 0 {
                     continue;
                 }
-                let bytes = &sf[..1].as_bytes();
-                if bytes.len() > 1 {
-                    return Err(format!("Invalid subfield code bytes: {bytes:?}"));
-                }
-                let mut subfield = Subfield::new(bytes[0], &[]);
+                let mut subfield = Subfield::new(sf[0], &[]);
                 if sf.len() > 1 {
-                    subfield.set_content(unescape_from_breaker(&sf[1..].as_bytes()).as_slice());
+                    subfield.set_content(unescape_from_breaker(&sf[1..]).as_slice());
                 }
-                field.subfields.push(subfield);
+                field.add_subfield(subfield);
             }
         }
 
-        self.fields.push(field);
-
-        Ok(())
+        self.fields_mut().push(field);
     }
 }
