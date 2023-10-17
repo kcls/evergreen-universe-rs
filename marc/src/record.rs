@@ -213,7 +213,7 @@ impl Field {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Record {
     pub leader: Leader,
     pub control_fields: Vec<Controlfield>,
@@ -241,12 +241,28 @@ impl Record {
             .collect()
     }
 
-    pub fn get_fields(&self, tag: &Tag) -> Vec<&Field> {
+    pub fn get_fields_by_tag(&self, tag: &Tag) -> Vec<&Field> {
         self.fields.iter().filter(|f| &f.tag == tag).collect()
     }
 
-    pub fn get_fields_mut(&mut self, tag: &Tag) -> Vec<&mut Field> {
+    pub fn get_fields_by_tag_mut(&mut self, tag: &Tag) -> Vec<&mut Field> {
         self.fields.iter_mut().filter(|f| &f.tag == tag).collect()
+    }
+
+    pub fn get_fields(&self, tag: &str) -> Vec<&Field> {
+        if let Ok(t) = Tag::try_from(tag) {
+            self.get_fields_by_tag(&t)
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn get_fields_mut(&mut self, tag: &str) -> Vec<&mut Field> {
+        if let Ok(t) = Tag::try_from(tag) {
+            self.get_fields_by_tag_mut(&t)
+        } else {
+            Vec::new()
+        }
     }
 
     /// Add a control field with data.
@@ -323,7 +339,7 @@ impl Record {
     /// Returns a list of values for the specified tag and subfield.
     pub fn get_values(&self, tag: &Tag, sfcode: u8) -> Vec<&[u8]> {
         let mut vec = Vec::new();
-        for field in self.get_fields(tag) {
+        for field in self.get_fields_by_tag(tag) {
             for sf in field.get_subfields(sfcode) {
                 vec.push(sf.content.as_slice())
             }

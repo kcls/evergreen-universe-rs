@@ -72,6 +72,8 @@ fn manual_record() {
 #[test]
 fn breaker_round_trip_one() {
     let record = Record::from_breaker(MARK_BREAKER).expect("Parse Breaker OK");
+
+    let field = record.get_fields("998").get(0).unwrap();
     let breaker = record.to_breaker();
     assert_eq!(MARK_BREAKER, breaker);
 }
