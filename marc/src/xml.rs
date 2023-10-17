@@ -319,7 +319,7 @@ impl Record {
         format(options.formatted, &mut xml, 2);
         xml += &format!(
             "<leader>{}</leader>",
-            &escape_xml(self.leader().to_string()?.as_str())
+            &escape_xml(self.leader().to_string().as_str())
         );
 
         // Control Fields
@@ -329,7 +329,7 @@ impl Record {
 
             xml += &format!(
                 r#"<controlfield tag="{}">{}</controlfield>"#,
-                escape_xml(&cfield.tag().to_string()?),
+                escape_xml(&cfield.tag().to_string()),
                 escape_xml(&cfield.content_string()?),
             );
         }
@@ -341,7 +341,7 @@ impl Record {
 
             xml += &format!(
                 r#"<datafield tag="{}" ind1="{}" ind2="{}">"#,
-                escape_xml(&field.tag().to_string()?),
+                escape_xml(&field.tag().to_string()),
                 escape_xml(&field.ind1_char().to_string()),
                 escape_xml(&field.ind2_char().to_string())
             );

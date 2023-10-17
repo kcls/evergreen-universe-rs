@@ -6,9 +6,6 @@ use crate::util;
 use crate::{ControlField, Field, Leader, Record, Subfield, Tag};
 
 impl Tag {
-    pub fn to_string(&self) -> Result<String, String> {
-        util::bytes_to_utf8(self.value())
-    }
     pub fn from_str(tag: &str) -> Result<Tag, String> {
         let tag_bytes = util::utf8_to_bytes(tag, Some(record::TAG_LEN))?;
         Ok(Tag::from(tag_bytes.as_slice()))
@@ -20,10 +17,6 @@ impl Leader {
         let bytes = util::utf8_to_bytes(leader, Some(record::LEADER_LEN))?;
         Ok(Leader::from(bytes.as_slice()))
     }
-
-    pub fn to_string(&self) -> Result<String, String> {
-        util::bytes_to_utf8(self.value())
-    }
 }
 
 impl ControlField {
@@ -31,10 +24,6 @@ impl ControlField {
         let tag = Tag::from_str(tag)?;
         let content_bytes = util::utf8_to_bytes(content, None)?;
         Ok(ControlField::new(tag, content_bytes.as_slice()))
-    }
-
-    pub fn tag_string(&self) -> Result<String, String> {
-        util::bytes_to_utf8(self.tag().value())
     }
 
     pub fn content_string(&self) -> Result<String, String> {
@@ -54,11 +43,6 @@ impl Subfield {
         let content = util::utf8_to_bytes(content, None)?;
         Ok(Subfield::new(code[0], content.as_slice()))
     }
-
-    pub fn code_string(&self) -> Result<String, String> {
-        util::bytes_to_utf8(&[self.code()])
-    }
-
     pub fn content_string(&self) -> Result<String, String> {
         util::bytes_to_utf8(self.content())
     }
@@ -113,5 +97,20 @@ impl Record {
             .iter()
             .filter(|f| f.tag() == &tag)
             .collect::<Vec<&Field>>())
+    }
+
+    pub fn get_value_strings(&self, tag: &str, subfield: &str) -> Result<Vec<String>, String> {
+        let tag = Tag::from_str(tag)?;
+        let code = util::utf8_to_bytes(subfield, Some(1))?[0];
+
+        let mut values = Vec::new();
+
+        for field in self.fields().iter().filter(|f| f.tag() == &tag) {
+            for sf in field.subfields().iter().filter(|sf| sf.code() == code) {
+                values.push(sf.content_string()?);
+            }
+        }
+
+        Ok(values)
     }
 }

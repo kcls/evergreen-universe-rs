@@ -24,15 +24,23 @@ impl Tag {
     pub fn is_data_tag(&self) -> bool {
         self.value[0] > U8_ZERO || self.value[1] > U8_ZERO
     }
+
+    /// Stringified Tag
+    /// Can convert directly to string w/o concern for utf8 conversion
+    /// since we're treating each byte as its own standalone character.
+    pub fn to_string(&self) -> String {
+        format!(
+            "{}{}{}",
+            self.value[0] as char,
+            self.value[1] as char,
+            self.value[2] as char
+        )
+    }
 }
 
 impl fmt::Display for Tag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}{}{}",
-            self.value[0] as char, self.value[1] as char, self.value[2] as char
-        )
+        write!(f, "{}", self.to_string())
     }
 }
 
@@ -88,6 +96,23 @@ impl Leader {
         for (idx, val) in value.iter().enumerate() {
             self.value[idx] = *val;
         }
+    }
+
+    /// Stringified Leader
+    /// Can convert directly to string w/o concern for utf8 conversion
+    /// since we're treating each byte as its own standalone character.
+    pub fn to_string(&self) -> String {
+        let mut s = String::new();
+        for i in 0..24 {
+            s += &format!("{}", self.char_at(i));
+        }
+        s
+    }
+}
+
+impl fmt::Display for Leader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
     }
 }
 
@@ -147,6 +172,9 @@ impl Subfield {
     }
     pub fn code_char(&self) -> char {
         self.code as char
+    }
+    pub fn code_string(&self) -> String {
+        format!("{}", self.code_char())
     }
     pub fn content(&self) -> &[u8] {
         self.content.as_slice()
@@ -209,6 +237,10 @@ impl Field {
         self.subfields.iter().filter(|s| s.code == code).next()
     }
 
+    pub fn first_subfield_mut(&mut self, code: u8) -> Option<&mut Subfield> {
+        self.subfields.iter_mut().filter(|s| s.code == code).next()
+    }
+
     pub fn add_subfield(&mut self, sf: Subfield) {
         self.subfields.push(sf);
     }
@@ -262,6 +294,10 @@ impl Record {
 
     pub fn first_field(&self, tag: Tag) -> Option<&Field> {
         self.fields.iter().filter(|f| f.tag == tag).next()
+    }
+
+    pub fn first_field_mut(&mut self, tag: Tag) -> Option<&mut Field> {
+        self.fields.iter_mut().filter(|f| f.tag == tag).next()
     }
 
     /// Remove the first occurrence of a field with the matching tag
