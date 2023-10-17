@@ -31,7 +31,7 @@ pub fn replace_byte_sequence(source: &[u8], target: &[u8], replace: &[u8]) -> Ve
             if &part[..target_len] == target {
                 result.extend(replace);
                 index += target_len;
-                continue
+                continue;
             }
         }
 
@@ -59,4 +59,18 @@ pub fn utf8_to_bytes(s: &str, length: Option<usize>) -> Result<Vec<u8>, String> 
         }
     }
     Ok(bytes.to_vec())
+}
+
+/// bytes => String => usize
+/// TODO do this without the intermediate String
+pub fn bytes_to_usize(bytes: &[u8]) -> Result<usize, String> {
+    match std::str::from_utf8(&bytes) {
+        Ok(bytes_str) => match bytes_str.parse::<usize>() {
+            Ok(num) => Ok(num),
+            Err(e) => Err(format!(
+                "Error translating string to usize str={bytes_str} {e}"
+            )),
+        },
+        Err(e) => Err(format!("Error translating bytes to string: {bytes:?} {e}")),
+    }
 }

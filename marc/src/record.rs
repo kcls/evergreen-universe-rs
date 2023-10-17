@@ -1,3 +1,5 @@
+use std::fmt;
+
 pub const U8_ZERO: u8 = '0' as u8;
 pub const U8_SPACE: u8 = ' ' as u8;
 
@@ -11,9 +13,7 @@ pub struct Tag {
 
 impl Tag {
     pub fn new(value: &[u8; TAG_LEN]) -> Tag {
-        Tag {
-            value: *value
-        }
+        Tag { value: *value }
     }
     pub fn value(&self) -> &[u8; TAG_LEN] {
         &self.value
@@ -23,6 +23,16 @@ impl Tag {
     }
     pub fn is_data_tag(&self) -> bool {
         self.value[0] > U8_ZERO || self.value[1] > U8_ZERO
+    }
+}
+
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}{}{}",
+            self.value[0] as char, self.value[1] as char, self.value[2] as char
+        )
     }
 }
 
@@ -51,9 +61,7 @@ pub struct Leader {
 
 impl Leader {
     pub fn new(bytes: [u8; LEADER_LEN]) -> Leader {
-        Leader {
-            value: bytes
-        }
+        Leader { value: bytes }
     }
     pub fn default() -> Leader {
         Leader {
@@ -96,8 +104,6 @@ impl From<&[u8]> for Leader {
     }
 }
 
-
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlField {
     tag: Tag,
@@ -123,7 +129,7 @@ impl ControlField {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Subfield {
     code: u8,
     content: Vec<u8>,
@@ -151,12 +157,12 @@ impl Subfield {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     tag: Tag,
     ind1: u8,
     ind2: u8,
-    subfields: Vec<Subfield>
+    subfields: Vec<Subfield>,
 }
 
 impl Field {
@@ -165,7 +171,7 @@ impl Field {
             tag,
             ind1: U8_SPACE,
             ind2: U8_SPACE,
-            subfields: Vec::new()
+            subfields: Vec::new(),
         }
     }
     pub fn subfields(&self) -> &[Subfield] {
@@ -215,7 +221,7 @@ impl Field {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Record {
     leader: Leader,
     control_fields: Vec<ControlField>,
@@ -276,7 +282,7 @@ impl Record {
                 self.fields.remove(pos);
                 removed += 1;
             } else {
-                break
+                break;
             }
         }
         removed
@@ -298,4 +304,3 @@ impl Record {
         };
     }
 }
-

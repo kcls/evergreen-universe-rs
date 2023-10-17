@@ -1,9 +1,9 @@
+use crate::record;
+use crate::util;
 /// Adds string-based getter and setter functions for ease of use.
 /// The cost of this convenience is greater RAM/CPU consumption,
 /// since the data are crosswalked to/from byte arrays.
-use crate::{Tag, Leader, Subfield, ControlField, Field, Record};
-use crate::util;
-use crate::record;
+use crate::{ControlField, Field, Leader, Record, Subfield, Tag};
 
 impl Tag {
     pub fn to_string(&self) -> Result<String, String> {
@@ -25,7 +25,6 @@ impl Leader {
         util::bytes_to_utf8(self.value())
     }
 }
-
 
 impl ControlField {
     pub fn from_strs(tag: &str, content: &str) -> Result<ControlField, String> {
@@ -78,13 +77,21 @@ impl Field {
         Ok(self.set_ind2(util::utf8_to_bytes(ind, Some(1))?[0]))
     }
 
+    pub fn first_subfield_from_str(&self, code: &str) -> Result<Option<&Subfield>, String> {
+        let code = util::utf8_to_bytes(code, Some(1))?[0];
+        Ok(self
+            .subfields()
+            .iter()
+            .filter(|sf| sf.code() == code)
+            .next())
+    }
+
     pub fn from_strs(
         tag: &str,
         ind1: &str,
         ind2: &str,
-        subfields: &[(&str, &str)]
+        subfields: &[(&str, &str)],
     ) -> Result<Field, String> {
-
         let mut field = Field::new(Tag::from_str(tag)?);
 
         field.set_ind1(util::utf8_to_bytes(ind1, Some(1))?[0]);
@@ -101,9 +108,10 @@ impl Field {
 impl Record {
     pub fn fields_from_str(&self, tag: &str) -> Result<Vec<&Field>, String> {
         let tag = Tag::from_str(tag)?;
-        Ok(self.fields().iter().filter(|f| f.tag() == &tag).collect::<Vec<&Field>>())
+        Ok(self
+            .fields()
+            .iter()
+            .filter(|f| f.tag() == &tag)
+            .collect::<Vec<&Field>>())
     }
 }
-
-
-

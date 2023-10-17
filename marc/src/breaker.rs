@@ -1,9 +1,9 @@
+use super::util;
 /// Extend marc::Record and its components with tools for reading/writing
 /// MARC breaker text.
 ///
 /// Breaker text is assumed to be UTF8.
-use super::{Tag, Leader, Subfield, Field, ControlField, Record};
-use super::util;
+use super::{ControlField, Field, Leader, Record, Subfield, Tag};
 
 // b"$"
 pub const MARC_BREAKER_SF_DELIMITER_STR: &str = "$";
@@ -22,7 +22,7 @@ pub fn escape_to_breaker(value: &[u8]) -> Vec<u8> {
     util::replace_byte_sequence(
         value,
         MARC_BREAKER_SF_DELIMITER,
-        MARC_BREAKER_SF_DELIMITER_ESCAPE
+        MARC_BREAKER_SF_DELIMITER_ESCAPE,
     )
 }
 
@@ -37,13 +37,14 @@ pub fn unescape_from_breaker(value: &[u8]) -> Vec<u8> {
     util::replace_byte_sequence(
         value,
         MARC_BREAKER_SF_DELIMITER_ESCAPE,
-        MARC_BREAKER_SF_DELIMITER
+        MARC_BREAKER_SF_DELIMITER,
     )
 }
 
 impl ControlField {
     pub fn to_breaker(&self) -> String {
-        format!("={} {}",
+        format!(
+            "={} {}",
             String::from_utf8_lossy(self.tag().value()),
             String::from_utf8_lossy(&escape_to_breaker(self.content()))
         )
@@ -52,7 +53,8 @@ impl ControlField {
 
 impl Subfield {
     pub fn to_breaker(&self) -> String {
-        format!("{}{}{}",
+        format!(
+            "{}{}{}",
             MARC_BREAKER_SF_DELIMITER_STR,
             self.code() as char,
             String::from_utf8_lossy(&escape_to_breaker(self.content()))
@@ -60,13 +62,13 @@ impl Subfield {
     }
 }
 
-
 impl Field {
     pub fn to_breaker(&self) -> String {
         let ind1 = self.ind1() as char;
         let ind2 = self.ind2() as char;
 
-        let mut s = format!("={} {}{}",
+        let mut s = format!(
+            "={} {}{}",
             String::from_utf8_lossy(self.tag().value()),
             if ind1 == ' ' { '\\' } else { ind1 },
             if ind2 == ' ' { '\\' } else { ind2 }
@@ -82,8 +84,10 @@ impl Field {
 impl Record {
     /// Creates the MARC Breaker representation of this record as a String.
     pub fn to_breaker(&self) -> String {
-        let mut s = format!("=LDR {}", String::from_utf8_lossy(
-            &escape_to_breaker(self.leader().value())));
+        let mut s = format!(
+            "=LDR {}",
+            String::from_utf8_lossy(&escape_to_breaker(self.leader().value()))
+        );
 
         for cfield in self.control_fields() {
             s += &format!("\n{}", cfield.to_breaker());
@@ -106,7 +110,6 @@ impl Record {
 
         Ok(record)
     }
-
 
     /// Process one line of breaker text
     fn add_breaker_line(&mut self, line: &str) {
@@ -162,18 +165,21 @@ impl Record {
 
         if len > 4 {
             let mut ind = line_bytes[4] as char;
-            if ind == '\\' { ind = ' '; }
+            if ind == '\\' {
+                ind = ' ';
+            }
             field.set_ind1(ind as u8);
         }
 
         if len > 5 {
             let mut ind = line_bytes[5] as char;
-            if ind == '\\' { ind = ' '; }
+            if ind == '\\' {
+                ind = ' ';
+            }
             field.set_ind2(ind as u8);
         }
 
         if len > 6 {
-
             for sf in line_bytes[6..].split(|b| b == &MARC_BREAKER_SF_DELIMITER[0]) {
                 if sf.len() == 0 {
                     continue;

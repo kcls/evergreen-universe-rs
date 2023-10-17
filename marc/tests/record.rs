@@ -1,8 +1,8 @@
-use marc::Tag;
-use marc::Leader;
 use marc::ControlField;
 use marc::Field;
+use marc::Leader;
 use marc::Record;
+use marc::Tag;
 
 // Avoiding newlines / formatting for testing purposes.
 const MARC_XML: &str = r#"<?xml version="1.0"?><record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd"><leader>07649cim a2200913 i 4500</leader><controlfield tag="001">233</controlfield><controlfield tag="003">CONS</controlfield><controlfield tag="005">20140128084328.0</controlfield><controlfield tag="008">140128s2013    nyuopk|zqdefhi n  | ita d</controlfield><datafield tag="010" ind1=" " ind2=" "><subfield code="a">  2013565186</subfield></datafield><datafield tag="020" ind1=" " ind2=" "><subfield code="a">9781480328532</subfield></datafield><datafield tag="020" ind1=" " ind2=" "><subfield code="a">1480328537</subfield></datafield><datafield tag="024" ind1="1" ind2=" "><subfield code="a">884088883249</subfield></datafield><datafield tag="028" ind1="3" ind2="2"><subfield code="a">HL50498721</subfield><subfield code="b">Hal Leonard</subfield><subfield code="q">(bk.)</subfield></datafield></record>"#;
@@ -51,8 +51,6 @@ const MARK_BREAKER: &str = r#"=LDR 02675cam a2200481Ii 4500
 =994 \\$aC0$bNTG
 =901 \\$a1705072$b$c1705072$tbiblio$soclc"#;
 
-
-
 #[test]
 fn manual_record() {
     let mut record = Record::default();
@@ -65,7 +63,7 @@ fn manual_record() {
 
     field.add_subfield_data(&[
         (b'a', b"Harry Potter".as_slice()),
-        (b'b', b"So Many Wizards".as_slice())
+        (b'b', b"So Many Wizards".as_slice()),
     ]);
 
     record.insert_field(field);
@@ -91,7 +89,9 @@ fn breaker_round_trip() {
 
 #[test]
 fn xml_round_trip() {
-    let record = Record::from_xml(MARC_XML).next().expect("Parsed an XML record");
+    let record = Record::from_xml(MARC_XML)
+        .next()
+        .expect("Parsed an XML record");
 
     let xml = record.to_xml().unwrap();
 
@@ -100,10 +100,45 @@ fn xml_round_trip() {
 
 #[test]
 fn xml_breaker_round_trip() {
-    let record = Record::from_xml(MARC_XML).next().expect("Parsed an XML record");
-    let breaker = record.to_breaker();
-    let record = Record::from_breaker(&breaker).expect("Parsed Breaker");
-    let xml = record.to_xml().expect("Generated some XML");
+    let record1 = Record::from_xml(MARC_XML)
+        .next()
+        .expect("Parsed an XML record");
+    let breaker1 = record1.to_breaker();
+
+    let record2 = Record::from_breaker(&breaker1).expect("Parsed Breaker");
+    let breaker2 = record2.to_breaker();
+
+    assert_eq!(record1, record2);
+
+    assert_eq!(breaker1, breaker2);
+
+    let xml = record2.to_xml().expect("Generated some XML");
 
     assert_eq!(MARC_XML, xml);
+}
+
+#[test]
+fn binary() {
+    let src_bytes = MARC_BINARY.as_bytes().to_vec();
+
+    let record = Record::from_binary(&src_bytes).expect("Parse from binary");
+
+    let field = record
+        .fields_from_str("100")
+        .expect("Sane tag")
+        .pop()
+        .expect("Has a 100");
+    let sf = field
+        .first_subfield_from_str("a")
+        .expect("Sane code")
+        .expect("Has sf a");
+
+    assert_eq!(
+        sf.content_string().expect("utf8 content").as_str(),
+        "Handel, George Frideric, 1685-1759."
+    );
+
+    let bytes = record.to_binary().expect("Create binary");
+
+    assert_eq!(src_bytes, bytes);
 }

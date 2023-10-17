@@ -5,10 +5,10 @@ use xml::attribute::OwnedAttribute;
 use xml::reader::{EventReader, XmlEvent};
 
 use crate::ControlField;
-use crate::Subfield;
 use crate::Field;
 use crate::Leader;
 use crate::Record;
+use crate::Subfield;
 
 const MARCXML_NAMESPACE: &str = "http://www.loc.gov/MARC21/slim";
 const MARCXML_XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance";
@@ -41,7 +41,6 @@ pub fn escape_xml(value: &str) -> String {
     buf
 }
 
-
 fn format(formatted: bool, value: &mut String, depth: u8) {
     if formatted {
         value.push_str("\n");
@@ -50,7 +49,6 @@ fn format(formatted: bool, value: &mut String, depth: u8) {
         }
     }
 }
-
 
 pub struct XmlOptions {
     pub formatted: bool,
@@ -246,7 +244,9 @@ impl XmlRecordIterator {
                 for attr in attributes {
                     if attr.name.local_name.eq("code") {
                         context.in_subfield = true;
-                        field.subfields_mut().push(Subfield::from_strs(&attr.value, "")?);
+                        field
+                            .subfields_mut()
+                            .push(Subfield::from_strs(&attr.value, "")?);
                         break;
                     }
                 }
@@ -317,7 +317,10 @@ impl Record {
         // Leader
 
         format(options.formatted, &mut xml, 2);
-        xml += &format!("<leader>{}</leader>", &escape_xml(self.leader().to_string()?.as_str()));
+        xml += &format!(
+            "<leader>{}</leader>",
+            &escape_xml(self.leader().to_string()?.as_str())
+        );
 
         // Control Fields
 
