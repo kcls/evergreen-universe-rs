@@ -1,7 +1,8 @@
-use marc::ControlField;
+use marc::Controlfield;
 use marc::Field;
 use marc::Leader;
 use marc::Record;
+use marc::Subfield;
 
 // Avoiding newlines / formatting for testing purposes.
 const MARC_XML: &str = r#"<?xml version="1.0"?><record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd"><leader>07649cim a2200913 i 4500</leader><controlfield tag="001">233</controlfield><controlfield tag="003">CONS</controlfield><controlfield tag="005">20140128084328.0</controlfield><controlfield tag="008">140128s2013    nyuopk|zqdefhi n  | ita d</controlfield><datafield tag="010" ind1=" " ind2=" "><subfield code="a">  2013565186</subfield></datafield><datafield tag="020" ind1=" " ind2=" "><subfield code="a">9781480328532</subfield></datafield><datafield tag="020" ind1=" " ind2=" "><subfield code="a">1480328537</subfield></datafield><datafield tag="024" ind1="1" ind2=" "><subfield code="a">884088883249</subfield></datafield><datafield tag="028" ind1="3" ind2="2"><subfield code="a">HL50498721</subfield><subfield code="b">Hal Leonard</subfield><subfield code="q">(bk.)</subfield></datafield></record>"#;
@@ -54,10 +55,10 @@ const MARK_BREAKER: &str = r#"=LDR 02675cam a2200481Ii 4500
 fn manual_record() {
     let mut record = Record::default();
 
-    let cf = ControlField::new(b"001".into(), b"MyMagicNumber");
+    let cf = Controlfield::new(b"001", b"MyMagicNumber");
     record.insert_control_field(cf);
 
-    let mut field = Field::new(b"245".into());
+    let mut field = Field::new(b"245");
     field.set_ind1(b'1');
 
     field.add_subfield_data(&[
@@ -67,8 +68,14 @@ fn manual_record() {
 
     record.insert_field(field);
 
-    let field = record.first_field(b"245".into()).expect("We have a field");
-    let sf = field.first_subfield(b'a').expect("We have a subfield");
+    let field = record
+        .matching_fields(b"245")
+        .pop()
+        .expect("We have a field");
+    let sf = field
+        .matching_subfields(b'a')
+        .pop()
+        .expect("We have a subfield");
 
     assert_eq!(sf.content(), b"Harry Potter".as_slice());
 }
@@ -77,8 +84,11 @@ fn manual_record() {
 fn breaker_round_trip() {
     let record = Record::from_breaker(MARK_BREAKER).expect("Parse Breaker OK");
 
-    let field = record.first_field(b"998".into()).expect("Has a field");
-    let sf = field.first_subfield(b'd').expect("Has a subfield");
+    let field = record.matching_fields(b"998").pop().expect("Has a field");
+    let sf = field
+        .matching_subfields(b'd')
+        .pop()
+        .expect("Has a subfield");
 
     assert_eq!(sf.content(), b"a");
 
@@ -121,16 +131,8 @@ fn binary() {
     let src_bytes = MARC_BINARY.as_bytes().to_vec();
 
     let record = Record::from_binary(&src_bytes).expect("Parse from binary");
-
-    let field = record
-        .fields_from_str("100")
-        .expect("Sane tag")
-        .pop()
-        .expect("Has a 100");
-    let sf = field
-        .first_subfield_from_str("a")
-        .expect("Sane code")
-        .expect("Has sf a");
+    let field = record.matching_fields(b"100").pop().unwrap();
+    let sf = field.matching_subfields(b'a').pop().unwrap();
 
     assert_eq!(
         sf.content_string().expect("utf8 content").as_str(),
@@ -173,16 +175,77 @@ fn set_values() {
     let mut record = Record::from_xml(MARC_XML).next().unwrap();
 
     let breaker1 = record.to_breaker();
-    let field = &mut record.first_field_mut(b"028".into()).unwrap();
-    let sf = &mut field.first_subfield_mut(b'a').unwrap();
+    let field = record.matching_fields_mut(b"028").pop().expect("has 028");
+    let sf = field
+        .matching_subfields_mut(b'a')
+        .pop()
+        .expect("Has subfield a");
 
     sf.set_content(v.as_bytes());
+    let value = record.values(b"028", b'a').pop().expect("Has a value");
 
-    //let w = record.get_value_strings("028", "a")?.get(0).expect("we have an 028");
-    let values =  record.get_value_strings("028", "a").expect("Sane inputs");
-    let w = &values[0];
-    assert_eq!(v, w);
+    assert_eq!(v.as_bytes(), value);
 
     let breaker2 = record.to_breaker();
     assert_ne!(breaker1, breaker2);
+}
+
+#[test]
+fn delete_values() {
+    let mut record = Record::from_xml(MARC_XML).next().unwrap();
+    let field = record.matching_fields_mut(b"028").pop().unwrap();
+    assert_eq!(field.subfields().len(), 3);
+
+    field.remove_subfields(b'a');
+
+    assert_eq!(field.subfields().len(), 2);
+}
+
+#[test]
+fn delete_fields() {
+    let mut record = Record::from_xml(MARC_XML).next().unwrap();
+
+    let mut field = Field::new(b"200");
+    field.add_subfield(Subfield::new(b'a', b"baz"));
+    record.insert_field(field);
+
+    let mut field = Field::new(b"200");
+    field.add_subfield(Subfield::new(b'a', b"foo"));
+    record.insert_field(field);
+
+    let mut field = Field::new(b"200");
+    field.add_subfield(Subfield::new(b'a', b"xxxadf"));
+    record.insert_field(field);
+
+    assert_eq!(record.matching_fields(b"200").len(), 3);
+
+    record.remove_fields(b"200");
+
+    assert_eq!(record.matching_fields(b"200").len(), 0);
+}
+
+#[test]
+fn now_with_strings() {
+    let mut record = Record::default();
+
+    let cf = Controlfield::from_strs("001", "MyMagicNumber").unwrap();
+    record.insert_control_field(cf);
+
+    let field = Field::from_strs(
+        "245",
+        " ",
+        "1",
+        &[("a", "Harry Potter"), ("b", "So Many Wizards")],
+    )
+    .unwrap();
+
+    record.insert_field(field);
+
+    let value = record.value_strings("245", "a").unwrap().pop().unwrap();
+
+    assert_eq!(value, "Harry Potter");
+
+    let value_bytes = record.values(b"245", b'a').pop().expect("Has a value");
+
+    assert_eq!(value_bytes, value.as_bytes());
 }

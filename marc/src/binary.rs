@@ -1,6 +1,6 @@
 use crate::record;
 use crate::util;
-use crate::{ControlField, Field, Leader, Record, Subfield, Tag};
+use crate::{Controlfield, Field, Leader, Record, Subfield, Tag};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -86,7 +86,8 @@ impl DirectoryEntry {
         let end = start + DIRECTORY_ENTRY_LEN;
         let entry = &dir_bytes[start..end];
 
-        let tag: Tag = entry[0..3].into(); // known size
+        let tag = Tag::new(&[entry[0], entry[1], entry[2]]);
+
         let field_len = util::bytes_to_usize(&entry[3..7])?;
 
         // Where does this field start in the record as a whole
@@ -151,7 +152,9 @@ impl Record {
             return Err(format!("Invalid leader length: {leader_bytes:?}"));
         }
 
-        record.set_leader(Leader::from(leader_bytes));
+        let mut lb: [u8; record::LEADER_LEN] = [0; record::LEADER_LEN];
+        lb.clone_from_slice(leader_bytes);
+        record.set_leader(Leader::new(lb));
 
         // Where in this pile of bytes do the control/data fields tart.
         let data_offset_bytes =
@@ -211,7 +214,7 @@ impl Record {
 
         if dir_entry.tag.is_control_tag() {
             // Control field
-            let mut cf = ControlField::new(dir_entry.tag.clone(), &[]);
+            let mut cf = Controlfield::new(dir_entry.tag.clone(), &[]);
             if field_bytes.len() > 0 {
                 cf.set_content(&field_bytes);
             }

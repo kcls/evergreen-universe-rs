@@ -4,7 +4,9 @@ use std::io::Cursor;
 use xml::attribute::OwnedAttribute;
 use xml::reader::{EventReader, XmlEvent};
 
-use crate::ControlField;
+use crate::record;
+use crate::util;
+use crate::Controlfield;
 use crate::Field;
 use crate::Leader;
 use crate::Record;
@@ -203,10 +205,10 @@ impl XmlRecordIterator {
                 {
                     record
                         .control_fields_mut()
-                        .push(ControlField::from_strs(&t.value, "")?);
+                        .push(Controlfield::from_strs(&t.value, "")?);
                     context.in_cfield = true;
                 } else {
-                    return Err(format!("ControlField has no tag"));
+                    return Err(format!("Controlfield has no tag"));
                 }
             }
 
@@ -216,7 +218,11 @@ impl XmlRecordIterator {
                     .filter(|a| a.name.local_name.eq("tag"))
                     .next()
                 {
-                    Some(attr) => Field::from_tag_str(&attr.value)?,
+                    Some(attr) => {
+                        let mut bytes: [u8; record::TAG_LEN] = [0; record::TAG_LEN];
+                        bytes.copy_from_slice(attr.value.as_bytes());
+                        Field::new(bytes)
+                    }
                     None => {
                         return Err(format!("Data field has no tag"));
                     }
@@ -224,8 +230,14 @@ impl XmlRecordIterator {
 
                 for attr in attributes {
                     match attr.name.local_name.as_str() {
-                        "ind1" => field.set_ind1_from_str(&attr.value)?,
-                        "ind2" => field.set_ind2_from_str(&attr.value)?,
+                        "ind1" => {
+                            let b = util::utf8_to_bytes(&attr.value, Some(1))?;
+                            field.set_ind1(b[0]);
+                        }
+                        "ind2" => {
+                            let b = util::utf8_to_bytes(&attr.value, Some(1))?;
+                            field.set_ind2(b[0]);
+                        }
                         _ => {}
                     }
                 }

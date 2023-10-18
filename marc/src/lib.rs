@@ -1,4 +1,4 @@
-pub use self::record::ControlField;
+pub use self::record::Controlfield;
 pub use self::record::Field;
 pub use self::record::Leader;
 pub use self::record::Record;

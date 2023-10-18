@@ -1,4 +1,15 @@
 use std::fmt;
+/// MARC Record and components
+///
+/// Assumptions:
+///
+/// Tag, Leader, indicator, and subfield code values are assumed to be
+/// ASCII bytes.  If not, and the values are stringified (e.g. writing
+/// to breaker, xml, terminal, etc.), the output will be garbled.
+///
+/// Subfield & Controlfield content strings are not assumed to be
+/// anything, except in the utf8 module which treats them as utf8
+/// strings.
 
 pub const U8_ZERO: u8 = '0' as u8;
 pub const U8_SPACE: u8 = ' ' as u8;
@@ -25,15 +36,11 @@ impl Tag {
         self.value[0] > U8_ZERO || self.value[1] > U8_ZERO
     }
 
-    /// Stringified Tag
-    /// Can convert directly to string w/o concern for utf8 conversion
-    /// since we're treating each byte as its own standalone character.
+    /// Stringified Tag.  Assumes ASCII bytes.
     pub fn to_string(&self) -> String {
         format!(
             "{}{}{}",
-            self.value[0] as char,
-            self.value[1] as char,
-            self.value[2] as char
+            self.value[0] as char, self.value[1] as char, self.value[2] as char
         )
     }
 }
@@ -50,15 +57,15 @@ impl From<&[u8; TAG_LEN]> for Tag {
     }
 }
 
-/// Translate a byte slice into a Tag.
-/// Panics if the slice is the wrong length
-impl From<&[u8]> for Tag {
-    fn from(value: &[u8]) -> Tag {
-        if value.len() != TAG_LEN {
-            panic!("Invalid slice for tag: {value:?}");
-        }
-        let v = [value[0], value[1], value[2]];
-        Tag::new(&v)
+impl From<[u8; TAG_LEN]> for Tag {
+    fn from(value: [u8; TAG_LEN]) -> Tag {
+        Tag { value }
+    }
+}
+
+impl From<&Tag> for Tag {
+    fn from(t: &Tag) -> Tag {
+        t.clone()
     }
 }
 
@@ -98,9 +105,7 @@ impl Leader {
         }
     }
 
-    /// Stringified Leader
-    /// Can convert directly to string w/o concern for utf8 conversion
-    /// since we're treating each byte as its own standalone character.
+    /// Stringified leader.  Assumes ASCII bytes.
     pub fn to_string(&self) -> String {
         let mut s = String::new();
         for i in 0..24 {
@@ -116,28 +121,19 @@ impl fmt::Display for Leader {
     }
 }
 
-/// Translate a byte slice into a Leader.
-/// Panics if the slice is the wrong length
-impl From<&[u8]> for Leader {
-    fn from(value: &[u8]) -> Leader {
-        if value.len() != LEADER_LEN {
-            panic!("Invalid slice for leader: {value:?}");
-        }
-        let mut leader = Leader::default();
-        leader.set_value(value);
-        leader
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
-pub struct ControlField {
+pub struct Controlfield {
     tag: Tag,
     content: Vec<u8>,
 }
 
-impl ControlField {
-    pub fn new(tag: Tag, content: &[u8]) -> ControlField {
-        ControlField {
+impl Controlfield {
+    pub fn new<T>(tag: T, content: &[u8]) -> Controlfield
+    where
+        T: Into<Tag>,
+    {
+        let tag = tag.into();
+        Controlfield {
             tag,
             content: content.to_vec(),
         }
@@ -194,7 +190,11 @@ pub struct Field {
 }
 
 impl Field {
-    pub fn new(tag: Tag) -> Field {
+    pub fn new<T>(tag: T) -> Field
+    where
+        T: Into<Tag>,
+    {
+        let tag = tag.into();
         Field {
             tag,
             ind1: U8_SPACE,
@@ -233,12 +233,15 @@ impl Field {
         self.ind2 = ind;
     }
 
-    pub fn first_subfield(&self, code: u8) -> Option<&Subfield> {
-        self.subfields.iter().filter(|s| s.code == code).next()
+    pub fn matching_subfields(&self, code: u8) -> Vec<&Subfield> {
+        self.subfields.iter().filter(|s| s.code == code).collect()
     }
 
-    pub fn first_subfield_mut(&mut self, code: u8) -> Option<&mut Subfield> {
-        self.subfields.iter_mut().filter(|s| s.code == code).next()
+    pub fn matching_subfields_mut(&mut self, code: u8) -> Vec<&mut Subfield> {
+        self.subfields
+            .iter_mut()
+            .filter(|s| s.code == code)
+            .collect()
     }
 
     pub fn add_subfield(&mut self, sf: Subfield) {
@@ -251,12 +254,23 @@ impl Field {
             self.add_subfield(Subfield::new(*code, content));
         }
     }
+
+    /// Remove all occurrences of subfields with the provided code.
+    pub fn remove_subfields(&mut self, code: u8) {
+        loop {
+            if let Some(pos) = self.subfields.iter().position(|sf| sf.code == code) {
+                self.subfields.remove(pos);
+            } else {
+                return;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Record {
     leader: Leader,
-    control_fields: Vec<ControlField>,
+    control_fields: Vec<Controlfield>,
     fields: Vec<Field>,
 }
 
@@ -278,10 +292,10 @@ impl Record {
         self.leader = leader;
     }
 
-    pub fn control_fields(&self) -> &[ControlField] {
+    pub fn control_fields(&self) -> &[Controlfield] {
         self.control_fields.as_slice()
     }
-    pub fn control_fields_mut(&mut self) -> &mut Vec<ControlField> {
+    pub fn control_fields_mut(&mut self) -> &mut Vec<Controlfield> {
         &mut self.control_fields
     }
 
@@ -292,40 +306,39 @@ impl Record {
         &mut self.fields
     }
 
-    pub fn first_field(&self, tag: Tag) -> Option<&Field> {
-        self.fields.iter().filter(|f| f.tag == tag).next()
+    pub fn matching_fields<T>(&self, tag: T) -> Vec<&Field>
+    where
+        T: Into<Tag>,
+    {
+        let tag = tag.into();
+        self.fields.iter().filter(|f| f.tag == tag).collect()
     }
 
-    pub fn first_field_mut(&mut self, tag: Tag) -> Option<&mut Field> {
-        self.fields.iter_mut().filter(|f| f.tag == tag).next()
+    pub fn matching_fields_mut<T>(&mut self, tag: T) -> Vec<&mut Field>
+    where
+        T: Into<Tag>,
+    {
+        let tag = tag.into();
+        self.fields.iter_mut().filter(|f| f.tag == tag).collect()
     }
 
-    /// Remove the first occurrence of a field with the matching tag
-    /// and return the Field.
-    pub fn remove_first_field(&mut self, tag: Tag) -> Option<Field> {
-        if let Some(pos) = self.fields.iter().position(|f| f.tag == tag) {
-            self.fields.remove(pos);
-        }
-        None
-    }
-
-    /// Remove all occurrences of fields with the provided tag and
-    /// return the number of fields removed.
-    pub fn remove_fields(&mut self, tag: Tag) -> u64 {
-        let mut removed = 0;
+    /// Remove all occurrences of fields with the provided tag.
+    pub fn remove_fields<T>(&mut self, tag: T)
+    where
+        T: Into<Tag>,
+    {
+        let tag = tag.into();
         loop {
             if let Some(pos) = self.fields.iter().position(|f| f.tag == tag) {
                 self.fields.remove(pos);
-                removed += 1;
             } else {
-                break;
+                return;
             }
         }
-        removed
     }
 
     /// Insert a new control field in tag order
-    pub fn insert_control_field(&mut self, field: ControlField) {
+    pub fn insert_control_field(&mut self, field: Controlfield) {
         match self.control_fields.iter().position(|f| f.tag == field.tag) {
             Some(idx) => self.control_fields.insert(idx, field),
             None => self.control_fields.push(field),
@@ -338,5 +351,26 @@ impl Record {
             Some(idx) => self.fields.insert(idx, field),
             None => self.fields.push(field),
         };
+    }
+
+    /// Returns all values for fields with the provided tag and subfield.
+    pub fn values<T>(&self, tag: T, sfcode: u8) -> Vec<&[u8]>
+    where
+        T: Into<Tag>,
+    {
+        let tag = tag.into();
+        let mut values = Vec::new();
+
+        for field in self.fields() {
+            if field.tag == tag {
+                for sf in field.subfields() {
+                    if sf.code() == sfcode {
+                        values.push(sf.content());
+                    }
+                }
+            }
+        }
+
+        values
     }
 }

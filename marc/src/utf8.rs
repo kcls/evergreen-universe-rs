@@ -1,29 +1,32 @@
 use crate::record;
 use crate::util;
+use crate::{Controlfield, Field, Leader, Record, Subfield, Tag};
+
 /// Adds string-based getter and setter functions for ease of use.
 /// The cost of this convenience is greater RAM/CPU consumption,
-/// since the data are crosswalked to/from byte arrays.
-use crate::{ControlField, Field, Leader, Record, Subfield, Tag};
+/// since the data are crosswalked to/from bytes
 
 impl Tag {
     pub fn from_str(tag: &str) -> Result<Tag, String> {
         let tag_bytes = util::utf8_to_bytes(tag, Some(record::TAG_LEN))?;
-        Ok(Tag::from(tag_bytes.as_slice()))
+        Ok(Tag::new(&[tag_bytes[0], tag_bytes[1], tag_bytes[2]]))
     }
 }
 
 impl Leader {
     pub fn from_str(leader: &str) -> Result<Leader, String> {
         let bytes = util::utf8_to_bytes(leader, Some(record::LEADER_LEN))?;
-        Ok(Leader::from(bytes.as_slice()))
+        let mut lb: [u8; record::LEADER_LEN] = [0; record::LEADER_LEN];
+        lb.clone_from_slice(bytes.as_slice());
+        Ok(Leader::new(lb))
     }
 }
 
-impl ControlField {
-    pub fn from_strs(tag: &str, content: &str) -> Result<ControlField, String> {
+impl Controlfield {
+    pub fn from_strs(tag: &str, content: &str) -> Result<Controlfield, String> {
         let tag = Tag::from_str(tag)?;
         let content_bytes = util::utf8_to_bytes(content, None)?;
-        Ok(ControlField::new(tag, content_bytes.as_slice()))
+        Ok(Controlfield::new(tag, content_bytes.as_slice()))
     }
 
     pub fn content_string(&self) -> Result<String, String> {
@@ -49,27 +52,6 @@ impl Subfield {
 }
 
 impl Field {
-    pub fn from_tag_str(tag: &str) -> Result<Field, String> {
-        Ok(Field::new(Tag::from_str(tag)?))
-    }
-
-    pub fn set_ind1_from_str(&mut self, ind: &str) -> Result<(), String> {
-        Ok(self.set_ind1(util::utf8_to_bytes(ind, Some(1))?[0]))
-    }
-
-    pub fn set_ind2_from_str(&mut self, ind: &str) -> Result<(), String> {
-        Ok(self.set_ind2(util::utf8_to_bytes(ind, Some(1))?[0]))
-    }
-
-    pub fn first_subfield_from_str(&self, code: &str) -> Result<Option<&Subfield>, String> {
-        let code = util::utf8_to_bytes(code, Some(1))?[0];
-        Ok(self
-            .subfields()
-            .iter()
-            .filter(|sf| sf.code() == code)
-            .next())
-    }
-
     pub fn from_strs(
         tag: &str,
         ind1: &str,
@@ -90,16 +72,7 @@ impl Field {
 }
 
 impl Record {
-    pub fn fields_from_str(&self, tag: &str) -> Result<Vec<&Field>, String> {
-        let tag = Tag::from_str(tag)?;
-        Ok(self
-            .fields()
-            .iter()
-            .filter(|f| f.tag() == &tag)
-            .collect::<Vec<&Field>>())
-    }
-
-    pub fn get_value_strings(&self, tag: &str, subfield: &str) -> Result<Vec<String>, String> {
+    pub fn value_strings(&self, tag: &str, subfield: &str) -> Result<Vec<String>, String> {
         let tag = Tag::from_str(tag)?;
         let code = util::utf8_to_bytes(subfield, Some(1))?[0];
 

@@ -3,7 +3,7 @@ use super::util;
 /// MARC breaker text.
 ///
 /// Breaker text is assumed to be UTF8.
-use super::{ControlField, Field, Leader, Record, Subfield, Tag};
+use super::{Controlfield, Field, Leader, Record, Subfield, Tag};
 
 // b"$"
 pub const MARC_BREAKER_SF_DELIMITER_STR: &str = "$";
@@ -41,7 +41,7 @@ pub fn unescape_from_breaker(value: &[u8]) -> Vec<u8> {
     )
 }
 
-impl ControlField {
+impl Controlfield {
     pub fn to_breaker(&self) -> String {
         format!(
             "={} {}",
@@ -142,10 +142,10 @@ impl Record {
             return;
         }
 
-        let tag: Tag = tag.into();
+        let tag = Tag::new(&[tag[0], tag[1], tag[2]]);
 
         if tag.is_control_tag() {
-            let mut cf = ControlField::new(tag, &[]);
+            let mut cf = Controlfield::new(tag, &[]);
             if len > 4 {
                 cf.set_content(unescape_from_breaker(&line_bytes[4..]).as_slice());
             }
