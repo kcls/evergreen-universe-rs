@@ -3,6 +3,8 @@ use eg::db::DatabaseConnection;
 use evergreen as eg;
 use getopts;
 use marc::Record;
+use marc::Field;
+use marc::Subfield;
 use rust_decimal::Decimal;
 use std::io::prelude::*;
 use std::{env, fs, io};
@@ -10,7 +12,7 @@ use std::{env, fs, io};
 const XML_COLLECTION_HEADER: &str = r#"<collection xmlns="http://www.loc.gov/MARC21/slim">"#;
 const XML_COLLECTION_FOOTER: &str = "</collection>";
 const DEFAULT_BATCH_SIZE: u64 = 1000;
-const HOLDINGS_SUBFIELD: &str = "852";
+const HOLDINGS_TAG: &[u8; 3] = b"852";
 
 const ITEMS_QUERY: &str = r#"
     SELECT
@@ -464,21 +466,20 @@ fn add_items(
     ops: &ExportOptions,
     record: &mut Record,
 ) -> Result<(), String> {
-    record.remove_fields(HOLDINGS_SUBFIELD);
+    record.remove_fields(HOLDINGS_TAG);
 
     for row in con.client().query(&ITEMS_QUERY[..], &[&record_id]).unwrap() {
-        let mut subfields = Vec::new();
+        let mut field = Field::new(HOLDINGS_TAG);
+        field.set_ind1(b'4');
 
         if let Some(lc) = ops.location_code.as_ref() {
-            subfields.push("a");
-            subfields.push(lc);
+            field.add_subfield(Subfield::new(b'a', lc.as_bytes()));
         }
 
-        for (subfield, field) in ITEM_SUBFIELD_MAP {
-            if let Ok(value) = row.try_get::<&str, &str>(field) {
+        for (subfield, fname) in ITEM_SUBFIELD_MAP {
+            if let Ok(value) = row.try_get::<&str, &str>(fname) {
                 if value != "" {
-                    subfields.push(*subfield);
-                    subfields.push(&value);
+                    field.add_subfield(Subfield::from_strs(*subfield, &value)?);
                 }
             }
         }
@@ -488,33 +489,28 @@ fn add_items(
         let price_binding;
         if let Some(p) = price {
             price_binding = format!("{}{}", ops.currency_symbol, p.to_string());
-            subfields.push("y");
-            subfields.push(price_binding.as_str());
+            field.add_subfield(Subfield::new(b'y', price_binding.as_bytes()));
         }
 
         // These bools are all required fields. try_get() not required.
 
         if row.get::<&str, bool>("ref") {
-            subfields.push("x");
-            subfields.push("reference");
+            field.add_subfield(Subfield::new(b'x', b"reference"));
         }
 
         if !row.get::<&str, bool>("holdable") {
-            subfields.push("x");
-            subfields.push("unholdable");
+            field.add_subfield(Subfield::new(b'x', b"unholdable"));
         }
 
         if !row.get::<&str, bool>("circulate") {
-            subfields.push("x");
-            subfields.push("noncirculating");
+            field.add_subfield(Subfield::new(b'x', b"noncirculating"));
         }
 
         if !row.get::<&str, bool>("opac_visible") {
-            subfields.push("x");
-            subfields.push("hidden");
+            field.add_subfield(Subfield::new(b'x', b"hidden"));
         }
 
-        record.add_data_field(HOLDINGS_SUBFIELD, "4", " ", subfields)?;
+        record.insert_field(field);
     }
 
     Ok(())
