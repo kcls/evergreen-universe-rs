@@ -156,13 +156,13 @@ impl XmlRecordIterator {
                     record.set_leader(characters)?;
                     context.in_leader = false;
                 } else if context.in_cfield {
-                    if let Some(cf) = record.control_fields.last_mut() {
+                    if let Some(cf) = record.control_fields_mut().last_mut() {
                         cf.set_content(characters);
                     }
                     context.in_cfield = false;
                 } else if context.in_subfield {
-                    if let Some(field) = record.fields.last_mut() {
-                        if let Some(subfield) = field.subfields.last_mut() {
+                    if let Some(field) = record.fields_mut().last_mut() {
+                        if let Some(subfield) = field.subfields_mut().last_mut() {
                             subfield.set_content(characters);
                         }
                     }
@@ -203,7 +203,7 @@ impl XmlRecordIterator {
                     .next()
                 {
                     record
-                        .control_fields
+                        .control_fields_mut()
                         .push(Controlfield::new(&t.value, None)?);
                     context.in_cfield = true;
                 } else {
@@ -231,11 +231,11 @@ impl XmlRecordIterator {
                     }
                 }
 
-                record.fields.push(field);
+                record.fields_mut().push(field);
             }
 
             "subfield" => {
-                let field_op = record.fields.last_mut();
+                let field_op = record.fields_mut().last_mut();
 
                 if field_op.is_none() {
                     return Err(format!("Encounted <subfield/> without a field"));
@@ -245,7 +245,7 @@ impl XmlRecordIterator {
                 for attr in attributes {
                     if attr.name.local_name.eq("code") {
                         context.in_subfield = true;
-                        field.subfields.push(Subfield::new(&attr.value, None)?);
+                        field.subfields_mut().push(Subfield::new(&attr.value, "")?);
                         break;
                     }
                 }
@@ -316,39 +316,39 @@ impl Record {
         // Leader
 
         format(options.formatted, &mut xml, 2);
-        xml += &format!("<leader>{}</leader>", &escape_xml(&self.leader));
+        xml += &format!("<leader>{}</leader>", &escape_xml(self.leader()));
 
         // Control Fields
 
-        for cfield in &self.control_fields {
+        for cfield in self.control_fields() {
             format(options.formatted, &mut xml, 2);
 
             xml += &format!(
                 r#"<controlfield tag="{}">{}</controlfield>"#,
-                escape_xml(&cfield.tag),
-                escape_xml(&cfield.content),
+                escape_xml(cfield.tag()),
+                escape_xml(cfield.content()),
             );
         }
 
         // Data Fields
 
-        for field in &self.fields {
+        for field in self.fields() {
             format(options.formatted, &mut xml, 2);
 
             xml += &format!(
                 r#"<datafield tag="{}" ind1="{}" ind2="{}">"#,
-                escape_xml(&field.tag),
-                escape_xml(&field.ind1.to_string()),
-                escape_xml(&field.ind2.to_string())
+                escape_xml(field.tag()),
+                escape_xml(field.ind1()),
+                escape_xml(field.ind2()),
             );
 
-            for sf in &field.subfields {
+            for sf in field.subfields() {
                 format(options.formatted, &mut xml, 4);
 
                 xml += &format!(
                     r#"<subfield code="{}">{}</subfield>"#,
-                    &escape_xml(&sf.code),
-                    &escape_xml(&sf.content)
+                    &escape_xml(sf.code()),
+                    &escape_xml(sf.content())
                 );
             }
 

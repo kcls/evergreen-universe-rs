@@ -276,16 +276,17 @@ impl Record {
             if field_str.len() > 0 {
                 cf.set_content(&field_str);
             }
-            self.control_fields.push(cf);
+            self.control_fields_mut().push(cf);
             return Ok(());
         }
 
         // 3-bytes for tag
         // 1 byte for indicator 1
         // 1 byte for indicator 2
-        let mut field = Field::new(&dir_entry.tag).unwrap(); // tag char count is known good
-        field.set_ind1(&field_str[..1]).unwrap(); // ind char count is known good
-        field.set_ind2(&field_str[1..2]).unwrap(); // ind char count is known good
+        let mut field = Field::new(&dir_entry.tag)?;
+
+        field.set_ind1(&field_str[..1])?;
+        field.set_ind2(&field_str[1..2])?;
 
         // Split the remainder on the subfield separator and
         // build Field's from them.
@@ -293,14 +294,14 @@ impl Record {
 
         for part in &field_parts[1..] {
             // skip the initial SUBFIELD_SEPARATOR
-            let mut sf = Subfield::new(&part[..1], None).unwrap(); // code size is known good
-            if part.len() > 1 {
-                sf.set_content(&part[1..]);
-            }
-            field.subfields.push(sf);
+            let sf = Subfield::new(
+                &part[..1],
+                if part.len() > 1 { &part[1..] } else { "" }
+            )?;
+            field.subfields_mut().push(sf);
         }
 
-        self.fields.push(field);
+        self.fields_mut().push(field);
 
         Ok(())
     }
@@ -308,7 +309,7 @@ impl Record {
     pub fn to_binary(&self) -> Result<Vec<u8>, String> {
         let mut bytes: Vec<u8> = Vec::new();
 
-        bytes.append(&mut self.leader.as_bytes().to_vec());
+        bytes.append(&mut self.leader().as_bytes().to_vec());
 
         // Directory
         let num_dirs = self.build_directory(&mut bytes);
@@ -331,17 +332,17 @@ impl Record {
         let mut num_dirs = 0;
         let mut prev_end_idx = 0;
 
-        for field in &self.control_fields {
+        for field in self.control_fields() {
             num_dirs += 1;
 
-            let mut field_len = field.content.as_bytes().len();
+            let mut field_len = field.content().as_bytes().len();
 
             field_len += 1; // end of field terminator
 
             // Our directory entry as a string.
             let s = format!(
                 "{}{:0w1$}{:0w2$}",
-                field.tag,
+                field.tag(),
                 field_len,
                 prev_end_idx, // our starting point
                 w1 = DATA_LENGTH_SIZE,
@@ -353,19 +354,19 @@ impl Record {
             prev_end_idx = prev_end_idx + field_len;
         }
 
-        for field in &self.fields {
+        for field in self.fields() {
             num_dirs += 1;
 
             let mut field_len = 3; // ind1 + ind2 + field terminator
-            for sf in &field.subfields {
+            for sf in field.subfields() {
                 field_len += 2; // sf code + separator
-                field_len += sf.content.as_bytes().len();
+                field_len += sf.content().as_bytes().len();
             }
 
             // Our directory entry as a string.
             let s = format!(
                 "{}{:0w1$}{:0w2$}",
-                field.tag,
+                field.tag(),
                 field_len,
                 prev_end_idx, // our starting point
                 w1 = DATA_LENGTH_SIZE,
@@ -382,17 +383,17 @@ impl Record {
 
     fn add_data_fields(&self, bytes: &mut Vec<u8>) {
         // Now append the actual data
-        for field in &self.control_fields {
-            bytes.append(&mut field.content.as_bytes().to_vec());
+        for field in self.control_fields() {
+            bytes.append(&mut field.content().as_bytes().to_vec());
             bytes.append(&mut END_OF_FIELD.as_bytes().to_vec());
         }
 
-        for field in &self.fields {
-            let s = format!("{}{}", &field.ind1, &field.ind2);
+        for field in self.fields() {
+            let s = format!("{}{}", field.ind1(), field.ind2());
             bytes.append(&mut s.as_bytes().to_vec());
 
-            for sf in &field.subfields {
-                let s = format!("{}{}{}", SUBFIELD_SEPARATOR, sf.code, sf.content.as_str());
+            for sf in field.subfields() {
+                let s = format!("{}{}{}", SUBFIELD_SEPARATOR, sf.code(), sf.content());
                 bytes.append(&mut s.as_bytes().to_vec());
             }
 

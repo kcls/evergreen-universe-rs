@@ -18,10 +18,10 @@ pub fn unescape_from_breaker(value: &str) -> String {
 
 impl Controlfield {
     pub fn to_breaker(&self) -> String {
-        if self.content.len() > 0 {
-            format!("{} {}", self.tag, escape_to_breaker(&self.content))
+        if self.content().len() > 0 {
+            format!("={} {}", self.tag(), escape_to_breaker(self.content()))
         } else {
-            format!("{}", self.tag)
+            format!("={}", self.tag())
         }
     }
 }
@@ -30,8 +30,8 @@ impl Subfield {
     pub fn to_breaker(&self) -> String {
         format!(
             "${}{}",
-            escape_to_breaker(&self.code),
-            escape_to_breaker(&self.content),
+            escape_to_breaker(self.code()),
+            escape_to_breaker(self.content()),
         )
     }
 }
@@ -39,19 +39,13 @@ impl Subfield {
 impl Field {
     pub fn to_breaker(&self) -> String {
         let mut s = format!(
-            "{} {}{}",
-            self.tag,
-            match &self.ind1 {
-                ' ' => '\\',
-                _ => self.ind1,
-            },
-            match &self.ind2 {
-                ' ' => '\\',
-                _ => self.ind2,
-            },
+            "={} {}{}",
+            self.tag(),
+            if self.ind1() == " " { "\\" } else { self.ind1() },
+            if self.ind2() == " " { "\\" } else { self.ind2() },
         );
 
-        for sf in &self.subfields {
+        for sf in self.subfields() {
             s += sf.to_breaker().as_str();
         }
 
@@ -62,13 +56,13 @@ impl Field {
 impl Record {
     /// Creates the MARC Breaker representation of this record as a String.
     pub fn to_breaker(&self) -> String {
-        let mut s = format!("LDR {}", &escape_to_breaker(&self.leader));
+        let mut s = format!("=LDR {}", &escape_to_breaker(self.leader()));
 
-        for cfield in &self.control_fields {
+        for cfield in self.control_fields() {
             s += format!("\n{}", cfield.to_breaker()).as_str();
         }
 
-        for field in &self.fields {
+        for field in self.fields() {
             s += format!("\n{}", field.to_breaker()).as_str();
         }
 
@@ -88,12 +82,14 @@ impl Record {
 
     /// Process one line of breaker text
     fn add_breaker_line(&mut self, line: &str) -> Result<(), String> {
-        let len = line.len();
-
-        if len < 3 {
-            // Skip invalid lines
+        let mut len = line.len();
+        if len < 4 {
             return Ok(());
         }
+
+        // Step past the opening '=' character
+        let line = &line[1..];
+        len -= 1;
 
         let tag = &line[..3];
 
@@ -111,7 +107,7 @@ impl Record {
             if len > 4 {
                 cf.set_content(unescape_from_breaker(&line[4..]).as_str());
             }
-            self.control_fields.push(cf);
+            self.control_fields_mut().push(cf);
             return Ok(());
         }
 
@@ -130,15 +126,16 @@ impl Record {
                 if sf.len() == 0 {
                     continue;
                 }
-                let mut subfield = Subfield::new(&sf[..1], None)?;
-                if sf.len() > 1 {
-                    subfield.set_content(unescape_from_breaker(&sf[1..]).as_str());
-                }
-                field.subfields.push(subfield);
+                let subfield = Subfield::new(
+                    &sf[..1],
+                    if sf.len() > 1 { &sf[1..] } else { "" }
+                )?;
+
+                field.subfields_mut().push(subfield);
             }
         }
 
-        self.fields.push(field);
+        self.fields_mut().push(field);
 
         Ok(())
     }

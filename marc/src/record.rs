@@ -4,11 +4,20 @@ const LEADER_SIZE: usize = 24;
 const SF_CODE_SIZE: usize = 1;
 pub const DEFAULT_LEADER: &str = "                        ";
 
+fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
+    let byte_len = s.bytes().len();
+    if byte_len != len {
+        return Err(format!(
+            "Invalid byte count for string s={s} wanted={len} found={byte_len}"));
+    }
+    Ok(())
+}
+
 /// MARC Control Field whose tag value is < "010"
 #[derive(Debug, Clone)]
 pub struct Controlfield {
-    pub tag: String,
-    pub content: String,
+    tag: String,
+    content: String,
 }
 
 impl Controlfield {
@@ -24,7 +33,12 @@ impl Controlfield {
             },
         })
     }
-
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+    pub fn content(&self) -> &str {
+        &self.content
+    }
     pub fn set_content(&mut self, content: &str) {
         self.content = content.to_string();
     }
@@ -33,94 +47,98 @@ impl Controlfield {
 /// A single subfield code + value pair
 #[derive(Debug, Clone)]
 pub struct Subfield {
-    pub code: String,
-    pub content: String,
+    code: String,
+    content: String,
 }
 
 impl Subfield {
-    pub fn new(code: &str, content: Option<&str>) -> Result<Self, String> {
+    pub fn check_code(code: &str) -> Result<(), String> {
         if code.bytes().len() != SF_CODE_SIZE {
             return Err(format!(
                 "Invalid subfield code: '{code}' bytelen={}", code.bytes().len()));
         }
-
-        Ok(Subfield {
-            code: String::from(code),
-            content: match content {
-                Some(c) => c.to_string(),
-                _ => String::new(),
-            },
-        })
+        Ok(())
     }
 
+    pub fn new(code: &str, content: &str) -> Result<Self, String> {
+        check_byte_count(code, 1)?;
+        Ok(Subfield {
+            code: String::from(code),
+            content: content.to_string(),
+        })
+    }
+    pub fn content(&self) -> &str {
+        &self.content
+    }
     pub fn set_content(&mut self, content: &str) {
         self.content = String::from(content);
+    }
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+    pub fn set_code(&mut self, code: &str) -> Result<(), String> {
+        check_byte_count(code, 1)?;
+        self.code = String::from(code);
+        Ok(())
     }
 }
 
 /// A MARC Data Field with tag, indicators, and subfields.
 #[derive(Debug, Clone)]
 pub struct Field {
-    pub tag: String,
-    pub ind1: char,
-    pub ind2: char,
-    pub subfields: Vec<Subfield>,
+    tag: String,
+    ind1: Option<String>,
+    ind2: Option<String>,
+    subfields: Vec<Subfield>,
 }
 
 impl Field {
     pub fn new(tag: &str) -> Result<Self, String> {
-        if tag.bytes().len() != TAG_SIZE {
-            return Err(format!("Invalid tag: '{tag}' bytelen={}", tag.bytes().len()));
-        }
-
+        check_byte_count(tag, TAG_SIZE)?;
         Ok(Field {
             tag: tag.to_string(),
-            ind1: ' ',
-            ind2: ' ',
+            ind1: None,
+            ind2: None,
             subfields: Vec::new(),
         })
     }
-
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+    pub fn ind1(&self) -> &str {
+        self.ind1.as_deref().unwrap_or(" ")
+    }
+    pub fn ind2(&self) -> &str {
+        self.ind2.as_deref().unwrap_or(" ")
+    }
+    pub fn subfields(&self) -> &Vec<Subfield> {
+        &self.subfields
+    }
+    pub fn subfields_mut(&mut self) -> &mut Vec<Subfield> {
+        &mut self.subfields
+    }
     pub fn set_ind1(&mut self, ind: &str) -> Result<(), String> {
-        self.set_ind(ind, true)
-    }
-
-    pub fn set_ind2(&mut self, ind: &str) -> Result<(), String> {
-        self.set_ind(ind, false)
-    }
-
-    fn set_ind(&mut self, ind: &str, first: bool) -> Result<(), String> {
-        let bytes = ind.as_bytes();
-
-        let i = match ind.bytes().len() {
-            2.. => {
-                return Err(format!(
-                    "Invalid indicator value: '{ind}' bytelen={}", ind.bytes().len()));
-            }
-            1 => bytes[0] as char,
-            _ => ' ',
-        };
-
-        match first {
-            true => self.ind1 = i,
-            false => self.ind2 = i,
-        }
-
+        check_byte_count(ind, 1)?;
+        self.ind1 = Some(ind.to_string());
         Ok(())
     }
-
+    pub fn set_ind2(&mut self, ind: &str) -> Result<(), String> {
+        check_byte_count(ind, 1)?;
+        self.ind2 = Some(ind.to_string());
+        Ok(())
+    }
     pub fn get_subfields(&self, code: &str) -> Vec<&Subfield> {
-        self.subfields.iter().filter(|f| f.code.eq(code)).collect()
+        self.subfields.iter().filter(|f| f.code() == code).collect()
     }
 
     pub fn get_subfields_mut(&mut self, code: &str) -> Vec<&mut Subfield> {
         self.subfields
             .iter_mut()
-            .filter(|f| f.code.eq(code))
+            .filter(|f| f.code() == code)
             .collect()
     }
 
-    pub fn add_subfield(&mut self, code: &str, content: Option<&str>) -> Result<(), String> {
+    pub fn add_subfield(&mut self, code: &str, content: &str) -> Result<(), String> {
         self.subfields.push(Subfield::new(code, content)?);
         Ok(())
     }
@@ -152,9 +170,9 @@ impl Field {
 
 #[derive(Debug, Clone)]
 pub struct Record {
-    pub leader: String,
-    pub control_fields: Vec<Controlfield>,
-    pub fields: Vec<Field>,
+    leader: String,
+    control_fields: Vec<Controlfield>,
+    fields: Vec<Field>,
 }
 
 /// A MARC record with leader, control fields, and data fields.
@@ -165,6 +183,10 @@ impl Record {
             control_fields: Vec::new(),
             fields: Vec::new(),
         }
+    }
+
+    pub fn leader(&self) -> &str {
+        &self.leader
     }
 
     /// Apply a leader value from a str
@@ -198,19 +220,32 @@ impl Record {
         }
     }
 
+    pub fn control_fields(&self) -> &Vec<Controlfield> {
+        &self.control_fields
+    }
+    pub fn control_fields_mut(&mut self) -> &mut Vec<Controlfield> {
+        &mut self.control_fields
+    }
+    pub fn fields(&self) -> &Vec<Field> {
+        &self.fields
+    }
+    pub fn fields_mut(&mut self) -> &mut Vec<Field> {
+        &mut self.fields
+    }
+
     pub fn get_control_fields(&self, tag: &str) -> Vec<&Controlfield> {
         self.control_fields
             .iter()
-            .filter(|f| f.tag.eq(tag))
+            .filter(|f| f.tag() == tag)
             .collect()
     }
 
     pub fn get_fields(&self, tag: &str) -> Vec<&Field> {
-        self.fields.iter().filter(|f| f.tag.eq(tag)).collect()
+        self.fields.iter().filter(|f| f.tag() == tag).collect()
     }
 
     pub fn get_fields_mut(&mut self, tag: &str) -> Vec<&mut Field> {
-        self.fields.iter_mut().filter(|f| f.tag.eq(tag)).collect()
+        self.fields.iter_mut().filter(|f| f.tag() == tag).collect()
     }
 
     /// Add a control field with data.
@@ -244,17 +279,24 @@ impl Record {
         Ok(())
     }
 
+    pub fn insert_field(&mut self, field: Field) {
+        match self.fields().iter().position(|f| f.tag() > field.tag()) {
+            Some(idx) => self.fields_mut().insert(idx, field),
+            None => self.fields_mut().push(field),
+        }
+    }
+
     /// Add a new datafield with the given tag, indicators, and list of
     /// subfields.
     ///
     /// * `subfields` - List of subfield code, followed by subfield value.
-    ///     e.g. vec!["a", "My Title", "b", "More Title Stuff"]
+    ///     e.g. vec![("a", "My Title"), ("b", "More Title Stuff")]
     pub fn add_data_field(
         &mut self,
         tag: &str,
         ind1: &str,
         ind2: &str,
-        subfields: Vec<&str>,
+        subfields: &[(&str, &str)],
     ) -> Result<(), String> {
         if tag < "010" {
             return Err(format!("Invalid data field tag: '{tag}'"));
@@ -264,36 +306,11 @@ impl Record {
         field.set_ind1(ind1)?;
         field.set_ind2(ind2)?;
 
-        let mut sf_op: Option<Subfield> = None;
-
-        // Traverse the subfields list as subfield/value pairs.
-        for part in subfields {
-            if sf_op.is_none() {
-                sf_op = Some(Subfield::new(part, None)?);
-            } else {
-                let mut sf = sf_op.unwrap();
-                sf.set_content(part);
-                field.subfields.push(sf);
-                sf_op = None;
-            }
+        for (code, value) in subfields {
+            field.subfields_mut().push(Subfield::new(code, value)?);
         }
 
-        // Insert the field at the logical position in the record.
-
-        let mut pos = 0;
-        for (idx, f) in self.fields.iter().enumerate() {
-            pos = idx;
-            if f.tag.as_str() > tag {
-                break;
-            }
-        }
-
-        if pos == self.fields.len() {
-            self.fields.push(field);
-        } else {
-            self.fields.insert(pos, field);
-        }
-
+        self.insert_field(field);
         Ok(())
     }
 
@@ -311,9 +328,10 @@ impl Record {
     /// Remove all occurrences of fields with the provided tag.
     pub fn remove_fields(&mut self, tag: &str) {
         loop {
-            if let Some(pos) = self.fields.iter().position(|f| f.tag.as_str() == tag) {
+            if let Some(pos) = self.fields.iter().position(|f| f.tag() == tag) {
                 self.fields.remove(pos);
             } else {
+                // No more fields to remove.
                 return;
             }
         }
