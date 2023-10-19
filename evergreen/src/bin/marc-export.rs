@@ -6,6 +6,7 @@ use marc::Record;
 use rust_decimal::Decimal;
 use std::io::prelude::*;
 use std::{env, fs, io};
+use std::path::Path;
 
 const XML_COLLECTION_HEADER: &str = r#"<collection xmlns="http://www.loc.gov/MARC21/slim">"#;
 const XML_COLLECTION_FOOTER: &str = "</collection>";
@@ -367,7 +368,12 @@ fn set_library_ids(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Res
 fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), String> {
     // Where are we spewing bytes?
     let mut writer: Box<dyn Write> = match &ops.destination {
-        ExportDestination::File(fname) => Box::new(fs::File::create(fname).unwrap()),
+        ExportDestination::File(fname) => {
+            if Path::new(fname).exists() {
+                return Err(format!("Output file already exists: {fname}"));
+            }
+            Box::new(fs::File::create(fname).unwrap())
+        }
         _ => Box::new(io::stdout()),
     };
 
