@@ -14,7 +14,7 @@ fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
 }
 
 /// MARC Control Field whose tag value is < "010"
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Controlfield {
     tag: String,
     content: String,
@@ -45,7 +45,7 @@ impl Controlfield {
 }
 
 /// A single subfield code + value pair
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Subfield {
     code: String,
     content: String,
@@ -84,7 +84,7 @@ impl Subfield {
 }
 
 /// A MARC Data Field with tag, indicators, and subfields.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     tag: String,
     ind1: Option<String>,
@@ -168,7 +168,7 @@ impl Field {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Record {
     leader: String,
     control_fields: Vec<Controlfield>,
