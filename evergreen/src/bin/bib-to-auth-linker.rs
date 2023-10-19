@@ -17,21 +17,21 @@ const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
 
 // mapping of authority leader/11 "Subject heading system/thesaurus"
 // to the matching bib record indicator
-const AUTH_TO_BIB_IND2: &[(&str, char)] = &[
-    ("a", '0'), // Library of Congress Subject Headings (ADULT)
-    ("b", '1'), // Library of Congress Subject Headings (JUVENILE)
-    ("c", '2'), // Medical Subject Headings
-    ("d", '3'), // National Agricultural Library Subject Authority File
-    ("n", '4'), // Source not specified
-    ("k", '5'), // Canadian Subject Headings
-    ("v", '6'), // Répertoire de vedettes-matière
-    ("z", '7'), // Source specified in subfield $2 / Other
+const AUTH_TO_BIB_IND2: &[(&str, &str)] = &[
+    ("a", "0"), // Library of Congress Subject Headings (ADULT)
+    ("b", "1"), // Library of Congress Subject Headings (JUVENILE)
+    ("c", "2"), // Medical Subject Headings
+    ("d", "3"), // National Agricultural Library Subject Authority File
+    ("n", "4"), // Source not specified
+    ("k", "5"), // Canadian Subject Headings
+    ("v", "6"), // Répertoire de vedettes-matière
+    ("z", "7"), // Source specified in subfield $2 / Other
 ];
 
 // Produces a new 6XX ind2 value for values found in subfield $2 when the
 // original ind2 value is 7 ("Source specified in subfield $2").
-const REMAP_BIB_SF2_TO_IND2: &[(&str, char)] =
-    &[("lcsh", '0'), ("mesh", '2'), ("nal", '3'), ("rvm", '6')];
+const REMAP_BIB_SF2_TO_IND2: &[(&str, &str)] =
+    &[("lcsh", "0"), ("mesh", "2"), ("nal", "3"), ("rvm", "6")];
 
 /// Controlled bib field + subfield along with the authority
 /// field that controls it.
@@ -270,15 +270,15 @@ impl BibLinker {
         bib_field: &marc::Field,
         auth_leaders: &Vec<AuthLeader>,
     ) -> Result<Option<i64>, String> {
-        let mut bib_ind2 = bib_field.ind2;
+        let mut bib_ind2 = bib_field.ind2();
         let mut is_local = false;
 
-        if bib_ind2 == '7' {
+        if bib_ind2 == "7" {
             // subject thesaurus code is embedded in the bib field subfield 2
             is_local = true;
 
             let thesaurus = match bib_field.get_subfields("2").get(0) {
-                Some(sf) => &sf.content,
+                Some(sf) => sf.content(),
                 None => "",
             };
 
@@ -291,14 +291,14 @@ impl BibLinker {
                 .filter(|(k, _)| k == &thesaurus)
                 .next()
             {
-                Some((_, v)) => *v,
-                None => '7',
+                Some((_, v)) => v,
+                None => "7",
             };
 
             log::debug!("Local thesaurus '{thesaurus}' remapped to ind2 value '{bib_ind2}'");
-        } else if bib_ind2 == '4' {
+        } else if bib_ind2 == "4" {
             is_local = true;
-            bib_ind2 = '7';
+            bib_ind2 = "7";
             log::debug!("Local thesaurus ind2=4 mapped to ind2=7");
         }
 
@@ -344,7 +344,7 @@ impl BibLinker {
 
     // Returns true if the thesaurus controlling the bib field is "fast".
     fn is_fast_heading(&self, bib_field: &marc::Field) -> bool {
-        let tag = &bib_field.tag;
+        let tag = bib_field.tag();
 
         // Looking specifically for bib tags matching 65[015]
         if &tag[..2] != "65" {
@@ -356,10 +356,10 @@ impl BibLinker {
             _ => return false,
         }
 
-        if bib_field.ind2 == '7' {
+        if bib_field.ind2() == "7" {
             // Field controlled by "other"
             if let Some(sf) = bib_field.get_subfields("2").get(0) {
-                return &sf.content == "fast";
+                return sf.content() == "fast";
             }
         }
 
@@ -397,7 +397,7 @@ impl BibLinker {
         controlled_fields: &Vec<ControlledField>,
         bib_field: &marc::Field,
     ) -> Result<Vec<i64>, String> {
-        let bib_tag = &bib_field.tag;
+        let bib_tag = bib_field.tag();
         let auth_ids: Vec<i64> = Vec::new();
 
         let controlled: Vec<&ControlledField> = controlled_fields
@@ -415,14 +415,14 @@ impl BibLinker {
         // [ (subfield, value), ... ]
         let mut searches: Vec<(&str, &str)> = Vec::new();
 
-        for bib_sf in &bib_field.subfields {
+        for bib_sf in bib_field.subfields() {
             if controlled
                 .iter()
-                .filter(|cf| &cf.subfield == &bib_sf.code)
+                .filter(|cf| &cf.subfield == bib_sf.code())
                 .next()
                 .is_some()
             {
-                searches.push((&bib_sf.code, &bib_sf.content));
+                searches.push((bib_sf.code(), bib_sf.content()));
             }
         }
 
@@ -563,12 +563,12 @@ impl BibLinker {
             seen_bib_tags.insert(&cfield.bib_tag, true);
 
             for bib_field in record.get_fields_mut(&cfield.bib_tag) {
-                let bib_tag = bib_field.tag.to_string();
+                let bib_tag = bib_field.tag().to_string(); // mut borrow
 
                 let is_fast_heading = self.is_fast_heading(&bib_field);
 
                 if let Some(sf0) = bib_field.get_subfields("0").first() {
-                    let sfcode = sf0.code.to_string();
+                    let sfcode = sf0.code();
 
                     if sfcode.contains(")fst") && is_fast_heading {
                         log::debug!(
@@ -648,7 +648,7 @@ impl BibLinker {
 
                 if let Some(id) = auth_id {
                     let content = format!("({}){}", DEFAULT_CONTROL_NUMBER_IDENTIFIER, id);
-                    bib_field.add_subfield("0", Some(&content)).unwrap(); // known OK.
+                    bib_field.add_subfield("0", &content)?;
                     bib_modified = true;
                     log::info!(
                         "Found a match on bib={} tag={} auth={}",

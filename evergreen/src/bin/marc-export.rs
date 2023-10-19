@@ -471,18 +471,17 @@ fn add_items(
     record.remove_fields(HOLDINGS_SUBFIELD);
 
     for row in con.client().query(&ITEMS_QUERY[..], &[&record_id]).unwrap() {
-        let mut subfields = Vec::new();
+        let mut field = marc::Field::new(HOLDINGS_SUBFIELD)?;
+        field.set_ind1("4")?;
 
         if let Some(lc) = ops.location_code.as_ref() {
-            subfields.push("a");
-            subfields.push(lc);
+            field.add_subfield("a", lc)?;
         }
 
-        for (subfield, field) in ITEM_SUBFIELD_MAP {
-            if let Ok(value) = row.try_get::<&str, &str>(field) {
+        for (subfield, fname) in ITEM_SUBFIELD_MAP {
+            if let Ok(value) = row.try_get::<&str, &str>(fname) {
                 if value != "" {
-                    subfields.push(*subfield);
-                    subfields.push(&value);
+                    field.add_subfield(*subfield, &value)?;
                 }
             }
         }
@@ -492,33 +491,28 @@ fn add_items(
         let price_binding;
         if let Some(p) = price {
             price_binding = format!("{}{}", ops.currency_symbol, p.to_string());
-            subfields.push("y");
-            subfields.push(price_binding.as_str());
+            field.add_subfield("y", price_binding.as_str())?;
         }
 
         // These bools are all required fields. try_get() not required.
 
         if row.get::<&str, bool>("ref") {
-            subfields.push("x");
-            subfields.push("reference");
+            field.add_subfield("x", "reference")?;
         }
 
         if !row.get::<&str, bool>("holdable") {
-            subfields.push("x");
-            subfields.push("unholdable");
+            field.add_subfield("x", "unholdable")?;
         }
 
         if !row.get::<&str, bool>("circulate") {
-            subfields.push("x");
-            subfields.push("noncirculating");
+            field.add_subfield("x", "noncirculating")?;
         }
 
         if !row.get::<&str, bool>("opac_visible") {
-            subfields.push("x");
-            subfields.push("hidden");
+            field.add_subfield("x", "hidden")?;
         }
 
-        record.add_data_field(HOLDINGS_SUBFIELD, "4", " ", subfields)?;
+        record.insert_field(field);
     }
 
     Ok(())

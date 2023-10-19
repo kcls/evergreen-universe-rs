@@ -3,12 +3,17 @@
 TARGET = /usr/local
 SYSTEMD_DIR = /lib/systemd/system
 
+# Number of test threads to run in parallel.
+# Inline doc tests are compiler-heavy so having a limit here
+# helps ensure things don't get out of hand ram/cpu/disk-wise.
+TEST_THREADS = 4
+
 build: build-opensrf build-evergreen build-sip2server
 
 build-release: build-opensrf-release build-evergreen-release build-sip2server-release
 
 test:
-	cargo test --all
+	cargo test --all -- --test-threads=${TEST_THREADS}
 
 install: install-opensrf install-evergreen install-sip2server
 
