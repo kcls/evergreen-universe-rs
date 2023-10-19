@@ -4,6 +4,7 @@ const LEADER_SIZE: usize = 24;
 const SF_CODE_SIZE: usize = 1;
 pub const DEFAULT_LEADER: &str = "                        ";
 
+/// Verifies the provided string is composed of 'len' number of bytes.
 fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
     let byte_len = s.bytes().len();
     if byte_len != len {
