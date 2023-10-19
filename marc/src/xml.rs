@@ -204,7 +204,7 @@ impl XmlRecordIterator {
                 {
                     record
                         .control_fields_mut()
-                        .push(Controlfield::new(&t.value, None)?);
+                        .push(Controlfield::new(&t.value, "")?);
                     context.in_cfield = true;
                 } else {
                     return Err(format!("Controlfield has no tag"));

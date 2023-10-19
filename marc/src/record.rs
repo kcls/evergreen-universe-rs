@@ -1,7 +1,7 @@
 ///! Models a MARC record with associated components.
 const TAG_SIZE: usize = 3;
 const LEADER_SIZE: usize = 24;
-const SF_CODE_SIZE: usize = 1;
+const CODE_SIZE: usize = 1;
 pub const DEFAULT_LEADER: &str = "                        ";
 
 /// Verifies the provided string is composed of 'len' number of bytes.
@@ -23,19 +23,21 @@ pub struct Controlfield {
 }
 
 impl Controlfield {
-    pub fn new(tag: &str, content: Option<&str>) -> Result<Self, String> {
-        if tag.bytes().len() != TAG_SIZE {
-            return Err(format!(
-                "Invalid tag: '{tag}' bytelen={}",
-                tag.bytes().len()
-            ));
+    pub fn new<T, S>(tag: T, content: S) -> Result<Self, String>
+    where
+        T: Into<String>,
+        S: Into<String>,
+    {
+        let tag = tag.into();
+        check_byte_count(&tag, TAG_SIZE)?;
+
+        if tag.as_str() < "000" || tag.as_str() > "009" {
+            return Err(format!("Invalid Controlfield tag: {tag}"));
         }
+
         Ok(Controlfield {
-            tag: tag.to_string(),
-            content: match content {
-                Some(c) => c.to_string(),
-                _ => String::new(),
-            },
+            tag,
+            content: content.into(),
         })
     }
     pub fn tag(&self) -> &str {
@@ -44,8 +46,11 @@ impl Controlfield {
     pub fn content(&self) -> &str {
         &self.content
     }
-    pub fn set_content(&mut self, content: &str) {
-        self.content = content.to_string();
+    pub fn set_content<T>(&mut self, content: T)
+    where
+        T: Into<String>,
+    {
+        self.content = content.into();
     }
 }
 
@@ -57,35 +62,37 @@ pub struct Subfield {
 }
 
 impl Subfield {
-    pub fn check_code(code: &str) -> Result<(), String> {
-        if code.bytes().len() != SF_CODE_SIZE {
-            return Err(format!(
-                "Invalid subfield code: '{code}' bytelen={}",
-                code.bytes().len()
-            ));
-        }
-        Ok(())
-    }
-
-    pub fn new(code: &str, content: &str) -> Result<Self, String> {
-        check_byte_count(code, 1)?;
+    pub fn new<T, S>(code: T, content: S) -> Result<Self, String>
+    where
+        T: Into<String>,
+        S: Into<String>,
+    {
+        let code = code.into();
+        check_byte_count(&code, CODE_SIZE)?;
         Ok(Subfield {
-            code: String::from(code),
-            content: content.to_string(),
+            code,
+            content: content.into(),
         })
     }
     pub fn content(&self) -> &str {
         &self.content
     }
-    pub fn set_content(&mut self, content: &str) {
-        self.content = String::from(content);
+    pub fn set_content<T>(&mut self, content: T)
+    where
+        T: Into<String>,
+    {
+        self.content = content.into();
     }
     pub fn code(&self) -> &str {
         &self.code
     }
-    pub fn set_code(&mut self, code: &str) -> Result<(), String> {
-        check_byte_count(code, 1)?;
-        self.code = String::from(code);
+    pub fn set_code<T>(&mut self, code: T) -> Result<(), String>
+    where
+        T: Into<String>,
+    {
+        let code: String = code.into();
+        check_byte_count(&code, CODE_SIZE)?;
+        self.code = code;
         Ok(())
     }
 }
@@ -100,10 +107,19 @@ pub struct Field {
 }
 
 impl Field {
-    pub fn new(tag: &str) -> Result<Self, String> {
-        check_byte_count(tag, TAG_SIZE)?;
+    pub fn new<T>(tag: T) -> Result<Self, String>
+    where
+        T: Into<String>,
+    {
+        let tag = tag.into();
+        check_byte_count(&tag, TAG_SIZE)?;
+
+        if tag.as_str() < "010" || tag.as_str() > "999" {
+            return Err(format!("Invalid tag for data field: {tag}"));
+        }
+
         Ok(Field {
-            tag: tag.to_string(),
+            tag,
             ind1: None,
             ind2: None,
             subfields: Vec::new(),
@@ -124,14 +140,22 @@ impl Field {
     pub fn subfields_mut(&mut self) -> &mut Vec<Subfield> {
         &mut self.subfields
     }
-    pub fn set_ind1(&mut self, ind: &str) -> Result<(), String> {
-        check_byte_count(ind, 1)?;
-        self.ind1 = Some(ind.to_string());
+    pub fn set_ind1<T>(&mut self, ind: T) -> Result<(), String>
+    where
+        T: Into<String>,
+    {
+        let ind = ind.into();
+        check_byte_count(&ind, CODE_SIZE)?;
+        self.ind1 = Some(ind);
         Ok(())
     }
-    pub fn set_ind2(&mut self, ind: &str) -> Result<(), String> {
-        check_byte_count(ind, 1)?;
-        self.ind2 = Some(ind.to_string());
+    pub fn set_ind2<T>(&mut self, ind: T) -> Result<(), String>
+    where
+        T: Into<String>,
+    {
+        let ind = ind.into();
+        check_byte_count(&ind, CODE_SIZE)?;
+        self.ind2 = Some(ind);
         Ok(())
     }
     pub fn get_subfields(&self, code: &str) -> Vec<&Subfield> {
@@ -145,7 +169,11 @@ impl Field {
             .collect()
     }
 
-    pub fn add_subfield(&mut self, code: &str, content: &str) -> Result<(), String> {
+    pub fn add_subfield<T, S>(&mut self, code: T, content: S) -> Result<(), String>
+    where
+        T: Into<String>,
+        S: Into<String>,
+    {
         self.subfields.push(Subfield::new(code, content)?);
         Ok(())
     }
@@ -200,15 +228,13 @@ impl Record {
     ///
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
-    pub fn set_leader(&mut self, leader: &str) -> Result<(), String> {
-        if leader.bytes().len() != LEADER_SIZE {
-            return Err(format!(
-                "Invalid leader: '{leader}' bytelen={}",
-                leader.bytes().len()
-            ));
-        }
-
-        self.leader = leader.to_string();
+    pub fn set_leader<T>(&mut self, leader: T) -> Result<(), String>
+    where
+        T: Into<String>,
+    {
+        let leader = leader.into();
+        check_byte_count(&leader, LEADER_SIZE)?;
+        self.leader = leader;
         Ok(())
     }
 
@@ -217,16 +243,12 @@ impl Record {
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
     pub fn set_leader_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
-        match std::str::from_utf8(bytes) {
-            Ok(leader) => {
-                self.set_leader(leader)?;
-                return Ok(());
-            }
-            Err(e) => Err(format!(
-                "Cannot translate leader to UTF-8 {:?} {}",
-                bytes, e
-            )),
-        }
+        let s = std::str::from_utf8(bytes).or_else(|e| {
+            Err(format!(
+                "Leader is not a valid UTF-8 string: {e} bytes={bytes:?}"
+            ))
+        })?;
+        self.set_leader(s)
     }
 
     pub fn control_fields(&self) -> &Vec<Controlfield> {
@@ -261,66 +283,48 @@ impl Record {
     ///
     /// Controlfields are those with tag 001 .. 009
     pub fn add_control_field(&mut self, tag: &str, content: &str) -> Result<(), String> {
-        let mut field = Controlfield::new(tag, Some(content))?;
-
         if tag >= "010" || tag <= "000" {
             return Err(format!("Invalid control field tag: '{tag}'"));
         }
+        self.insert_control_field(Controlfield::new(tag, content)?);
+        Ok(())
+    }
 
-        field.set_content(content);
+    /// Insert a control field in tag order
+    pub fn insert_control_field(&mut self, field: Controlfield) {
+        match self
+            .control_fields()
+            .iter()
+            .position(|f| f.tag() > field.tag())
+        {
+            Some(idx) => self.control_fields_mut().insert(idx, field),
+            None => self.control_fields_mut().push(field),
+        }
+    }
 
-        // Insert the field at the logical position in the record.
-
-        let mut pos = 0;
-        for (idx, f) in self.control_fields.iter().enumerate() {
-            pos = idx;
-            if f.tag.as_str() > tag {
-                break;
+    /// Insert a data field in tag order
+    pub fn insert_field(&mut self, field: Field) -> usize {
+        match self.fields().iter().position(|f| f.tag() > field.tag()) {
+            Some(idx) => {
+                self.fields_mut().insert(idx, field);
+                return idx;
+            }
+            None => {
+                self.fields_mut().push(field);
+                return 0;
             }
         }
-
-        if pos == self.control_fields.len() {
-            self.control_fields.push(field);
-        } else {
-            self.control_fields.insert(pos, field);
-        }
-
-        Ok(())
     }
 
-    pub fn insert_field(&mut self, field: Field) {
-        match self.fields().iter().position(|f| f.tag() > field.tag()) {
-            Some(idx) => self.fields_mut().insert(idx, field),
-            None => self.fields_mut().push(field),
-        }
-    }
-
-    /// Add a new datafield with the given tag, indicators, and list of
-    /// subfields.
-    ///
-    /// * `subfields` - List of subfield code, followed by subfield value.
-    ///     e.g. vec![("a", "My Title"), ("b", "More Title Stuff")]
-    pub fn add_data_field(
-        &mut self,
-        tag: &str,
-        ind1: &str,
-        ind2: &str,
-        subfields: &[(&str, &str)],
-    ) -> Result<(), String> {
-        if tag < "010" {
-            return Err(format!("Invalid data field tag: '{tag}'"));
-        }
-
-        let mut field = Field::new(tag)?;
-        field.set_ind1(ind1)?;
-        field.set_ind2(ind2)?;
-
-        for (code, value) in subfields {
-            field.subfields_mut().push(Subfield::new(code, value)?);
-        }
-
-        self.insert_field(field);
-        Ok(())
+    /// Create a new Field with the provided tag, insert it into the
+    /// record, then return a mut ref so the field may be additionally
+    /// modified.
+    pub fn add_data_field<T>(&mut self, tag: T) -> Result<&mut Field, String>
+    where
+        T: Into<String>,
+    {
+        let pos = self.insert_field(Field::new(tag)?);
+        Ok(self.fields_mut().get_mut(pos).unwrap())
     }
 
     /// Returns a list of values for the specified tag and subfield.

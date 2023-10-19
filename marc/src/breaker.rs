@@ -111,10 +111,12 @@ impl Record {
         // There is a space between the tag and the 1st indicator.
 
         if tag < "010" {
-            let mut cf = Controlfield::new(tag, None)?;
-            if len > 4 {
-                cf.set_content(unescape_from_breaker(&line[4..]).as_str());
-            }
+            let content = if len > 4 {
+                unescape_from_breaker(&line[4..])
+            } else {
+                "".to_string()
+            };
+            let cf = Controlfield::new(tag, content)?;
             self.control_fields_mut().push(cf);
             return Ok(());
         }
@@ -122,11 +124,11 @@ impl Record {
         let mut field = Field::new(tag)?;
 
         if len > 4 {
-            field.set_ind1(&line[4..5].replace("\\", " "))?;
+            field.set_ind1(line[4..5].replace("\\", " "))?;
         }
 
         if len > 5 {
-            field.set_ind2(&line[5..6].replace("\\", " "))?;
+            field.set_ind2(line[5..6].replace("\\", " "))?;
         }
 
         if len > 6 {

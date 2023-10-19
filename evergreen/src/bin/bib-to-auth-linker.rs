@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+// TODO These come from KCLS; make them EG-generic with overrides.
 const DEFAULT_STAFF_ACCOUNT: u32 = 4953211; // utiladmin
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
 
@@ -530,6 +531,7 @@ impl BibLinker {
 
             if let Err(e) = self.link_one_bib(rec_id, bre, &control_fields, &mut record) {
                 log::error!("Error processing bib record {rec_id}: {e}");
+                eprintln!("Error processing bib record {rec_id}: {e}");
                 self.editor.disconnect()?;
                 self.editor.connect()?;
             }

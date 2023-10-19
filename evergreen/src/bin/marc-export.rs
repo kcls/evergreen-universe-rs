@@ -487,7 +487,7 @@ fn add_items(
         for (subfield, fname) in ITEM_SUBFIELD_MAP {
             if let Ok(value) = row.try_get::<&str, &str>(fname) {
                 if value != "" {
-                    field.add_subfield(*subfield, &value)?;
+                    field.add_subfield(*subfield, value)?;
                 }
             }
         }

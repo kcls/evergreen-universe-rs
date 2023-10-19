@@ -271,11 +271,9 @@ impl Record {
         };
 
         if dir_entry.tag.as_str() < "010" {
-            // Control field
-            let mut cf = Controlfield::new(&dir_entry.tag, None)?;
-            if field_str.len() > 0 {
-                cf.set_content(&field_str);
-            }
+            let content = if field_str.len() > 0 { field_str } else { "" };
+
+            let cf = Controlfield::new(&dir_entry.tag, content)?;
             self.control_fields_mut().push(cf);
             return Ok(());
         }

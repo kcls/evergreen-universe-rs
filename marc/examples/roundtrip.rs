@@ -50,9 +50,11 @@ fn inspect_record(record: &mut Record) {
     record
         .add_control_field("005", "123123123123")
         .expect("Added Control Field");
-    record
-        .add_data_field("650", "0", " ", &[("a", "Hobbits"), ("b", "Fiction")])
-        .expect("Added Data Field");
+
+    let f = record.add_data_field("650").unwrap();
+    f.set_ind1("0").unwrap();
+    f.add_subfield("a", "Hobbits").unwrap();
+    f.add_subfield("b", "So Many Wizards").unwrap();
 
     let breaker = record.to_breaker();
 
