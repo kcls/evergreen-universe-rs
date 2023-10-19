@@ -294,10 +294,7 @@ impl Record {
 
         for part in &field_parts[1..] {
             // skip the initial SUBFIELD_SEPARATOR
-            let sf = Subfield::new(
-                &part[..1],
-                if part.len() > 1 { &part[1..] } else { "" }
-            )?;
+            let sf = Subfield::new(&part[..1], if part.len() > 1 { &part[1..] } else { "" })?;
             field.subfields_mut().push(sf);
         }
 

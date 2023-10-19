@@ -41,8 +41,16 @@ impl Field {
         let mut s = format!(
             "={} {}{}",
             self.tag(),
-            if self.ind1() == " " { "\\" } else { self.ind1() },
-            if self.ind2() == " " { "\\" } else { self.ind2() },
+            if self.ind1() == " " {
+                "\\"
+            } else {
+                self.ind1()
+            },
+            if self.ind2() == " " {
+                "\\"
+            } else {
+                self.ind2()
+            },
         );
 
         for sf in self.subfields() {
@@ -126,10 +134,7 @@ impl Record {
                 if sf.len() == 0 {
                     continue;
                 }
-                let subfield = Subfield::new(
-                    &sf[..1],
-                    if sf.len() > 1 { &sf[1..] } else { "" }
-                )?;
+                let subfield = Subfield::new(&sf[..1], if sf.len() > 1 { &sf[1..] } else { "" })?;
 
                 field.subfields_mut().push(subfield);
             }

@@ -5,8 +5,8 @@ use getopts;
 use marc::Record;
 use rust_decimal::Decimal;
 use std::io::prelude::*;
-use std::{env, fs, io};
 use std::path::Path;
+use std::{env, fs, io};
 
 const XML_COLLECTION_HEADER: &str = r#"<collection xmlns="http://www.loc.gov/MARC21/slim">"#;
 const XML_COLLECTION_FOOTER: &str = "</collection>";

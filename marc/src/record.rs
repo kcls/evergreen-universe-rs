@@ -9,7 +9,8 @@ fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
     let byte_len = s.bytes().len();
     if byte_len != len {
         return Err(format!(
-            "Invalid byte count for string s={s} wanted={len} found={byte_len}"));
+            "Invalid byte count for string s={s} wanted={len} found={byte_len}"
+        ));
     }
     Ok(())
 }
@@ -24,7 +25,10 @@ pub struct Controlfield {
 impl Controlfield {
     pub fn new(tag: &str, content: Option<&str>) -> Result<Self, String> {
         if tag.bytes().len() != TAG_SIZE {
-            return Err(format!("Invalid tag: '{tag}' bytelen={}", tag.bytes().len()));
+            return Err(format!(
+                "Invalid tag: '{tag}' bytelen={}",
+                tag.bytes().len()
+            ));
         }
         Ok(Controlfield {
             tag: tag.to_string(),
@@ -56,7 +60,9 @@ impl Subfield {
     pub fn check_code(code: &str) -> Result<(), String> {
         if code.bytes().len() != SF_CODE_SIZE {
             return Err(format!(
-                "Invalid subfield code: '{code}' bytelen={}", code.bytes().len()));
+                "Invalid subfield code: '{code}' bytelen={}",
+                code.bytes().len()
+            ));
         }
         Ok(())
     }
@@ -197,7 +203,9 @@ impl Record {
     pub fn set_leader(&mut self, leader: &str) -> Result<(), String> {
         if leader.bytes().len() != LEADER_SIZE {
             return Err(format!(
-                "Invalid leader: '{leader}' bytelen={}", leader.bytes().len()));
+                "Invalid leader: '{leader}' bytelen={}",
+                leader.bytes().len()
+            ));
         }
 
         self.leader = leader.to_string();
