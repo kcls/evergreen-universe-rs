@@ -11,41 +11,42 @@ use getopts;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use marc;
 
 const DEFAULT_STAFF_ACCOUNT: u32 = 4953211; // utiladmin
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
 
 // mapping of authority leader/11 "Subject heading system/thesaurus"
 // to the matching bib record indicator
-const AUTH_TO_BIB_IND2: &[(&str, char)] = &[
-    ("a", '0'), // Library of Congress Subject Headings (ADULT)
-    ("b", '1'), // Library of Congress Subject Headings (JUVENILE)
-    ("c", '2'), // Medical Subject Headings
-    ("d", '3'), // National Agricultural Library Subject Authority File
-    ("n", '4'), // Source not specified
-    ("k", '5'), // Canadian Subject Headings
-    ("v", '6'), // Répertoire de vedettes-matière
-    ("z", '7'), // Source specified in subfield $2 / Other
+const AUTH_TO_BIB_IND2: &[(u8, u8)] = &[
+    (b'a', b'0'), // Library of Congress Subject Headings (ADULT)
+    (b'b', b'1'), // Library of Congress Subject Headings (JUVENILE)
+    (b'c', b'2'), // Medical Subject Headings
+    (b'd', b'3'), // National Agricultural Library Subject Authority File
+    (b'n', b'4'), // Source not specified
+    (b'k', b'5'), // Canadian Subject Headings
+    (b'v', b'6'), // Répertoire de vedettes-matière
+    (b'z', b'7'), // Source specified in subfield $2 / Other
 ];
 
 // Produces a new 6XX ind2 value for values found in subfield $2 when the
 // original ind2 value is 7 ("Source specified in subfield $2").
-const REMAP_BIB_SF2_TO_IND2: &[(&str, char)] =
-    &[("lcsh", '0'), ("mesh", '2'), ("nal", '3'), ("rvm", '6')];
+const REMAP_BIB_SF2_TO_IND2: &[(&[u8], u8)] =
+    &[(b"lcsh", b'0'), (b"mesh", b'2'), (b"nal", b'3'), (b"rvm", b'6')];
 
 /// Controlled bib field + subfield along with the authority
 /// field that controls it.
 #[derive(Debug)]
 struct ControlledField {
-    bib_tag: String,
-    auth_tag: String,
+    bib_tag: marc::Tag,
+    auth_tag: marc::Tag,
     subfield: String,
 }
 
 #[derive(Debug, Clone)]
 struct AuthLeader {
     auth_id: i64,
-    value: String,
+    value: Vec<u8>,
 }
 
 struct BibLinker {
@@ -169,7 +170,7 @@ impl BibLinker {
         let mut controlled_fields: Vec<ControlledField> = Vec::new();
 
         for bib_field in bib_fields {
-            let bib_tag = bib_field["tag"].as_str().unwrap();
+            let bib_tag = marc::Tag::from_str(bib_field["tag"].as_str().unwrap())?;
 
             if !linkable_tag_prefixes.contains(&&bib_tag[..1]) {
                 continue;
@@ -201,8 +202,8 @@ impl BibLinker {
 
             for sf in subfields {
                 controlled_fields.push(ControlledField {
-                    bib_tag: bib_tag.to_string(),
-                    auth_tag: auth_tag.to_string(),
+                    bib_tag: bib_tag,
+                    auth_tag: auth_tag,
                     subfield: sf.to_string(),
                 });
             }
@@ -232,7 +233,7 @@ impl BibLinker {
                 if leader["record"].as_i64().unwrap() == auth_id {
                     leaders.push(AuthLeader {
                         auth_id: leader["record"].as_i64().unwrap(),
-                        value: leader["value"].as_str().unwrap().to_string(),
+                        value: leader["value"].as_str().unwrap().as_bytes().to_vec(),
                     });
                     break;
                 }
@@ -248,7 +249,7 @@ impl BibLinker {
         let mut keepers: Vec<AuthLeader> = Vec::new();
 
         for leader in leaders {
-            if &leader.value[index..(index + 1)] == "a" {
+            if &leader.value[index..(index + 1)] == b"a" {
                 keepers.push(leader);
                 continue;
             }
@@ -270,19 +271,20 @@ impl BibLinker {
         bib_field: &marc::Field,
         auth_leaders: &Vec<AuthLeader>,
     ) -> Result<Option<i64>, String> {
-        let mut bib_ind2 = bib_field.ind2;
+        let mut bib_ind2 = bib_field.ind2();
         let mut is_local = false;
 
-        if bib_ind2 == '7' {
+        if bib_ind2 == b'7' {
             // subject thesaurus code is embedded in the bib field subfield 2
             is_local = true;
 
-            let thesaurus = match bib_field.get_subfields("2").get(0) {
-                Some(sf) => &sf.content,
-                None => "",
+            let thesaurus = match bib_field.matching_subfields(b'2').get(0) {
+                Some(sf) => sf.content(),
+                None => &[],
             };
 
-            log::debug!("Found local thesaurus value '{thesaurus}'");
+            let thes_str = marc::util::bytes_to_utf8(thesaurus)?;
+            log::debug!("Found local thesaurus value '{thes_str}'");
 
             // if we have no special remapping value for the found thesaurus,
             // fall back to ind2 => 7=Other.
@@ -292,26 +294,26 @@ impl BibLinker {
                 .next()
             {
                 Some((_, v)) => *v,
-                None => '7',
+                None => b'7',
             };
 
-            log::debug!("Local thesaurus '{thesaurus}' remapped to ind2 value '{bib_ind2}'");
-        } else if bib_ind2 == '4' {
+            log::debug!("Local thesaurus '{thes_str}' remapped to ind2 value '{bib_ind2}'");
+        } else if bib_ind2 == b'4' {
             is_local = true;
-            bib_ind2 = '7';
+            bib_ind2 = b'7';
             log::debug!("Local thesaurus ind2=4 mapped to ind2=7");
         }
 
         let mut authz_leader: Option<AuthLeader> = None;
 
         for leader in auth_leaders {
-            if leader.value.eq("") || leader.value.len() < 12 {
+            if leader.value == b"" || leader.value.len() < 12 {
                 continue;
             }
 
-            let thesaurus = &leader.value[11..12];
+            let thesaurus = leader.value[11..12][0];
 
-            if thesaurus == "z" {
+            if thesaurus == b'z' {
                 // Note for later that we encountered an authority record
                 // whose thesaurus values is z=Other.
                 authz_leader = Some(leader.clone());
@@ -344,22 +346,22 @@ impl BibLinker {
 
     // Returns true if the thesaurus controlling the bib field is "fast".
     fn is_fast_heading(&self, bib_field: &marc::Field) -> bool {
-        let tag = &bib_field.tag;
+        let tag = bib_field.tag().value();
 
         // Looking specifically for bib tags matching 65[015]
-        if &tag[..2] != "65" {
+        if &tag[..2] != b"65" {
             return false;
         }
 
         match &tag[2..3] {
-            "0" | "1" | "5" => {} // keep going
+            b"0" | b"1" | b"5" => {} // keep going
             _ => return false,
         }
 
-        if bib_field.ind2 == '7' {
+        if bib_field.ind2() == b'7' {
             // Field controlled by "other"
-            if let Some(sf) = bib_field.get_subfields("2").get(0) {
-                return &sf.content == "fast";
+            if let Some(sf) = bib_field.matching_subfields(b'2').get(0) {
+                return sf.content() == b"fast";
             }
         }
 
@@ -397,12 +399,12 @@ impl BibLinker {
         controlled_fields: &Vec<ControlledField>,
         bib_field: &marc::Field,
     ) -> Result<Vec<i64>, String> {
-        let bib_tag = &bib_field.tag;
+        let bib_tag = bib_field.tag();
         let auth_ids: Vec<i64> = Vec::new();
 
         let controlled: Vec<&ControlledField> = controlled_fields
             .iter()
-            .filter(|cf| &cf.bib_tag == bib_tag)
+            .filter(|cf| cf.tag == bib_tag)
             .collect();
 
         if controlled.len() == 0 {

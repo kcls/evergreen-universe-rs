@@ -55,14 +55,14 @@ pub fn utf8_to_bytes(s: &str, length: Option<usize>) -> Result<Vec<u8>, String> 
     let bytes = s.as_bytes();
     if let Some(len) = length {
         if bytes.len() != len {
-            return Err(format!("Byte length does not match: {bytes:?} {len}"));
+            return Err(format!(
+                "Byte length does not match: s={s} wanted_len={len} bytes={bytes:?}"));
         }
     }
     Ok(bytes.to_vec())
 }
 
 /// bytes => String => usize
-/// TODO do this without the intermediate String
 pub fn bytes_to_usize(bytes: &[u8]) -> Result<usize, String> {
     match std::str::from_utf8(&bytes) {
         Ok(bytes_str) => match bytes_str.parse::<usize>() {

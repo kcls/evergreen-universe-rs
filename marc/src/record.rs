@@ -17,7 +17,7 @@ pub const U8_SPACE: u8 = ' ' as u8;
 pub const LEADER_LEN: usize = 24;
 pub const TAG_LEN: usize = 3;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Tag {
     value: [u8; TAG_LEN],
 }
@@ -339,7 +339,7 @@ impl Record {
 
     /// Insert a new control field in tag order
     pub fn insert_control_field(&mut self, field: Controlfield) {
-        match self.control_fields.iter().position(|f| f.tag == field.tag) {
+        match self.control_fields.iter().position(|f| f.tag > field.tag) {
             Some(idx) => self.control_fields.insert(idx, field),
             None => self.control_fields.push(field),
         };
@@ -347,7 +347,7 @@ impl Record {
 
     /// Insert a new field in tag order
     pub fn insert_field(&mut self, field: Field) {
-        match self.fields.iter().position(|f| f.tag == field.tag) {
+        match self.fields.iter().position(|f| f.tag > field.tag) {
             Some(idx) => self.fields.insert(idx, field),
             None => self.fields.push(field),
         };

@@ -162,8 +162,8 @@ fn odd_records() {
     let op = Record::from_xml(r#"<record><controlfield tag="123">"#).next();
     assert!(op.is_none());
 
-    let op =
-        Record::from_xml(r#"<record><controlfield tag="1234"></controlfield></record>"#).next();
+    let op = Record::from_xml(
+        r#"<record><controlfield tag="1234"></controlfield></record>"#).next();
 
     assert!(op.is_none());
 }
