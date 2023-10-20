@@ -45,6 +45,8 @@ Resolve it like so:
 cargo update -p time@0.3.30 --precise 0.3.23                                   
 ```
 
+### Build and Test
+
 ```sh
 cd evergreen-universe-rs
 
@@ -53,7 +55,7 @@ make build
 make test
 ```
 
-### Example: Running egsh ("eggshell") -- Requires Redis
+## Example: Running egsh ("eggshell") -- Requires Redis
 
 egsh is an Evergreen-aware srfsh clone (more or less)
 
@@ -61,7 +63,7 @@ egsh is an Evergreen-aware srfsh clone (more or less)
 cargo run --package evergreen --bin egsh
 ```
 
-#### Some Commands
+### Some Commands
 
 * egsh# help
 * egsh# login admin demo123
