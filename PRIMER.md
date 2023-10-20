@@ -65,13 +65,21 @@ cargo run --package evergreen --bin egsh
 
 ### Some Commands
 
-* egsh# help
-* egsh# login admin demo123
-* egsh# reqauth open-ils.pcrud open-ils.pcrud.retrieve.au 1
-    * This uses the authtoken stored from last successful use of 'login'.
-* egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
-* egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
-* egsh# cstore search aou {"shortname":"BR1"}
-* egsh# cstore retrieve actor::user 1
+```sh
+egsh# help
+
+egsh# login admin demo123
+
+# This uses the authtoken stored from last successful use of 'login'.
+egsh# reqauth open-ils.pcrud open-ils.pcrud.retrieve.au 1
+
+egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
+
+egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
+
+egsh# cstore search aou {"shortname":"BR1"}
+
+egsh# cstore retrieve actor::user 1
+```
 
 
