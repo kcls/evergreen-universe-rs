@@ -23,7 +23,14 @@ sudo apt install rust-all
 git clone github.com:kcls/evergreen-universe-rs                                
 ```
 
-#### Dependency Warning / 2023-10-20
+## Build Everything and Run Tests
+
+### Makefile Note
+
+Build and install commands are compiled into a Makefile for convenience
+and documentation.  See the Makefile for individual `cargo` commands.
+
+### Dependency Warning / 2023-10-20
 
 If you get an error that looks more or less like this:
 
@@ -37,14 +44,6 @@ Resolve it like so:
 ```sh
 cargo update -p time@0.3.30 --precise 0.3.23                                   
 ```
-
-## Build Everything and Run Tests
-
-### Makefile Note
-
-Build and install commands are compiled into a Makefile for convenience
-and documentation.  See the Makefile for individual `cargo` commands.
-
 
 ```sh
 cd evergreen-universe-rs
