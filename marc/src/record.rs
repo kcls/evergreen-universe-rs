@@ -2,7 +2,8 @@
 const TAG_SIZE: usize = 3;
 const LEADER_SIZE: usize = 24;
 const CODE_SIZE: usize = 1;
-pub const DEFAULT_LEADER: &str = "                        ";
+const DEFAULT_LEADER: &str = "                        ";
+const DEFAULT_INDICATOR: &str = " ";
 
 /// Verifies the provided string is composed of 'len' number of bytes.
 fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
@@ -23,6 +24,9 @@ pub struct Controlfield {
 }
 
 impl Controlfield {
+    /// Create a Controlfield with the provided tag and content.
+    ///
+    /// * `tag` - Must have the correct byte count.
     pub fn new<T, S>(tag: T, content: S) -> Result<Self, String>
     where
         T: Into<String>,
@@ -40,12 +44,18 @@ impl Controlfield {
             content: content.into(),
         })
     }
+
+    /// Get the tag
     pub fn tag(&self) -> &str {
         &self.tag
     }
+
+    /// Get the content
     pub fn content(&self) -> &str {
         &self.content
     }
+
+    /// Set the Controlfield content.
     pub fn set_content<T>(&mut self, content: T)
     where
         T: Into<String>,
@@ -62,6 +72,9 @@ pub struct Subfield {
 }
 
 impl Subfield {
+    /// Create a Subfield with the provided code and content.
+    ///
+    /// * `code` - Must have the correct byte count.
     pub fn new<T, S>(code: T, content: S) -> Result<Self, String>
     where
         T: Into<String>,
@@ -74,18 +87,22 @@ impl Subfield {
             content: content.into(),
         })
     }
+    /// Get the Subfield content.
     pub fn content(&self) -> &str {
         &self.content
     }
+    /// Set the Subfield content.
     pub fn set_content<T>(&mut self, content: T)
     where
         T: Into<String>,
     {
         self.content = content.into();
     }
+    /// Get the Subfield code.
     pub fn code(&self) -> &str {
         &self.code
     }
+    /// Set the Subfield code.
     pub fn set_code<T>(&mut self, code: T) -> Result<(), String>
     where
         T: Into<String>,
@@ -107,6 +124,9 @@ pub struct Field {
 }
 
 impl Field {
+    /// Create a Field with the provided tag.
+    ///
+    /// * `tag` - Must have the correct byte count.
     pub fn new<T>(tag: T) -> Result<Self, String>
     where
         T: Into<String>,
@@ -125,21 +145,30 @@ impl Field {
             subfields: Vec::new(),
         })
     }
+    /// Get the tag
     pub fn tag(&self) -> &str {
         &self.tag
     }
+    /// Get the value of indicator-1, defaulting to DEFAULT_INDICATOR.
     pub fn ind1(&self) -> &str {
-        self.ind1.as_deref().unwrap_or(" ")
+        self.ind1.as_deref().unwrap_or(DEFAULT_INDICATOR)
     }
+    /// Get the value of indicator-2, defaulting to DEFAULT_INDICATOR.
     pub fn ind2(&self) -> &str {
-        self.ind2.as_deref().unwrap_or(" ")
+        self.ind2.as_deref().unwrap_or(DEFAULT_INDICATOR)
     }
+    /// Get the full list of subfields
     pub fn subfields(&self) -> &Vec<Subfield> {
         &self.subfields
     }
+    /// Get a mutable list of subfields.
     pub fn subfields_mut(&mut self) -> &mut Vec<Subfield> {
         &mut self.subfields
     }
+
+    /// Set the indicator-1 value.
+    ///
+    /// * `ind` - Must have the correct byte count.
     pub fn set_ind1<T>(&mut self, ind: T) -> Result<(), String>
     where
         T: Into<String>,
@@ -149,6 +178,10 @@ impl Field {
         self.ind1 = Some(ind);
         Ok(())
     }
+
+    /// Set the indicator-2 value.
+    ///
+    /// * `ind` - Must have the correct byte count.
     pub fn set_ind2<T>(&mut self, ind: T) -> Result<(), String>
     where
         T: Into<String>,
@@ -158,10 +191,12 @@ impl Field {
         self.ind2 = Some(ind);
         Ok(())
     }
+    /// Get a list of subfields with the provided code.
     pub fn get_subfields(&self, code: &str) -> Vec<&Subfield> {
         self.subfields.iter().filter(|f| f.code() == code).collect()
     }
 
+    /// Get a mutable list of subfields with the provided code.
     pub fn get_subfields_mut(&mut self, code: &str) -> Vec<&mut Subfield> {
         self.subfields
             .iter_mut()
@@ -169,6 +204,9 @@ impl Field {
             .collect()
     }
 
+    /// Adds a new Subfield to this field using the provided code and content.
+    ///
+    /// * `code` - Must have the correct byte count.
     pub fn add_subfield<T, S>(&mut self, code: T, content: S) -> Result<(), String>
     where
         T: Into<String>,
@@ -187,13 +225,15 @@ impl Field {
         None
     }
 
-    /// Remove all subfields with the specified code
-    pub fn remove_subfields(&mut self, code: &str) -> Vec<Subfield> {
-        let mut removed: Vec<Subfield> = Vec::new();
+    /// Remove all subfields with the specified code and returns
+    /// the count of removed subfields.
+    pub fn remove_subfields(&mut self, code: &str) -> usize {
+        let mut removed = 0;
 
         loop {
             if let Some(index) = self.subfields.iter().position(|s| s.code.eq(code)) {
-                removed.push(self.subfields.remove(index));
+                self.subfields.remove(index);
+                removed += 1;
             } else {
                 break;
             }
@@ -212,6 +252,7 @@ pub struct Record {
 
 /// A MARC record with leader, control fields, and data fields.
 impl Record {
+    /// Create a new Record with a default leader and no content.
     pub fn new() -> Self {
         Record {
             leader: DEFAULT_LEADER.to_string(),
@@ -220,6 +261,7 @@ impl Record {
         }
     }
 
+    /// Get the leader as a string.
     pub fn leader(&self) -> &str {
         &self.leader
     }
@@ -251,19 +293,24 @@ impl Record {
         self.set_leader(s)
     }
 
+    /// Get the full list of control fields.
     pub fn control_fields(&self) -> &Vec<Controlfield> {
         &self.control_fields
     }
+    /// Get the full list of control fields, mutable.
     pub fn control_fields_mut(&mut self) -> &mut Vec<Controlfield> {
         &mut self.control_fields
     }
+    /// Get the full list of fields.
     pub fn fields(&self) -> &Vec<Field> {
         &self.fields
     }
+    /// Get the full list of fields, mutable.
     pub fn fields_mut(&mut self) -> &mut Vec<Field> {
         &mut self.fields
     }
 
+    /// Return a list of control fields with the provided tag.
     pub fn get_control_fields(&self, tag: &str) -> Vec<&Controlfield> {
         self.control_fields
             .iter()
@@ -271,10 +318,12 @@ impl Record {
             .collect()
     }
 
+    /// Return a list of fields with the provided tag.
     pub fn get_fields(&self, tag: &str) -> Vec<&Field> {
         self.fields.iter().filter(|f| f.tag() == tag).collect()
     }
 
+    /// Return a mutable list of fields with the provided tag.
     pub fn get_fields_mut(&mut self, tag: &str) -> Vec<&mut Field> {
         self.fields.iter_mut().filter(|f| f.tag() == tag).collect()
     }
@@ -336,6 +385,18 @@ impl Record {
             }
         }
         vec
+    }
+
+    /// Remove all occurrences of control fields with the provided tag.
+    pub fn remove_control_fields(&mut self, tag: &str) {
+        loop {
+            if let Some(pos) = self.control_fields.iter().position(|f| f.tag() == tag) {
+                self.control_fields.remove(pos);
+            } else {
+                // No more fields to remove.
+                return;
+            }
+        }
     }
 
     /// Remove all occurrences of fields with the provided tag.

@@ -1,4 +1,3 @@
-use marc::record::DEFAULT_LEADER;
 use marc::Record;
 
 // Avoiding newlines / formatting for testing purposes.
@@ -121,7 +120,7 @@ fn odd_records() {
     let record = Record::from_xml(EMPTY_MARC_XML).next().unwrap();
 
     let brk = record.to_breaker();
-    assert_eq!(brk, format!("=LDR {}", DEFAULT_LEADER));
+    assert_eq!(brk, format!("=LDR {}", Record::new().leader()));
 
     let op = Record::from_breaker(&brk);
     assert!(op.is_ok());
@@ -180,9 +179,9 @@ fn delete_values() {
     let field = &mut record.get_fields_mut("028")[0];
     assert_eq!(field.subfields().len(), 3);
 
-    let list = field.remove_subfields("a");
+    let count = field.remove_subfields("a");
 
-    assert_eq!(list.len(), 1);
+    assert_eq!(count, 1);
     assert_eq!(field.subfields().len(), 2);
 }
 

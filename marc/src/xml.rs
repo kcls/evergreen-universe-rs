@@ -16,6 +16,10 @@ const MARCXML_SCHEMA_LOCATION: &str =
 
 /// Replace non-ASCII characters and special characters with escaped
 /// XML entities.
+/// ```
+/// use marc::xml;
+/// assert_eq!(xml::escape_xml("<É>").as_str(), "&lt;&#xC9;&gt;");
+/// ```
 pub fn escape_xml(value: &str) -> String {
     let mut buf = String::new();
     for c in value.chars() {
@@ -270,7 +274,7 @@ impl Record {
 
     /// Creates the XML representation of a MARC record as a String.
     pub fn to_xml(&self) -> Result<String, String> {
-        self.to_xml_shared(XmlOptions {
+        self.to_xml_ops(XmlOptions {
             formatted: false,
             with_xml_declaration: true,
         })
@@ -279,18 +283,13 @@ impl Record {
     /// Creates the XML representation of a MARC record as a formatted
     /// string using 2-space indentation.
     pub fn to_xml_formatted(&self) -> Result<String, String> {
-        self.to_xml_shared(XmlOptions {
+        self.to_xml_ops(XmlOptions {
             formatted: true,
             with_xml_declaration: true,
         })
     }
 
     pub fn to_xml_ops(&self, options: XmlOptions) -> Result<String, String> {
-        self.to_xml_shared(options)
-    }
-
-    /// Create the actual XML.
-    fn to_xml_shared(&self, options: XmlOptions) -> Result<String, String> {
         // We could use XmlWriter here, but manual creation works fine
         // and offers more flexibility.
 
