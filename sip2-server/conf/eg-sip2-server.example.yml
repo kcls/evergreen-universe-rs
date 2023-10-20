@@ -36,13 +36,30 @@ setting-groups:
     # SIP institution value
     institution: "default"
 
+    # Include AM/AN library info fields in the SC Status Response message.
     sc-status-library-info: false
+
+    # Encode dates in responses using the SIP2 date format; ISO8601 otherwise.
     due-date-use-sip-date-format: true
+
+    # Patron info/status responses report no blocks for patrons.
+    # Expired patron accounts are always blocked.
     patron-status-permit-all: false
+
+    # Patron info/status responses report no blocks for checkout/renew/recall.
+    # Expired patron accounts are always blocked.
     patron-status-permit-loans: false
+
+    # Only report holds ready for pickup in the 64 response.
     msg64-hold-items-available: false
+
+    # Sets the "hold_as_transit" Evergreen checkin flag.
     checkin-holds-as-transits: false
+
+    # Report barcodes or titles in holds list
     msg64-hold-datatype: "barcode"      # barcode | title
+
+    # Report barcodes or titles in circulation lists
     msg64-summary-datatype: "barcode"   # barcode | title
     
     # Format of patron fines.
@@ -75,6 +92,7 @@ setting-groups:
 #    field-filters:
 #      - field-code: ZY          # 2-char SIP field code
 #        replace-with: ZY-VALUE  # Optional replacement value.  
+#      - field-code: YX          # Remove, don't replace
 
 accounts:
   - sip-username: "sip-user"  # SIP Login CN value
