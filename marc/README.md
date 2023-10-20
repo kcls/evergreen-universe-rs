@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-See [Tests](./tests/record.rs) for examples.
+See [Examples](./examples/roundtrip.rs) and [Tests](./tests/record.rs) for examples.
 
 ## About
 

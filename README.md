@@ -2,21 +2,6 @@
 
 Rust bindings, libs, and binaries for Evergreen and related projects.
 
-## UBUNTU 22.04 2023-10-11 DEPENDENCY ISSUE
-
-### Problem During Build
-
-```sh
-error: package `time v0.3.29` cannot be built because it requires rustc 
-1.67.0 or newer, while the currently active rustc version is 1.66.1
-```
-
-### Fix
-
-```sh
-cargo update -p time@0.3.29 --precise 0.3.23                                   
-```
-
 ## Included Packages
 
 ### MPTC
@@ -56,33 +41,4 @@ SIP2 server custom built for Evergreen.
 
 ## Quick Start
 
-### Packages are collected into a single Rust workspace.
-
-The workspace has no default members.  Individual packages must be 
-specified at build time or they can all be built with the --all option.
-
-```sh
-# Install rust tools 
-sudo apt install rust-all
-
-# Checkout the repo
-git clone github.com:kcls/evergreen-universe-rs
-cd evergreen-universe-rs
-
-# Build all packages
-cargo build --all
-
-# Run all tests
-cargo test --all
-
-# Build the OpenSRF bits
-cargo build --package opensrf
-
-# Build the OpenSRF Router
-cargo build --package opensrf --bin opensrf-router
-
-# Run the SIP2 Server
-cargo run --package sip2server --bin eg-sip2-server
-```
-
-
+See the [Primer](./PRIMER.md)

@@ -70,10 +70,11 @@ Commands
             cstore retrieve au 1
             cstore search au {"id":{"<":5}}
             cstore search actor.user {"id":{"<":5}}
+            cstore search actor::user {"id":{"<":5}}
 
         'hint_or_fielmapper' may be either an IDL class hint ("ahr") or
-        the class fieldmapper name with "::" replaced by "."
-        ("action.hold_request", "actor.user")
+        the class fieldmapper name ("action::hold_request"), or the fieldmapper
+        name with "::" replaced by "." ("action.hold_request", "actor.user")
 
         NOTE: this command only works when connecting to a domain
         that has access to cstore, e.g. private.localhost.
@@ -372,7 +373,9 @@ impl Shell {
         // fieldmapper name ("actor.org_unit");
         let mut class = args[1].to_string();
 
-        if !class.contains(".") {
+        if class.contains("::") {
+            class = class.replace("::", ".");
+        } else if !class.contains(".") {
             // Caller provided a class hint.  Translate that into
             // the fieldmapper string used by cstore APIs.
 
