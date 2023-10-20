@@ -75,11 +75,9 @@ egsh# reqauth open-ils.pcrud open-ils.pcrud.retrieve.au 1
 
 egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
 
-egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
+egsh# cstore retrieve actor::user 1
 
 egsh# cstore search aou {"shortname":"BR1"}
-
-egsh# cstore retrieve actor::user 1
 ```
 
 
