@@ -14,6 +14,7 @@ const DATA_OFFSET_SIZE: usize = 5;
 const DATA_LENGTH_SIZE: usize = 4;
 const DIRECTORY_ENTRY_LEN: usize = 12;
 const SUBFIELD_SEPARATOR: &str = "\x1F";
+const MAX_RECORD_BYTES: usize = 99999;
 
 /// Iterates over a binary MARC file and emits MARC Records as they are
 /// pulled  from the file.
@@ -318,7 +319,7 @@ impl Record {
         bytes.append(&mut vec![END_OF_RECORD]);
 
         // Make sure the size and data offset for the leader match.
-        self.sync_leader(num_dirs, &mut bytes);
+        self.sync_leader(num_dirs, &mut bytes)?;
 
         Ok(bytes)
     }
@@ -398,10 +399,17 @@ impl Record {
 
     // Sync the byte count and data offset values in the leader to
     // match the record we just created.
-    fn sync_leader(&self, num_dirs: usize, bytes: &mut Vec<u8>) {
-        let size_str = format!("{:0w$}", bytes.len(), w = RECORD_SIZE_ENTRY);
+    fn sync_leader(&self, num_dirs: usize, bytes: &mut Vec<u8>) -> Result<(), String> {
+        let blen = bytes.len();
+
+        if blen > MAX_RECORD_BYTES {
+            return Err(format!("MARC byte count {blen} too large for binary encoding"));
+        }
+
+        let size_str = format!("{:0w$}", blen, w = RECORD_SIZE_ENTRY);
         let size_bytes = size_str.as_bytes();
 
+        // 6 bytes
         bytes[0..RECORD_SIZE_ENTRY].copy_from_slice(&size_bytes);
 
         // Set the start index of the body of the record
@@ -412,5 +420,7 @@ impl Record {
         let dend = dstart + DATA_OFFSET_SIZE;
 
         bytes[dstart..dend].copy_from_slice(&data_start_str.as_bytes());
+
+        Ok(())
     }
 }
