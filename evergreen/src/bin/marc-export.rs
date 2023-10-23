@@ -404,17 +404,17 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
             some_found = true;
 
             let marc_xml: &str = row.get("marc");
+            let record_id: i64 = row.get("id");
 
             let mut record = match Record::from_xml(&marc_xml).next() {
                 Some(r) => r,
                 None => {
-                    eprintln!("No record built from XML: \n{marc_xml}");
+                    eprintln!("No record built from XML: record={record_id} \n{marc_xml}");
                     continue;
                 }
             };
 
             if ops.export_items {
-                let record_id: i64 = row.get("id");
                 add_items(record_id, con, ops, &mut record)?;
             }
 
@@ -427,7 +427,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
                 let xml = match record.to_xml_ops(options) {
                     Ok(s) => s,
                     Err(e) => {
-                        eprintln!("Error creating XML from record: {e}");
+                        eprintln!("Error creating XML from record: record={record_id} {e}");
                         continue;
                     }
                 };
@@ -437,7 +437,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
                 let binary = match record.to_binary() {
                     Ok(b) => b,
                     Err(e) => {
-                        eprintln!("Error creating binary from record: {e}");
+                        eprintln!("Error creating binary from record: record={record_id} {e}");
                         continue;
                     }
                 };
