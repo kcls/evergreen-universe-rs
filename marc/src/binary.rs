@@ -409,7 +409,6 @@ impl Record {
         let size_str = format!("{:0w$}", blen, w = RECORD_SIZE_ENTRY);
         let size_bytes = size_str.as_bytes();
 
-        // 6 bytes
         bytes[0..RECORD_SIZE_ENTRY].copy_from_slice(&size_bytes);
 
         // Set the start index of the body of the record
