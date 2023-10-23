@@ -13,38 +13,6 @@ const XML_COLLECTION_FOOTER: &str = "</collection>";
 const DEFAULT_BATCH_SIZE: u64 = 1000;
 const HOLDINGS_SUBFIELD: &str = "852";
 
-const ITEMS_QUERY: &str = r#"
-    SELECT
-        olib.shortname as owning_lib,
-        clib.shortname as circ_lib,
-        acpl.name as acpl_name,
-        acnp.label as call_number_prefix,
-        acn.label as call_number,
-        acns.label as call_number_suffix,
-        acp.circ_modifier,
-        acp.barcode,
-        ccs.name as status,
-        acp.copy_number,
-        acp.price,
-        acp.ref,
-        acp.holdable,
-        acp.circulate,
-        acp.opac_visible
-    FROM
-        asset.copy acp
-        JOIN config.copy_status ccs ON ccs.id = acp.status
-        JOIN asset.copy_location acpl ON acpl.id = acp.location
-        JOIN asset.call_number acn ON acn.id = acp.call_number
-        JOIN asset.call_number_prefix acnp ON acnp.id = acn.prefix
-        JOIN asset.call_number_suffix acns ON acns.id = acn.suffix
-        JOIN actor.org_unit olib ON olib.id = acn.owning_lib
-        JOIN actor.org_unit clib ON clib.id = acp.circ_lib
-    WHERE
-        NOT acp.deleted
-        AND NOT acn.deleted
-        AND acn.record = $1
-"#;
-
 /// Map MARC subfields to SQL row field names.
 /// Some are handled manually but left here for documentation.
 const ITEM_SUBFIELD_MAP: &[&(&str, &str)] = &[
@@ -79,6 +47,9 @@ struct ExportOptions {
 
     /// Export items / copies in addition to records.
     export_items: bool,
+
+    /// Limit exported items to those that are OPAC visible
+    limit_to_visible: bool,
 
     currency_symbol: String,
 
@@ -132,6 +103,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
 
     opts.optflag("", "pretty-print-xml", "");
     opts.optflag("", "pipe", "");
+    opts.optflag("", "limit-to-opac-visible", "");
     opts.optflag("", "items", "");
     opts.optflag("", "to-xml", "");
     opts.optflag("h", "help", "");
@@ -183,6 +155,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
                 .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
                 .unwrap(),
             export_items: params.opt_present("items"),
+            limit_to_visible: params.opt_present("limit-to-opac-visible"),
             verbose: params.opt_present("verbose"),
             to_xml: params.opt_present("to-xml"),
             query_file: params.opt_get("query-file").unwrap(),
@@ -226,6 +199,11 @@ Options
     --items
         Includes holdings (copies / items) in the export.  Items are
         added as MARC 852 fields.
+
+    --limit-to-opac-visible
+        Limits holdings (copies / items) in the export to those that
+        are visible in the OPAC. This option does nothing if the
+        --items option is not used.
 
     --library <shortname>
         Limit to records that have holdings at the specified library
@@ -308,6 +286,51 @@ fn create_records_sql(ops: &ExportOptions) -> String {
     )
 }
 
+fn create_items_sql(ops: &ExportOptions) -> String {
+    let mut items_query: String  = String::from(r#"
+    SELECT
+        olib.shortname as owning_lib,
+        clib.shortname as circ_lib,
+        acpl.name as acpl_name,
+        acnp.label as call_number_prefix,
+        acn.label as call_number,
+        acns.label as call_number_suffix,
+        acp.circ_modifier,
+        acp.barcode,
+        ccs.name as status,
+        acp.copy_number,
+        acp.price,
+        acp.ref,
+        acp.holdable,
+        acp.circulate,
+        acp.opac_visible
+    FROM
+        asset.copy acp
+        JOIN config.copy_status ccs ON ccs.id = acp.status
+        JOIN asset.copy_location acpl ON acpl.id = acp.location
+        JOIN asset.call_number acn ON acn.id = acp.call_number
+        JOIN asset.call_number_prefix acnp ON acnp.id = acn.prefix
+        JOIN asset.call_number_suffix acns ON acns.id = acn.suffix
+        JOIN actor.org_unit olib ON olib.id = acn.owning_lib
+        JOIN actor.org_unit clib ON clib.id = acp.circ_lib
+    WHERE
+        NOT acp.deleted
+        AND NOT acn.deleted
+        AND acn.record = $1
+"#);
+
+    if ops.limit_to_visible {
+        let opac_vis_ops: &str = r#"
+        AND acp.opac_visible
+        AND acpl.opac_visible
+        AND clib.opac_visible
+        AND ccs.opac_visible
+"#;
+        items_query.push_str(opac_vis_ops);
+    };
+    items_query
+}
+
 /// Read record IDs, one per line, from STDIN for use in
 /// the main record query.
 fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
@@ -386,6 +409,8 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
         write(&mut writer, &XML_COLLECTION_HEADER.as_bytes())?;
     }
 
+    let items_query = if ops.export_items { Some(create_items_sql(&ops)) } else { None };
+
     let mut offset = 0;
     loop {
         let mut query = create_records_sql(ops);
@@ -414,8 +439,8 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
                 }
             };
 
-            if ops.export_items {
-                add_items(record_id, con, ops, &mut record)?;
+            if let Some(items_sql) = &items_query {
+                add_items(record_id, con, ops, &mut record, &items_sql)?;
             }
 
             if ops.to_xml {
@@ -473,10 +498,11 @@ fn add_items(
     con: &mut DatabaseConnection,
     ops: &ExportOptions,
     record: &mut Record,
+    items_query: &String,
 ) -> Result<(), String> {
     record.remove_fields(HOLDINGS_SUBFIELD);
 
-    for row in con.client().query(&ITEMS_QUERY[..], &[&record_id]).unwrap() {
+    for row in con.client().query(&items_query[..], &[&record_id]).unwrap() {
         let mut field = marc::Field::new(HOLDINGS_SUBFIELD)?;
         field.set_ind1("4")?;
 
@@ -536,6 +562,10 @@ fn check_options(ops: &ExportOptions) -> Result<(), String> {
         return Err(format!(
             "--verbose is not compatible with exporting to STDOUT"
         ));
+    }
+
+    if ops.limit_to_visible && !ops.export_items {
+        eprintln!("--limit-to-opac-visible does nothing without the --items option");
     }
 
     Ok(())
