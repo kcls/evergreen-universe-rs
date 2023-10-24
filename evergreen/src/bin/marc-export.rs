@@ -328,6 +328,10 @@ fn create_items_sql(ops: &ExportOptions) -> String {
 "#;
         items_query.push_str(opac_vis_ops);
     };
+
+    // Consistent ordering makes comparing outputs easier.
+    items_query.push_str("ORDER BY acp.id");
+
     items_query
 }
 
