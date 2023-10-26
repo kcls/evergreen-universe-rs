@@ -48,6 +48,9 @@ struct ExportOptions {
     /// Export items / copies in addition to records.
     export_items: bool,
 
+    /// Insert holdings fields in tag order.
+    force_ordered_holdings_fields: bool,
+
     /// Limit exported items to those that are OPAC visible
     limit_to_visible: bool,
 
@@ -102,6 +105,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
     opts.optmulti("", "library", "", "");
 
     opts.optflag("", "pretty-print-xml", "");
+    opts.optflag("", "force-ordered-holdings-fields", "");
     opts.optflag("", "pipe", "");
     opts.optflag("", "limit-to-opac-visible", "");
     opts.optflag("", "items", "");
@@ -154,6 +158,8 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
             batch_size: params
                 .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
                 .unwrap(),
+            force_ordered_holdings_fields:
+                params.opt_present("force-ordered-holdings-fields"),
             export_items: params.opt_present("items"),
             limit_to_visible: params.opt_present("limit-to-opac-visible"),
             verbose: params.opt_present("verbose"),
@@ -208,6 +214,11 @@ Options
     --library <shortname>
         Limit to records that have holdings at the specified library
         by shortname.  Repeatable.
+
+    --force-ordered-holdings-fields
+        Insert holdings/items fields in tag order.  The default is
+        to append the fields to the end of the record, which is
+        generally faster.
 
     --modified-since <ISO date>
         Export record modified on or after the provided date(time).
@@ -548,7 +559,11 @@ fn add_items(
             field.add_subfield("x", "hidden")?;
         }
 
-        record.insert_field(field);
+        if ops.force_ordered_holdings_fields {
+            record.insert_field(field);
+        } else {
+            record.fields_mut().push(field);
+        }
     }
 
     Ok(())
