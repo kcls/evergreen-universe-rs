@@ -101,7 +101,8 @@ fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
         json::from(tester.samples.acp_barcode.to_string()),
     );
 
-    // Tell the circulator we're operating from a different org unit.
+    // Tell the circulator we're operating from a different org unit
+    // so our item goes into transit on checkin.
     options.insert(
         "circ_lib".to_string(),
         json::from(eg::samples::AOU_BR2_ID)

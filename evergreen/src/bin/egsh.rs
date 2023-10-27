@@ -130,6 +130,7 @@ struct Shell {
     /// Print IDL objects as they travel on the wire, as classed arrays,
     /// instead of using our internal structure.
     json_as_wire_protocal: bool,
+    json_hash_slim: bool,
     command: String,
 }
 
@@ -165,6 +166,7 @@ impl Shell {
             command: String::new(),
             json_print_depth: DEFAULT_JSON_PRINT_DEPTH,
             json_as_wire_protocal: false,
+            json_hash_slim: false,
         };
 
         if params.opt_present("with-database") {
@@ -460,7 +462,11 @@ impl Shell {
     }
 
     fn list_prefs(&mut self) -> Result<(), String> {
-        for pref in ["json_print_depth", "json_as_wire_protocal"] {
+        for pref in [
+            "json_print_depth",
+            "json_as_wire_protocal",
+            "json_hash_slim"
+        ] {
             self.get_pref(&["get", pref])?;
         }
         Ok(())
@@ -478,9 +484,10 @@ impl Shell {
                     .or_else(|e| Err(format!("Invalid value for {pref} {e}")))?;
                 self.json_print_depth = value_num;
             }
-            "json_as_wire_protocal" => {
-                self.json_as_wire_protocal = value.to_lowercase() == "true";
-            }
+            "json_as_wire_protocal" =>
+                self.json_as_wire_protocal = value.to_lowercase() == "true",
+            "json_hash_slim" =>
+                self.json_hash_slim = value.to_lowercase() == "true",
             _ => Err(format!("No such pref: {pref}"))?,
         }
 
@@ -494,6 +501,7 @@ impl Shell {
         let value = match pref {
             "json_print_depth" => json::from(self.json_print_depth),
             "json_as_wire_protocal" => json::from(self.json_as_wire_protocal),
+            "json_hash_slim" => json::from(self.json_hash_slim),
             _ => return Err(format!("No such pref: {pref}")),
         };
 
@@ -763,12 +771,16 @@ impl Shell {
 
         let mut obj = obj;
         let wire_val;
+        let scrubbed;
         if self.json_as_wire_protocal {
             // If requested, print JSON values as they appear on
             // the wire, as classed arrays, instead of our internal
             // hash-based representation.
             wire_val = Some(idl::Parser::as_serializer(self.ctx().idl()).pack(obj.clone()));
             obj = wire_val.as_ref().unwrap();
+        } else if self.json_hash_slim {
+            scrubbed = Some(idl::scrub_hash_nulls(obj.clone()));
+            obj = scrubbed.as_ref().unwrap();
         }
 
         println!("{SEPARATOR}");
