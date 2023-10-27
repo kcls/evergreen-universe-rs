@@ -1,7 +1,7 @@
 use crate::util;
 use eg::common::circulator::Circulator;
-use eg::result::EgResult;
 use eg::constants as C;
+use eg::result::EgResult;
 use evergreen as eg;
 use json;
 use std::collections::HashMap;
@@ -87,7 +87,10 @@ fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
         Some(tester.samples.acp_barcode.as_str())
     );
 
-    assert_eq!(eg::util::json_int(&copy["status"])?, C::COPY_STATUS_RESHELVING);
+    assert_eq!(
+        eg::util::json_int(&copy["status"])?,
+        C::COPY_STATUS_RESHELVING
+    );
 
     Ok(())
 }
@@ -103,10 +106,7 @@ fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
 
     // Tell the circulator we're operating from a different org unit
     // so our item goes into transit on checkin.
-    options.insert(
-        "circ_lib".to_string(),
-        json::from(eg::samples::AOU_BR2_ID)
-    );
+    options.insert("circ_lib".to_string(), json::from(eg::samples::AOU_BR2_ID));
 
     let mut circulator = Circulator::new(e, options)?;
     circulator.begin()?;
@@ -130,7 +130,10 @@ fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
         Some(tester.samples.acp_barcode.as_str())
     );
 
-    assert_eq!(eg::util::json_int(&copy["status"])?, C::COPY_STATUS_IN_TRANSIT);
+    assert_eq!(
+        eg::util::json_int(&copy["status"])?,
+        C::COPY_STATUS_IN_TRANSIT
+    );
 
     Ok(())
 }

@@ -465,7 +465,7 @@ impl Shell {
         for pref in [
             "json_print_depth",
             "json_as_wire_protocal",
-            "json_hash_slim"
+            "json_hash_slim",
         ] {
             self.get_pref(&["get", pref])?;
         }
@@ -484,10 +484,8 @@ impl Shell {
                     .or_else(|e| Err(format!("Invalid value for {pref} {e}")))?;
                 self.json_print_depth = value_num;
             }
-            "json_as_wire_protocal" =>
-                self.json_as_wire_protocal = value.to_lowercase() == "true",
-            "json_hash_slim" =>
-                self.json_hash_slim = value.to_lowercase() == "true",
+            "json_as_wire_protocal" => self.json_as_wire_protocal = value.to_lowercase() == "true",
+            "json_hash_slim" => self.json_hash_slim = value.to_lowercase() == "true",
             _ => Err(format!("No such pref: {pref}"))?,
         }
 
