@@ -1,4 +1,6 @@
 pub use editor::Editor;
+pub use result::EgError;
+pub use result::EgResult;
 
 pub mod auth;
 pub mod common;

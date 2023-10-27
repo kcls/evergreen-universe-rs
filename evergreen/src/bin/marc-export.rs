@@ -158,8 +158,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
             batch_size: params
                 .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
                 .unwrap(),
-            force_ordered_holdings_fields:
-                params.opt_present("force-ordered-holdings-fields"),
+            force_ordered_holdings_fields: params.opt_present("force-ordered-holdings-fields"),
             export_items: params.opt_present("items"),
             limit_to_visible: params.opt_present("limit-to-opac-visible"),
             verbose: params.opt_present("verbose"),
@@ -298,7 +297,8 @@ fn create_records_sql(ops: &ExportOptions) -> String {
 }
 
 fn create_items_sql(ops: &ExportOptions) -> String {
-    let mut items_query: String  = String::from(r#"
+    let mut items_query: String = String::from(
+        r#"
     SELECT
         olib.shortname as owning_lib,
         clib.shortname as circ_lib,
@@ -328,7 +328,8 @@ fn create_items_sql(ops: &ExportOptions) -> String {
         NOT acp.deleted
         AND NOT acn.deleted
         AND acn.record = $1
-"#);
+"#,
+    );
 
     if ops.limit_to_visible {
         let opac_vis_ops: &str = r#"
@@ -424,7 +425,11 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
         write(&mut writer, &XML_COLLECTION_HEADER.as_bytes())?;
     }
 
-    let items_query = if ops.export_items { Some(create_items_sql(&ops)) } else { None };
+    let items_query = if ops.export_items {
+        Some(create_items_sql(&ops))
+    } else {
+        None
+    };
 
     let mut offset = 0;
     loop {

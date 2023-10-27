@@ -403,7 +403,9 @@ impl Record {
         let blen = bytes.len();
 
         if blen > MAX_RECORD_BYTES {
-            return Err(format!("MARC byte count {blen} too large for binary encoding"));
+            return Err(format!(
+                "MARC byte count {blen} too large for binary encoding"
+            ));
         }
 
         let size_str = format!("{:0w$}", blen, w = RECORD_SIZE_ENTRY);

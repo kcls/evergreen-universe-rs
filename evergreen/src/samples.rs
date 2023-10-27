@@ -23,6 +23,8 @@ pub const AU_BARCODE: &str = "_EG_TEST_";
 pub const AU_PROFILE: i64 = 2; // Patrons
 pub const AU_IDENT_TYPE: i64 = 3; // Other
 
+pub const AU_STAFF_ID: i64 = 195; // br1mclark
+
 pub struct SampleData {
     pub acn_creator: i64,
     pub acn_record: i64,
