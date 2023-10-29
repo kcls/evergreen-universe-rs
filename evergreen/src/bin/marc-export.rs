@@ -144,9 +144,24 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
         }
     }
 
+    let batch_size = match params.opt_get_default("batch-size", DEFAULT_BATCH_SIZE) {
+        Ok(s) => {
+            if s == 0 {
+                DEFAULT_BATCH_SIZE
+            } else {
+                s
+            }
+        }
+        Err(e) => {
+            eprintln!("Invalid batch size: {e}");
+            return None;
+        }
+    };
+
     let options = ExportOptions {
         destination,
         modified_since,
+        batch_size,
         pipe: params.opt_present("pipe"),
         record_ids: None,
         pretty_print_xml: params.opt_present("pretty-print-xml"),
@@ -157,9 +172,6 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
         library_ids: None,
         currency_symbol: params
             .opt_get_default("currency-symbol", "$".to_string())
-            .unwrap(),
-        batch_size: params
-            .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
             .unwrap(),
         order_by_id: params.opt_present("order-by-id"),
         force_ordered_holdings_fields: params.opt_present("force-ordered-holdings-fields"),
