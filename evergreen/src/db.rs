@@ -198,6 +198,23 @@ pub struct DatabaseConnection {
     in_transaction: bool,
 }
 
+impl Clone for DatabaseConnection {
+    /// Clone all of the connection details minus the actual PG Client.
+    fn clone(&self) -> DatabaseConnection {
+        DatabaseConnection {
+            client: None,
+            dsn: self.dsn.clone(),
+            host: self.host.clone(),
+            port: self.port,
+            user: self.user.clone(),
+            password: self.password.clone(),
+            database: self.database.clone(),
+            application: self.application.clone(),
+            in_transaction: false,
+        }
+    }
+}
+
 impl Drop for DatabaseConnection {
     fn drop(&mut self) {
         // This is probably unnecessary, since I expect the PG backend

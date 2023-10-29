@@ -29,6 +29,7 @@ threadpool = "1.8"
 # Needed for extracting numeric PG types
 pg_interval = "0.4"
 rust_decimal = { version = "1.26", features = ["db-postgres"] }
+postgres-cursor = "0.4"
 
 # HTTP gateway
 httparse = "1.8.0"

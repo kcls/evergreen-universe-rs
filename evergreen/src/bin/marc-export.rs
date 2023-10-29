@@ -3,6 +3,7 @@ use eg::db::DatabaseConnection;
 use evergreen as eg;
 use getopts;
 use marc::Record;
+use postgres_cursor::Cursor;
 use rust_decimal::Decimal;
 use std::io::prelude::*;
 use std::path::Path;
@@ -10,7 +11,7 @@ use std::{env, fs, io};
 
 const XML_COLLECTION_HEADER: &str = r#"<collection xmlns="http://www.loc.gov/MARC21/slim">"#;
 const XML_COLLECTION_FOOTER: &str = "</collection>";
-const DEFAULT_BATCH_SIZE: u64 = 1000;
+const DEFAULT_BATCH_SIZE: u32 = 1000;
 const HOLDINGS_SUBFIELD: &str = "852";
 
 /// Map MARC subfields to SQL row field names.
@@ -43,7 +44,7 @@ struct ExportOptions {
     to_xml: bool,
 
     /// How many records to pull from the database within each query batch.
-    batch_size: u64,
+    batch_size: u32,
 
     /// Export items / copies in addition to records.
     export_items: bool,
@@ -79,6 +80,8 @@ struct ExportOptions {
     /// Comma-separated list of bib record IDs
     record_ids: Option<String>,
 
+    order_by_id: bool,
+
     query_file: Option<String>,
     verbose: bool,
 }
@@ -104,6 +107,7 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
 
     opts.optmulti("", "library", "", "");
 
+    opts.optflag("", "order-by-id", "");
     opts.optflag("", "pretty-print-xml", "");
     opts.optflag("", "force-ordered-holdings-fields", "");
     opts.optflag("", "pipe", "");
@@ -140,33 +144,33 @@ fn read_options() -> Option<(ExportOptions, DatabaseConnection)> {
         }
     }
 
-    Some((
-        ExportOptions {
-            destination,
-            modified_since,
-            pipe: params.opt_present("pipe"),
-            record_ids: None,
-            pretty_print_xml: params.opt_present("pretty-print-xml"),
-            min_id: params.opt_get_default("min-id", -1).unwrap(),
-            max_id: params.opt_get_default("max-id", -1).unwrap(),
-            location_code: params.opt_str("location-code"),
-            libraries: params.opt_strs("library"),
-            library_ids: None,
-            currency_symbol: params
-                .opt_get_default("currency-symbol", "$".to_string())
-                .unwrap(),
-            batch_size: params
-                .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
-                .unwrap(),
-            force_ordered_holdings_fields: params.opt_present("force-ordered-holdings-fields"),
-            export_items: params.opt_present("items"),
-            limit_to_visible: params.opt_present("limit-to-opac-visible"),
-            verbose: params.opt_present("verbose"),
-            to_xml: params.opt_present("to-xml"),
-            query_file: params.opt_get("query-file").unwrap(),
-        },
-        connection,
-    ))
+    let options = ExportOptions {
+        destination,
+        modified_since,
+        pipe: params.opt_present("pipe"),
+        record_ids: None,
+        pretty_print_xml: params.opt_present("pretty-print-xml"),
+        min_id: params.opt_get_default("min-id", -1).unwrap(),
+        max_id: params.opt_get_default("max-id", -1).unwrap(),
+        location_code: params.opt_str("location-code"),
+        libraries: params.opt_strs("library"),
+        library_ids: None,
+        currency_symbol: params
+            .opt_get_default("currency-symbol", "$".to_string())
+            .unwrap(),
+        batch_size: params
+            .opt_get_default("batch-size", DEFAULT_BATCH_SIZE)
+            .unwrap(),
+        order_by_id: params.opt_present("order-by-id"),
+        force_ordered_holdings_fields: params.opt_present("force-ordered-holdings-fields"),
+        export_items: params.opt_present("items"),
+        limit_to_visible: params.opt_present("limit-to-opac-visible"),
+        verbose: params.opt_present("verbose"),
+        to_xml: params.opt_present("to-xml"),
+        query_file: params.opt_get("query-file").unwrap(),
+    };
+
+    Some((options, connection))
 }
 
 fn print_help() {
@@ -218,6 +222,11 @@ Options
         Insert holdings/items fields in tag order.  The default is
         to append the fields to the end of the record, which is
         generally faster.
+
+    --order-by-id
+        Sort data (records, etc.) by ID.
+        This is useful for comparing output data, but increases
+        the overhead of any SQL queries.
 
     --modified-since <ISO date>
         Export record modified on or after the provided date(time).
@@ -286,14 +295,13 @@ fn create_records_sql(ops: &ExportOptions) -> String {
         filter += &format!(" AND bre.edit_date >= '{since}'");
     }
 
-    // We have to order by something to support paging.
-    let order_by = "ORDER BY bre.id";
+    let mut sql = format!("{select} {from} {filter}");
 
-    // OFFSET is set in the main query loop.
-    format!(
-        "{select} {from} {filter} {order_by} LIMIT {}",
-        ops.batch_size
-    )
+    if ops.order_by_id {
+        sql += " ORDER BY bre.id";
+    }
+
+    sql
 }
 
 fn create_items_sql(ops: &ExportOptions) -> String {
@@ -342,7 +350,9 @@ fn create_items_sql(ops: &ExportOptions) -> String {
     };
 
     // Consistent ordering makes comparing outputs easier.
-    items_query.push_str("ORDER BY acp.id");
+    if ops.order_by_id {
+        items_query += "ORDER BY acp.id";
+    }
 
     items_query
 }
@@ -431,23 +441,33 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
         None
     };
 
-    let mut offset = 0;
-    loop {
-        let mut query = create_records_sql(ops);
+    let query = create_records_sql(ops);
 
-        if ops.query_file.is_none() {
-            // Internally built SQL is paged
-            query += &format!(" OFFSET {offset}");
-        }
+    if ops.verbose {
+        println!("Record batch SQL:\n{query}");
+    }
 
-        if ops.verbose {
-            println!("Record batch SQL:\n{query}");
-        }
+    // A cursor is by definition a long running mutable thing.  Create a
+    // separate connection so we can leave the cursor open and running
+    // while doing other DB stuff with the main connection.
+    let mut cursor_con = con.clone();
+    cursor_con.connect()?;
 
-        let mut some_found = false;
-        for row in con.client().query(&query[..], &[]).unwrap() {
-            some_found = true;
+    let mut cursor = Cursor::build(cursor_con.client())
+        .batch_size(ops.batch_size)
+        .query(&query)
+        .finalize()
+        .expect("Create PG Cursor");
 
+    let mut batch_counter = 0;
+    let mut row_counter = 0;
+    for result in &mut cursor {
+        let rows = match result {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Cursor response failed: {e}"))?,
+        };
+
+        for row in &rows {
             let marc_xml: &str = row.get("marc");
             let record_id: i64 = row.get("id");
 
@@ -489,15 +509,14 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
 
                 write(&mut writer, &binary)?;
             }
+
+            row_counter += 1;
         }
 
-        if !some_found || ops.query_file.is_some() {
-            // All batches processed.
-            // Query files are processed in one big batch.
-            break;
+        batch_counter += 1;
+        if ops.verbose {
+            println!("Processed: batches={batch_counter} rows={row_counter}");
         }
-
-        offset += ops.batch_size;
     }
 
     if ops.to_xml {
@@ -506,8 +525,6 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
         }
         write(&mut writer, &XML_COLLECTION_FOOTER.as_bytes())?;
     }
-
-    con.disconnect();
 
     Ok(())
 }
