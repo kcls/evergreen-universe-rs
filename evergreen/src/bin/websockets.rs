@@ -568,8 +568,9 @@ impl Session {
                 a.clone()
             }
             None => {
-                let domain = self.osrf_sender.address().domain();
-                send_to_router = Some(RouterAddress::new(domain).as_str().to_string());
+                let username = self.osrf_sender.router_name();
+                let domain = self.osrf_sender.address().addr().domain();
+                send_to_router = Some(RouterAddress::new(username, domain).as_str().to_string());
                 ServiceAddress::new(service).as_str().to_string()
             }
         };

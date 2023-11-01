@@ -302,7 +302,7 @@ impl Router {
 
         let busconf = router_conf.client();
 
-        let addr = RouterAddress::new(busconf.domain().name());
+        let addr = RouterAddress::new(busconf.username(), busconf.domain().name());
         let primary_domain = RouterDomain::new(&busconf);
 
         Router {
@@ -367,7 +367,7 @@ impl Router {
     /// Remove the service registration from the domain entry implied by the
     /// caller's address.
     fn handle_unregister(&mut self, address: &ClientAddress, service: &str) -> Result<(), String> {
-        let domain = address.domain();
+        let domain = address.addr().domain();
 
         log::info!(
             "De-registering domain={} service={} address={}",
@@ -416,7 +416,7 @@ impl Router {
     ///
     /// The domain must be configured as a trusted server domain.
     fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
-        let domain = address.domain(); // Known to be a client addr.
+        let domain = address.addr().domain(); // Known to be a client addr.
 
         let mut matches = self
             .trusted_server_domains
@@ -536,7 +536,7 @@ impl Router {
             self.primary_domain.domain()
         );
 
-        let addr = BusAddress::new_from_string(to)?;
+        let addr = BusAddress::from_str(to)?;
 
         if addr.is_service() {
             let addr = ServiceAddress::from_addr(addr)?;
@@ -564,22 +564,17 @@ impl Router {
             return self.handle_router_api_request(tm);
         }
 
-        let client_addr = BusAddress::new_from_string(tm.from())?;
+        let client_addr = BusAddress::from_str(tm.from())?;
+        let domain = client_addr.domain();
 
-        if let Some(domain) = client_addr.domain() {
-            let mut matches = self
-                .trusted_client_domains
-                .iter()
-                .filter(|d| d.as_str().eq(domain));
+        let mut matches = self
+            .trusted_client_domains
+            .iter()
+            .filter(|d| d.as_str().eq(domain));
 
-            if matches.next().is_none() {
-                return Err(format!(
-                    "Domain {domain} is not a trusted client domain for this router {client_addr} : {self}"));
-            }
-        } else {
+        if matches.next().is_none() {
             return Err(format!(
-                "Unexpected client address in request: {client_addr}"
-            ));
+                "Domain {domain} is not a trusted client domain for this router {client_addr} : {self}"));
         }
 
         // TODO
@@ -784,7 +779,7 @@ impl Router {
         tm.set_from(self.primary_domain.bus().unwrap().address().as_str());
         tm.set_to(from_addr.as_str());
 
-        let r_domain = self.find_or_create_domain(from_addr.domain())?;
+        let r_domain = self.find_or_create_domain(from_addr.addr().domain())?;
 
         if r_domain.bus.is_none() {
             r_domain.connect()?;

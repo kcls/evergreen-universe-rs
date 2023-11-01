@@ -216,12 +216,13 @@ impl ClientSingleton {
 
     fn send_router_command(
         &mut self,
+        username: &str,
         domain: &str,
         router_command: &str,
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
-        let addr = RouterAddress::new(domain);
+        let addr = RouterAddress::new(username, domain);
 
         // Always use the address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
@@ -371,12 +372,14 @@ impl Client {
 
     pub fn send_router_command(
         &self,
+        username: &str,
         domain: &str,
         command: &str,
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
         self.singleton().borrow_mut().send_router_command(
+            username,
             domain,
             command,
             router_class,

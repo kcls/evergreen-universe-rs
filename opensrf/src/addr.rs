@@ -10,18 +10,18 @@ const BUS_ADDR_NAMESPACE: &str = "opensrf";
 ///
 /// Examples:
 ///
-/// opensrf:service:$service
-/// opensrf:client:$domain:$hostname:$pid:$random
-/// opensrf:router:$domain
+/// opensrf:router:$username:$domain
+/// opensrf:service:$username:$domain:$service
+/// opensrf:client:$username:$domain:$hostname:$pid:$random
 #[derive(Debug, Clone)]
 pub struct BusAddress {
     /// Full raw address string
     full: String,
 
-    /// A top-level service address has no domain.
-    domain: Option<String>,
+    domain: String,
+    username: String,
 
-    /// Only top-level service addresses have a service name
+    /// Only service addresses have a service name
     service: Option<String>,
 
     is_client: bool,
@@ -39,27 +39,29 @@ impl BusAddress {
     /// Creates a new BusAddress from a bus address string.
     ///
     /// ```
-    /// let addr = opensrf::addr::BusAddress::new_from_string("opensrf:client:localhost:12345")
+    /// let addr =
+    ///   opensrf::addr::BusAddress::from_str("opensrf:client:foobar:localhost:12345")
     ///   .expect("Error creating address from string");
     ///
     /// assert!(addr.is_client());
-    /// assert!(addr.domain().is_some());
-    /// assert_eq!(addr.domain().unwrap(), "localhost");
+    /// assert_eq!(addr.domain(), "localhost");
     /// ```
-    pub fn new_from_string(full: &str) -> Result<Self, String> {
+    pub fn from_str(full: &str) -> Result<Self, String> {
         let parts: Vec<&str> = full.split(':').collect();
 
-        // We only really care about the first 3 parts of the address.
-        if parts.len() < 3 {
+        // Every address has 4 well-known parts, so we need that many at minimum.
+        if parts.len() < 4 {
             return Err(format!("BusAddress bad format: {}", full));
         }
 
         let purpose = parts[1];
-        let sod = parts[2].to_owned(); // service name or domain
+        let username = parts[2].to_owned();
+        let domain = parts[3].to_owned();
 
         let mut addr = BusAddress {
             full: full.to_string(),
-            domain: None,
+            domain: domain,
+            username: username,
             service: None,
             is_client: false,
             is_service: false,
@@ -67,29 +69,39 @@ impl BusAddress {
         };
 
         if purpose.eq("service") {
-            addr.service = Some(sod);
-            addr.is_service = true;
+            if let Some(service) = parts.get(4) {
+                addr.service = Some(service.to_string());
+                addr.is_service = true;
+            } else {
+                return Err(format!("Invalid service address: {full}"));
+            }
+
         } else if purpose.eq("client") {
-            addr.domain = Some(sod);
             addr.is_client = true;
         } else if purpose.eq("router") {
-            addr.domain = Some(sod);
             addr.is_router = true;
         } else {
-            return Err(format!("Unknown BusAddress purpose: {}", purpose));
+            return Err(format!("Invalid bus address: {full}"));
         }
 
         Ok(addr)
     }
-}
 
-impl BusAddress {
     /// Full address string
     pub fn as_str(&self) -> &str {
         &self.full
     }
-    pub fn domain(&self) -> Option<&str> {
-        self.domain.as_deref()
+    pub fn domain(&self) -> &str {
+        &self.domain
+    }
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+    pub fn set_domain(&mut self, s: &str) {
+        self.domain = s.to_string();
+    }
+    pub fn set_username(&mut self, s: &str) {
+        self.username = s.to_string();
     }
     pub fn service(&self) -> Option<&str> {
         self.service.as_deref()
@@ -122,7 +134,7 @@ impl ClientAddress {
     }
 
     pub fn from_string(full: &str) -> Result<Self, String> {
-        let addr = BusAddress::new_from_string(full)?;
+        let addr = BusAddress::from_str(full)?;
         if !addr.is_client() {
             return Err(format!("Invalid ClientAddress string: {full}"));
         }
@@ -136,15 +148,17 @@ impl ClientAddress {
     /// Create a new ClientAddress for a domain.
     ///
     /// ```
+    /// let username = "opensrf";
     /// let domain = "private.localhost";
-    /// let addr = opensrf::addr::ClientAddress::new(domain);
+    /// let addr = opensrf::addr::ClientAddress::new(username, domain);
     /// assert_eq!(addr.domain(), domain);
     /// assert!(addr.addr().is_client());
     /// ```
-    pub fn new(domain: &str) -> Self {
+    pub fn new(username: &str, domain: &str) -> Self {
         let full = format!(
-            "{}:client:{}:{}:{}:{}",
+            "{}:client:{}:{}:{}:{}:{}",
             BUS_ADDR_NAMESPACE,
+            username,
             domain,
             &gethostname().into_string().unwrap(),
             process::id(),
@@ -152,22 +166,17 @@ impl ClientAddress {
         );
 
         ClientAddress {
-            addr: BusAddress {
-                full,
-                domain: Some(domain.to_string()),
-                service: None,
-                is_client: true,
-                is_service: false,
-                is_router: false,
-            },
+            // Assumes the address string built above is valid.
+            addr: BusAddress::from_str(&full).unwrap(),
         }
     }
 
     /// Allow the caller to provide the address content after the domain.
     ///
     /// ```
+    /// let username = "opensrf";
     /// let domain = "private.localhost";
-    /// let mut addr = opensrf::addr::ClientAddress::new(domain);
+    /// let mut addr = opensrf::addr::ClientAddress::new(username, domain);
     /// assert_eq!(addr.domain(), domain);
     ///
     /// let remainder = "HELLO123";
@@ -177,19 +186,16 @@ impl ClientAddress {
     /// ```
     pub fn set_remainder(&mut self, remainder: &str) {
         self.addr.full = format!(
-            "{}:client:{}:{}",
+            "{}:client:{}:{}:{}",
             BUS_ADDR_NAMESPACE,
-            self.domain(),
+            self.addr().username(),
+            self.addr().domain(),
             remainder,
         );
     }
 
     pub fn addr(&self) -> &BusAddress {
         &self.addr
-    }
-
-    pub fn domain(&self) -> &str {
-        self.addr().domain().unwrap()
     }
 }
 
@@ -216,7 +222,7 @@ impl ServiceAddress {
     }
 
     pub fn from_string(full: &str) -> Result<Self, String> {
-        let addr = BusAddress::new_from_string(full)?;
+        let addr = BusAddress::from_str(full)?;
         if !addr.is_service() {
             return Err(format!("Invalid ServiceAddress string: {full}"));
         }
@@ -227,7 +233,7 @@ impl ServiceAddress {
         self.addr.as_str()
     }
 
-    /// Create a service address.
+    /// Create a user/domain-agnostic service address.
     ///
     /// Service address are non domain-specific and refer generically
     /// to a service.
@@ -239,22 +245,19 @@ impl ServiceAddress {
     /// assert!(addr.addr().is_service());
     /// ```
     pub fn new(service: &str) -> Self {
-        let full = format!("{}:service:{}", BUS_ADDR_NAMESPACE, &service);
+        let full = format!("{}:service:_:_:{}", BUS_ADDR_NAMESPACE, &service);
 
         ServiceAddress {
-            addr: BusAddress {
-                full,
-                domain: None,
-                service: Some(service.to_string()),
-                is_client: false,
-                is_service: true,
-                is_router: false,
-            },
+            addr: BusAddress::from_str(&full).unwrap(),
         }
     }
 
     pub fn addr(&self) -> &BusAddress {
         &self.addr
+    }
+
+    pub fn addr_mut(&mut self) -> &mut BusAddress {
+        &mut self.addr
     }
 
     pub fn service(&self) -> &str {
@@ -295,7 +298,7 @@ impl RouterAddress {
     /// assert!(addr_res.unwrap().domain().eq("localhost"));
     /// ```
     pub fn from_string(full: &str) -> Result<Self, String> {
-        let addr = BusAddress::new_from_string(full)?;
+        let addr = BusAddress::from_str(full)?;
         if !addr.is_router() {
             return Err(format!("Invalid RouterAddress string: {full}"));
         }
@@ -309,30 +312,18 @@ impl RouterAddress {
     /// Create a new router address from a domain.
     ///
     /// ```
-    /// let addr = opensrf::addr::RouterAddress::new("localhost");
-    /// assert_eq!(addr.as_str(), "opensrf:router:localhost");
+    /// let addr = opensrf::addr::RouterAddress::new("router", "localhost");
+    /// assert_eq!(addr.as_str(), "opensrf:router:router:localhost");
     /// ```
-    pub fn new(domain: &str) -> Self {
-        let full = format!("{}:router:{}", BUS_ADDR_NAMESPACE, &domain);
-
+    pub fn new(username: &str, domain: &str) -> Self {
+        let full = format!("{}:router:{}:{}", BUS_ADDR_NAMESPACE, username, domain);
         RouterAddress {
-            addr: BusAddress {
-                full,
-                service: None,
-                domain: Some(domain.to_string()),
-                is_client: false,
-                is_service: false,
-                is_router: true,
-            },
+            addr: BusAddress::from_str(&full).unwrap(),
         }
     }
 
     pub fn addr(&self) -> &BusAddress {
         &self.addr
-    }
-
-    pub fn domain(&self) -> &str {
-        self.addr().domain().unwrap()
     }
 }
 

@@ -231,19 +231,25 @@ impl Server {
 
     /// List of domains where our service is allowed to run and
     /// therefore whose routers with whom our presence should be registered.
-    fn hosting_domains(&self) -> Vec<String> {
-        let mut domains: Vec<String> = Vec::new();
+    fn hosting_domains(&self) -> Vec<(String, String)> {
+        let mut domains: Vec<(String, String)> = Vec::new();
         for router in self.config().client().routers() {
             match router.services() {
                 Some(services) => {
                     if services.iter().any(|s| s.eq(self.service())) {
-                        domains.push(router.domain().to_string());
+                        domains.push((
+                            router.username().to_string(),
+                            router.domain().to_string()
+                        ));
                     }
                 }
                 None => {
                     // A domain with no specific set of hosted services
                     // hosts all services
-                    domains.push(router.domain().to_string());
+                    domains.push((
+                        router.username().to_string(),
+                        router.domain().to_string()
+                    ));
                 }
             }
         }
@@ -252,22 +258,22 @@ impl Server {
     }
 
     fn register_routers(&mut self) -> Result<(), String> {
-        for domain in self.hosting_domains().iter() {
+        for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: registering with router at {domain}");
 
             self.client
-                .send_router_command(domain, "register", Some(self.service()), false)?;
+                .send_router_command(username, domain, "register", Some(self.service()), false)?;
         }
 
         Ok(())
     }
 
     fn unregister_routers(&mut self) -> Result<(), String> {
-        for domain in self.hosting_domains().iter() {
+        for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: un-registering with router at {domain}");
 
             self.client
-                .send_router_command(domain, "unregister", Some(self.service()), false)?;
+                .send_router_command(username, domain, "unregister", Some(self.service()), false)?;
         }
         Ok(())
     }

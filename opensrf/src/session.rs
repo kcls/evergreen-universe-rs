@@ -77,7 +77,7 @@ impl Request {
     /// and all responses from our network backlog have been read.
     ///
     /// It's possible to read the COMPLETE message before the caller
-    /// pulls all the data.  
+    /// pulls all the data.
     pub fn exhausted(&self) -> bool {
         self.complete() && self.session.borrow().backlog.is_empty()
     }
@@ -195,7 +195,11 @@ impl fmt::Display for Session {
 
 impl Session {
     fn new(client: Client, service: &str) -> Session {
-        let router_addr = RouterAddress::new(client.domain());
+        let router_addr = RouterAddress::new(
+            client.config().client().router_name(),
+            client.domain()
+        );
+
         Session {
             client,
             router_addr,
@@ -467,17 +471,18 @@ impl Session {
             // Top-level API calls always go through the router on
             // our primary domain
 
-            let router_addr = RouterAddress::new(self.client.domain());
-            self.client_internal_mut()
-                .bus_mut()
-                .send_to(&tmsg, router_addr.as_str())?;
+            let router_addr = self.router_addr().as_str();
+            self.client_internal_mut().bus_mut().send_to(&tmsg, router_addr)?;
+
         } else {
+
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the domain of the client address.
                 self.client_internal_mut()
-                    .get_domain_bus(a.domain())?
+                    .get_domain_bus(a.addr().domain())?
                     .send(&tmsg)?;
+
             } else {
                 self.reset();
                 return Err(format!("We are connected, but have no worker_addr()"));
@@ -550,7 +555,7 @@ impl Session {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(dest_addr.domain())?
+            .get_domain_bus(dest_addr.addr().domain())?
             .send(&tmsg)?;
 
         self.reset();
@@ -847,7 +852,7 @@ impl ServerSession {
             msg,
         );
 
-        let domain = self.sender.domain();
+        let domain = self.sender.addr().domain();
 
         self.client_internal_mut()
             .get_domain_bus(domain)?
@@ -901,7 +906,7 @@ impl ServerSession {
             msg,
         );
 
-        let domain = self.sender.domain();
+        let domain = self.sender.addr().domain();
 
         self.client_internal_mut()
             .get_domain_bus(domain)?

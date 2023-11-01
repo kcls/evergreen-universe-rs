@@ -158,7 +158,10 @@ impl GatewayHandler {
         let recipient = osrf::addr::ServiceAddress::new(&request.service);
 
         // Send every request to the router on our gateway domain.
-        let router = osrf::addr::RouterAddress::new(self.bus_conf().domain().name());
+        let router = osrf::addr::RouterAddress::new(
+            self.bus_conf().router_name(),
+            self.bus_conf().domain().name()
+        );
 
         // Avoid cloning the method which could be a big pile o' JSON.
         // We know method is non-None here.
