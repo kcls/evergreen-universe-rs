@@ -8,11 +8,11 @@ use std::time;
 /// Manages the Redis connection.
 pub struct Bus {
     connection: redis::Connection,
-
     // Every bus connection has a unique client address.
     address: ClientAddress,
 
-    domain: String,
+    /// Name of the router running on our primary domain.
+    router_name: String,
 }
 
 impl Bus {
@@ -33,13 +33,14 @@ impl Bus {
             Err(e) => Err(format!("Bus connect error: {e}"))?,
         };
 
+        let username = config.username();
         let domain = config.domain().name();
-        let addr = ClientAddress::new(domain);
+        let addr = ClientAddress::new(username, domain);
 
         let bus = Bus {
-            domain: domain.to_string(),
             connection,
             address: addr,
+            router_name: config.router_name().to_string(),
         };
 
         Ok(bus)
@@ -75,11 +76,17 @@ impl Bus {
 
     /// Generates a new ClientAddress and applies it to this Bus.
     pub fn generate_address(&mut self) {
-        self.address = ClientAddress::new(self.domain());
+        self.address = ClientAddress::new(self.username(), self.domain());
     }
 
+    pub fn router_name(&self) -> &str {
+        &self.router_name
+    }
     pub fn domain(&self) -> &str {
-        &self.domain
+        self.address().addr().domain()
+    }
+    pub fn username(&self) -> &str {
+        self.address().addr().username()
     }
 
     pub fn connection(&mut self) -> &mut redis::Connection {

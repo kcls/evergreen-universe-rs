@@ -569,17 +569,22 @@ impl Shell {
     }
 
     fn send_router_command(&mut self, args: &[&str]) -> Result<(), String> {
-        self.args_min_length(args, 2)?;
+        self.args_min_length(args, 3)?;
 
-        let mut domain = args[0];
-        let command = args[1];
+        let mut username = args[0];
+        let mut domain = args[1];
+        let command = args[2];
+
+        if username.eq("_") {
+            username = self.ctx().config().client().router_name();
+        }
 
         if domain.eq("_") {
             domain = self.ctx().config().client().domain().name();
         }
 
-        let router_class = match args.len() > 2 {
-            true => Some(args[2]),
+        let router_class = match args.len() > 3 {
+            true => Some(args[3]),
             false => None,
         };
 
@@ -588,7 +593,7 @@ impl Shell {
         if let Some(resp) =
             self.ctx()
                 .client()
-                .send_router_command(domain, command, router_class, true)?
+                .send_router_command(username, domain, command, router_class, true)?
         {
             self.print_json_record(&resp)?;
         }

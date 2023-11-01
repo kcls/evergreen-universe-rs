@@ -79,6 +79,7 @@ impl fmt::Display for BusDomain {
 pub struct BusClient {
     username: String,
     password: String,
+    router_name: String,
     domain: BusDomain,
     logging: LogOptions,
     settings_config: Option<String>,
@@ -94,6 +95,10 @@ impl BusClient {
     }
     pub fn domain(&self) -> &BusDomain {
         &self.domain
+    }
+    /// Name of the router running on our domain.
+    pub fn router_name(&self) -> &str {
+        &self.router_name
     }
     pub fn logging(&self) -> &LogOptions {
         &self.logging
@@ -122,6 +127,7 @@ impl BusClient {
 #[derive(Debug, Clone)]
 pub struct ClientRouter {
     domain: String,
+    username: String,
     services: Option<Vec<String>>,
 }
 impl ClientRouter {
@@ -130,6 +136,10 @@ impl ClientRouter {
     }
     pub fn domain(&self) -> &str {
         &self.domain
+    }
+    /// "name" in opensrf_core.xml
+    pub fn username(&self) -> &str {
+        &self.username
     }
 }
 
@@ -328,8 +338,14 @@ impl ConfigBuilder {
             None => Err(format!("Client router node has no domain: {rnode:?}"))?,
         };
 
+        let username = match self.child_node_text(rnode, "name") {
+            Some(d) => d.to_string(),
+            None => Err(format!("Client router node has no name: {rnode:?}"))?,
+        };
+
         let mut cr = ClientRouter {
             domain,
+            username,
             services: None,
         };
 
@@ -360,6 +376,7 @@ impl ConfigBuilder {
 
         let mut username = "";
         let mut password = "";
+        let mut router_name = "router";
         let mut settings_config: Option<String> = None;
 
         for child in node.children() {
@@ -372,6 +389,11 @@ impl ConfigBuilder {
                 "passwd" | "password" => {
                     if let Some(t) = child.text() {
                         password = t;
+                    }
+                }
+                "router_name" => {
+                    if let Some(t) = child.text() {
+                        router_name = t;
                     }
                 }
                 "settings_config" => {
@@ -390,6 +412,7 @@ impl ConfigBuilder {
             routers: Vec::new(),
             username: username.to_string(),
             password: password.to_string(),
+            router_name: router_name.to_string(),
         })
     }
 

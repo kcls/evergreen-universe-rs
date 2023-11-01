@@ -167,7 +167,14 @@ impl Worker {
             .unwrap_or(5);
 
         let mut requests: u32 = 0;
-        let service_addr = ServiceAddress::new(&self.service).as_str().to_string();
+
+        // We listen for API calls at an addressed scoped to our
+        // username and domain.
+        let mut service_addr = ServiceAddress::new(&self.service);
+        service_addr.addr_mut().set_username(self.client.address().addr().username());
+        service_addr.addr_mut().set_domain(self.client.address().addr().domain());
+        let service_addr = service_addr.as_str().to_string();
+
         let my_addr = self.client.address().as_str().to_string();
 
         while requests < max_requests {
@@ -434,7 +441,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(self.session().sender().domain())?
+            .get_domain_bus(self.session().sender().addr().domain())?
             .send(&tmsg)
     }
 
@@ -564,7 +571,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(self.session().sender().domain())?
+            .get_domain_bus(self.session().sender().addr().domain())?
             .send(&tmsg)
     }
 
@@ -589,7 +596,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(self.session().sender().domain())?
+            .get_domain_bus(self.session().sender().addr().domain())?
             .send(&tmsg)
     }
 
