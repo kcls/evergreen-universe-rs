@@ -113,12 +113,12 @@ impl BusAddress {
         }
     }
 
-    /// Create a new ClientAddress for a domain.
+    /// Create a new client address.
     ///
     /// ```
     /// let username = "opensrf";
     /// let domain = "private.localhost";
-    /// let addr = opensrf::addr::ClientAddress::new(username, domain);
+    /// let addr = opensrf::addr::BusAddress::for_client(username, domain);
     /// assert_eq!(addr.domain(), domain);
     /// assert!(addr.is_client());
     /// ```
@@ -196,7 +196,7 @@ impl BusAddress {
     /// ```
     /// let username = "opensrf";
     /// let domain = "private.localhost";
-    /// let mut addr = opensrf::addr::ClientAddress::new(username, domain);
+    /// let mut addr = opensrf::addr::BusAddress::for_client(username, domain);
     /// assert_eq!(addr.domain(), domain);
     ///
     /// let remainder = "HELLO123";
