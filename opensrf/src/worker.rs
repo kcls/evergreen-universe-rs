@@ -1,4 +1,4 @@
-use super::addr::{ClientAddress, ServiceAddress};
+use super::addr::BusAddress;
 use super::app;
 use super::client::{Client, ClientSingleton};
 use super::conf;
@@ -170,9 +170,10 @@ impl Worker {
 
         // We listen for API calls at an addressed scoped to our
         // username and domain.
-        let mut service_addr = ServiceAddress::new(&self.service);
-        service_addr.addr_mut().set_username(self.client.address().addr().username());
-        service_addr.addr_mut().set_domain(self.client.address().addr().domain());
+        let username = self.client.address().username();
+        let domain = self.client.address().domain();
+
+        let service_addr = BusAddress::for_service(username, domain, &self.service);
         let service_addr = service_addr.as_str().to_string();
 
         let my_addr = self.client.address().as_str().to_string();
@@ -373,7 +374,7 @@ impl Worker {
                 &self.service,
                 tmsg.thread(),
                 0, // thread trace -- updated later as needed
-                ClientAddress::from_string(tmsg.from())?,
+                BusAddress::from_str(tmsg.from())?,
             ));
         }
 
@@ -441,7 +442,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(self.session().sender().addr().domain())?
+            .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
 
@@ -571,7 +572,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(self.session().sender().addr().domain())?
+            .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
 
@@ -596,7 +597,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(self.session().sender().addr().domain())?
+            .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
 

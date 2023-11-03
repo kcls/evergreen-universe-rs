@@ -1,4 +1,4 @@
-use super::addr::ClientAddress;
+use super::addr::BusAddress;
 use super::conf;
 use super::message::TransportMessage;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
@@ -9,7 +9,7 @@ use std::time;
 pub struct Bus {
     connection: redis::Connection,
     // Every bus connection has a unique client address.
-    address: ClientAddress,
+    address: BusAddress,
 
     /// Name of the router running on our primary domain.
     router_name: String,
@@ -35,7 +35,7 @@ impl Bus {
 
         let username = config.username();
         let domain = config.domain().name();
-        let addr = ClientAddress::new(username, domain);
+        let addr = BusAddress::for_client(username, domain);
 
         let bus = Bus {
             connection,
@@ -66,27 +66,27 @@ impl Bus {
         })
     }
 
-    pub fn address(&self) -> &ClientAddress {
+    pub fn address(&self) -> &BusAddress {
         &self.address
     }
 
-    pub fn set_address(&mut self, addr: &ClientAddress) {
+    pub fn set_address(&mut self, addr: &BusAddress) {
         self.address = addr.clone();
     }
 
-    /// Generates a new ClientAddress and applies it to this Bus.
+    /// Generates a new BusAddress and applies it to this Bus.
     pub fn generate_address(&mut self) {
-        self.address = ClientAddress::new(self.username(), self.domain());
+        self.address = BusAddress::for_client(self.username(), self.domain());
     }
 
     pub fn router_name(&self) -> &str {
         &self.router_name
     }
     pub fn domain(&self) -> &str {
-        self.address().addr().domain()
+        self.address().domain()
     }
     pub fn username(&self) -> &str {
-        self.address().addr().username()
+        self.address().username()
     }
 
     pub fn connection(&mut self) -> &mut redis::Connection {
@@ -257,7 +257,7 @@ impl Bus {
         self.send_to(msg, msg.to())
     }
 
-    /// Sends a TransportMessage to the specified ClientAddress, regardless
+    /// Sends a TransportMessage to the specified BusAddress, regardless
     /// of what value is in the msg.to() field.
     pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), String> {
         let json_str = msg.to_json_value().dump();
@@ -346,7 +346,7 @@ impl Bus {
 
 impl fmt::Display for Bus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Bus {}", self.address())
+        write!(f, "Bus {}", self.address().as_str())
     }
 }
 

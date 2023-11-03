@@ -11,7 +11,7 @@
 //!
 //! Once the initial request is routed, the router is no longer involved
 //! in the conversation.
-use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
+use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::init;
@@ -44,14 +44,14 @@ struct ServiceInstance {
     /// This address will not be used directly, since API calls are
     /// routed to generic service addresses, but it's helpful for
     /// differentiating service instances.
-    address: ClientAddress,
+    address: BusAddress,
 
     /// When was this instance registered with the router.
     register_time: f64,
 }
 
 impl ServiceInstance {
-    fn address(&self) -> &ClientAddress {
+    fn address(&self) -> &BusAddress {
         &self.address
     }
 
@@ -94,7 +94,7 @@ impl ServiceEntry {
 
     /// Remove a specific service controller from the set
     /// of registered controllers.
-    fn remove_controller(&mut self, address: &ClientAddress) {
+    fn remove_controller(&mut self, address: &BusAddress) {
         if let Some(pos) = self
             .controllers
             .iter()
@@ -103,14 +103,14 @@ impl ServiceEntry {
             log::debug!(
                 "Removing controller for service={} address={}",
                 self.name,
-                address
+                address.as_str()
             );
             self.controllers.remove(pos);
         } else {
             log::debug!(
                 "Cannot remove unknown controller service={} address={}",
                 self.name,
-                address
+                address.as_str()
             );
         }
     }
@@ -195,7 +195,7 @@ impl RouterDomain {
 
     /// Remove a service entry and its linked ServiceInstance's from
     /// our registered services.
-    fn remove_service(&mut self, service: &str, address: &ClientAddress) {
+    fn remove_service(&mut self, service: &str, address: &BusAddress) {
         if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
             svc.remove_controller(address);
@@ -204,7 +204,7 @@ impl RouterDomain {
                 log::debug!(
                     "Removing registration for service={} on removal of last controller address={}",
                     service,
-                    address
+                    address.as_str()
                 );
 
                 if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
@@ -263,7 +263,7 @@ struct Router {
     primary_domain: RouterDomain,
 
     /// Well-known address where top-level API calls should be routed.
-    listen_address: RouterAddress,
+    listen_address: BusAddress,
 
     /// All other domains where services we care about are running.
     /// This value is empty by default and populates as service
@@ -302,7 +302,7 @@ impl Router {
 
         let busconf = router_conf.client();
 
-        let addr = RouterAddress::new(busconf.username(), busconf.domain().name());
+        let addr = BusAddress::for_router(busconf.username(), busconf.domain().name());
         let primary_domain = RouterDomain::new(&busconf);
 
         Router {
@@ -366,14 +366,14 @@ impl Router {
 
     /// Remove the service registration from the domain entry implied by the
     /// caller's address.
-    fn handle_unregister(&mut self, address: &ClientAddress, service: &str) -> Result<(), String> {
-        let domain = address.addr().domain();
+    fn handle_unregister(&mut self, address: &BusAddress, service: &str) -> Result<(), String> {
+        let domain = address.domain();
 
         log::info!(
             "De-registering domain={} service={} address={}",
             domain,
             service,
-            address
+            address.as_str()
         );
 
         if self.primary_domain.domain.eq(domain) {
@@ -415,8 +415,8 @@ impl Router {
     /// caller's bus address.
     ///
     /// The domain must be configured as a trusted server domain.
-    fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
-        let domain = address.addr().domain(); // Known to be a client addr.
+    fn handle_register(&mut self, address: BusAddress, service: &str) -> Result<(), String> {
+        let domain = address.domain(); // Known to be a client addr.
 
         let mut matches = self
             .trusted_server_domains
@@ -426,7 +426,9 @@ impl Router {
         if matches.next().is_none() {
             return Err(format!(
                 "Domain {} is not a trusted server domain for this router {} : {}",
-                domain, address, self
+                domain,
+                address.as_str(),
+                self
             ));
         }
 
@@ -440,7 +442,7 @@ impl Router {
                     if controller.address.as_str().eq(address.as_str()) {
                         log::warn!(
                             "Controller with address {} already registered for service {} and domain {}",
-                            address, service, domain
+                            address.as_str(), service, domain
                         );
                         return Ok(());
                     }
@@ -450,7 +452,7 @@ impl Router {
                     "Adding new ServiceInstance domain={} service={} address={}",
                     domain,
                     service,
-                    address
+                    address.as_str()
                 );
 
                 svc.controllers.push(ServiceInstance {
@@ -469,7 +471,7 @@ impl Router {
             "Adding new ServiceEntry domain={} service={} address={}",
             domain,
             service,
-            address
+            address.as_str()
         );
 
         r_domain.services.push(ServiceEntry {
@@ -539,7 +541,6 @@ impl Router {
         let addr = BusAddress::from_str(to)?;
 
         if addr.is_service() {
-            let addr = ServiceAddress::from_addr(addr)?;
             return self.route_api_request(&addr, tm);
         } else if addr.is_router() {
             return self.handle_router_command(tm);
@@ -555,10 +556,12 @@ impl Router {
     /// is registered.
     fn route_api_request(
         &mut self,
-        to_addr: &ServiceAddress,
+        to_addr: &BusAddress,
         tm: TransportMessage,
     ) -> Result<(), String> {
-        let service = to_addr.service();
+        let service = to_addr
+            .service()
+            .ok_or(format!("Invalid service address: {to_addr}"))?;
 
         if service.eq("router") {
             return self.handle_router_api_request(tm);
@@ -730,7 +733,7 @@ impl Router {
 
         let from = tm.from();
 
-        let from_addr = ClientAddress::from_string(from)?;
+        let from_addr = BusAddress::from_str(from)?;
 
         log::debug!(
             "Router command received command={} from={}",
@@ -760,7 +763,7 @@ impl Router {
     /// Deliver stats, etc. to clients that request it.
     fn deliver_information(
         &mut self,
-        from_addr: ClientAddress,
+        from_addr: BusAddress,
         mut tm: TransportMessage,
     ) -> Result<(), String> {
         let router_command = tm.router_command().unwrap(); // known exists
@@ -779,7 +782,7 @@ impl Router {
         tm.set_from(self.primary_domain.bus().unwrap().address().as_str());
         tm.set_to(from_addr.as_str());
 
-        let r_domain = self.find_or_create_domain(from_addr.addr().domain())?;
+        let r_domain = self.find_or_create_domain(from_addr.domain())?;
 
         if r_domain.bus.is_none() {
             r_domain.connect()?;

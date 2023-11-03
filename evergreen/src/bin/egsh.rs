@@ -590,11 +590,13 @@ impl Shell {
 
         // Assumes the caller wants to see the response for any
         // router request.
-        if let Some(resp) =
-            self.ctx()
-                .client()
-                .send_router_command(username, domain, command, router_class, true)?
-        {
+        if let Some(resp) = self.ctx().client().send_router_command(
+            username,
+            domain,
+            command,
+            router_class,
+            true,
+        )? {
             self.print_json_record(&resp)?;
         }
 

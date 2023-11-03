@@ -237,19 +237,13 @@ impl Server {
             match router.services() {
                 Some(services) => {
                     if services.iter().any(|s| s.eq(self.service())) {
-                        domains.push((
-                            router.username().to_string(),
-                            router.domain().to_string()
-                        ));
+                        domains.push((router.username().to_string(), router.domain().to_string()));
                     }
                 }
                 None => {
                     // A domain with no specific set of hosted services
                     // hosts all services
-                    domains.push((
-                        router.username().to_string(),
-                        router.domain().to_string()
-                    ));
+                    domains.push((router.username().to_string(), router.domain().to_string()));
                 }
             }
         }
@@ -261,8 +255,13 @@ impl Server {
         for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: registering with router at {domain}");
 
-            self.client
-                .send_router_command(username, domain, "register", Some(self.service()), false)?;
+            self.client.send_router_command(
+                username,
+                domain,
+                "register",
+                Some(self.service()),
+                false,
+            )?;
         }
 
         Ok(())
@@ -272,8 +271,13 @@ impl Server {
         for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: un-registering with router at {domain}");
 
-            self.client
-                .send_router_command(username, domain, "unregister", Some(self.service()), false)?;
+            self.client.send_router_command(
+                username,
+                domain,
+                "unregister",
+                Some(self.service()),
+                false,
+            )?;
         }
         Ok(())
     }
