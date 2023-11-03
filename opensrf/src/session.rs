@@ -1,4 +1,4 @@
-use super::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
+use super::addr::BusAddress;
 use super::client::{Client, ClientSingleton};
 use super::message;
 use super::message::Message;
@@ -162,15 +162,15 @@ struct Session {
     service: String,
 
     /// Top-level bus address for the service we're making requests of.
-    service_addr: ServiceAddress,
+    service_addr: BusAddress,
 
     /// Routed messages go here.
-    router_addr: RouterAddress,
+    router_addr: BusAddress,
 
     /// Worker-specific bus address for our session.
     ///
     /// Set any time a response arrives so we know who sent it.
-    worker_addr: Option<ClientAddress>,
+    worker_addr: Option<BusAddress>,
 
     /// Most recently used per-thread request id.
     ///
@@ -195,17 +195,21 @@ impl fmt::Display for Session {
 
 impl Session {
     fn new(client: Client, service: &str) -> Session {
-        let router_addr = RouterAddress::new(
+        let router_addr =
+            BusAddress::for_router(client.config().client().router_name(), client.domain());
+
+        let service_addr = BusAddress::for_service(
             client.config().client().router_name(),
-            client.domain()
+            client.domain(),
+            service,
         );
 
         Session {
             client,
             router_addr,
-            service: String::from(service),
+            service_addr,
             worker_addr: None,
-            service_addr: ServiceAddress::new(&service),
+            service: String::from(service),
             connected: false,
             last_thread_trace: 0,
             partial_buffer: None,
@@ -233,15 +237,15 @@ impl Session {
         self.backlog.clear();
     }
 
-    fn router_addr(&self) -> &RouterAddress {
+    fn router_addr(&self) -> &BusAddress {
         &self.router_addr
     }
 
-    fn worker_addr(&self) -> Option<&ClientAddress> {
+    fn worker_addr(&self) -> Option<&BusAddress> {
         self.worker_addr.as_ref()
     }
 
-    fn service_addr(&self) -> &ServiceAddress {
+    fn service_addr(&self) -> &BusAddress {
         &self.service_addr
     }
 
@@ -255,8 +259,8 @@ impl Session {
     /// returns the underlying BusAddress for our service-level address.
     fn destination_addr(&self) -> &BusAddress {
         match self.worker_addr() {
-            Some(a) => a.addr(),
-            None => self.service_addr().addr(),
+            Some(a) => a,
+            None => self.service_addr(),
         }
     }
 
@@ -305,7 +309,7 @@ impl Session {
             };
 
             // Look Who's Talking (Too?).
-            self.worker_addr = Some(ClientAddress::from_string(tmsg.from())?);
+            self.worker_addr = Some(BusAddress::from_str(tmsg.from())?);
 
             // Toss the messages onto our backlog as we receive them.
             for msg in tmsg.body() {
@@ -472,17 +476,16 @@ impl Session {
             // our primary domain
 
             let router_addr = self.router_addr().as_str();
-            self.client_internal_mut().bus_mut().send_to(&tmsg, router_addr)?;
-
+            self.client_internal_mut()
+                .bus_mut()
+                .send_to(&tmsg, router_addr)?;
         } else {
-
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the domain of the client address.
                 self.client_internal_mut()
-                    .get_domain_bus(a.addr().domain())?
+                    .get_domain_bus(a.domain())?
                     .send(&tmsg)?;
-
             } else {
                 self.reset();
                 return Err(format!("We are connected, but have no worker_addr()"));
@@ -555,7 +558,7 @@ impl Session {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(dest_addr.addr().domain())?
+            .get_domain_bus(dest_addr.domain())?
             .send(&tmsg)?;
 
         self.reset();
@@ -741,7 +744,7 @@ pub struct ServerSession {
     thread: String,
 
     /// Who sent us a request.
-    sender: ClientAddress,
+    sender: BusAddress,
 
     /// True if we have already sent a COMPLETE message to the caller.
     /// Use this to avoid sending replies after a COMPLETE.
@@ -769,7 +772,7 @@ impl ServerSession {
         service: &str,
         thread: &str,
         last_thread_trace: usize,
-        sender: ClientAddress,
+        sender: BusAddress,
     ) -> ServerSession {
         ServerSession {
             client,
@@ -802,7 +805,7 @@ impl ServerSession {
         &self.service
     }
 
-    pub fn sender(&self) -> &ClientAddress {
+    pub fn sender(&self) -> &BusAddress {
         &self.sender
     }
 
@@ -852,7 +855,7 @@ impl ServerSession {
             msg,
         );
 
-        let domain = self.sender.addr().domain();
+        let domain = self.sender.domain();
 
         self.client_internal_mut()
             .get_domain_bus(domain)?
@@ -906,7 +909,7 @@ impl ServerSession {
             msg,
         );
 
-        let domain = self.sender.addr().domain();
+        let domain = self.sender.domain();
 
         self.client_internal_mut()
             .get_domain_bus(domain)?

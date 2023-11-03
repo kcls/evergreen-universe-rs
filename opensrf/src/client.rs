@@ -1,4 +1,4 @@
-use super::addr::{ClientAddress, RouterAddress};
+use super::addr::BusAddress;
 use super::bus;
 use super::conf;
 use super::message;
@@ -222,7 +222,7 @@ impl ClientSingleton {
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
-        let addr = RouterAddress::new(username, domain);
+        let addr = BusAddress::for_router(username, domain);
 
         // Always use the address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
@@ -287,7 +287,7 @@ impl fmt::Display for ClientSingleton {
 #[derive(Clone)]
 pub struct Client {
     singleton: Rc<RefCell<ClientSingleton>>,
-    address: ClientAddress,
+    address: BusAddress,
     domain: String,
 }
 
@@ -350,7 +350,7 @@ impl Client {
         self.singleton.borrow_mut().serializer = Some(serializer);
     }
 
-    pub fn address(&self) -> &ClientAddress {
+    pub fn address(&self) -> &BusAddress {
         &self.address
     }
 

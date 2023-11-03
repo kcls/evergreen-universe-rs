@@ -155,12 +155,12 @@ impl GatewayHandler {
         &mut self,
         request: &mut ParsedGatewayRequest,
     ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
-        let recipient = osrf::addr::ServiceAddress::new(&request.service);
+        let recipient = osrf::addr::BusAddress::for_bare_service(&request.service);
 
         // Send every request to the router on our gateway domain.
-        let router = osrf::addr::RouterAddress::new(
+        let router = osrf::addr::BusAddress::for_router(
             self.bus_conf().router_name(),
-            self.bus_conf().domain().name()
+            self.bus_conf().domain().name(),
         );
 
         // Avoid cloning the method which could be a big pile o' JSON.

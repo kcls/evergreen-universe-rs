@@ -3,7 +3,7 @@ use eg::result::EgResult;
 use evergreen as eg;
 use mptc;
 use opensrf as osrf;
-use osrf::addr::{RouterAddress, ServiceAddress};
+use osrf::addr::BusAddress;
 use osrf::bus::Bus;
 use osrf::conf;
 use osrf::logging::Logger;
@@ -569,9 +569,13 @@ impl Session {
             }
             None => {
                 let username = self.osrf_sender.router_name();
-                let domain = self.osrf_sender.address().addr().domain();
-                send_to_router = Some(RouterAddress::new(username, domain).as_str().to_string());
-                ServiceAddress::new(service).as_str().to_string()
+                let domain = self.osrf_sender.address().domain();
+                send_to_router = Some(
+                    BusAddress::for_router(username, domain)
+                        .as_str()
+                        .to_string(),
+                );
+                BusAddress::for_bare_service(service).as_str().to_string()
             }
         };
 
