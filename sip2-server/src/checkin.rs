@@ -239,7 +239,7 @@ impl Session {
         circulator.begin()?;
 
         // Collect needed data then kickoff the checkin process.
-        let result = circulator.init().and_then(|()| circulator.checkin());
+        let result = circulator.checkin();
 
         log::info!("{self} Checkin of {} returned: {result:?}", item.barcode);
 
