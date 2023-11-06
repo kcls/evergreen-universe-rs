@@ -94,6 +94,16 @@ impl BusAddress {
     }
 
     /// Service address unqualified by username or domain.
+    ///
+    /// The router will fill in the gaps for username/domain.
+    ///
+    /// ```
+    /// let addr = opensrf::addr::BusAddress::for_bare_service("opensrf.settings");
+    ///
+    /// assert!(addr.is_service());
+    /// assert_eq!(addr.service(), Some("opensrf.settings"));
+    /// assert_eq!(addr.as_str(), "opensrf:service:_:_:opensrf.settings");
+    /// ```
     pub fn for_bare_service(service: &str) -> Self {
         BusAddress::for_service("_", "_", service)
     }

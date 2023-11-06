@@ -198,11 +198,7 @@ impl Session {
         let router_addr =
             BusAddress::for_router(client.config().client().router_name(), client.domain());
 
-        let service_addr = BusAddress::for_service(
-            client.config().client().router_name(),
-            client.domain(),
-            service,
-        );
+        let service_addr = BusAddress::for_bare_service(service);
 
         Session {
             client,
@@ -321,6 +317,8 @@ impl Session {
         }
     }
 
+    /// Unpack one opensrf message -- there may be multiple opensrf
+    /// messages inside a single transport message.
     fn unpack_reply(
         &mut self,
         timer: &mut util::Timer,
@@ -701,7 +699,7 @@ impl MultiSession {
     pub fn recv(&mut self, timeout: i32) -> Result<Option<(String, JsonValue)>, String> {
         // Wait for replies to any sessions on this client to appear
         // then see if we can find one related specfically to the
-        // requests are managing.
+        // requests we are managing.
 
         if self.client.wait(timeout)? {
             for req in self.requests.iter_mut() {
