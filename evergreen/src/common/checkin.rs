@@ -25,7 +25,9 @@ impl Circulator {
     /// Returns Ok(()) if the active transaction should be committed and
     /// Err(EgError) if the active transaction should be rolled backed.
     pub fn checkin(&mut self) -> EgResult<()> {
-        self.circ_op = CircOp::Checkin;
+        if self.circ_op == CircOp::Unset {
+            self.circ_op = CircOp::Checkin;
+        }
 
         // Pre-cache some setting values.
         self.settings.fetch_values(CHECKIN_ORG_SETTINGS)?;
@@ -169,21 +171,6 @@ impl Circulator {
             Some(c) => c.as_str().unwrap_or(""),
             None => "",
         }
-    }
-
-    /// Make sure the requested item exists and is not marked deleted.
-    fn basic_copy_checks(&mut self) -> EgResult<()> {
-        if self.copy.is_none() {
-            self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
-        }
-
-        if json_bool(&self.copy()["deleted"]) {
-            // Never attempt to capture holds with a deleted copy.
-            self.options
-                .insert(String::from("capture"), json::from("nocapture"));
-        }
-
-        Ok(())
     }
 
     /// Load the open transit and make sure our copy is in the right

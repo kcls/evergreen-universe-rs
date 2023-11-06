@@ -1007,4 +1007,19 @@ impl Circulator {
     pub fn take_events(&mut self) -> Vec<EgEvent> {
         std::mem::replace(&mut self.events, Vec::new())
     }
+
+    /// Make sure the requested item exists and is not marked deleted.
+    pub fn basic_copy_checks(&mut self) -> EgResult<()> {
+        if self.copy.is_none() {
+            self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
+        }
+
+        if json_bool(&self.copy()["deleted"]) {
+            // Never attempt to capture holds with a deleted copy.
+            self.options
+                .insert(String::from("capture"), json::from("nocapture"));
+        }
+
+        Ok(())
+    }
 }
