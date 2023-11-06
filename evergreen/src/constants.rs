@@ -59,3 +59,11 @@ pub const HOLD_TYPE_VOLUME: &str = "V";
 pub const HOLD_TYPE_TITLE: &str = "T";
 pub const HOLD_TYPE_METARECORD: &str = "M";
 pub const HOLD_TYPE_MONOPART: &str = "P";
+
+// ---------------------------------------------------------------------
+// Precat
+// ---------------------------------------------------------------------
+pub const PRECAT_COPY_FINE_LEVEL: i64 = 2;
+pub const PRECAT_COPY_LOAN_DURATION: i64 = 2;
+pub const PRECAT_CALL_NUMBER: i64 = -1;
+pub const PRECAT_BIB_RECORD: i64 = -1;

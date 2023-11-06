@@ -1,12 +1,15 @@
+use crate::common::org;
+use crate::common::settings::Settings;
 use crate::date;
 use crate::editor::Editor;
-use crate::common::settings::Settings;
-use crate::common::org;
 use crate::result::EgResult;
 use crate::util::{json_int, json_string};
 use json::JsonValue;
 use std::time::Duration;
 
+/// Create X number of non-cat checkouts.
+///
+/// Returns a list of checkouts with the duedate calculated.
 pub fn checkout(
     editor: &mut Editor,
     patron_id: i64,
@@ -18,7 +21,6 @@ pub fn checkout(
     let mut circs = Vec::new();
 
     for _ in 0..count {
-
         let noncat = json::object! {
             "patron": patron_id,
             "staff": editor.requestor_id(),
@@ -38,21 +40,19 @@ pub fn checkout(
     Ok(circs)
 }
 
-/// Due dates for non-cataloged circs are ephemeral.
+/// Calculate the due date of a noncat circulation, which is a function
+/// of the checkout time, the duration of the noncat type, plus org
+/// open time checks.
 pub fn noncat_due_date(editor: &mut Editor, noncat: &JsonValue) -> EgResult<String> {
-
     let duration = if noncat["item_type"].is_object() {
-
         json_string(&noncat["item_type"]["circ_duration"])?
-
     } else {
-
-        let nct = editor.retrieve("cnct", json_int(&noncat["item_type"])?)?
+        let nct = editor
+            .retrieve("cnct", json_int(&noncat["item_type"])?)?
             .ok_or(format!("Invalid noncat_type: {}", noncat["item_type"]))?;
 
         json_string(&nct["circ_duration"])?
     };
-
 
     let circ_lib = json_int(&noncat["circ_lib"])?;
     let mut settings = Settings::new(editor);
@@ -64,7 +64,8 @@ pub fn noncat_due_date(editor: &mut Editor, noncat: &JsonValue) -> EgResult<Stri
         "local"
     };
 
-    let checkout_time = noncat["circ_time"].as_str()
+    let checkout_time = noncat["circ_time"]
+        .as_str()
         .ok_or(format!("Invalid noncat circ_time: {}", noncat["circ_time"]))?;
 
     let duedate = date::parse_datetime(&checkout_time)?;
@@ -81,4 +82,3 @@ pub fn noncat_due_date(editor: &mut Editor, noncat: &JsonValue) -> EgResult<Stri
 
     Ok(date::to_iso(&duedate.into()))
 }
-

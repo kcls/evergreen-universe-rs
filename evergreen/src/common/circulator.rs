@@ -771,6 +771,11 @@ impl Circulator {
         self.settings.set_org_id(self.circ_lib);
         self.is_noncat = json_bool_op(self.options.get("is_noncat"));
 
+        // TODO have checkout, checkin, etc. call init() so init() can
+        // have more context about what action we are performing.
+        // Specifically, sometimes it's OK if we can't find the
+        // copy we're looking for (e.g. precat).
+
         self.load_copy()?;
         self.load_patron()?;
         self.load_circ()?;
@@ -932,6 +937,9 @@ impl Circulator {
             if let Ok(cn) = json_int(&copy["call_number"]) {
                 return cn == -1;
             }
+        } else {
+            // Having no copy counts as being pre-cat
+            return true;
         }
 
         false
@@ -1013,13 +1021,16 @@ impl Circulator {
         if self.copy.is_none() {
             self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
         }
-
-        if json_bool(&self.copy()["deleted"]) {
-            // Never attempt to capture holds with a deleted copy.
-            self.options
-                .insert(String::from("capture"), json::from("nocapture"));
-        }
-
+        self.handle_deleted_copy();
         Ok(())
+    }
+
+    pub fn handle_deleted_copy(&mut self) {
+        if let Some(c) = self.copy.as_ref() {
+            if json_bool(&c["deleted"]) {
+                self.options
+                    .insert(String::from("capture"), json::from("nocapture"));
+            }
+        }
     }
 }
