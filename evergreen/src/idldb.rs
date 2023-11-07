@@ -214,11 +214,11 @@ impl Translator {
         let mut search = IdlClassSearch::new(classname);
         search.set_filter(filter);
 
-        let list = self.idl_class_search(&search)?;
+        let mut list = self.idl_class_search(&search)?;
 
         match list.len() {
             0 => Ok(None),
-            1 => Ok(Some(list[0].to_owned())),
+            1 => Ok(Some(list.pop().unwrap())),
             _ => {
                 return Err(
                     format!("Pkey query for {classname} returned {} results", list.len()).into(),
@@ -253,10 +253,10 @@ impl Translator {
             values.push((name.to_string(), obj[name].clone()));
         }
 
-        let values = self.idl_class_create(&create)?;
+        let mut values = self.idl_class_create(&create)?;
 
-        if let Some(v) = values.get(0) {
-            Ok(v.to_owned())
+        if let Some(v) = values.pop() {
+            Ok(v)
         } else {
             // Should encounter an error before we get here, but just
             // to cover our bases.

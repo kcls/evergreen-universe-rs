@@ -77,7 +77,7 @@ impl Circulator {
             return Ok(());
         }
 
-        if self.circ_op == CircOp::Renew {
+        if self.is_renewal() {
             self.finish_fines_and_voiding()?;
             self.add_event_code("SUCCESS");
             return Ok(());
@@ -184,9 +184,9 @@ impl Circulator {
             cancel_time: JsonValue::Null,
         };
 
-        let results = self.editor.search("atc", query)?;
+        let mut results = self.editor.search("atc", query)?;
 
-        let transit = match results.first() {
+        let transit = match results.pop() {
             Some(t) => t,
             None => return Ok(()),
         };
@@ -197,7 +197,7 @@ impl Circulator {
             self.update_copy(changes)?;
         }
 
-        self.transit = Some(transit.to_owned());
+        self.transit = Some(transit);
 
         Ok(())
     }
@@ -269,7 +269,7 @@ impl Circulator {
         if !retarget_mode.contains("retarget")
             || self.get_option_bool("revert_hold_fulfillment")
             || self.capture_state() == "nocapture"
-            || self.is_precat()
+            || self.is_precat_copy()
             || json_int(&copy["circ_lib"])? != self.circ_lib
             || json_bool(&copy["deleted"])
             || !json_bool(&copy["holdable"])
@@ -352,7 +352,7 @@ impl Circulator {
 
         if let Some(transit) = self.transit.as_ref() {
             log::info!("{self} copy is both checked out and in transit.  Canceling transit");
-            transit::cancel_transit(&mut self.editor, transit["id"].to_owned(), false)?;
+            transit::cancel_transit(&mut self.editor, transit["id"].clone(), false)?;
             self.transit = None;
         }
 
@@ -586,8 +586,8 @@ impl Circulator {
             xact: circ_id,
         };
 
-        let results = self.editor.search("mb", query)?;
-        let deposit = match results.first() {
+        let mut results = self.editor.search("mb", query)?;
+        let deposit = match results.pop() {
             Some(d) => d,
             None => return Ok(()),
         };
@@ -600,7 +600,7 @@ impl Circulator {
             }
         } else {
             let mut evt = EgEvent::new("ITEM_DEPOSIT_PAID");
-            evt.set_payload(deposit.to_owned());
+            evt.set_payload(deposit);
             self.add_event(evt);
         }
 
@@ -1022,7 +1022,7 @@ impl Circulator {
         }
 
         // Set stop_fines and stop_fines_time on our open circulation.
-        let stop_fines = if self.circ_op == CircOp::Renew {
+        let stop_fines = if self.is_renewal() {
             "RENEW"
         } else if self.get_option_bool("claims_never_checked_out") {
             "CLAIMSNEVERCHECKEDOUT"
@@ -1592,7 +1592,7 @@ impl Circulator {
     /// Set the item status to Cataloging and let the caller know
     /// it's a pre-cat item.
     fn checkin_handle_precat(&mut self) -> EgResult<()> {
-        if !self.is_precat() {
+        if !self.is_precat_copy() {
             return Ok(());
         }
 
@@ -1704,7 +1704,7 @@ impl Circulator {
             "volume": volume,
         };
 
-        if !self.is_precat() {
+        if !self.is_precat_copy() {
             if let Some(rec) = self.editor.retrieve("rmsr", record_id)? {
                 payload["title"] = rec;
             }
@@ -1787,7 +1787,7 @@ impl Circulator {
 
         // Capture the uncloned payload into the first event (which will
         // always be present).
-        self.events[0].set_payload(payload.to_owned());
+        self.events[0].set_payload(payload);
 
         Ok(())
     }
@@ -1803,7 +1803,7 @@ impl Circulator {
             && self.copy.is_some()
             && self.copy_status() == C::COPY_STATUS_CHECKED_OUT
             && self.patron.is_some()
-            && self.circ_op != CircOp::Renew
+            && !self.is_renewal()
         {
             return Ok(());
         }

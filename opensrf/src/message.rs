@@ -245,7 +245,7 @@ impl TransportMessage {
         &self.body
     }
 
-    pub fn body_as_mut(&mut self) -> &mut Vec<Message> {
+    pub fn body_mut(&mut self) -> &mut Vec<Message> {
         &mut self.body
     }
 
@@ -327,7 +327,7 @@ impl TransportMessage {
         if let json::JsonValue::Array(arr) = body {
             for body in arr {
                 if let Some(b) = Message::from_json_value(body) {
-                    tmsg.body_as_mut().push(b);
+                    tmsg.body_mut().push(b);
                 }
             }
         } else {
@@ -335,7 +335,7 @@ impl TransportMessage {
             // body entry.
 
             if let Some(b) = Message::from_json_value(body) {
-                tmsg.body_as_mut().push(b);
+                tmsg.body_mut().push(b);
             }
         }
 
@@ -601,14 +601,14 @@ impl Result {
     }
 
     pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
-        let msg_wrapper: super::classified::ClassifiedJson =
+        let mut msg_wrapper: super::classified::ClassifiedJson =
             match super::classified::ClassifiedJson::declassify(json_obj) {
                 Some(sm) => sm,
                 None => return None,
             };
 
-        let msg_class = msg_wrapper.class();
-        let msg_hash = msg_wrapper.json();
+        let mut msg_hash = msg_wrapper.take_json();
+        let content = msg_hash["content"].take();
 
         let code = match util::json_isize(&msg_hash["statusCode"]) {
             Some(tt) => tt,
@@ -627,8 +627,8 @@ impl Result {
         Some(Result::new(
             stat,
             stat_str,
-            msg_class,
-            msg_hash["content"].to_owned(),
+            msg_wrapper.class(),
+            content
         ))
     }
 

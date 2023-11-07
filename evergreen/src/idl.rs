@@ -827,12 +827,8 @@ impl Parser {
         } else if value.is_object() {
             let mut hash = JsonValue::new_object();
 
-            loop {
-                let key = match value.entries().next() {
-                    Some((k, _)) => k.to_owned(),
-                    None => break,
-                };
-                hash.insert(&key, self.pack(value.remove(&key))).ok();
+            for (k, v) in value.entries_mut() {
+                hash.insert(k, self.pack(v.take())).ok();
             }
 
             hash
@@ -871,14 +867,9 @@ impl Parser {
             return arr;
         } else if obj.is_object() {
             let mut hash = JsonValue::new_object();
-            loop {
-                let key = match obj.entries().next() {
-                    Some((k, _)) => k.to_owned(),
-                    None => break,
-                };
-                hash.insert(&key, self.unpack(obj.remove(&key))).ok();
+            for (k, v) in obj.entries_mut() {
+                hash.insert(k, self.unpack(v.take())).ok();
             }
-
             return hash;
         }
 
@@ -916,15 +907,10 @@ pub fn unbless(hash: &mut JsonValue) {
 pub fn scrub_hash_nulls(mut value: json::JsonValue) -> json::JsonValue {
     if value.is_object() {
         let mut hash = json::JsonValue::new_object();
-        loop {
-            let key = match value.entries().next() {
-                Some((k, _)) => k.to_owned(),
-                None => break,
-            };
-
-            let scrubbed = scrub_hash_nulls(value.remove(&key));
+        for (k, v) in value.entries_mut() {
+            let scrubbed = scrub_hash_nulls(v.take());
             if !scrubbed.is_null() {
-                hash.insert(&key, scrubbed).unwrap();
+                hash.insert(&k, scrubbed).ok();
             }
         }
 

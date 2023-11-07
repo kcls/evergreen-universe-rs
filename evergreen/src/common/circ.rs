@@ -8,17 +8,11 @@ pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<JsonValue>
         from: ["action.summarize_all_circ_chain", circ_id]
     };
 
-    let circ_list = e.json_query(query)?;
-
-    if circ_list.len() == 0 {
-        Err("No such circulation: {circ_id}")?;
+    if let Some(circ) = e.json_query(query)?.pop() {
+        Ok(e.idl().create_from("accs", circ)?)
+    } else {
+        Err(format!("No such circulation: {circ_id}").into())
     }
-
-    let circ = circ_list[0].to_owned();
-
-    let summary = e.idl().create_from("accs", circ)?;
-
-    Ok(summary)
 }
 
 pub fn circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<Vec<JsonValue>> {
@@ -32,11 +26,10 @@ pub fn circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<Vec<JsonValue>> {
         Err("No such circulation: {circ_id}")?;
     }
 
-    let mut idx = 0;
-    while idx < circ_list.len() {
-        circ_list[idx] = e.idl().create_from("aacs", circ_list[idx].to_owned())?;
-        idx += 1;
+    let mut chains = Vec::new();
+    for circ in circ_list.drain(..) {
+        chains.push(e.idl().create_from("aacs", circ)?);
     }
 
-    Ok(circ_list)
+    Ok(chains)
 }

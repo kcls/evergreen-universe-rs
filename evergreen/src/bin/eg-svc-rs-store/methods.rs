@@ -139,7 +139,7 @@ pub fn retrieve(
     let pkey = method.param(0);
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl.to_owned(), db);
+    let translator = Translator::new(idl, db);
 
     if let Some(obj) = translator.get_idl_object_by_pkey(&classname, pkey)? {
         session.respond(obj)
@@ -159,7 +159,7 @@ pub fn search(
     let classname = get_idl_class(&idl, method.method())?;
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl.to_owned(), db);
+    let translator = Translator::new(idl, db);
 
     let query = method.param(0);
     let mut search = IdlClassSearch::new(&classname);
@@ -185,7 +185,7 @@ pub fn delete(
     let pkey = method.param(0);
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl.to_owned(), db);
+    let translator = Translator::new(idl, db);
 
     // This will fail if our database connection is not already
     // inside a transaction.
@@ -204,7 +204,7 @@ pub fn create(
     let obj = method.param(0);
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl.to_owned(), db);
+    let translator = Translator::new(idl, db);
 
     // This will fail if our database connection is not already
     // inside a transaction.
@@ -223,7 +223,7 @@ pub fn update(
     let obj = method.param(0);
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl.to_owned(), db);
+    let translator = Translator::new(idl, db);
 
     // This will fail if our database connection is not already
     // inside a transaction.

@@ -148,7 +148,7 @@ impl Editor {
         let mut ses = self.client.session(service);
         let resp_op = ses.request(method, params)?.first()?;
 
-        if let Some(ref user) = resp_op {
+        if let Some(user) = resp_op {
             if let Some(evt) = EgEvent::parse(&user) {
                 log::debug!("Editor checkauth call returned non-success event: {}", evt);
                 self.set_last_event(evt);
@@ -156,12 +156,12 @@ impl Editor {
             }
 
             if user.has_key("usrname") {
-                self.requestor = Some(user.to_owned());
+                self.requestor = Some(user);
                 return Ok(true);
             }
         }
 
-        log::debug!("Editor checkauth call returned unexpected data: {resp_op:?}");
+        log::debug!("Editor checkauth call returned unexpected data");
 
         // Login failure is not considered an error.
         self.set_last_event(EgEvent::new("NO_SESSION"));
@@ -708,8 +708,8 @@ impl Editor {
         };
 
         let org_id = match org_id_op {
-            Some(i) => json::from(i),
-            None => json::JsonValue::Null,
+            Some(i) => i,
+            None => 0,
         };
 
         let query = json::object! {
@@ -718,7 +718,11 @@ impl Editor {
                     transform: "permission.usr_has_perm",
                     alias: "has_perm",
                     column: "id",
-                    params: [perm, org_id.to_owned()]
+                    params: if org_id > 0 {
+                        json::array! [perm, json::from(org_id)]
+                    } else {
+                        json::array! [perm]
+                    }
                 } ]
             },
             from: "au",
@@ -731,7 +735,7 @@ impl Editor {
         if !has_perm {
             let mut evt = EgEvent::new("PERM_FAILURE");
             evt.set_ils_perm(perm);
-            if let Some(org_id) = org_id_op {
+            if org_id > 0 {
                 evt.set_ils_perm_loc(org_id);
             }
             self.set_last_event(evt);

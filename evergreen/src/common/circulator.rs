@@ -2,6 +2,7 @@ use crate::common::holds;
 use crate::common::org;
 use crate::common::settings::Settings;
 use crate::common::trigger;
+use crate::constants as C;
 use crate::editor::Editor;
 use crate::event::{EgEvent, Overrides};
 use crate::result::{EgError, EgResult};
@@ -177,6 +178,10 @@ impl Circulator {
         })
     }
 
+    pub fn is_renewal(&self) -> bool {
+        self.circ_op == CircOp::Renew
+    }
+
     /// Panics if the booking status is unknown.
     pub fn is_booking_enabled(&self) -> bool {
         self.is_booking_enabled.unwrap()
@@ -297,7 +302,7 @@ impl Circulator {
 
         if let Some(copy_id) = copy_id_op {
             if let Some(copy) = self.editor.retrieve_with_ops("acp", copy_id, copy_flesh)? {
-                self.copy = Some(copy.to_owned());
+                self.copy = Some(copy);
             } else {
                 self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
             }
@@ -309,12 +314,8 @@ impl Circulator {
                 deleted: "f", // cstore turns json false into NULL :\
             };
 
-            if let Some(copy) = self
-                .editor
-                .search_with_ops("acp", query, copy_flesh)?
-                .first()
-            {
-                self.copy = Some(copy.to_owned());
+            if let Some(copy) = self.editor.search_with_ops("acp", query, copy_flesh)?.pop() {
+                self.copy = Some(copy)
             } else {
                 if self.circ_op != CircOp::Checkout {
                     // OK to checkout precat copies
@@ -349,8 +350,8 @@ impl Circulator {
             flesh_fields: {aca: ["alert_type"]}
         };
 
-        for alert in self.editor.search_with_ops("aca", query, flesh)? {
-            self.runtime_copy_alerts.push(alert.to_owned());
+        for alert in self.editor.search_with_ops("aca", query, flesh)?.drain(..) {
+            self.runtime_copy_alerts.push(alert);
         }
 
         self.filter_runtime_copy_alerts()
@@ -372,6 +373,7 @@ impl Circulator {
 
         let mut wanted_alerts = Vec::new();
 
+        let is_renewal = self.is_renewal();
         for alert in self.runtime_copy_alerts.drain(0..) {
             let atype = &alert["alert_type"];
 
@@ -379,7 +381,7 @@ impl Circulator {
             let wants_renew = json_bool(&atype["in_renew"]);
 
             // Verify the alert type event matches what is currently happening.
-            if self.circ_op == CircOp::Renew {
+            if is_renewal {
                 if !wants_renew {
                     continue;
                 }
@@ -486,11 +488,7 @@ impl Circulator {
 
         let alert_orgs = org::ancestors(&mut self.editor, self.circ_lib)?;
 
-        let is_renew_filter = if self.circ_op == CircOp::Renew {
-            "t"
-        } else {
-            "f"
-        };
+        let is_renew_filter = if self.is_renewal() { "t" } else { "f" };
 
         let query = json::object! {
             "active": "t",
@@ -670,7 +668,7 @@ impl Circulator {
         }
 
         // No new-style alerts.  See if the copy itself has one.
-        if self.circ_op == CircOp::Renew {
+        if self.is_renewal() {
             return Ok(());
         }
 
@@ -697,8 +695,8 @@ impl Circulator {
                 checkin_time: JsonValue::Null,
             };
 
-            if let Some(circ) = self.editor.search("circ", query)?.first() {
-                self.circ = Some(circ.to_owned());
+            if let Some(circ) = self.editor.search("circ", query)?.pop() {
+                self.circ = Some(circ);
                 log::info!("{self} found an open circulation");
             }
         }
@@ -719,7 +717,7 @@ impl Circulator {
             };
 
             if let Some(patron) = self.editor.retrieve_with_ops("au", patron_id, flesh)? {
-                self.patron = Some(patron.to_owned());
+                self.patron = Some(patron);
             } else {
                 self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND")?;
             }
@@ -727,9 +725,7 @@ impl Circulator {
             let query = json::object! {barcode: patron_barcode.clone()};
             let flesh = json::object! {flesh: 1, flesh_fields: {"ac": ["usr"]}};
 
-            if let Some(card) = self.editor.search_with_ops("ac", query, flesh)?.first() {
-                let mut card = card.to_owned();
-
+            if let Some(mut card) = self.editor.search_with_ops("ac", query, flesh)?.pop() {
                 let mut patron = card["usr"].take();
                 card["usr"] = patron["id"].clone(); // de-flesh card->user
                 patron["card"] = card; // flesh user->card
@@ -753,9 +749,8 @@ impl Circulator {
                 }
             };
 
-            if let Some(circ) = self.editor.search_with_ops("circ", query, flesh)?.first() {
+            if let Some(mut circ) = self.editor.search_with_ops("circ", query, flesh)?.pop() {
                 // Flesh consistently
-                let mut circ = circ.to_owned();
                 let patron = circ["usr"].take();
 
                 circ["usr"] = patron["id"].clone();
@@ -798,7 +793,7 @@ impl Circulator {
     /// Update our copy with the values provided.
     ///
     /// * `changes` - a JSON Object with key/value copy attributes to update.
-    pub fn update_copy(&mut self, changes: JsonValue) -> EgResult<&JsonValue> {
+    pub fn update_copy(&mut self, mut changes: JsonValue) -> EgResult<&JsonValue> {
         let mut copy = match self.copy.take() {
             Some(c) => c,
             None => Err(format!("We have no copy to update"))?,
@@ -807,8 +802,8 @@ impl Circulator {
         copy["editor"] = json::from(self.editor.requestor_id());
         copy["edit_date"] = json::from("now");
 
-        for (k, v) in changes.entries() {
-            copy[k] = v.to_owned();
+        for (k, v) in changes.entries_mut() {
+            copy[k] = v.take();
         }
 
         self.editor.idl().de_flesh_object(&mut copy)?;
@@ -929,22 +924,19 @@ impl Circulator {
         return Ok(());
     }
 
-    /// True if the caller informs us this is a precat item or if the
+    /// True if the caller wants us to treat this as a precat circ/item.
     /// item must be a precat due to it using the precat call number.
     pub fn is_precat(&self) -> bool {
-        if json_bool_op(self.options.get("is_precat")) {
-            return true;
-        }
+        json_bool_op(self.options.get("is_precat"))
+    }
 
+    /// True if we found a copy to work on and it's a precat item.
+    pub fn is_precat_copy(&self) -> bool {
         if let Some(copy) = self.copy.as_ref() {
             if let Ok(cn) = json_int(&copy["call_number"]) {
-                return cn == -1;
+                return cn == C::PRECAT_CALL_NUMBER;
             }
-        } else {
-            // Having no copy counts as being pre-cat
-            return true;
         }
-
         false
     }
 
@@ -999,11 +991,13 @@ impl Circulator {
         if events.len() > 1 {
             // Multiple events mean something failed somewhere.
             // Remove any success events to avoid confusion.
-            events = events
-                .iter()
-                .filter(|e| !e.is_success())
-                .map(|e| e.to_owned())
-                .collect();
+            let mut new_events = Vec::new();
+            for e in events.drain(..) {
+                if !e.is_success() {
+                    new_events.push(e);
+                }
+            }
+            events = new_events;
         }
 
         self.events = events;

@@ -449,13 +449,12 @@ impl HoldTargeter {
     ///
     /// Refresh our copy of the hold once updated to pick up DB-generated
     /// values (dates, etc.).
-    fn update_hold(&mut self, context: &mut HoldTargetContext, values: JsonValue) -> EgResult<()> {
-        for (field, _) in values.entries() {
-            if field == "id" {
-                // nope
+    fn update_hold(&mut self, context: &mut HoldTargetContext, mut values: JsonValue) -> EgResult<()> {
+        for (k, v) in values.entries_mut() {
+            if k == "id" {
                 continue;
             }
-            context.hold[field] = values[field].to_owned();
+            context.hold[k] = v.take();
         }
 
         self.editor().update(context.hold.clone())?;

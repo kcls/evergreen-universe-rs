@@ -618,7 +618,7 @@ pub fn generate_fines_for_xact(
         "order_by": {"mb": "billing_ts DESC"},
     };
 
-    let fines = editor.search_with_ops("mb", query, ops)?;
+    let mut fines = editor.search_with_ops("mb", query, ops)?;
     let mut current_fine_total = 0.0;
     for fine in fines.iter() {
         if !json_bool(&fine["voided"]) {
@@ -642,9 +642,8 @@ pub fn generate_fines_for_xact(
     // due date changes, the fine generator will back-fill billings
     // for a period of time where the item was not technically overdue.
     let fines: Vec<JsonValue> = fines
-        .iter()
+        .drain(..)
         .filter(|f| f["billing_ts"].as_str().unwrap() > due_date)
-        .map(|f| f.to_owned())
         .collect();
 
     let due_date_dt = date::parse_datetime(due_date)?;

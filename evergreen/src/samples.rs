@@ -87,13 +87,13 @@ impl SampleData {
     }
 
     pub fn delete_default_acn(&self, e: &mut Editor) -> EgResult<()> {
-        let acns = e.search(
+        let mut acns = e.search(
             "acn",
             json::object! {label: self.acn_label.to_string(), deleted: "f"},
         )?;
 
-        if acns.len() > 0 {
-            e.delete(acns[0].to_owned())?;
+        if let Some(acn) = acns.pop() {
+            e.delete(acn)?;
         }
 
         Ok(())
@@ -115,10 +115,10 @@ impl SampleData {
         Ok(())
     }
 
-    pub fn modify_default_acp(&self, e: &mut Editor, values: JsonValue) -> EgResult<()> {
+    pub fn modify_default_acp(&self, e: &mut Editor, mut values: JsonValue) -> EgResult<()> {
         let mut acp = self.get_default_acp(e)?;
-        for (k, v) in values.entries() {
-            acp[k] = v.to_owned();
+        for (k, v) in values.entries_mut() {
+            acp[k] = v.take();
         }
         e.update(acp)
     }
