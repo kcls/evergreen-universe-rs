@@ -296,7 +296,7 @@ impl Session {
                 return Ok(None);
             }
 
-            let tmsg = match self
+            let mut tmsg = match self
                 .client_internal_mut()
                 .recv_session(&mut timer, self.thread())?
             {
@@ -308,8 +308,8 @@ impl Session {
             self.worker_addr = Some(BusAddress::from_str(tmsg.from())?);
 
             // Toss the messages onto our backlog as we receive them.
-            for msg in tmsg.body() {
-                self.backlog.push_back(msg.to_owned());
+            for msg in tmsg.body_mut().drain(..) {
+                self.backlog.push_back(msg);
             }
 
             // Loop back around and see if we can pull the message
@@ -322,13 +322,15 @@ impl Session {
     fn unpack_reply(
         &mut self,
         timer: &mut util::Timer,
-        msg: Message,
+        mut msg: Message,
     ) -> Result<Option<Response>, String> {
-        if let Payload::Result(resp) = msg.payload() {
+
+        if let Payload::Result(resp) = msg.payload_mut() {
+
             log::trace!("unpack_reply() status={}", resp.status());
 
-            // .to_owned() because this message is about to get dropped.
-            let mut value = resp.content().to_owned();
+            // take_content() because this message is about to get dropped.
+            let mut value = resp.take_content();
 
             if resp.status() == &MessageStatus::Partial {
                 let buf = match self.partial_buffer.as_mut() {

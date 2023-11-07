@@ -65,8 +65,8 @@ impl BusAddress {
             _ => return Err(format!("Invalid address purpose: {}", parts[1])),
         };
 
-        let username = parts[2].to_owned();
-        let domain = parts[3].to_owned();
+        let username = parts[2].to_string();
+        let domain = parts[3].to_string();
         let remainder = match parts.len() > 4 {
             true => Some(parts[4..].join(":")),
             _ => None,
