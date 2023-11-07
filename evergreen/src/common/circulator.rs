@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// These copy fields are assumed to be fleshed throughout.
+/// NOTE changing these values can impact assumptions in the code.
 const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "location"];
 
 /// Map of some newer override event types to simplified legacy override codes .
@@ -21,14 +22,14 @@ const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "loc
 const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
     &["CLAIMSRETURNED\tCHECKOUT", "CIRC_CLAIMS_RETURNED"],
     &["CLAIMSRETURNED\tCHECKIN", "CIRC_CLAIMS_RETURNED"],
-    &["LOST\tCHECKOUT", "circULATION_EXISTS"],
-    &["LONGOVERDUE\tCHECKOUT", "circULATION_EXISTS"],
+    &["LOST\tCHECKOUT", "CIRCULATION_EXISTS"],
+    &["LONGOVERDUE\tCHECKOUT", "CIRCULATION_EXISTS"],
     &["MISSING\tCHECKOUT", "COPY_NOT_AVAILABLE"],
     &["DAMAGED\tCHECKOUT", "COPY_NOT_AVAILABLE"],
     &[
         "LOST_AND_PAID\tCHECKOUT",
         "COPY_NOT_AVAILABLE",
-        "circULATION_EXISTS",
+        "CIRCULATION_EXISTS",
     ],
 ];
 
@@ -58,6 +59,20 @@ impl From<&CircOp> for &'static str {
     }
 }
 
+/// Contains circ policy matchpoint data.
+#[derive(Debug)]
+pub struct CircPolicy {
+    pub max_fine: f64,
+    pub duration: String,
+    pub recurring_fine: f64,
+    pub matchpoint: JsonValue,
+    pub duration_rule: JsonValue,
+    pub recurring_fine_rule: JsonValue,
+    pub max_fine_rule: JsonValue,
+    pub hard_due_date: Option<JsonValue>,
+    pub limit_groups: Option<JsonValue>,
+}
+
 /// Context and shared methods for circulation actions.
 ///
 /// Innards are 'pub' since the impl's are spread across multiple files.
@@ -66,12 +81,13 @@ pub struct Circulator {
     pub settings: Settings,
     pub circ_lib: i64,
     pub copy: Option<JsonValue>,
-    pub copy_id: Option<i64>,
+    pub copy_id: i64,
     pub copy_barcode: Option<String>,
     pub circ: Option<JsonValue>,
     pub hold: Option<JsonValue>,
     pub reservation: Option<JsonValue>,
     pub patron: Option<JsonValue>,
+    pub patron_id: i64,
     pub transit: Option<JsonValue>,
     pub hold_transit: Option<JsonValue>,
     pub is_noncat: bool,
@@ -79,6 +95,20 @@ pub struct Circulator {
     pub runtime_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
     pub circ_op: CircOp,
+    pub parent_circ: Option<i64>,
+    pub deposit_billing: Option<JsonValue>,
+    pub rental_billing: Option<JsonValue>,
+
+    /// A circ test can be successfull without a matched policy
+    /// if the matched policy is for
+    pub circ_test_success: bool,
+    pub circ_policy_unlimited: bool,
+
+    /// Compiled rule set for a successful policy match.
+    pub circ_policy_rules: Option<CircPolicy>,
+
+    /// Raw results from the database.
+    pub circ_policy_results: Option<Vec<JsonValue>>,
 
     /// When true, stop further processing and exit.
     /// This is not necessarily an error condition.
@@ -89,6 +119,9 @@ pub struct Circulator {
     /// Events that need to be addressed.
     pub events: Vec<EgEvent>,
 
+    pub renewal_remaining: i64,
+    pub auto_renewal_remaining: i64,
+
     /// Override failures are tracked here so they can all be returned
     /// to the caller.
     pub failed_events: Vec<EgEvent>,
@@ -98,6 +131,8 @@ pub struct Circulator {
 
     /// List of hold IDs for holds that need to be retargeted.
     pub retarget_holds: Option<Vec<i64>>,
+
+    pub fulfilled_hold_ids: Option<Vec<i64>>,
 
     /// Storage for the large list of circulation API flags that we
     /// don't explicitly define in this struct.
@@ -157,15 +192,26 @@ impl Circulator {
             circ_lib,
             events: Vec::new(),
             circ: None,
+            parent_circ: None,
             hold: None,
             reservation: None,
             copy: None,
-            copy_id: None,
+            copy_id: 0,
             copy_barcode: None,
             patron: None,
+            patron_id: 0,
             transit: None,
             hold_transit: None,
             is_noncat: false,
+            renewal_remaining: 0,
+            deposit_billing: None,
+            rental_billing: None,
+            auto_renewal_remaining: 0,
+            fulfilled_hold_ids: None,
+            circ_test_success: false,
+            circ_policy_unlimited: false,
+            circ_policy_rules: None,
+            circ_policy_results: None,
             system_copy_alerts: Vec::new(),
             runtime_copy_alerts: Vec::new(),
             is_override: false,
@@ -282,7 +328,7 @@ impl Circulator {
     }
 
     /// Search for the copy in question
-    fn load_copy(&mut self) -> EgResult<()> {
+    pub fn load_copy(&mut self) -> EgResult<()> {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
@@ -292,15 +338,15 @@ impl Circulator {
 
         // If we have loaded our item before, we can reload it directly
         // via its ID.
-        let copy_id_op = match self.copy_id {
-            Some(id) => Some(id),
-            None => match self.options.get("copy_id") {
-                Some(id2) => Some(json_int(&id2)?),
-                None => None,
-            },
+        let copy_id = if self.copy_id > 0 {
+            self.copy_id
+        } else if let Some(id) = self.options.get("copy_id") {
+            json_int(id)?
+        } else {
+            0
         };
 
-        if let Some(copy_id) = copy_id_op {
+        if copy_id > 0 {
             if let Some(copy) = self.editor.retrieve_with_ops("acp", copy_id, copy_flesh)? {
                 self.copy = Some(copy);
             } else {
@@ -325,7 +371,7 @@ impl Circulator {
         }
 
         if let Some(c) = self.copy.as_ref() {
-            self.copy_id = Some(json_int(&c["id"])?);
+            self.copy_id = json_int(&c["id"])?;
             if self.copy_barcode.is_none() {
                 self.copy_barcode = Some(json_string(&c["barcode"])?);
             }
@@ -341,7 +387,7 @@ impl Circulator {
         }
 
         let query = json::object! {
-            copy: self.copy_id.unwrap(), // if have copy, have id.
+            copy: self.copy_id,
             ack_time: JsonValue::Null,
         };
 
@@ -445,10 +491,9 @@ impl Circulator {
 
     ///
     pub fn load_system_copy_alerts(&mut self) -> EgResult<()> {
-        let copy_id = match self.copy_id {
-            Some(i) => i,
-            None => return Ok(()),
-        };
+        if self.copy_id == 0 {
+            return Ok(());
+        }
 
         // System events need event types to focus on.
         let events: &[&str] = if self.circ_op == CircOp::Renew {
@@ -462,7 +507,7 @@ impl Circulator {
         };
 
         let list = self.editor.json_query(json::object! {
-            from: ["asset.copy_state", copy_id]
+            from: ["asset.copy_state", self.copy_id]
         })?;
 
         let mut copy_state = "NORMAL";
@@ -554,7 +599,7 @@ impl Circulator {
 
             let alert = json::object! {
                 alert_type: atype["id"].clone(),
-                copy: self.copy_id.unwrap(),
+                copy: self.copy_id,
                 temp: "t",
                 create_staff: self.editor.requestor_id(),
                 create_time: "now",
@@ -760,6 +805,10 @@ impl Circulator {
             }
         }
 
+        if let Some(p) = self.patron.as_ref() {
+            self.patron_id = json_int(&p["id"])?;
+        }
+
         Ok(())
     }
 
@@ -837,6 +886,24 @@ impl Circulator {
         }
     }
 
+    pub fn can_override_event(&self, textcode: &str) -> bool {
+        if !self.is_override {
+            return false;
+        }
+
+        let oargs = match self.override_args.as_ref() {
+            Some(o) => o,
+            None => return false,
+        };
+
+        match oargs {
+            Overrides::All => true,
+            // True if the list of events that we want to override
+            // contains the textcode provided.
+            Overrides::Events(v) => v.iter().map(|s| s.as_str()).any(|s| s == textcode),
+        }
+    }
+
     /// Attempts to override any events we have collected so far.
     ///
     /// Returns Err to exit early if any events exist that cannot
@@ -848,29 +915,20 @@ impl Circulator {
         }
 
         // If we have a success event, keep it for returning later.
-        let mut success: Option<EgEvent> = None;
+        let success: Option<EgEvent> = None;
         let selfstr = format!("{self}");
 
-        for evt in self.events.drain(0..) {
-            if evt.textcode() == "SUCCESS" {
-                success = Some(evt);
-                continue;
-            }
+        loop {
+            let evt = match self.events.pop() {
+                Some(e) => e,
+                None => break,
+            };
 
-            if !self.is_override || self.override_args.is_none() {
+            let can_override = self.can_override_event(evt.textcode());
+
+            if !can_override {
                 self.failed_events.push(evt);
                 continue;
-            }
-
-            let oargs = self.override_args.as_ref().unwrap(); // verified above
-
-            // Asked to override specific event types.  See if this
-            // event type matches.
-            if let Overrides::Events(v) = oargs {
-                if !v.iter().map(|s| s.as_str()).any(|s| s == evt.textcode()) {
-                    self.failed_events.push(evt);
-                    continue;
-                }
             }
 
             let perm = format!("{}.override", evt.textcode());

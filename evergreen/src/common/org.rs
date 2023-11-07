@@ -160,3 +160,21 @@ pub fn next_open_date(
     // If we get here it means we never found an open day.
     Ok(OrgOpenState::Never)
 }
+
+/// Returns the proximity from from_org to to_org.
+pub fn proximity(editor: &mut Editor, from_org: i64, to_org: i64) -> EgResult<Option<i64>> {
+    let query = json::object! {
+        "select": {"aoup": ["prox"]},
+        "from": "aoup",
+        "where": {
+            "from_org": from_org,
+            "to_org": to_org
+        }
+    };
+
+    if let Some(prox) = editor.json_query(query)?.pop() {
+        Ok(Some(util::json_int(&prox["prox"])?))
+    } else {
+        Ok(None)
+    }
+}

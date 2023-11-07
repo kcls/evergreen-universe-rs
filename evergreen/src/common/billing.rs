@@ -949,3 +949,105 @@ fn calc_min_void_date(
         Ok(Some(backdate))
     }
 }
+
+/// Get the numeric cost of a copy, honoring various org settings
+/// for which field to pull the cost from and how to handle zero/unset
+/// cost values.
+pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
+    let flesh = json::object! {"flesh": 1, "flesh_fields": {"acp": ["call_number"]}};
+
+    let copy = editor
+        .retrieve_with_ops("acp", copy_id, flesh)?
+        .ok_or_else(|| editor.die_event())?;
+
+    let owner = if json_int(&copy["call_number"]["id"])? == C::PRECAT_CALL_NUMBER {
+        json_int(&copy["circ_lib"])?
+    } else {
+        json_int(&copy["call_number"]["owning_lib"])?
+    };
+
+    let mut settings = Settings::new(&editor);
+    settings.set_org_id(owner);
+
+    settings.fetch_values(&[
+        "circ.min_item_price",
+        "circ.max_item_price",
+        "circ.charge_lost_on_zero",
+        "circ.primary_item_value_field",
+        "circ.secondary_item_value_field",
+        "cat.default_item_price",
+    ])?;
+
+    let primary_field = match settings
+        .get_value("circ.primary_item_value_field")?
+        .as_str()
+    {
+        Some("cost") => "cost",
+        Some("price") => "price",
+        _ => "",
+    };
+
+    let secondary_field = match settings
+        .get_value("circ.secondary_item_value_field")?
+        .as_str()
+    {
+        Some("cost") => "cost",
+        Some("price") => "price",
+        _ => "",
+    };
+
+    let charge_on_zero_op = settings.get_value("circ.charge_lost_on_zero")?.as_bool();
+    let charge_on_zero = if let Some(b) = charge_on_zero_op {
+        b
+    } else {
+        false
+    };
+
+    // Retain the price as a json value for now because null is important.
+    let mut price = if primary_field == "cost" {
+        &copy["cost"]
+    } else {
+        &copy["price"]
+    };
+
+    if price.is_null() || (json_float(&price)? == 0.0 && charge_on_zero) {
+        if secondary_field != "" {
+            price = &copy[secondary_field];
+        }
+    }
+
+    // Fall back to legacy item cost calculation
+    let price_binding;
+    if price.is_null() || (json_float(&price)? == 0.0 && charge_on_zero) {
+        let def_price = match settings.get_value("cat.default_item_price")?.as_f64() {
+            Some(p) => p,
+            _ => 0.0,
+        };
+        price_binding = Some(json::from(def_price));
+        price = price_binding.as_ref().unwrap();
+    }
+
+    // Now we want numbers
+    let mut price = if let Ok(p) = json_float(&price) {
+        p
+    } else {
+        0.00
+    };
+
+    if let Some(max_price) = settings.get_value("circ.max_item_price")?.as_f64() {
+        if price > max_price {
+            price = max_price;
+        }
+    } else {
+        if let Some(min_price) = settings.get_value("circ.min_item_price")?.as_f64() {
+            if price < min_price {
+                // Let $0 fall through if charge_on_zero is explicitly false.
+                if price != 0.0 || charge_on_zero || charge_on_zero_op.is_none() {
+                    price = min_price;
+                }
+            }
+        }
+    }
+
+    Ok(price)
+}

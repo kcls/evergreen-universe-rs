@@ -324,9 +324,7 @@ impl Session {
         timer: &mut util::Timer,
         mut msg: Message,
     ) -> Result<Option<Response>, String> {
-
         if let Payload::Result(resp) = msg.payload_mut() {
-
             log::trace!("unpack_reply() status={}", resp.status());
 
             // take_content() because this message is about to get dropped.

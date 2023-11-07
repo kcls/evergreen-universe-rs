@@ -32,6 +32,7 @@ pub const CIRC_DURATION_EXTENDED: i64 = 3;
 pub const CIRC_FINE_LEVEL_LOW: i64 = 1;
 pub const CIRC_FINE_LEVEL_MEDIUM: i64 = 2;
 pub const CIRC_FINE_LEVEL_HIGH: i64 = 3;
+pub const CIRC_POLICY_UNLIMITED: &str = "unlimited";
 
 // ---------------------------------------------------------------------
 // Billing Types
@@ -47,6 +48,16 @@ pub const BTYPE_DAMAGED_ITEM_PROCESSING_FEE: i64 = 8;
 pub const BTYPE_NOTIFICATION_FEE: i64 = 9;
 pub const BTYPE_LONG_OVERDUE_MATERIALS: i64 = 10;
 pub const BTYPE_LONG_OVERDUE_MATERIALS_PROCESSING_FEE: i64 = 11;
+
+// ---------------------------------------------------------------------
+// Billing Type Legacy Labels and Notes
+// ---------------------------------------------------------------------
+pub const BTYPE_LABEL_OVERDUE_MATERIALS: &str = "Overdue materials";
+pub const BTYPE_LABEL_COLLECTION_FEE: &str = "Long Overdue Collection Fee";
+pub const BTYPE_LABEL_DEPOSIT: &str = "System: Deposit";
+pub const BTYPE_LABEL_RENTAL: &str = "System: Rental";
+pub const BTYPE_NOTE_SYSTEM: &str = "SYSTEM GENERATED";
+
 
 // ---------------------------------------------------------------------
 // Hold Types
