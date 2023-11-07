@@ -21,7 +21,7 @@ pub static METHODS: &[StaticMethod] = &[
         name: "checkin",
         desc: "Checkin a copy",
         param_count: ParamCount::Exactly(2),
-        handler: checkin,
+        handler: checkout_renew_checkin,
         params: &[
             StaticParam {
                 required: true,
@@ -41,7 +41,7 @@ pub static METHODS: &[StaticMethod] = &[
         name: "checkin.override",
         desc: "Checkin a copy / Override edition. See checkin",
         param_count: ParamCount::Exactly(2),
-        handler: checkin,
+        handler: checkout_renew_checkin,
         params: &[
             StaticParam {
                 required: true,
@@ -54,6 +54,26 @@ pub static METHODS: &[StaticMethod] = &[
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.", // TODO expand
+            },
+        ],
+    },
+    StaticMethod {
+        name: "checkout",
+        desc: "Checkout a copy",
+        param_count: ParamCount::Exactly(2),
+        handler: checkout_renew_checkin,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authentication Toaken",
+            },
+            StaticParam {
+                required: true,
+                name: "options",
+                datatype: ParamDataType::Object,
+                desc: "Options including copy_barcode, etc.",
             },
         ],
     },
@@ -99,7 +119,7 @@ pub static METHODS: &[StaticMethod] = &[
     },
 ];
 
-pub fn checkin(
+pub fn checkout_renew_checkin(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::Method,
@@ -121,8 +141,16 @@ pub fn checkin(
         return session.respond(editor.event());
     }
 
+    let perm = if method.method().contains("checkout") {
+        "COPY_CHECKOUT"
+    } else if method.method().contains("checkin") {
+        "COPY_CHECKIN"
+    } else {
+        todo!()
+    };
+
     // Initial perm check
-    if !editor.allowed("COPY_CHECKIN")? {
+    if !editor.allowed(perm)? {
         return session.respond(editor.event());
     }
 
@@ -130,8 +158,13 @@ pub fn checkin(
     circulator.is_override = method.method().contains(".override");
     circulator.begin()?;
 
-    // Collect needed data then kickoff the checkin process.
-    let result = circulator.init().and_then(|()| circulator.checkin());
+    let result = if method.method().contains("checkout") {
+        circulator.checkout()
+    } else if method.method().contains("checkin") {
+        circulator.checkin()
+    } else {
+        todo!()
+    };
 
     if let Err(err) = result {
         circulator.rollback()?;
@@ -232,3 +265,4 @@ pub fn prev_renewal_chain_summary(
         util::json_int(&prev_circ[0]["id"])?,
     )?)
 }
+

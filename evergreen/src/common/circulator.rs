@@ -6,7 +6,7 @@ use crate::editor::Editor;
 use crate::event::{EgEvent, Overrides};
 use crate::result::{EgError, EgResult};
 use crate::util;
-use crate::util::{json_bool, json_bool_op, json_int};
+use crate::util::{json_bool, json_bool_op, json_int, json_string};
 use json::JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -66,6 +66,7 @@ pub struct Circulator {
     pub circ_lib: i64,
     pub copy: Option<JsonValue>,
     pub copy_id: Option<i64>,
+    pub copy_barcode: Option<String>,
     pub circ: Option<JsonValue>,
     pub hold: Option<JsonValue>,
     pub reservation: Option<JsonValue>,
@@ -110,7 +111,6 @@ pub struct Circulator {
 impl fmt::Display for Circulator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut patron_barcode = "null";
-        let mut copy_barcode = "null";
         let mut copy_status = "null";
 
         if let Some(p) = &self.patron {
@@ -119,10 +119,12 @@ impl fmt::Display for Circulator {
             }
         }
 
+        let copy_barcode = match self.copy_barcode.as_ref() {
+            Some(b) => b,
+            None => "null",
+        };
+
         if let Some(c) = &self.copy {
-            if let Some(bc) = &c["barcode"].as_str() {
-                copy_barcode = bc;
-            }
             if let Some(s) = c["status"]["name"].as_str() {
                 copy_status = s;
             }
@@ -158,6 +160,7 @@ impl Circulator {
             reservation: None,
             copy: None,
             copy_id: None,
+            copy_barcode: None,
             patron: None,
             transit: None,
             hold_transit: None,
@@ -299,20 +302,22 @@ impl Circulator {
                 self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
             }
         } else if let Some(copy_barcode) = self.options.get("copy_barcode") {
-            // Non-cataloged items are assumed to not exist.
-            if !self.is_noncat {
-                let query = json::object! {
-                    barcode: copy_barcode.clone(),
-                    deleted: "f", // cstore turns json false into NULL :\
-                };
+            self.copy_barcode = Some(json_string(&copy_barcode)?);
 
-                if let Some(copy) = self
-                    .editor
-                    .search_with_ops("acp", query, copy_flesh)?
-                    .first()
-                {
-                    self.copy = Some(copy.to_owned());
-                } else {
+            let query = json::object! {
+                barcode: copy_barcode.clone(),
+                deleted: "f", // cstore turns json false into NULL :\
+            };
+
+            if let Some(copy) = self
+                .editor
+                .search_with_ops("acp", query, copy_flesh)?
+                .first()
+            {
+                self.copy = Some(copy.to_owned());
+            } else {
+                if self.circ_op != CircOp::Checkout {
+                    // OK to checkout precat copies
                     self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
                 }
             }
@@ -320,6 +325,9 @@ impl Circulator {
 
         if let Some(c) = self.copy.as_ref() {
             self.copy_id = Some(json_int(&c["id"])?);
+            if self.copy_barcode.is_none() {
+                self.copy_barcode = Some(json_string(&c["barcode"])?);
+            }
         }
 
         Ok(())
@@ -770,11 +778,6 @@ impl Circulator {
 
         self.settings.set_org_id(self.circ_lib);
         self.is_noncat = json_bool_op(self.options.get("is_noncat"));
-
-        // TODO have checkout, checkin, etc. call init() so init() can
-        // have more context about what action we are performing.
-        // Specifically, sometimes it's OK if we can't find the
-        // copy we're looking for (e.g. precat).
 
         self.load_copy()?;
         self.load_patron()?;

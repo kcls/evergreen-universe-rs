@@ -4,6 +4,7 @@ use crate::common::holds;
 use crate::common::noncat;
 use crate::common::penalty;
 use crate::common::targeter;
+use crate::common::org;
 use crate::common::transit;
 use crate::constants as C;
 use crate::date;
@@ -25,11 +26,16 @@ impl Circulator {
             self.circ_op = CircOp::Checkout;
         }
 
-        self.handle_deleted_copy();
+        if self.circ_op != CircOp::Renew {
+            // We'll already be init-ed if we're renewing.
+            self.init()?;
+        }
 
         if self.patron.is_none() {
             return self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND");
         }
+
+        self.handle_deleted_copy();
 
         if self.is_noncat {
             return self.checkout_noncat();
@@ -120,18 +126,17 @@ impl Circulator {
             .unwrap_or(Some(""))
             .unwrap();
 
-        let copy_barcode = self
-            .options
-            .get("copy_barcode")
-            .map(|bc| bc.as_str())
-            .ok_or(format!("Precat checkout requires a barcode"))?;
-
         let circ_modifier = self
             .options
             .get("circ_modifier")
             .map(|m| m.as_str())
             .unwrap_or(Some(""))
             .unwrap();
+
+        // Barcode required to get this far.
+        let copy_barcode = self.copy_barcode.as_deref().unwrap();
+
+        log::info!("{self} creating new pre-cat copy {copy_barcode}");
 
         let copy = json::object! {
             "circ_lib": self.circ_lib,
@@ -147,13 +152,24 @@ impl Circulator {
             "fine_level": C::PRECAT_COPY_FINE_LEVEL,
         };
 
-        let copy = self.editor.idl().create_from("acp", copy)?;
+        let mut copy = self.editor.idl().create_from("acp", copy)?;
+
+        let pclib = self.settings.get_value_at_org("circ.pre_cat_copy_circ_lib", self.circ_lib)?;
+
+        if let Some(sn) = pclib.as_str() {
+            let o = org::by_shortname(&mut self.editor, sn)?;
+            copy["circ_lib"] = json::from(o["id"].clone());
+        }
+
+       self.copy = Some(self.editor.create(copy)?);
 
         Ok(())
     }
 
     fn update_existing_precat(&mut self) -> EgResult<()> {
         let copy = self.copy.as_ref().unwrap(); // known good.
+
+        log::info!("{self} modifying existing pre-cat copy {}", copy["id"]);
 
         let dummy_title = self
             .options

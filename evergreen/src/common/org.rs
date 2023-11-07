@@ -40,6 +40,14 @@ fn org_relations_query(
     Ok(ids)
 }
 
+pub fn by_shortname(editor: &mut Editor, sn: &str) -> EgResult<json::JsonValue> {
+    if let Some(o) = editor.search("aou", json::object! {"shortname": sn})?.pop() {
+        Ok(o)
+    } else {
+        Err(editor.die_event())
+    }
+}
+
 pub fn ancestors(editor: &mut Editor, org_id: i64) -> EgResult<Vec<i64>> {
     org_relations_query(editor, org_id, "actor.org_unit_ancestors", None)
 }

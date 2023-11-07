@@ -29,6 +29,8 @@ impl Circulator {
             self.circ_op = CircOp::Checkin;
         }
 
+        self.init()?;
+
         // Pre-cache some setting values.
         self.settings.fetch_values(CHECKIN_ORG_SETTINGS)?;
         self.basic_copy_checks()?;
