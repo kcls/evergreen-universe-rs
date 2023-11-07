@@ -125,9 +125,7 @@ impl XmlRecordIterator {
             }
 
             if context.record_complete {
-                let r = context.record.to_owned();
-                context.record = Record::new();
-
+                let r = std::mem::replace(&mut context.record, Record::new());
                 return Some(r);
             } else if context.doc_complete {
                 // If we had a doc in progress, discard it.

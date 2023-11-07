@@ -132,17 +132,17 @@ impl Bus {
                 timeout = 0;
             }
 
-            let resp: Vec<String> = match self.connection().blpop(&recipient, timeout as usize) {
+            let mut resp: Vec<String> = match self.connection().blpop(&recipient, timeout as usize) {
                 Ok(r) => r,
                 Err(e) => return Err(format!("Redis list pop error: {e} recipient={recipient}")),
             };
 
-            if resp.len() == 0 {
+            if resp.len() > 1 { // resp = [key, value]
+                value = resp.remove(1);
+            } else {
                 // No message received
                 return Ok(None);
             }
-
-            value = resp[1].to_owned(); // resp = [key, value]
         }
 
         log::trace!("recv_one_value() pulled from bus: {}", value);
