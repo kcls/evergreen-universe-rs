@@ -72,6 +72,7 @@ pub struct Circulator {
     pub hold: Option<JsonValue>,
     pub reservation: Option<JsonValue>,
     pub patron: Option<JsonValue>,
+    pub patron_id: Option<i64>,
     pub transit: Option<JsonValue>,
     pub hold_transit: Option<JsonValue>,
     pub is_noncat: bool,
@@ -163,6 +164,7 @@ impl Circulator {
             copy_id: None,
             copy_barcode: None,
             patron: None,
+            patron_id: None,
             transit: None,
             hold_transit: None,
             is_noncat: false,
@@ -282,7 +284,7 @@ impl Circulator {
     }
 
     /// Search for the copy in question
-    fn load_copy(&mut self) -> EgResult<()> {
+    pub fn load_copy(&mut self) -> EgResult<()> {
         let copy_flesh = json::object! {
             flesh: 1,
             flesh_fields: {
@@ -760,6 +762,10 @@ impl Circulator {
             }
         }
 
+        if let Some(p) = self.patron.as_ref() {
+            self.patron_id = Some(json_int(&p["id"])?);
+        }
+
         Ok(())
     }
 
@@ -837,6 +843,24 @@ impl Circulator {
         }
     }
 
+    pub fn can_override_event(&self, textcode: &str) -> bool {
+        if !self.is_override {
+            return false;
+        }
+
+        let oargs = match self.override_args.as_ref() {
+            Some(o) => o,
+            None => return false,
+        };
+
+        match oargs {
+            Overrides::All => true,
+            // True if the list of events that we want to override
+            // contains the textcode provided.
+            Overrides::Events(v) => v.iter().map(|s| s.as_str()).any(|s| s == textcode),
+        }
+    }
+
     /// Attempts to override any events we have collected so far.
     ///
     /// Returns Err to exit early if any events exist that cannot
@@ -851,26 +875,17 @@ impl Circulator {
         let mut success: Option<EgEvent> = None;
         let selfstr = format!("{self}");
 
-        for evt in self.events.drain(0..) {
-            if evt.textcode() == "SUCCESS" {
-                success = Some(evt);
-                continue;
-            }
+        loop {
+            let evt = match self.events.pop() {
+                Some(e) => e,
+                None => break,
+            };
 
-            if !self.is_override || self.override_args.is_none() {
+            let can_override = self.can_override_event(evt.textcode());
+
+            if !can_override {
                 self.failed_events.push(evt);
                 continue;
-            }
-
-            let oargs = self.override_args.as_ref().unwrap(); // verified above
-
-            // Asked to override specific event types.  See if this
-            // event type matches.
-            if let Overrides::Events(v) = oargs {
-                if !v.iter().map(|s| s.as_str()).any(|s| s == evt.textcode()) {
-                    self.failed_events.push(evt);
-                    continue;
-                }
             }
 
             let perm = format!("{}.override", evt.textcode());

@@ -9,11 +9,10 @@ use crate::common::transit;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
-use crate::result::{EgError, EgResult};
-use crate::util::{json_bool, json_float, json_int, json_string};
-use chrono::{Duration, Local, Timelike};
+use crate::result::EgResult;
+use crate::util::json_int;
 use json::JsonValue;
-use std::collections::HashSet;
+use std::time::Duration;
 
 /// Performs item checkins
 impl Circulator {
@@ -25,6 +24,8 @@ impl Circulator {
         if self.circ_op == CircOp::Unset {
             self.circ_op = CircOp::Checkout;
         }
+
+        log::info!("{self} starting checkout");
 
         if !self.is_renewal() {
             // We'll already be init-ed if we're renewing.
@@ -45,9 +46,14 @@ impl Circulator {
             self.create_precat_copy()?;
         } else if self.is_precat_copy() {
             self.exit_err_on_event_code("ITEM_NOT_CATALOGED")?;
+        } else if self.copy.is_none() {
+            self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
         }
 
-        log::info!("{self} starting checkout");
+        self.check_copy_status()?;
+        self.handle_claims_returned()?;
+        self.check_for_open_circ()?;
+        self.check_circ_permit()?;
 
         Ok(())
     }
@@ -156,16 +162,19 @@ impl Circulator {
 
         let mut copy = self.editor.idl().create_from("acp", copy)?;
 
-        let pclib = self
-            .settings
-            .get_value_at_org("circ.pre_cat_copy_circ_lib", self.circ_lib)?;
+        let pclib = self.settings.get_value("circ.pre_cat_copy_circ_lib")?;
 
         if let Some(sn) = pclib.as_str() {
             let o = org::by_shortname(&mut self.editor, sn)?;
             copy["circ_lib"] = json::from(o["id"].clone());
         }
 
-        self.copy = Some(self.editor.create(copy)?);
+        let copy = self.editor.create(copy)?;
+
+        self.copy_id = Some(json_int(&copy["id"])?);
+
+        // Reload a fleshed version of the copy we just created.
+        self.load_copy()?;
 
         Ok(())
     }
@@ -212,5 +221,93 @@ impl Circulator {
         })?;
 
         return Ok(());
+    }
+
+    fn check_copy_status(&mut self) -> EgResult<()> {
+        if let Some(copy) = self.copy.as_ref() {
+            if let Some(id) = copy["status"]["id"].as_i64() {
+                if id == C::COPY_STATUS_IN_TRANSIT {
+                    self.exit_err_on_event_code("COPY_IN_TRANSIT")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// If there is an open claims-returned circ on our copy and
+    /// we are in override mode, check in the circ.  Otherwise,
+    /// exit with an event.
+    fn handle_claims_returned(&mut self) -> EgResult<()> {
+
+        let query = json::object! {
+            "target_copy": self.copy_id.unwrap(),
+            "stop_fines": "CLAIMSRETURNED",
+            "checkin_time": JsonValue::Null,
+        };
+
+        let mut circ = match self.editor.search("circ", query)?.pop() {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+
+        if !self.can_override_event("CIRC_CLAIMS_RETURNED") {
+            return self.exit_err_on_event_code("CIRC_CLAIMS_RETURNED");
+        }
+
+        circ["checkin_time"] = json::from("now");
+        circ["checkin_scan_time"] = json::from("now");
+        circ["checkin_lib"] = json::from(self.circ_lib);
+        circ["checkin_workstation"] = json::from(self.editor.requestor_ws_id().unwrap());
+        circ["checkin_staff"] = json::from(self.editor.requestor_id());
+
+        self.editor.update(circ).map(|_| ())
+    }
+
+    fn check_for_open_circ(&mut self) -> EgResult<()> {
+        if self.is_renewal() {
+            return Ok(());
+        }
+
+        let query = json::object! {
+            "target_copy":  self.copy_id.unwrap(),
+            "checkin_time": JsonValue::Null,
+        };
+
+        let circ = match self.editor.search("circ", query)?.pop() {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let mut payload = json::object! {"copy": self.copy().clone()};
+
+        if self.patron_id.unwrap() == json_int(&circ["usr"])? {
+            payload["old_circ"] = circ.clone();
+
+            // If there is an open circulation on the checkout item and
+            // an auto-renew interval is defined, inform the caller
+            // that they should go ahead and renew the item instead of
+            // warning about open circulations.
+
+            if let Some(intvl) =
+                self.settings.get_value("circ.checkout_auto_renew_age")?.as_str() {
+                let interval = date::interval_to_seconds(intvl)?;
+                let xact_start = date::parse_datetime(circ["xact_start"].as_str().unwrap())?;
+
+                let cutoff = xact_start + Duration::from_secs(interval as u64);
+
+                if date::now() > cutoff {
+                    payload["auto_renew"] = json::from(1);
+                }
+            }
+        }
+
+        let mut evt = EgEvent::new("OPEN_CIRCULATION_EXISTS");
+        evt.set_payload(payload);
+
+        self.exit_err_on_event(evt)
+    }
+
+    fn check_circ_permit(&mut self) -> EgResult<()> {
     }
 }
