@@ -37,7 +37,10 @@ impl DisplayAttr {
     pub fn add_value(&mut self, value: String) {
         match self.value {
             DisplayAttrValue::Value(ref s) => {
-                self.value = DisplayAttrValue::List(vec![s.to_owned(), value]);
+                // NOTE if we create an Unset variant of DisplayAttrValue
+                // we can mem::replace the old value into the new list
+                // sans clone.
+                self.value = DisplayAttrValue::List(vec![s.clone(), value]);
             }
             DisplayAttrValue::List(ref mut l) => {
                 l.push(value);

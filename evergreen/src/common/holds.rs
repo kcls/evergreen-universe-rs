@@ -146,7 +146,7 @@ where
         cancel_time: JsonValue::Null,
     };
 
-    Ok(editor.search("ahr", query)?.first().map(|h| h.to_owned()))
+    Ok(editor.search("ahr", query)?.pop())
 }
 
 /// Returns the captured hold if found and a list of hold IDs that
@@ -191,7 +191,7 @@ where
         json::from(editor.requestor_ws_ou()),
         json::from(copy.clone()),
         json::from(100),
-        json::from(hold_stall_intvl.to_owned()),
+        json::from(hold_stall_intvl.clone()),
     ];
 
     // best_holds is a JSON array of JSON hold IDs.

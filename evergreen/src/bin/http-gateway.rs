@@ -208,15 +208,15 @@ impl GatewayHandler {
         &mut self,
         format: &idl::DataFormat,
         complete: &mut bool,
-        tm: osrf::message::TransportMessage,
+        mut tm: osrf::message::TransportMessage,
     ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
         let mut replies: Vec<json::JsonValue> = Vec::new();
 
-        for resp in tm.body().iter() {
-            if let osrf::message::Payload::Result(resp) = resp.payload() {
-                let mut content = resp.content().to_owned();
+        for mut resp in tm.body_mut().drain(..) {
+            if let osrf::message::Payload::Result(result) = resp.payload_mut() {
+                let mut content = result.take_content();
 
-                if resp.status() == &osrf::message::MessageStatus::Partial {
+                if result.status() == &osrf::message::MessageStatus::Partial {
                     let buf = match self.partial_buffer.as_mut() {
                         Some(b) => b,
                         None => {
@@ -237,7 +237,7 @@ impl GatewayHandler {
                     // Not enough data yet to create a reply.  Keep reading,
                     // which may involve future calls to extract_osrf_responses()
                     continue;
-                } else if resp.status() == &osrf::message::MessageStatus::PartialComplete {
+                } else if result.status() == &osrf::message::MessageStatus::PartialComplete {
                     // Take + clear the partial buffer.
                     let mut buf = match self.partial_buffer.take() {
                         Some(b) => b,

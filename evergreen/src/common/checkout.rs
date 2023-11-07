@@ -2,9 +2,9 @@ use crate::common::billing;
 use crate::common::circulator::{CircOp, Circulator};
 use crate::common::holds;
 use crate::common::noncat;
+use crate::common::org;
 use crate::common::penalty;
 use crate::common::targeter;
-use crate::common::org;
 use crate::common::transit;
 use crate::constants as C;
 use crate::date;
@@ -26,7 +26,7 @@ impl Circulator {
             self.circ_op = CircOp::Checkout;
         }
 
-        if self.circ_op != CircOp::Renew {
+        if !self.is_renewal() {
             // We'll already be init-ed if we're renewing.
             self.init()?;
         }
@@ -43,6 +43,8 @@ impl Circulator {
 
         if self.is_precat() {
             self.create_precat_copy()?;
+        } else if self.is_precat_copy() {
+            self.exit_err_on_event_code("ITEM_NOT_CATALOGED")?;
         }
 
         log::info!("{self} starting checkout");
@@ -73,7 +75,7 @@ impl Circulator {
             }
         }
 
-        let circs = noncat::checkout(
+        let mut circs = noncat::checkout(
             &mut self.editor,
             json_int(&self.patron.as_ref().unwrap()["id"])?,
             json_int(&noncat_type)?,
@@ -83,9 +85,9 @@ impl Circulator {
         )?;
 
         let mut evt = EgEvent::success();
-        if circs.len() > 0 {
+        if let Some(c) = circs.pop() {
             // Perl API only returns the last created circulation
-            evt.set_payload(json::object! {"noncat_circ": circs[circs.len() - 1].to_owned()});
+            evt.set_payload(json::object! {"noncat_circ": c});
         }
         self.add_event(evt);
 
@@ -93,7 +95,7 @@ impl Circulator {
     }
 
     fn create_precat_copy(&mut self) -> EgResult<()> {
-        if self.circ_op != CircOp::Renew {
+        if !self.is_renewal() {
             if !self.editor.allowed("CREATE_PRECAT")? {
                 return Err(self.editor.die_event());
             }
@@ -154,14 +156,16 @@ impl Circulator {
 
         let mut copy = self.editor.idl().create_from("acp", copy)?;
 
-        let pclib = self.settings.get_value_at_org("circ.pre_cat_copy_circ_lib", self.circ_lib)?;
+        let pclib = self
+            .settings
+            .get_value_at_org("circ.pre_cat_copy_circ_lib", self.circ_lib)?;
 
         if let Some(sn) = pclib.as_str() {
             let o = org::by_shortname(&mut self.editor, sn)?;
             copy["circ_lib"] = json::from(o["id"].clone());
         }
 
-       self.copy = Some(self.editor.create(copy)?);
+        self.copy = Some(self.editor.create(copy)?);
 
         Ok(())
     }

@@ -682,7 +682,7 @@ impl Router {
 
             let mut tmsg = TransportMessage::with_body(from, myaddr.as_str(), tm.thread(), reply);
 
-            tmsg.body_as_mut().push(Message::new(
+            tmsg.body_mut().push(Message::new(
                 MessageType::Status,
                 msg.thread_trace(),
                 Payload::Status(message::Status::new(

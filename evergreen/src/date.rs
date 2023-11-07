@@ -167,8 +167,9 @@ pub fn to_iso_millis(dt: &EgDate) -> String {
 /// let dt: date::EgDate = "2023-07-11T12:00:00-0200".parse().unwrap();
 /// let dt2: date::EgDate = date::to_local_timezone_fixed(dt);
 ///
-///
-/// assert_eq!(dt2.offset(), Local::now().offset());
+/// // This test is faulty when the source date is on the other side
+/// // of a time change boundary.
+/// // assert_eq!(dt2.offset(), Local::now().offset());
 ///
 /// // String output will vary by locale, but the dates will be equivalent.
 /// assert_eq!(dt, dt2);

@@ -265,4 +265,3 @@ pub fn prev_renewal_chain_summary(
         util::json_int(&prev_circ[0]["id"])?,
     )?)
 }
-

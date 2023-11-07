@@ -66,7 +66,7 @@ impl ClassifiedJson {
     pub fn declassify(mut obj: json::JsonValue) -> Option<ClassifiedJson> {
         if ClassifiedJson::can_declassify(&obj) {
             Some(ClassifiedJson {
-                class: obj[JSON_CLASS_KEY].as_str().unwrap().to_owned(),
+                class: obj[JSON_CLASS_KEY].as_str().unwrap().to_string(),
                 json: obj[JSON_PAYLOAD_KEY].take(),
             })
         } else {
