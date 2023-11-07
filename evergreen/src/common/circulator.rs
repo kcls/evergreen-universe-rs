@@ -21,14 +21,14 @@ const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "loc
 const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
     &["CLAIMSRETURNED\tCHECKOUT", "CIRC_CLAIMS_RETURNED"],
     &["CLAIMSRETURNED\tCHECKIN", "CIRC_CLAIMS_RETURNED"],
-    &["LOST\tCHECKOUT", "circULATION_EXISTS"],
-    &["LONGOVERDUE\tCHECKOUT", "circULATION_EXISTS"],
+    &["LOST\tCHECKOUT", "CIRCULATION_EXISTS"],
+    &["LONGOVERDUE\tCHECKOUT", "CIRCULATION_EXISTS"],
     &["MISSING\tCHECKOUT", "COPY_NOT_AVAILABLE"],
     &["DAMAGED\tCHECKOUT", "COPY_NOT_AVAILABLE"],
     &[
         "LOST_AND_PAID\tCHECKOUT",
         "COPY_NOT_AVAILABLE",
-        "circULATION_EXISTS",
+        "CIRCULATION_EXISTS",
     ],
 ];
 
@@ -58,6 +58,16 @@ impl From<&CircOp> for &'static str {
     }
 }
 
+/// Contains circ policy matchpoint data.
+pub struct CircPolicy {
+    pub matchpoint: i64,
+    pub duration_rule: JsonValue,
+    pub recurring_fine_rule: JsonValue,
+    pub max_fine_rule: JsonValue,
+    pub hard_due_date: JsonValue,
+    pub limit_groups: JsonValue,
+}
+
 /// Context and shared methods for circulation actions.
 ///
 /// Innards are 'pub' since the impl's are spread across multiple files.
@@ -80,6 +90,17 @@ pub struct Circulator {
     pub runtime_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
     pub circ_op: CircOp,
+
+    /// A circ test can be successfull without a matched policy
+    /// if the matched policy is for
+    pub circ_test_success: bool,
+    pub circ_policy_unlimited: bool,
+
+    /// Compiled rule set for a successful policy match.
+    pub circ_policy_rules: Option<CircPolicy>,
+
+    /// Raw results from the database.
+    pub circ_policy_results: Option<Vec<JsonValue>>,
 
     /// When true, stop further processing and exit.
     /// This is not necessarily an error condition.
@@ -168,6 +189,10 @@ impl Circulator {
             transit: None,
             hold_transit: None,
             is_noncat: false,
+            circ_test_success: false,
+            circ_policy_unlimited: false,
+            circ_policy_rules: None,
+            circ_policy_results: None,
             system_copy_alerts: Vec::new(),
             runtime_copy_alerts: Vec::new(),
             is_override: false,
@@ -872,7 +897,7 @@ impl Circulator {
         }
 
         // If we have a success event, keep it for returning later.
-        let mut success: Option<EgEvent> = None;
+        let success: Option<EgEvent> = None;
         let selfstr = format!("{self}");
 
         loop {

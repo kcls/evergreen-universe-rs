@@ -1,5 +1,5 @@
 use crate::common::billing;
-use crate::common::circulator::{CircOp, Circulator};
+use crate::common::circulator::{CircOp, Circulator, CircPolicy};
 use crate::common::holds;
 use crate::common::noncat;
 use crate::common::org;
@@ -10,7 +10,7 @@ use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
 use crate::result::EgResult;
-use crate::util::json_int;
+use crate::util::{json_bool, json_int};
 use json::JsonValue;
 use std::time::Duration;
 
@@ -308,6 +308,81 @@ impl Circulator {
         self.exit_err_on_event(evt)
     }
 
+    /// Collect runtime circ policy data from the database.
+    ///
+    /// self.circ_policy_results will contain whatever the database resturns.
+    /// On success, self.circ_policy_rules will be populated.
     fn check_circ_permit(&mut self) -> EgResult<()> {
+        let func = if self.is_renewal() {
+            "action.item_user_renew_test"
+        } else {
+            "action.item_user_circ_test"
+        };
+
+        let copy_id = if self.is_noncat || (
+            self.is_precat() && !self.is_override && !self.is_renewal()) {
+            JsonValue::Null
+        } else {
+            json::from(self.copy_id.unwrap())
+        };
+
+        let query = json::object! {
+            "from": [
+                func,
+                self.circ_lib,
+                copy_id,
+                self.patron_id.unwrap(),
+            ]
+        };
+
+        let results = self.editor.json_query(query)?;
+
+        if results.len() == 0 {
+            return self.exit_err_on_event_code("NO_POLICY_MATCHPOINT");
+        };
+
+        // Pull the policy data from the first one, which will be the
+        // success data if we have any.
+
+        let policy = &results[0];
+
+        self.circ_test_success = json_bool(&policy["success"]);
+
+        if policy["matchpoint"].is_null() {
+            self.circ_policy_results = Some(results);
+            return Ok(());
+        }
+
+        // Delay generation of the err string if we don't need it.
+        let err = || format!("Incomplete circ policy: {}", policy);
+
+        let matchpoint = json_int(&policy["matchpoint"])?;
+        let mut duration_rule = self.editor.retrieve("crcd", policy["duration_rule"].clone())?.ok_or_else(err)?;
+        let mut recurring_fine_rule = self.editor.retrieve("crrf", policy["recurring_fine_rule"].clone())?.ok_or_else(err)?;
+        let max_fine_rule = self.editor.retrieve("crmf", policy["max_fine_rule"].clone())?.ok_or_else(err)?;
+        let hard_due_date = self.editor.retrieve("chdd", policy["hard_due_date"].clone())?.ok_or_else(err)?;
+        let limit_groups = policy["limit_groups"].clone();
+
+        if let Ok(n) = json_int(&policy["renewals"]) {
+            duration_rule["max_renewals"] = json::from(n);
+        }
+
+        if let Some(s) = policy["grace_period"].as_str() {
+            recurring_fine_rule["grace_period"] = json::from(s);
+        }
+
+        let rules = CircPolicy {
+            matchpoint,
+            duration_rule,
+            recurring_fine_rule,
+            max_fine_rule,
+            hard_due_date,
+            limit_groups,
+        };
+
+        self.circ_policy_rules = Some(rules);
+        self.circ_policy_results = Some(results);
+
+        return Ok(());
     }
 }
