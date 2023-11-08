@@ -1,5 +1,5 @@
 use crate::common::billing;
-use crate::common::circulator::{CircOp, Circulator, CircPolicy};
+use crate::common::circulator::{CircOp, CircPolicy, Circulator};
 use crate::common::holds;
 use crate::common::noncat;
 use crate::common::org;
@@ -10,7 +10,7 @@ use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
 use crate::result::EgResult;
-use crate::util::{json_bool, json_int};
+use crate::util::{json_bool, json_int, json_float, json_string};
 use json::JsonValue;
 use std::time::Duration;
 
@@ -53,7 +53,8 @@ impl Circulator {
         self.check_copy_status()?;
         self.handle_claims_returned()?;
         self.check_for_open_circ()?;
-        self.check_circ_permit()?;
+        self.set_circ_policy()?;
+        self.build_checkout_circ()?;
 
         Ok(())
     }
@@ -238,7 +239,6 @@ impl Circulator {
     /// we are in override mode, check in the circ.  Otherwise,
     /// exit with an event.
     fn handle_claims_returned(&mut self) -> EgResult<()> {
-
         let query = json::object! {
             "target_copy": self.copy_id.unwrap(),
             "stop_fines": "CLAIMSRETURNED",
@@ -250,7 +250,6 @@ impl Circulator {
             None => return Ok(()),
         };
 
-
         if !self.can_override_event("CIRC_CLAIMS_RETURNED") {
             return self.exit_err_on_event_code("CIRC_CLAIMS_RETURNED");
         }
@@ -258,8 +257,11 @@ impl Circulator {
         circ["checkin_time"] = json::from("now");
         circ["checkin_scan_time"] = json::from("now");
         circ["checkin_lib"] = json::from(self.circ_lib);
-        circ["checkin_workstation"] = json::from(self.editor.requestor_ws_id().unwrap());
         circ["checkin_staff"] = json::from(self.editor.requestor_id());
+
+        if let Some(id) = self.editor.requestor_ws_id() {
+            circ["checkin_workstation"] = json::from(id);
+        }
 
         self.editor.update(circ).map(|_| ())
     }
@@ -289,8 +291,11 @@ impl Circulator {
             // that they should go ahead and renew the item instead of
             // warning about open circulations.
 
-            if let Some(intvl) =
-                self.settings.get_value("circ.checkout_auto_renew_age")?.as_str() {
+            if let Some(intvl) = self
+                .settings
+                .get_value("circ.checkout_auto_renew_age")?
+                .as_str()
+            {
                 let interval = date::interval_to_seconds(intvl)?;
                 let xact_start = date::parse_datetime(circ["xact_start"].as_str().unwrap())?;
 
@@ -312,19 +317,19 @@ impl Circulator {
     ///
     /// self.circ_policy_results will contain whatever the database resturns.
     /// On success, self.circ_policy_rules will be populated.
-    fn check_circ_permit(&mut self) -> EgResult<()> {
+    fn set_circ_policy(&mut self) -> EgResult<()> {
         let func = if self.is_renewal() {
             "action.item_user_renew_test"
         } else {
             "action.item_user_circ_test"
         };
 
-        let copy_id = if self.is_noncat || (
-            self.is_precat() && !self.is_override && !self.is_renewal()) {
-            JsonValue::Null
-        } else {
-            json::from(self.copy_id.unwrap())
-        };
+        let copy_id =
+            if self.is_noncat || (self.is_precat() && !self.is_override && !self.is_renewal()) {
+                JsonValue::Null
+            } else {
+                json::from(self.copy_id.unwrap())
+            };
 
         let query = json::object! {
             "from": [
@@ -348,6 +353,13 @@ impl Circulator {
 
         self.circ_test_success = json_bool(&policy["success"]);
 
+        if self.circ_test_success && policy["duration_rule"].is_null() {
+            // Successful lookup with no duration rule indicates
+            // unlimited item checkout.  Nothing left to lookup.
+            self.circ_policy_unlimited = true;
+            return Ok(());
+        }
+
         if policy["matchpoint"].is_null() {
             self.circ_policy_results = Some(results);
             return Ok(());
@@ -357,11 +369,31 @@ impl Circulator {
         let err = || format!("Incomplete circ policy: {}", policy);
 
         let matchpoint = json_int(&policy["matchpoint"])?;
-        let mut duration_rule = self.editor.retrieve("crcd", policy["duration_rule"].clone())?.ok_or_else(err)?;
-        let mut recurring_fine_rule = self.editor.retrieve("crrf", policy["recurring_fine_rule"].clone())?.ok_or_else(err)?;
-        let max_fine_rule = self.editor.retrieve("crmf", policy["max_fine_rule"].clone())?.ok_or_else(err)?;
-        let hard_due_date = self.editor.retrieve("chdd", policy["hard_due_date"].clone())?.ok_or_else(err)?;
-        let limit_groups = policy["limit_groups"].clone();
+        let limit_groups = if policy["limit_groups"].is_array() {
+            Some(policy["limit_groups"].clone())
+        } else {
+            None
+        };
+
+        let mut duration_rule = self
+            .editor
+            .retrieve("crcd", policy["duration_rule"].clone())?
+            .ok_or_else(err)?;
+
+        let mut recurring_fine_rule = self
+            .editor
+            .retrieve("crrf", policy["recurring_fine_rule"].clone())?
+            .ok_or_else(err)?;
+
+        let max_fine_rule = self
+            .editor
+            .retrieve("crmf", policy["max_fine_rule"].clone())?
+            .ok_or_else(err)?;
+
+        // optional
+        let hard_due_date = self
+            .editor
+            .retrieve("chdd", policy["hard_due_date"].clone())?;
 
         if let Ok(n) = json_int(&policy["renewals"]) {
             duration_rule["max_renewals"] = json::from(n);
@@ -371,8 +403,29 @@ impl Circulator {
             recurring_fine_rule["grace_period"] = json::from(s);
         }
 
+        let max_fine = self.calc_max_fine(&max_fine_rule)?;
+        let copy = self.copy();
+
+        let copy_duration = json_int(&copy["loan_duration"])?;
+        let copy_fine_level = json_int(&copy["fine_level"])?;
+
+        let duration = match copy_duration {
+            C::CIRC_DURATION_SHORT => json_string(&duration_rule["shrt"])?,
+            C::CIRC_DURATION_EXTENDED => json_string(&duration_rule["extended"])?,
+            _ => json_string(&duration_rule["normal"])?,
+        };
+
+        let recurring_fine = match copy_fine_level {
+            C::CIRC_FINE_LEVEL_LOW => json_float(&recurring_fine_rule["low"])?,
+            C::CIRC_FINE_LEVEL_HIGH => json_float(&recurring_fine_rule["high"])?,
+            _ => json_float(&recurring_fine_rule["normal"])?,
+        };
+
         let rules = CircPolicy {
             matchpoint,
+            duration,
+            recurring_fine,
+            max_fine,
             duration_rule,
             recurring_fine_rule,
             max_fine_rule,
@@ -384,5 +437,110 @@ impl Circulator {
         self.circ_policy_results = Some(results);
 
         return Ok(());
+    }
+
+    fn calc_max_fine(&mut self, max_fine_rule: &JsonValue) -> EgResult<f64> {
+        let rule_amount = json_float(&max_fine_rule["amount"])?;
+
+        if json_bool(&max_fine_rule["is_percent"]) {
+            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id.unwrap())?;
+            return Ok((copy_price * rule_amount) / 100.0);
+        }
+
+        if json_bool(self.settings.get_value("circ.max_fine.cap_at_price")?) {
+            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id.unwrap())?;
+            let amount = if rule_amount > copy_price {
+                copy_price
+            } else {
+                rule_amount
+            };
+
+            return Ok(amount);
+        }
+
+        Ok(rule_amount)
+    }
+
+    fn build_checkout_circ(&mut self) -> EgResult<()> {
+
+        let mut circ = json::object! {
+            "target_copy": self.copy_id.unwrap(),
+            "usr": self.patron_id.unwrap(),
+            "circ_lib": self.circ_lib,
+            "circ_staff": self.editor.requestor_id(),
+        };
+
+        if let Some(ws) = self.editor.requestor_ws_id() {
+            circ["workstation"] = json::from(ws);
+        };
+
+        if self.circ_policy_unlimited {
+
+            circ["duration_rule"] = json::from(C::CIRC_POLICY_UNLIMITED);
+            circ["recurring_fine_rule"] = json::from(C::CIRC_POLICY_UNLIMITED);
+            circ["max_fine_rule"] = json::from(C::CIRC_POLICY_UNLIMITED);
+            circ["renewal_remaining"] = json::from(0);
+            circ["grace_period"] = json::from(0);
+
+        } else if let Some(policy) = self.circ_policy_rules.as_ref() {
+
+            circ["duration"] = json::from(policy.duration.to_string());
+            circ["duration_rule"] = policy.duration_rule["name"].clone();
+
+            circ["recurring_fine"] = json::from(policy.recurring_fine);
+            circ["recurring_fine_rule"] = policy.recurring_fine_rule["name"].clone();
+            circ["fine_interval"] = policy.recurring_fine_rule["recurrence_interval"].clone();
+
+            circ["max_fine"] = json::from(policy.max_fine);
+            circ["max_fine_rule"] = policy.max_fine_rule["name"].clone();
+
+            circ["renewal_remaining"] = policy.duration_rule["max_renewals"].clone();
+            circ["auto_renewal_remaining"] = policy.duration_rule["max_auto_renewals"].clone();
+
+            // may be null
+            circ["grace_period"] = policy.recurring_fine_rule["grace_period"].clone();
+        }
+
+        if let Some(id) = self.parent_circ {
+            circ["parent_circ"] = json::from(id);
+        }
+
+        if self.is_renewal() {
+            if let Some(b) = self.options.get("opac_renewal") {
+                if json_bool(&b) {
+                    circ["opac_renewal"] = json::from("t");
+                }
+            }
+            if let Some(b) = self.options.get("phone_renewal") {
+                if json_bool(&b) {
+                    circ["phone_renewal"] = json::from("t");
+                }
+            }
+            if let Some(b) = self.options.get("desk_renewal") {
+                if json_bool(&b) {
+                    circ["desk_renewal"] = json::from("t");
+                }
+            }
+            if let Some(b) = self.options.get("auto_renewal") {
+                if json_bool(&b) {
+                    circ["auto_renewal"] = json::from("t");
+                }
+            }
+
+            circ["renewal_remaining"] = json::from(self.renewal_remaining);
+            circ["auto_renewal_remaining"] = json::from(self.auto_renewal_remaining);
+        }
+
+        if let Some(ct) = self.options.get("checkout_time") {
+            circ["xact_start"] = ct.clone();
+        }
+
+
+// $circ->due_date( $self->create_due_date($circ->duration, $duration_date_ceiling, $duration_date_ceiling_force, $circ->xact_start) ) if $circ->duration;
+
+        // We don't create the circ in the DB yet.
+        self.circ = Some(circ);
+
+        Ok(())
     }
 }

@@ -449,7 +449,11 @@ impl HoldTargeter {
     ///
     /// Refresh our copy of the hold once updated to pick up DB-generated
     /// values (dates, etc.).
-    fn update_hold(&mut self, context: &mut HoldTargetContext, mut values: JsonValue) -> EgResult<()> {
+    fn update_hold(
+        &mut self,
+        context: &mut HoldTargetContext,
+        mut values: JsonValue,
+    ) -> EgResult<()> {
         for (k, v) in values.entries_mut() {
             if k == "id" {
                 continue;

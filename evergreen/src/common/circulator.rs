@@ -59,13 +59,17 @@ impl From<&CircOp> for &'static str {
 }
 
 /// Contains circ policy matchpoint data.
+#[derive(Debug)]
 pub struct CircPolicy {
     pub matchpoint: i64,
+    pub max_fine: f64,
+    pub duration: String,
+    pub recurring_fine: f64,
     pub duration_rule: JsonValue,
     pub recurring_fine_rule: JsonValue,
     pub max_fine_rule: JsonValue,
-    pub hard_due_date: JsonValue,
-    pub limit_groups: JsonValue,
+    pub hard_due_date: Option<JsonValue>,
+    pub limit_groups: Option<JsonValue>,
 }
 
 /// Context and shared methods for circulation actions.
@@ -90,6 +94,7 @@ pub struct Circulator {
     pub runtime_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
     pub circ_op: CircOp,
+    pub parent_circ: Option<i64>,
 
     /// A circ test can be successfull without a matched policy
     /// if the matched policy is for
@@ -110,6 +115,9 @@ pub struct Circulator {
 
     /// Events that need to be addressed.
     pub events: Vec<EgEvent>,
+
+    pub renewal_remaining: i64,
+    pub auto_renewal_remaining: i64,
 
     /// Override failures are tracked here so they can all be returned
     /// to the caller.
@@ -179,6 +187,7 @@ impl Circulator {
             circ_lib,
             events: Vec::new(),
             circ: None,
+            parent_circ: None,
             hold: None,
             reservation: None,
             copy: None,
@@ -189,6 +198,8 @@ impl Circulator {
             transit: None,
             hold_transit: None,
             is_noncat: false,
+            renewal_remaining: 0,
+            auto_renewal_remaining: 0,
             circ_test_success: false,
             circ_policy_unlimited: false,
             circ_policy_rules: None,

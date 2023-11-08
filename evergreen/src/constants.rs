@@ -32,6 +32,7 @@ pub const CIRC_DURATION_EXTENDED: i64 = 3;
 pub const CIRC_FINE_LEVEL_LOW: i64 = 1;
 pub const CIRC_FINE_LEVEL_MEDIUM: i64 = 2;
 pub const CIRC_FINE_LEVEL_HIGH: i64 = 3;
+pub const CIRC_POLICY_UNLIMITED: &str = "unlimited";
 
 // ---------------------------------------------------------------------
 // Billing Types

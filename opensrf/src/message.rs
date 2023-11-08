@@ -624,12 +624,7 @@ impl Result {
         // use the label associated locally with the status code
         let stat_str: &str = msg_hash["status"].as_str().unwrap_or(stat.into());
 
-        Some(Result::new(
-            stat,
-            stat_str,
-            msg_wrapper.class(),
-            content
-        ))
+        Some(Result::new(stat, stat_str, msg_wrapper.class(), content))
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
