@@ -1,16 +1,12 @@
 use crate::common::billing;
 use crate::common::circulator::{CircOp, CircPolicy, Circulator};
-use crate::common::holds;
 use crate::common::noncat;
 use crate::common::org;
-use crate::common::penalty;
-use crate::common::targeter;
-use crate::common::transit;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
 use crate::result::EgResult;
-use crate::util::{json_bool, json_int, json_float, json_string};
+use crate::util::{json_bool, json_bool_op, json_int, json_float, json_string};
 use json::JsonValue;
 use std::time::Duration;
 
@@ -55,6 +51,12 @@ impl Circulator {
         self.check_for_open_circ()?;
         self.set_circ_policy()?;
         self.build_checkout_circ()?;
+        self.apply_due_date()?;
+
+        self.circ = Some(
+            // At this point we know we have a circ.
+            self.editor.create(self.circ.as_ref().unwrap().clone())?
+        );
 
         Ok(())
     }
@@ -474,6 +476,32 @@ impl Circulator {
             circ["workstation"] = json::from(ws);
         };
 
+        if let Some(ct) = self.options.get("checkout_time") {
+            circ["xact_start"] = ct.clone();
+        }
+
+        if let Some(id) = self.parent_circ {
+            circ["parent_circ"] = json::from(id);
+        }
+
+        if self.is_renewal() {
+            if json_bool_op(self.options.get("opac_renewal")) {
+                circ["opac_renewal"] = json::from("t");
+            }
+            if json_bool_op(self.options.get("phone_renewal")) {
+                circ["phone_renewal"] = json::from("t");
+            }
+            if json_bool_op(self.options.get("desk_renewal")) {
+                circ["desk_renewal"] = json::from("t");
+            }
+            if json_bool_op(self.options.get("auto_renewal")) {
+                circ["auto_renewal"] = json::from("t");
+            }
+
+            circ["renewal_remaining"] = json::from(self.renewal_remaining);
+            circ["auto_renewal_remaining"] = json::from(self.auto_renewal_remaining);
+        }
+
         if self.circ_policy_unlimited {
 
             circ["duration_rule"] = json::from(C::CIRC_POLICY_UNLIMITED);
@@ -499,48 +527,113 @@ impl Circulator {
 
             // may be null
             circ["grace_period"] = policy.recurring_fine_rule["grace_period"].clone();
+
+
+        } else {
+
+            return Err(format!("Cannot build circ without a policy").into());
         }
-
-        if let Some(id) = self.parent_circ {
-            circ["parent_circ"] = json::from(id);
-        }
-
-        if self.is_renewal() {
-            if let Some(b) = self.options.get("opac_renewal") {
-                if json_bool(&b) {
-                    circ["opac_renewal"] = json::from("t");
-                }
-            }
-            if let Some(b) = self.options.get("phone_renewal") {
-                if json_bool(&b) {
-                    circ["phone_renewal"] = json::from("t");
-                }
-            }
-            if let Some(b) = self.options.get("desk_renewal") {
-                if json_bool(&b) {
-                    circ["desk_renewal"] = json::from("t");
-                }
-            }
-            if let Some(b) = self.options.get("auto_renewal") {
-                if json_bool(&b) {
-                    circ["auto_renewal"] = json::from("t");
-                }
-            }
-
-            circ["renewal_remaining"] = json::from(self.renewal_remaining);
-            circ["auto_renewal_remaining"] = json::from(self.auto_renewal_remaining);
-        }
-
-        if let Some(ct) = self.options.get("checkout_time") {
-            circ["xact_start"] = ct.clone();
-        }
-
-
-// $circ->due_date( $self->create_due_date($circ->duration, $duration_date_ceiling, $duration_date_ceiling_force, $circ->xact_start) ) if $circ->duration;
 
         // We don't create the circ in the DB yet.
         self.circ = Some(circ);
 
         Ok(())
     }
+
+    fn apply_due_date(&mut self) -> EgResult<()> {
+        let manual_date = self.set_manual_due_date()?;
+
+        if !manual_date {
+            self.set_initial_due_date()?;
+        }
+
+        let shift_to_start = self.apply_booking_due_date(manual_date)?;
+
+        if !manual_date {
+            self.extend_due_date(shift_to_start)?;
+        }
+
+        Ok(())
+    }
+
+    /// Apply the user-provided due date.
+    fn set_manual_due_date(&mut self) -> EgResult<bool> {
+        if let Some(due_op) = self.options.get("due_date") {
+
+            let due_str = due_op.as_str().ok_or(format!("Invalid manual due date"))?;
+
+            if !self.editor.allowed_at("CIRC_OVERRIDE_DUE_DATE", self.circ_lib)? {
+                return Err(self.editor.die_event());
+            }
+
+            self.circ.as_mut().unwrap()["due_date"] = json::from(due_str);
+            return Ok(true)
+        }
+
+        Ok(false)
+    }
+
+
+    /// Set the initial circ due date based on the circulation policy info.
+    fn set_initial_due_date(&mut self) -> EgResult<()> {
+
+        // A force / manual due date overrides any policy calculation.
+        let policy = match self.circ_policy_rules.as_ref() {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+
+        let timezone = match self.settings.get_value("lib.timezone")?.as_str() {
+            Some(s) => s,
+            None => "local",
+        };
+
+        let start_date = match self.circ.as_ref().unwrap()["xact_start"].as_str() {
+            Some(d) => date::parse_datetime(d)?,
+            None => date::now(),
+        };
+
+        let start_date = date::set_timezone(start_date, timezone)?;
+
+        let dur_secs = date::interval_to_seconds(&policy.duration)?;
+
+        let mut due_date = start_date + Duration::from_secs(dur_secs as u64);
+
+        if let Some(hdd) = policy.hard_due_date.as_ref() {
+            let cdate_str = hdd["ceiling_date"].as_str().unwrap();
+            let cdate = date::parse_datetime(cdate_str)?;
+            let force = json_bool(&hdd["forceto"]);
+
+            if cdate > date::now() {
+                if cdate < due_date || force {
+                    due_date = cdate;
+                }
+            }
+        }
+
+        self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due_date));
+
+        Ok(())
+    }
+
+    /// Check for booking conflicts and shorten the due date if we need
+    /// to apply some elbow room.
+    fn apply_booking_due_date(&mut self, manual_date: bool) -> EgResult<bool> {
+        if !self.is_booking_enabled() {
+            return Ok(false);
+        }
+
+        let due_date = match self.circ.as_ref().unwrap()["due_date"].as_str() {
+            Some(s) => s,
+            None => return Ok(false),
+        };
+
+        Ok(false)
+    }
+
+    /// Extend the circ due date to avoid org unit closures.
+    fn extend_due_date(&mut self, shift_to_start: bool) -> EgResult<()> {
+        Ok(())
+    }
 }
+
