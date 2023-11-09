@@ -956,7 +956,8 @@ fn calc_min_void_date(
 pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
     let flesh = json::object! {"flesh": 1, "flesh_fields": {"acp": ["call_number"]}};
 
-    let copy = editor.retrieve_with_ops("acp", copy_id, flesh)?
+    let copy = editor
+        .retrieve_with_ops("acp", copy_id, flesh)?
         .ok_or_else(|| editor.die_event())?;
 
     let owner = if json_int(&copy["call_number"]["id"])? == C::PRECAT_CALL_NUMBER {
@@ -977,13 +978,19 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
         "cat.default_item_price",
     ])?;
 
-    let primary_field = match settings.get_value("circ.primary_item_value_field")?.as_str() {
+    let primary_field = match settings
+        .get_value("circ.primary_item_value_field")?
+        .as_str()
+    {
         Some("cost") => "cost",
         Some("price") => "price",
         _ => "",
     };
 
-    let secondary_field = match settings.get_value("circ.secondary_item_value_field")?.as_str() {
+    let secondary_field = match settings
+        .get_value("circ.secondary_item_value_field")?
+        .as_str()
+    {
         Some("cost") => "cost",
         Some("price") => "price",
         _ => "",
@@ -1044,5 +1051,3 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
 
     Ok(price)
 }
-
-
