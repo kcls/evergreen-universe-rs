@@ -592,14 +592,19 @@ pub fn json_query_order_by_targetable() -> JsonValue {
     ]
 }
 
-/// Returns a list of active hold IDs with the provided pickup lib that
-/// could potentially target the provided copy.
+/// Returns a list of non-canceled / non-fulfilled holds linked to the
+/// provided copy by virtue of sharing a metarecord, IOW, holds that
+/// could potentially target the provided copy.  Under the metarecord
+/// umbrella, this covers all hold types.
 ///
-/// The list of IDs is sorted in they order they would ideally be fulfilled.
+/// The list is sorted in the order they would ideally be fulfilled.
 pub fn related_to_copy(
     editor: &mut Editor,
     copy_id: i64,
-    pickup_lib: i64,
+    pickup_lib: Option<i64>,
+    frozen: Option<bool>,
+    usr: Option<i64>,
+    on_shelf: Option<bool>,
 ) -> EgResult<Vec<MinimalHold>> {
     // "rhrr" / reporter.hold_request_record calculates the bib record
     // linked to a hold regardless of hold type in advance for us.
@@ -648,7 +653,7 @@ pub fn related_to_copy(
         }
     };
 
-    let query = json::object! {
+    let mut query = json::object! {
         "select": {
             "ahr": [
                 "id",
@@ -664,8 +669,6 @@ pub fn related_to_copy(
         "where": {
             "+acp": {"id": copy_id},
             "+ahr": {
-                "pickup_lib": pickup_lib,
-                "frozen": "f",
                 "cancel_time": JsonValue::Null,
                 "fulfillment_time" => JsonValue::Null,
             }
@@ -673,12 +676,40 @@ pub fn related_to_copy(
         "order_by": json_query_order_by_targetable(),
     };
 
+    if let Some(v) = pickup_lib {
+        query["where"]["+ahr"]["pickup_lib"] = json::from(v);
+    }
+
+    if let Some(v) = usr {
+        query["where"]["+ahr"]["usr"] = json::from(v);
+    }
+
+    if let Some(v) = frozen {
+        let s = if v { "t" } else { "f" };
+        query["where"]["+ahr"]["frozen"] = json::from(s);
+    }
+
+    // Limiting on wether current_shelf_lib == pickup_lib.
+    if let Some(v) = on_shelf {
+        if v {
+            query["where"]["+ahr"]["current_shelf_lib"] =
+                json::object! {"=": {"+ahr": "pickup_lib"}};
+
+        } else {
+
+            query["where"]["+ahr"]["-or"] = json::array! [
+                {"current_shelf_lib": JsonValue::Null},
+                {"current_shelf_lib": {"!=": {"+ahr": "pickup_lib"}}}
+            ];
+        }
+    }
+
     let mut list = Vec::new();
     for val in editor.json_query(query)? {
         let h = MinimalHold {
             id: json_int(&val["id"])?,
             target: json_int(&val["target"])?,
-            pickup_lib: pickup_lib,
+            pickup_lib: json_int(&val["pickup_lib"])?,
             hold_type: val["hold_type"].as_str().unwrap().into(), // required
             active: true,
         };

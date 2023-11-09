@@ -50,6 +50,16 @@ pub const BTYPE_LONG_OVERDUE_MATERIALS: i64 = 10;
 pub const BTYPE_LONG_OVERDUE_MATERIALS_PROCESSING_FEE: i64 = 11;
 
 // ---------------------------------------------------------------------
+// Billing Type Legacy Labels and Notes
+// ---------------------------------------------------------------------
+pub const BTYPE_LABEL_OVERDUE_MATERIALS: &str = "Overdue materials";
+pub const BTYPE_LABEL_COLLECTION_FEE: &str = "Long Overdue Collection Fee";
+pub const BTYPE_LABEL_DEPOSIT: &str = "System: Deposit";
+pub const BTYPE_LABEL_RENTAL: &str = "System: Rental";
+pub const BTYPE_NOTE_SYSTEM: &str = "SYSTEM GENERATED";
+
+
+// ---------------------------------------------------------------------
 // Hold Types
 // ---------------------------------------------------------------------
 pub const HOLD_TYPE_COPY: &str = "C";

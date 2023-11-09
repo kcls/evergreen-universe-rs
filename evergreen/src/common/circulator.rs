@@ -80,13 +80,13 @@ pub struct Circulator {
     pub settings: Settings,
     pub circ_lib: i64,
     pub copy: Option<JsonValue>,
-    pub copy_id: Option<i64>,
+    pub copy_id: i64,
     pub copy_barcode: Option<String>,
     pub circ: Option<JsonValue>,
     pub hold: Option<JsonValue>,
     pub reservation: Option<JsonValue>,
     pub patron: Option<JsonValue>,
-    pub patron_id: Option<i64>,
+    pub patron_id: i64,
     pub transit: Option<JsonValue>,
     pub hold_transit: Option<JsonValue>,
     pub is_noncat: bool,
@@ -95,6 +95,8 @@ pub struct Circulator {
     pub is_override: bool,
     pub circ_op: CircOp,
     pub parent_circ: Option<i64>,
+    pub deposit_billing: Option<JsonValue>,
+    pub rental_billing: Option<JsonValue>,
 
     /// A circ test can be successfull without a matched policy
     /// if the matched policy is for
@@ -128,6 +130,8 @@ pub struct Circulator {
 
     /// List of hold IDs for holds that need to be retargeted.
     pub retarget_holds: Option<Vec<i64>>,
+
+    pub fulfilled_holds_ids: Option<Vec<i64>>,
 
     /// Storage for the large list of circulation API flags that we
     /// don't explicitly define in this struct.
@@ -191,15 +195,18 @@ impl Circulator {
             hold: None,
             reservation: None,
             copy: None,
-            copy_id: None,
+            copy_id: 0,
             copy_barcode: None,
             patron: None,
-            patron_id: None,
+            patron_id: 0,
             transit: None,
             hold_transit: None,
             is_noncat: false,
             renewal_remaining: 0,
+            deposit_billing: None,
+            rental_billing: None,
             auto_renewal_remaining: 0,
+            fulfilled_holds_ids: None,
             circ_test_success: false,
             circ_policy_unlimited: false,
             circ_policy_rules: None,
@@ -330,15 +337,15 @@ impl Circulator {
 
         // If we have loaded our item before, we can reload it directly
         // via its ID.
-        let copy_id_op = match self.copy_id {
-            Some(id) => Some(id),
-            None => match self.options.get("copy_id") {
-                Some(id2) => Some(json_int(&id2)?),
-                None => None,
-            },
+        let copy_id = if self.copy_id > 0 {
+            self.copy_id
+        } else if let Some(id) = self.options.get("copy_id") {
+            json_int(id)?
+        } else {
+            0
         };
 
-        if let Some(copy_id) = copy_id_op {
+        if copy_id > 0 {
             if let Some(copy) = self.editor.retrieve_with_ops("acp", copy_id, copy_flesh)? {
                 self.copy = Some(copy);
             } else {
@@ -363,7 +370,7 @@ impl Circulator {
         }
 
         if let Some(c) = self.copy.as_ref() {
-            self.copy_id = Some(json_int(&c["id"])?);
+            self.copy_id = json_int(&c["id"])?;
             if self.copy_barcode.is_none() {
                 self.copy_barcode = Some(json_string(&c["barcode"])?);
             }
@@ -379,7 +386,7 @@ impl Circulator {
         }
 
         let query = json::object! {
-            copy: self.copy_id.unwrap(), // if have copy, have id.
+            copy: self.copy_id,
             ack_time: JsonValue::Null,
         };
 
@@ -483,10 +490,9 @@ impl Circulator {
 
     ///
     pub fn load_system_copy_alerts(&mut self) -> EgResult<()> {
-        let copy_id = match self.copy_id {
-            Some(i) => i,
-            None => return Ok(()),
-        };
+        if self.copy_id == 0 {
+            return Ok(());
+        }
 
         // System events need event types to focus on.
         let events: &[&str] = if self.circ_op == CircOp::Renew {
@@ -500,7 +506,7 @@ impl Circulator {
         };
 
         let list = self.editor.json_query(json::object! {
-            from: ["asset.copy_state", copy_id]
+            from: ["asset.copy_state", self.copy_id]
         })?;
 
         let mut copy_state = "NORMAL";
@@ -592,7 +598,7 @@ impl Circulator {
 
             let alert = json::object! {
                 alert_type: atype["id"].clone(),
-                copy: self.copy_id.unwrap(),
+                copy: self.copy_id,
                 temp: "t",
                 create_staff: self.editor.requestor_id(),
                 create_time: "now",
@@ -799,7 +805,7 @@ impl Circulator {
         }
 
         if let Some(p) = self.patron.as_ref() {
-            self.patron_id = Some(json_int(&p["id"])?);
+            self.patron_id = json_int(&p["id"])?;
         }
 
         Ok(())

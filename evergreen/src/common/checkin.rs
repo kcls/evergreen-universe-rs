@@ -257,7 +257,6 @@ impl Circulator {
     /// until, say, overnight.
     fn checkin_retarget_holds(&mut self) -> EgResult<()> {
         let copy = self.copy();
-        let copy_id = self.copy_id.unwrap();
 
         let retarget_mode = self
             .options
@@ -284,14 +283,21 @@ impl Circulator {
             return Ok(());
         }
 
-        let query = json::object! {target_copy: json::from(copy_id)};
+        let query = json::object! {target_copy: json::from(self.copy_id)};
         let parts = self.editor.search("acpm", query)?;
         let parts = parts
             .into_iter()
             .map(|p| json_int(&p["id"]).unwrap())
             .collect::<HashSet<_>>();
 
-        let hold_data = holds::related_to_copy(&mut self.editor, copy_id, self.circ_lib)?;
+        let hold_data = holds::related_to_copy(
+            &mut self.editor,
+            self.copy_id,
+            Some(self.circ_lib),
+            None,
+            None,
+            Some(false), // already on holds shelf
+        )?;
 
         // Since we're targeting a batch of holds, instead of a single hold,
         // let the targeter manage the transaction.  Otherwise, we could be
@@ -305,7 +311,7 @@ impl Circulator {
 
             // Copy-level hold that points to a different copy.
             if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
-                if target != copy_id {
+                if target != self.copy_id {
                     continue;
                 }
             }
@@ -332,7 +338,7 @@ impl Circulator {
                 continue;
             }
 
-            let ctx = hold_targeter.target_hold(hold.id(), Some(copy_id))?;
+            let ctx = hold_targeter.target_hold(hold.id(), Some(self.copy_id))?;
 
             if ctx.success() && ctx.found_copy() {
                 log::info!("checkin_retarget_holds() successfully targeted a hold");
@@ -470,8 +476,6 @@ impl Circulator {
             return Ok(false);
         }
 
-        let copy_id = self.copy_id.unwrap();
-
         if self.get_option_bool("clear_expired") {
             // Clear shelf-expired holds for this copy.
             // TODO run in the same transaction once ported to Rust.
@@ -489,7 +493,7 @@ impl Circulator {
             )?;
         }
 
-        let hold = match holds::captured_hold_for_copy(&mut self.editor, copy_id)? {
+        let hold = match holds::captured_hold_for_copy(&mut self.editor, self.copy_id)? {
             Some(h) => h,
             None => {
                 log::warn!("{self} Copy on holds shelf but there is no hold");
@@ -1379,7 +1383,7 @@ impl Circulator {
         }
 
         let maybe_found =
-            holds::find_nearest_permitted_hold(&mut self.editor, self.copy_id.unwrap(), false)?;
+            holds::find_nearest_permitted_hold(&mut self.editor, self.copy_id, false)?;
 
         let (mut hold, retarget) = match maybe_found {
             Some(info) => info,
@@ -1406,7 +1410,7 @@ impl Circulator {
         let suppress_transit = self.should_suppress_transit(pickup_lib, true)?;
 
         hold["hopeless_date"].take();
-        hold["current_copy"] = json::from(self.copy_id.unwrap());
+        hold["current_copy"] = json::from(self.copy_id);
         hold["capture_time"] = json::from("now");
 
         // Clear some other potential cruft
@@ -1501,7 +1505,7 @@ impl Circulator {
 
         let maybe_found = holds::find_nearest_permitted_hold(
             &mut self.editor,
-            self.copy_id.unwrap(),
+            self.copy_id,
             true, /* check only */
         )?;
 
@@ -1611,7 +1615,7 @@ impl Circulator {
         let mut transit = json::object! {
             "source": self.circ_lib,
             "dest": dest_lib,
-            "target_copy": self.copy_id.unwrap(),
+            "target_copy": self.copy_id,
             "source_send_time": "now",
             "copy_status": self.copy_status(),
         };
@@ -1689,7 +1693,7 @@ impl Circulator {
     /// changes to local copies if data (e.g. setting copy = None for editing).
     fn flesh_checkin_events(&mut self) -> EgResult<()> {
         let mut copy = self.copy.take().unwrap().take(); // assumes copy
-        let copy_id = self.copy_id.unwrap();
+        let copy_id = self.copy_id;
         let record_id = json_int(&copy["call_number"]["record"])?;
 
         // Grab the volume before it's de-fleshed.

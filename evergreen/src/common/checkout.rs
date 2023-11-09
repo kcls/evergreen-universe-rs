@@ -2,6 +2,7 @@ use crate::common::billing;
 use crate::common::circulator::{CircOp, CircPolicy, Circulator};
 use crate::common::noncat;
 use crate::common::org;
+use crate::common::holds;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
@@ -57,6 +58,14 @@ impl Circulator {
             // At this point we know we have a circ.
             self.editor.create(self.circ.as_ref().unwrap().clone())?,
         );
+
+        self.apply_limit_groups()?;
+
+        // We did it, we checked out a copy.  Mark it.
+        self.update_copy(json::object! {"status": C::COPY_STATUS_CHECKED_OUT})?;
+
+        self.apply_deposit_fee()?;
+        self.handle_checkout_holds()?;
 
         Ok(())
     }
@@ -174,7 +183,7 @@ impl Circulator {
 
         let copy = self.editor.create(copy)?;
 
-        self.copy_id = Some(json_int(&copy["id"])?);
+        self.copy_id = json_int(&copy["id"])?;
 
         // Reload a fleshed version of the copy we just created.
         self.load_copy()?;
@@ -242,7 +251,7 @@ impl Circulator {
     /// exit with an event.
     fn handle_claims_returned(&mut self) -> EgResult<()> {
         let query = json::object! {
-            "target_copy": self.copy_id.unwrap(),
+            "target_copy": self.copy_id,
             "stop_fines": "CLAIMSRETURNED",
             "checkin_time": JsonValue::Null,
         };
@@ -274,7 +283,7 @@ impl Circulator {
         }
 
         let query = json::object! {
-            "target_copy":  self.copy_id.unwrap(),
+            "target_copy":  self.copy_id,
             "checkin_time": JsonValue::Null,
         };
 
@@ -285,7 +294,7 @@ impl Circulator {
 
         let mut payload = json::object! {"copy": self.copy().clone()};
 
-        if self.patron_id.unwrap() == json_int(&circ["usr"])? {
+        if self.patron_id == json_int(&circ["usr"])? {
             payload["old_circ"] = circ.clone();
 
             // If there is an open circulation on the checkout item and
@@ -330,7 +339,7 @@ impl Circulator {
             if self.is_noncat || (self.is_precat() && !self.is_override && !self.is_renewal()) {
                 JsonValue::Null
             } else {
-                json::from(self.copy_id.unwrap())
+                json::from(self.copy_id)
             };
 
         let query = json::object! {
@@ -338,7 +347,7 @@ impl Circulator {
                 func,
                 self.circ_lib,
                 copy_id,
-                self.patron_id.unwrap(),
+                self.patron_id
             ]
         };
 
@@ -446,12 +455,12 @@ impl Circulator {
         let rule_amount = json_float(&max_fine_rule["amount"])?;
 
         if json_bool(&max_fine_rule["is_percent"]) {
-            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id.unwrap())?;
+            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id)?;
             return Ok((copy_price * rule_amount) / 100.0);
         }
 
         if json_bool(self.settings.get_value("circ.max_fine.cap_at_price")?) {
-            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id.unwrap())?;
+            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id)?;
             let amount = if rule_amount > copy_price {
                 copy_price
             } else {
@@ -466,8 +475,8 @@ impl Circulator {
 
     fn build_checkout_circ(&mut self) -> EgResult<()> {
         let mut circ = json::object! {
-            "target_copy": self.copy_id.unwrap(),
-            "usr": self.patron_id.unwrap(),
+            "target_copy": self.copy_id,
+            "usr": self.patron_id,
             "circ_lib": self.circ_lib,
             "circ_staff": self.editor.requestor_id(),
         };
@@ -733,7 +742,7 @@ impl Circulator {
     }
 
     /// Extend the circ due date to avoid org unit closures.
-    fn extend_due_date(&mut self, shift_to_start: bool) -> EgResult<()> {
+    fn extend_due_date(&mut self, _shift_to_start: bool) -> EgResult<()> {
         if self.is_renewal() {
             self.extend_renewal_due_date()?;
         }
@@ -790,7 +799,7 @@ impl Circulator {
             .parent_circ
             .ok_or_else(|| format!("Renewals require a parent circ"))?;
 
-        let prev_circ = match self.editor.retrieve("circ", json::from(self.parent_circ))? {
+        let prev_circ = match self.editor.retrieve("circ", json::from(parent_circ))? {
             Some(c) => c,
             None => return Err(self.editor.die_event()),
         };
@@ -858,5 +867,294 @@ impl Circulator {
         self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due));
 
         Ok(())
+    }
+
+    fn apply_limit_groups(&mut self) -> EgResult<()> {
+        let limit_groups = match self.circ_policy_rules.as_ref() {
+            Some(p) => match p.limit_groups.as_ref() {
+                Some(g) => g,
+                None => return Ok(()),
+            },
+            None => return Ok(()),
+        };
+
+        let query = json::object! {
+            "from": [
+                "action.link_circ_limit_groups",
+                self.circ.as_ref().unwrap()["id"].clone(),
+                limit_groups.clone()
+            ]
+        };
+
+        self.editor.json_query(query)?;
+
+        Ok(())
+    }
+
+    fn apply_deposit_fee(&mut self) -> EgResult<()> {
+        let deposit_amount = match self.copy()["deposit_amount"].as_f64() {
+            Some(n) => n,
+            None => return Ok(()),
+        };
+
+        if deposit_amount <= 0.0 {
+            return Ok(());
+        }
+
+        let is_deposit = json_bool(&self.copy()["deposit"]);
+        let is_rental = !is_deposit;
+
+        if is_deposit {
+            if json_bool(self.settings.get_value("skip_deposit_fee")?)
+                || self.is_deposit_exempt()? {
+                return Ok(());
+            }
+        }
+
+        if is_rental {
+            if json_bool(self.settings.get_value("skip_rental_fee")?)
+                || self.is_rental_exempt()? {
+                return Ok(());
+            }
+        }
+
+        let mut btype = C::BTYPE_DEPOSIT;
+        let mut btype_label = C::BTYPE_LABEL_DEPOSIT;
+
+        if is_rental {
+            btype = C::BTYPE_RENTAL;
+            btype_label = C::BTYPE_LABEL_RENTAL;
+        }
+
+        let bill = billing::create_bill(
+            &mut self.editor,
+            deposit_amount,
+            btype,
+            btype_label,
+            json_int(&self.circ.as_ref().unwrap()["id"])?,
+            Some(C::BTYPE_NOTE_SYSTEM),
+            None,
+            None
+        )?;
+
+        if is_deposit {
+            self.deposit_billing = Some(bill);
+        } else {
+            self.rental_billing = Some(bill);
+        }
+
+        Ok(())
+    }
+
+    fn is_deposit_exempt(&mut self) -> EgResult<bool> {
+        let profile = json_int(&self.patron.as_ref().unwrap()["profile"]["id"])?;
+
+        let groups = self.settings.get_value("circ.deposit.exempt_groups")?;
+
+        if !groups.is_array() || groups.len() == 0 {
+            return Ok(false);
+        }
+
+        let mut parent_ids = Vec::new();
+        for grp in groups.members() {
+            parent_ids.push(json_int(&grp["id"])?);
+        }
+
+        self.is_group_descendant(profile, parent_ids.as_slice())
+    }
+
+    fn is_rental_exempt(&mut self) -> EgResult<bool> {
+        let profile = json_int(&self.patron.as_ref().unwrap()["profile"]["id"])?;
+
+        let groups = self.settings.get_value("circ.rental.exempt_groups")?;
+
+        if !groups.is_array() || groups.len() == 0 {
+            return Ok(false);
+        }
+
+        let mut parent_ids = Vec::new();
+        for grp in groups.members() {
+            parent_ids.push(json_int(&grp["id"])?);
+        }
+
+        self.is_group_descendant(profile, parent_ids.as_slice())
+    }
+
+
+    /// Returns true if the child is a descendant of any of the parent
+    /// profile group IDs
+    fn is_group_descendant(&mut self, child_id: i64, parent_ids: &[i64]) -> EgResult<bool> {
+        let query = json::object! {"from": ["permission.grp_ancestors", child_id] };
+        let ancestors = self.editor.json_query(query)?;
+        for parent_id in parent_ids {
+            for grp in &ancestors {
+                if &json_int(&grp["id"])? == parent_id {
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// See if we can fulfill a hold for this patron with this
+    /// checked out item.
+    fn handle_checkout_holds(&mut self) -> EgResult<()> {
+        if self.is_noncat {
+            return Ok(());
+        }
+
+        let query = json::object! {
+            "current_copy": self.copy_id,
+            "cancel_time": JsonValue::Null,
+            "fulfillment_time":  JsonValue::Null,
+        };
+
+        let mut maybe_hold = None;
+
+        if let Some(mut hold) = self.editor.search("ahr", query)?.pop() {
+
+            if json_int(&hold["usr"])? != self.patron_id {
+                // Found a hold targeting this copy for a different
+                // patron.  Reset the hold so it can find a different copy.
+
+                // take() sets the values to None == JsonNull
+                hold["clear_prev_check_time"].take();
+                hold["clear_current_copy"].take();
+                hold["clear_capture_time"].take();
+                hold["clear_shelf_time"].take();
+                hold["clear_shelf_expire_time"].take();
+                hold["clear_current_shelf_lib"].take();
+
+                log::info!(
+                    "{self} un-targeting hold {} because copy {} is checking out",
+                    hold["id"],
+                    self.copy_id
+                );
+
+                self.editor.update(hold)?;
+            } else {
+                maybe_hold = Some(hold);
+            }
+        }
+
+        if maybe_hold.is_none() {
+            maybe_hold = self.find_related_user_hold()?;
+        }
+
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------------------
+    // If the circ.checkout_fill_related_hold setting is turned on and no hold for
+    // the patron directly targets the checked out item, see if there is another hold
+    // for the patron that could be fulfilled by the checked out item.  Fulfill the
+    // oldest hold and only fulfill 1 of them.
+    //
+    // For "another hold":
+    //
+    // First, check for one that the copy matches via hold_copy_map, ensuring that
+    // *any* hold type that this copy could fill may end up filled.
+    //
+    // Then, if circ.checkout_fill_related_hold_exact_match_only is not enabled, look
+    // for a Title (T) or Volume (V) hold that matches the item. This allows items
+    // that are non-requestable to count as capturing those hold types.
+    // ------------------------------------------------------------------------------
+    fn find_related_user_hold(&mut self) -> EgResult<Option<JsonValue>> {
+        if self.is_precat_copy() {
+            return Ok(None);
+        }
+
+        if !json_bool(self.settings.get_value("circ.checkout_fills_related_hold")?) {
+            return Ok(None);
+        }
+
+        // find the oldest unfulfilled hold that has not yet hit the holds shelf.
+        let query = json::object! {
+            "select": {"ahr": ["id"]},
+            "from": {
+                "ahr": {
+                    "ahcm": {
+                        "field": "hold",
+                        "fkey": "id"
+                    },
+                    "acp": {
+                        "field": "id",
+                        "fkey": "current_copy",
+                        "type": "left" // there may be no current_copy
+                    }
+                }
+            },
+            "where": {
+                "+ahr": {
+                    "usr": self.patron_id,
+                    "fulfillment_time": JsonValue::Null,
+                    "cancel_time": JsonValue::Null,
+                   "-or": [
+                        {"expire_time": JsonValue::Null},
+                        {"expire_time": {">": "now"}}
+                    ]
+                },
+                "+ahcm": {
+                    "target_copy": self.copy_id,
+                },
+                "+acp": {
+                    "-or": [
+                        {"id": JsonValue::Null}, // left-join copy may be nonexistent
+                        {"status": {"!=": C::COPY_STATUS_ON_HOLDS_SHELF}},
+                    ]
+                }
+            },
+            "order_by": {"ahr": {"request_time": {"direction": "asc"}}},
+            "limit": 1
+        };
+
+        if let Some(hold) = self.editor.json_query(query)?.pop() {
+            return self.editor.retrieve("ahr", hold["id"].clone());
+        }
+
+        if json_bool(self.settings.get_value("circ.checkout_fills_related_hold_exact_match_only")?) {
+            // We only want exact matches and didn't find any.  We're done.
+            return Ok(None);
+        }
+
+        // Expand our search to more hold types that could be filled
+        // by our checked out copy.
+
+        let hold_data = holds::related_to_copy(
+            &mut self.editor,
+            self.copy_id,
+            Some(self.circ_lib),
+            None, // frozen
+            Some(self.patron_id),
+            Some(false), // already on holds shelf
+        )?;
+
+        if hold_data.len() == 0 {
+            return Ok(None);
+        }
+
+        // holds::related_to_copy may return holds that patron does not
+        // want filled by this copy, e.g. holds that target different
+        // volumes or records.  Apply some additional filtering.
+
+        let record_id = json_int(&self.copy()["call_number"]["record"])?;
+        let volume_id = json_int(&self.copy()["call_number"]["id"])?;
+
+        for hold in hold_data.iter() {
+            let target = hold.target();
+
+            // The Perl only supports T and V holds.  Matching that for now.
+
+            if hold.hold_type() == holds::HoldType::Title && target == record_id {
+                return self.editor.retrieve("ahr", hold.id());
+            }
+
+            if hold.hold_type() == holds::HoldType::Volume && target == volume_id {
+                return self.editor.retrieve("ahr", hold.id());
+            }
+        }
+
+        Ok(None)
     }
 }
