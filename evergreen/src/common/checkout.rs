@@ -541,15 +541,15 @@ impl Circulator {
     }
 
     fn apply_due_date(&mut self) -> EgResult<()> {
-        let manual_date = self.set_manual_due_date()?;
+        let is_manual = self.set_manual_due_date()?;
 
-        if !manual_date {
+        if !is_manual {
             self.set_initial_due_date()?;
         }
 
-        let shift_to_start = self.apply_booking_due_date(manual_date)?;
+        let shift_to_start = self.apply_booking_due_date(is_manual)?;
 
-        if !manual_date {
+        if !is_manual {
             self.extend_due_date(shift_to_start)?;
         }
 
@@ -618,7 +618,7 @@ impl Circulator {
 
     /// Check for booking conflicts and shorten the due date if we need
     /// to apply some elbow room.
-    fn apply_booking_due_date(&mut self, manual_date: bool) -> EgResult<bool> {
+    fn apply_booking_due_date(&mut self, is_manual: bool) -> EgResult<bool> {
         if !self.is_booking_enabled() {
             return Ok(false);
         }
@@ -628,7 +628,111 @@ impl Circulator {
             None => return Ok(false),
         };
 
-        Ok(false)
+        let query = json::object! {"barcode": self.copy()["barcode"].clone()};
+        let flesh = json::object! {"flesh": 1, "flesh_fields": {"brsrc": ["type"]}};
+
+        let resource = match self.editor.search_with_ops("brsrc", query, flesh)?.pop() {
+            Some(r) => r,
+            None => return Ok(false),
+        };
+
+        let stop_circ = json_bool(
+            self.settings.get_value("circ.booking_reservation.stop_circ")?
+        );
+
+        let query = json::object! {
+            "resource": resource["id"].clone(),
+            "search_start": "now",
+            "search_end": due_date,
+            "fields": {
+                "cancel_time": JsonValue::Null,
+                "return_time": JsonValue::Null,
+            }
+        };
+
+        let booking_ids_op = self.editor.client_mut().send_recv_one(
+            "open-ils.booking",
+            "open-ils.booking.reservations.filtered_id_list",
+            query
+        )?;
+
+        let booking_ids = match booking_ids_op {
+            Some(i) => i,
+            None => return Ok(false),
+        };
+
+        if !booking_ids.is_array() || booking_ids.len() == 0 {
+            return Ok(false);
+        }
+
+        // See if any of the reservations overlap with our checkout
+        let due_date_dt = date::parse_datetime(due_date)?;
+        let now_dt = date::now();
+        let mut bookings = Vec::new();
+
+        // First see if we need to block the circulation due to
+        // reservation overlap / stop-circ setting.
+        for id in booking_ids.members() {
+
+            let booking = self.editor.retrieve("bresv", id.clone())?
+                .ok_or_else(|| self.editor.die_event())?;
+
+            let booking_start = date::parse_datetime(booking["start_time"].as_str().unwrap())?;
+
+            // Block the circ if a reservation is already active or
+            // we're told to prevent new circs on matching resources.
+            if booking_start < now_dt || stop_circ {
+                self.exit_err_on_event_code("COPY_RESERVED")?;
+            }
+
+            bookings.push(booking);
+        }
+
+        if is_manual {
+            // Manual due dates are not modified.  Note in the Perl
+            // code they appear to be modified, but are later set
+            // to the manual value, overwriting the booking logic
+            // for manual dates.  Guessing manaul due date are an
+            // outlier.
+            return Ok(false);
+        }
+
+        // See if we need to shorten the circ duration for this resource.
+        let shorten_by = match resource["type"]["elbow_room"].as_str() {
+            Some(s) => s,
+            None => match self
+                .settings
+                .get_value("circ.booking_reservation.default_elbow_room")?
+                .as_str() {
+                    Some(s) => s,
+                    None => return Ok(false),
+            }
+        };
+
+        // We're configured to shorten the circ in the presence of
+        // reservations on this resource.
+        let interval = date::interval_to_seconds(shorten_by)?;
+        let due_date_dt = due_date_dt - Duration::from_secs(interval as u64);
+
+        if due_date_dt < now_dt {
+            self.exit_err_on_event_code("COPY_RESERVED")?;
+        }
+
+        // Apply the new due date and duration to our circ.
+        let mut duration = due_date_dt.timestamp() - now_dt.timestamp();
+        if duration % 86400 == 0 {
+            // Avoid precise day-granular durations because they
+            // result in bumping the due time to 23:59:59, which
+            // we don't want here.
+            duration += 1;
+        }
+
+        let circ = self.circ.as_mut().unwrap();
+        circ["duration"] = json::from(format!("{duration} seconds"));
+        circ["due_date"] = json::from(date::to_iso(&due_date_dt));
+
+        // Changes were made.
+        Ok(true)
     }
 
     /// Extend the circ due date to avoid org unit closures.
