@@ -61,10 +61,10 @@ impl From<&CircOp> for &'static str {
 /// Contains circ policy matchpoint data.
 #[derive(Debug)]
 pub struct CircPolicy {
-    pub matchpoint: i64,
     pub max_fine: f64,
     pub duration: String,
     pub recurring_fine: f64,
+    pub matchpoint: JsonValue,
     pub duration_rule: JsonValue,
     pub recurring_fine_rule: JsonValue,
     pub max_fine_rule: JsonValue,

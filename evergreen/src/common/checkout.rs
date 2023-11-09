@@ -370,7 +370,6 @@ impl Circulator {
         // Delay generation of the err string if we don't need it.
         let err = || format!("Incomplete circ policy: {}", policy);
 
-        let matchpoint = json_int(&policy["matchpoint"])?;
         let limit_groups = if policy["limit_groups"].is_array() {
             Some(policy["limit_groups"].clone())
         } else {
@@ -422,6 +421,8 @@ impl Circulator {
             C::CIRC_FINE_LEVEL_HIGH => json_float(&recurring_fine_rule["high"])?,
             _ => json_float(&recurring_fine_rule["normal"])?,
         };
+
+        let matchpoint = policy["matchpoint"].clone();
 
         let rules = CircPolicy {
             matchpoint,
@@ -722,8 +723,8 @@ impl Circulator {
         let mut duration = due_date_dt.timestamp() - now_dt.timestamp();
         if duration % 86400 == 0 {
             // Avoid precise day-granular durations because they
-            // result in bumping the due time to 23:59:59, which
-            // we don't want here.
+            // result in bumping the due time to 23:59:59 via
+            // DB trigger, which we don't want here.
             duration += 1;
         }
 
@@ -737,6 +738,127 @@ impl Circulator {
 
     /// Extend the circ due date to avoid org unit closures.
     fn extend_due_date(&mut self, shift_to_start: bool) -> EgResult<()> {
+        if self.is_renewal() {
+            self.extend_renewal_due_date()?;
+        }
+
+        let due_date_str = match self.circ.as_ref().unwrap()["due_date"].as_str() {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+
+        let due_date_dt = date::parse_datetime(due_date_str)?;
+
+        let org_open_data =
+            org::next_open_date(&mut self.editor, self.circ_lib, &due_date_dt)?;
+
+        let due_date_dt = match org_open_data {
+            // No org unit closuers to consider.
+            org::OrgOpenState::Never | org::OrgOpenState::Open => return Ok(()),
+            org::OrgOpenState::OpensOnDate(d) => d,
+        };
+
+        // NOTE the Perl uses shift_to_start (for booking) to bump the
+        // due date to the beginning of the org unit closed period.
+        // However, if the org unit is closed now, that can result in
+        // an item being due now (or possibly in the past?).  There's a
+        // TODO in the code about the logic.  Fow now, set the due date
+        // to the first available time on or after the calculated due date.
+        log::info!("{self} bumping due date to avoid closures: {}", due_date_dt);
+
+        self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due_date_dt));
+
+        Ok(())
+    }
+
+    /// Optionally extend the due date of a renewal if time was
+    /// lost on renewing early.
+    fn extend_renewal_due_date(&mut self) -> EgResult<()> {
+
+        let policy = match self.circ_policy_rules.as_ref() {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+
+        if !json_bool(&policy.matchpoint["renew_extends_due_date"]) {
+            // Not configured to extend on the matching policy.
+            return Ok(());
+        }
+
+        let due_date_str = match self.circ.as_ref().unwrap()["due_date"].as_str() {
+            Some(d) => d,
+            None => return Ok(()),
+        };
+
+        let due_date = date::parse_datetime(due_date_str)?;
+
+        let parent_circ = self.parent_circ
+            .ok_or_else(|| format!("Renewals require a parent circ"))?;
+
+        let prev_circ = match self.editor.retrieve("circ", json::from(self.parent_circ))? {
+            Some(c) => c,
+            None => return Err(self.editor.die_event()),
+        };
+
+        let start_time_str = prev_circ["xact_start"].as_str().expect("required");
+        let start_time = date::parse_datetime(start_time_str)?;
+
+        let prev_due_date_str = prev_circ["due_date"].as_str().expect("required");
+        let prev_due_date = date::parse_datetime(prev_due_date_str)?;
+
+        let now_time = date::now();
+
+        if prev_due_date < now_time {
+            // Renewed circ was overdue.  No extension to apply.
+            return Ok(());
+        }
+
+        // Make sure the renewal is not occurring too early in the
+        // parent circ's lifecycle.
+        if let Some(intvl) = policy.matchpoint["renew_extend_min_interval"].as_str() {
+            let min_duration = date::interval_to_seconds(intvl)?;
+            let co_duration = now_time - start_time;
+
+            if co_duration.num_seconds() < min_duration {
+                // Renewal occurred too early in the cycle to result in an
+                // extension of the due date on the renewal.
+
+                // If the new due date falls before the due date of
+                // the previous circulation, though, use the due date of the
+                // prev.  circ so the patron does not lose time.
+                let due = if due_date < prev_due_date {
+                    prev_due_date
+                } else {
+                    due_date
+                };
+
+                self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due));
+
+                return Ok(());
+            }
+        }
+
+        // Item was checked out long enough during the previous circulation
+        // to consider extending the due date of the renewal to cover the gap.
+
+        // Amount of the previous duration that was left unused.
+        let remaining_duration = prev_due_date - now_time;
+
+        let due_date = due_date + remaining_duration;
+
+        // If the calculated due date falls before the due date of the previous
+        // circulation, use the due date of the prev. circ so the patron does
+        // not lose time.
+        let due = if due_date < prev_due_date {
+            prev_due_date
+        } else {
+            due_date
+        };
+
+        log::info!("{self} renewal due date extension landed on due date: {}", due);
+
+        self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due));
+
         Ok(())
     }
 }
