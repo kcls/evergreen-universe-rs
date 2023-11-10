@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// These copy fields are assumed to be fleshed throughout.
+/// NOTE changing these values can impact assumptions in the code.
 const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "location"];
 
 /// Map of some newer override event types to simplified legacy override codes .
@@ -131,7 +132,7 @@ pub struct Circulator {
     /// List of hold IDs for holds that need to be retargeted.
     pub retarget_holds: Option<Vec<i64>>,
 
-    pub fulfilled_holds_ids: Option<Vec<i64>>,
+    pub fulfilled_hold_ids: Option<Vec<i64>>,
 
     /// Storage for the large list of circulation API flags that we
     /// don't explicitly define in this struct.
@@ -206,7 +207,7 @@ impl Circulator {
             deposit_billing: None,
             rental_billing: None,
             auto_renewal_remaining: 0,
-            fulfilled_holds_ids: None,
+            fulfilled_hold_ids: None,
             circ_test_success: false,
             circ_policy_unlimited: false,
             circ_policy_rules: None,

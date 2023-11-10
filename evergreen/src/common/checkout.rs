@@ -1042,24 +1042,51 @@ impl Circulator {
             maybe_hold = self.find_related_user_hold()?;
         }
 
+        let mut hold = match maybe_hold.take() {
+            Some(h) => h,
+            None => return Ok(()),
+        };
+
+        self.check_hold_fulfill_blocks()?;
+
+        let hold_id = json_int(&hold["id"])?;
+
+        log::info!("{self} fulfilling hold {hold_id}");
+
+        hold["hopeless_date"].take();
+        hold["current_copy"] = self.copy()["id"].clone();
+        hold["fulfillment_time"] = json::from("now");
+        hold["fulfillment_staff"] = json::from(self.editor.requestor_id());
+        hold["fulfillment_lib"] = json::from(self.circ_lib);
+
+        if hold["capture_time"].is_null() {
+            hold["capture_time"] = json::from("now");
+        }
+
+        self.editor.create(hold)?;
+
+        self.fulfilled_hold_ids = Some(vec![hold_id]);
+
         Ok(())
     }
 
-    // ------------------------------------------------------------------------------
-    // If the circ.checkout_fill_related_hold setting is turned on and no hold for
-    // the patron directly targets the checked out item, see if there is another hold
-    // for the patron that could be fulfilled by the checked out item.  Fulfill the
-    // oldest hold and only fulfill 1 of them.
-    //
-    // For "another hold":
-    //
-    // First, check for one that the copy matches via hold_copy_map, ensuring that
-    // *any* hold type that this copy could fill may end up filled.
-    //
-    // Then, if circ.checkout_fill_related_hold_exact_match_only is not enabled, look
-    // for a Title (T) or Volume (V) hold that matches the item. This allows items
-    // that are non-requestable to count as capturing those hold types.
-    // ------------------------------------------------------------------------------
+    /// Find a similar hold to fulfill.
+    ///
+    /// If the circ.checkout_fill_related_hold setting is turned on
+    /// and no hold for the patron directly targets the checked out
+    /// item, see if there is another hold for the patron that could be
+    /// fulfilled by the checked out item.  Fulfill the oldest hold and
+    /// only fulfill 1 of them.
+    ///
+    /// First, check for one that the copy matches via hold_copy_map,
+    /// ensuring that *any* hold type that this copy could fill may end
+    /// up filled.
+    ///
+    /// Then, if circ.checkout_fill_related_hold_exact_match_only is not
+    /// enabled, look for a Title (T) or Volume (V) hold that matches
+    /// the item. This allows items that are non-requestable to count as
+    /// capturing those hold types.
+    /// ------------------------------------------------------------------------------
     fn find_related_user_hold(&mut self) -> EgResult<Option<JsonValue>> {
         if self.is_precat_copy() {
             return Ok(None);
@@ -1156,5 +1183,55 @@ impl Circulator {
         }
 
         Ok(None)
+    }
+
+    /// Exits with error if hold blocks are present and we are not
+    /// overriding them.
+    fn check_hold_fulfill_blocks(&mut self) -> EgResult<()> {
+        let home_ou = json_int(&self.patron.as_ref().unwrap()["home_ou"])?;
+        let copy_ou = json_int(&self.copy()["circ_lib"])?;
+
+        let copy_prox;
+        let ou_prox = org::proximity(&mut self.editor, home_ou, self.circ_lib)?.unwrap_or(-1);
+
+        if copy_ou == self.circ_lib {
+            copy_prox = ou_prox;
+        } else {
+            copy_prox = org::proximity(&mut self.editor, copy_ou, self.circ_lib)?.unwrap_or(-1);
+        }
+
+        let query = json::object! {
+            "select": {"csp": ["name", "label"]},
+            "from": {"ausp": "csp"},
+            "where": {
+                "+ausp": {
+                    "usr": self.patron_id,
+                    "org_unit": org::full_path(&mut self.editor, self.circ_lib, None)?,
+                    "-or": [
+                        {"stop_date": JsonValue::Null},
+                        {"stop_date": {">": "now"}}
+                    ]
+                },
+                "+csp": {
+                    "block_list": {"like": "%FULFILL%"},
+                    "-or": [
+                        {"ignore_proximity": JsonValue::Null},
+                        {"ignore_proximity": {"<": ou_prox}},
+                        {"ignore_proximity": {"<": copy_prox}}
+                    ]
+                }
+            }
+        };
+
+        let penalties = self.editor.json_query(query)?;
+        for pen in penalties {
+            let mut evt = EgEvent::new(pen["name"].as_str().unwrap());
+            if let Some(d) = pen["label"].as_str() {
+                evt.set_desc(d);
+            }
+            self.add_event(evt);
+        }
+
+        self.try_override_events()
     }
 }
