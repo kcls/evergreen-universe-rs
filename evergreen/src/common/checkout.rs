@@ -1004,39 +1004,7 @@ impl Circulator {
             return Ok(());
         }
 
-        let query = json::object! {
-            "current_copy": self.copy_id,
-            "cancel_time": JsonValue::Null,
-            "fulfillment_time":  JsonValue::Null,
-        };
-
-        let mut maybe_hold = None;
-
-        if let Some(mut hold) = self.editor.search("ahr", query)?.pop() {
-
-            if json_int(&hold["usr"])? != self.patron_id {
-                // Found a hold targeting this copy for a different
-                // patron.  Reset the hold so it can find a different copy.
-
-                // take() sets the values to None == JsonNull
-                hold["clear_prev_check_time"].take();
-                hold["clear_current_copy"].take();
-                hold["clear_capture_time"].take();
-                hold["clear_shelf_time"].take();
-                hold["clear_shelf_expire_time"].take();
-                hold["clear_current_shelf_lib"].take();
-
-                log::info!(
-                    "{self} un-targeting hold {} because copy {} is checking out",
-                    hold["id"],
-                    self.copy_id
-                );
-
-                self.editor.update(hold)?;
-            } else {
-                maybe_hold = Some(hold);
-            }
-        }
+        let mut maybe_hold = self.handle_targeted_hold()?;
 
         if maybe_hold.is_none() {
             maybe_hold = self.find_related_user_hold()?;
@@ -1054,7 +1022,7 @@ impl Circulator {
         log::info!("{self} fulfilling hold {hold_id}");
 
         hold["hopeless_date"].take();
-        hold["current_copy"] = self.copy()["id"].clone();
+        hold["current_copy"] = json::from(self.copy_id);
         hold["fulfillment_time"] = json::from("now");
         hold["fulfillment_staff"] = json::from(self.editor.requestor_id());
         hold["fulfillment_lib"] = json::from(self.circ_lib);
@@ -1068,6 +1036,45 @@ impl Circulator {
         self.fulfilled_hold_ids = Some(vec![hold_id]);
 
         Ok(())
+    }
+
+    /// See if a hold directly targets our checked out copy.
+    /// If so and it's for our patron, great, otherwise reset the
+    /// hold so it can be retargeted.
+    fn handle_targeted_hold(&mut self) -> EgResult<Option<JsonValue>> {
+        let query = json::object! {
+            "current_copy": self.copy_id,
+            "cancel_time": JsonValue::Null,
+            "fulfillment_time":  JsonValue::Null,
+        };
+
+        let mut hold = match self.editor.search("ahr", query)?.pop() {
+            Some(h) => h,
+            None => return Ok(None),
+        };
+
+        if json_int(&hold["usr"])? == self.patron_id {
+            return Ok(Some(hold));
+        }
+
+        // Found a hold targeting this copy for a different
+        // patron.  Reset the hold so it can find a different copy.
+
+        // take() sets the values to None == JsonNull
+        hold["clear_prev_check_time"].take();
+        hold["clear_current_copy"].take();
+        hold["clear_capture_time"].take();
+        hold["clear_shelf_time"].take();
+        hold["clear_shelf_expire_time"].take();
+        hold["clear_current_shelf_lib"].take();
+
+        log::info!(
+            "{self} un-targeting hold {} because copy {} is checking out",
+            hold["id"],
+            self.copy_id
+        );
+
+        self.editor.update(hold).map(|_| None)
     }
 
     /// Find a similar hold to fulfill.
