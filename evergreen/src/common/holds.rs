@@ -577,8 +577,8 @@ where
     editor.update(hold)?;
     editor.commit()?;
 
-    let id = json_int(&hold_id)?; // TODO avoid this translation
-    retarget_holds(&mut editor, &[id])
+    //let id = json_int(&hold_id)?; // TODO avoid this translation
+    retarget_holds(&mut editor, &[hold_id])
 }
 
 /// json_query order by clause for sorting holds by next to be targeted.
