@@ -57,7 +57,9 @@ impl Circulator {
         self.apply_due_date()?;
 
         // At this point we know we have a circ.
-        let clone = self.circ.as_ref().unwrap().clone();
+        // Turn our circ hash into an IDL-classed object.
+        let circ = self.circ.as_ref().unwrap().clone();
+        let clone = self.editor().idl().create_from("circ", circ)?;
         self.circ = Some(self.editor().create(clone)?);
 
         self.apply_limit_groups()?;
