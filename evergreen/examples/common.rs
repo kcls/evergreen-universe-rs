@@ -31,5 +31,9 @@ fn main() -> EgResult<()> {
         println!("related hold: {hold}");
     }
 
+    let mvr = bib::map_to_mvr(&mut editor, 5)?;
+
+    println!("MVR\n{}", mvr.dump());
+
     Ok(())
 }
