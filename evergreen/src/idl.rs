@@ -276,6 +276,11 @@ impl Class {
         names
     }
 
+    /// Vec of all field names, unsorted.
+    pub fn field_names(&self) -> Vec<&str> {
+        self.fields().keys().map(|f| f.as_str()).collect()
+    }
+
     pub fn has_real_field(&self, field: &str) -> bool {
         self.fields()
             .values()

@@ -1,6 +1,7 @@
 use crate::editor::Editor;
 use crate::result::EgResult;
 use crate::util;
+use json::JsonValue;
 use std::collections::HashMap;
 
 // Bib record display attributes are used widely. May as well flesh them
@@ -89,6 +90,39 @@ impl DisplayAttrSet {
             ""
         }
     }
+}
+
+/// Build a virtual mvr from a bib record's display attributes
+pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<JsonValue> {
+    let maps = get_display_attrs(editor, &[bib_id])?;
+
+    let attr_set = match maps.get(&bib_id) {
+        Some(m) => m,
+        None => return Err(format!("Bib {bib_id} has no display attributes").into()),
+    };
+
+    let mut mvr = json::object! {"doc_id": bib_id};
+
+    let idl_class = editor
+        .idl()
+        .classes()
+        .get("mvr")
+        .ok_or_else(|| format!("IDL missing class 'mvr'"))?;
+
+    // Dynamically copy values from the display attribute set
+    // into an mvr JSON object.
+    let field_names = idl_class.field_names();
+
+    for attr in attr_set.attrs.iter() {
+        if field_names.contains(&attr.name.as_str()) {
+            mvr[attr.name.as_str()] = match attr.value() {
+                DisplayAttrValue::Value(v) => json::from(v.as_str()),
+                DisplayAttrValue::List(l) => json::from(l.clone()),
+            }
+        }
+    }
+
+    editor.idl().create_from("mvr", mvr)
 }
 
 /// Returns a HashMap mapping bib record IDs to a DisplayAttrSet.

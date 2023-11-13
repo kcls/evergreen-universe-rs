@@ -1,8 +1,10 @@
+use crate::common::bib;
 use crate::common::billing;
 use crate::common::circulator::{CircOp, CircPolicy, Circulator};
 use crate::common::holds;
 use crate::common::noncat;
 use crate::common::org;
+use crate::common::penalty;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
@@ -66,7 +68,17 @@ impl Circulator {
         self.apply_deposit_fee()?;
         self.handle_checkout_holds()?;
 
-        Ok(())
+        // Update the patron penalty info in the DB.  Run it for
+        // permit-overrides, since the penalties are not updated during
+        // the permit phase.
+        penalty::calculate_penalties(
+            self.editor.as_mut().unwrap(), // avoid a long mut borrow
+            self.patron_id,
+            self.circ_lib,
+            None,
+        )?;
+
+        self.build_checkout_response()
     }
 
     fn checkout_noncat(&mut self) -> EgResult<()> {
@@ -1270,5 +1282,65 @@ impl Circulator {
         }
 
         self.try_override_events()
+    }
+
+    fn build_checkout_response(&mut self) -> EgResult<()> {
+        let mut record = None;
+        if !self.is_precat_copy() {
+            let record_id = json_int(&self.copy()["call_number"]["record"])?;
+            record = Some(bib::map_to_mvr(self.editor(), record_id)?);
+        }
+
+        let mut copy = self.copy().clone();
+        let volume = copy["call_number"].take();
+        self.editor().idl().de_flesh_object(&mut copy)?;
+
+        let circ = self.circ.as_ref().unwrap().clone();
+        let patron = self.patron.as_ref().unwrap().clone();
+        let patron_id = self.patron_id;
+
+        let patron_money = self.editor().retrieve("mus", patron_id)?;
+
+        let mut payload = json::object! {
+            "copy": copy,
+            "volume": volume,
+            "record": record,
+            "circ": circ,
+            "patron": patron,
+            "patron_money": patron_money,
+        };
+
+        if let Some(list) = self.fulfilled_hold_ids.as_ref() {
+            payload["holds_fulfilled"] = json::from(list.clone());
+        }
+
+        if let Some(bill) = self.deposit_billing.as_ref() {
+            payload["deposit_billing"] = bill.clone();
+        }
+
+        if let Some(bill) = self.rental_billing.as_ref() {
+            payload["rental_billing"] = bill.clone();
+        }
+
+        // Flesh the billing summary for our checked-in circ.
+        if let Some(pcirc) = self.parent_circ {
+            let flesh = json::object! {
+                "flesh": 1,
+                "flesh_fields": {
+                    "circ": ["billable_transaction"],
+                    "mbt": ["summary"],
+                }
+            };
+
+            if let Some(circ) = self.editor().retrieve_with_ops("circ", pcirc, flesh)? {
+                payload["parent_circ"] = circ;
+            }
+        }
+
+        let mut evt = EgEvent::success();
+        evt.set_payload(payload);
+        self.add_event(evt);
+
+        Ok(())
     }
 }
