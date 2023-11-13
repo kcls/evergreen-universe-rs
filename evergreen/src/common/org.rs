@@ -92,8 +92,8 @@ pub fn next_open_date(
     let mut closed_days: Vec<i64> = Vec::new();
     if let Some(h) = editor.retrieve("aouhoo", org_id)? {
         for day in 0..7 {
-            let open = h[&format!("day_{day}_open")].as_str().unwrap();
-            let close = h[&format!("day_{day}_close")].as_str().unwrap();
+            let open = h[&format!("dow_{day}_open")].as_str().unwrap();
+            let close = h[&format!("dow_{day}_close")].as_str().unwrap();
             if open == "00:00:00" && close == open {
                 closed_days.push(day);
             }
