@@ -12,14 +12,14 @@ use json::JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-/// These copy fields are assumed to be fleshed throughout.
-/// NOTE changing these values can impact assumptions in the code.
+/// Our copy is assumed to be fleshed just-so throughout.
+/// Changing these values can impact assumptions in the code.
 const COPY_FLESH: &[&str] = &["status", "call_number", "parts", "floating", "location"];
 
 /// Map of some newer override event types to simplified legacy override codes .
 /// First entry in each sub-array is the newer event, followed by one or more
 /// legacy event types.
-const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
+pub const COPY_ALERT_OVERRIDES: [&[&str]; 7] = [
     &["CLAIMSRETURNED\tCHECKOUT", "CIRC_CLAIMS_RETURNED"],
     &["CLAIMSRETURNED\tCHECKIN", "CIRC_CLAIMS_RETURNED"],
     &["LOST\tCHECKOUT", "CIRCULATION_EXISTS"],
@@ -31,6 +31,36 @@ const COPY_ALERT_OVERRIDES: &[&[&str]] = &[
         "COPY_NOT_AVAILABLE",
         "CIRCULATION_EXISTS",
     ],
+];
+
+pub const LEGACY_CIRC_EVENT_MAP: [(&str, &str); 12] = [
+    ("no_item", "ITEM_NOT_CATALOGED"),
+    ("actor.usr.barred", "PATRON_BARRED"),
+    ("asset.copy.circulate", "COPY_CIRC_NOT_ALLOWED"),
+    ("asset.copy.status", "COPY_NOT_AVAILABLE"),
+    ("asset.copy_location.circulate", "COPY_CIRC_NOT_ALLOWED"),
+    ("config.circ_matrix_test.circulate", "COPY_CIRC_NOT_ALLOWED"),
+    (
+        "config.circ_matrix_test.max_items_out",
+        "PATRON_EXCEEDS_CHECKOUT_COUNT",
+    ),
+    (
+        "config.circ_matrix_test.max_overdue",
+        "PATRON_EXCEEDS_OVERDUE_COUNT",
+    ),
+    ("config.circ_matrix_test.max_fines", "PATRON_EXCEEDS_FINES"),
+    (
+        "config.circ_matrix_circ_mod_test",
+        "PATRON_EXCEEDS_CHECKOUT_COUNT",
+    ),
+    (
+        "config.circ_matrix_test.total_copy_hold_ratio",
+        "TOTAL_HOLD_COPY_RATIO_EXCEEDED",
+    ),
+    (
+        "config.circ_matrix_test.available_copy_hold_ratio",
+        "AVAIL_HOLD_COPY_RATIO_EXCEEDED",
+    ),
 ];
 
 #[derive(Debug, PartialEq, Clone)]
@@ -78,6 +108,7 @@ pub struct CircPolicy {
 /// Innards are 'pub' since the impl's are spread across multiple files.
 pub struct Circulator {
     pub editor: Option<Editor>,
+    pub init_run: bool,
     pub settings: Settings,
     pub circ_lib: i64,
     pub copy: Option<JsonValue>,
@@ -120,7 +151,7 @@ pub struct Circulator {
     pub events: Vec<EgEvent>,
 
     pub renewal_remaining: i64,
-    pub auto_renewal_remaining: i64,
+    pub auto_renewal_remaining: Option<i64>,
 
     /// Override failures are tracked here so they can all be returned
     /// to the caller.
@@ -131,6 +162,9 @@ pub struct Circulator {
 
     /// List of hold IDs for holds that need to be retargeted.
     pub retarget_holds: Option<Vec<i64>>,
+
+    pub checkout_is_for_hold: Option<JsonValue>,
+    pub hold_found_for_alt_patron: Option<JsonValue>,
 
     pub fulfilled_hold_ids: Option<Vec<i64>>,
 
@@ -187,6 +221,7 @@ impl Circulator {
 
         Ok(Circulator {
             editor: Some(e),
+            init_run: false,
             settings,
             options,
             circ_lib,
@@ -206,8 +241,10 @@ impl Circulator {
             renewal_remaining: 0,
             deposit_billing: None,
             rental_billing: None,
-            auto_renewal_remaining: 0,
+            auto_renewal_remaining: None,
             fulfilled_hold_ids: None,
+            checkout_is_for_hold: None,
+            hold_found_for_alt_patron: None,
             circ_test_success: false,
             circ_policy_unlimited: false,
             circ_policy_rules: None,
@@ -889,6 +926,13 @@ impl Circulator {
     ///
     /// This should be called before any other circulation actions.
     pub fn init(&mut self) -> EgResult<()> {
+        if self.init_run {
+            // May be called multiple times, e.g. renewals.
+            return Ok(());
+        }
+
+        self.init_run = true;
+
         if let Some(cl) = self.options.get("circ_lib") {
             self.circ_lib = json_int(cl)?;
         }
@@ -1057,7 +1101,7 @@ impl Circulator {
 
     /// True if the caller wants us to treat this as a precat circ/item.
     /// item must be a precat due to it using the precat call number.
-    pub fn is_precat(&self) -> bool {
+    pub fn precat_requested(&self) -> bool {
         json_bool_op(self.options.get("is_precat"))
     }
 

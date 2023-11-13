@@ -89,6 +89,8 @@ fn checkout(tester: &mut util::Tester) -> EgResult<()> {
     assert!(evt.is_success());
 
     let copy = &evt.payload()["copy"];
+    let patron = &evt.payload()["patron"];
+    let circ = &evt.payload()["circ"];
 
     assert_eq!(
         copy["barcode"].as_str(),
@@ -100,9 +102,21 @@ fn checkout(tester: &mut util::Tester) -> EgResult<()> {
         C::COPY_STATUS_CHECKED_OUT
     );
 
+    assert_eq!(
+        patron["card"]["barcode"].as_str(),
+        Some(tester.samples.au_barcode.as_str())
+    );
+
+    // make sure the circ actually exists
+    let circ_id = circ["id"].clone();
+    let circ = tester.editor.retrieve("circ", circ_id)?.unwrap();
+
+    // Some basic checks
+    assert_eq!(circ["duration_rule"].as_str(), Some("default"));
+    assert!(circ["stop_fines"].is_null());
+
     Ok(())
 }
-
 
 fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
     let e = tester.editor.clone(); // circulator wants its own editor
@@ -144,7 +158,6 @@ fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
         patron["card"]["barcode"].as_str(),
         Some(tester.samples.au_barcode.as_str())
     );
-
 
     Ok(())
 }

@@ -13,11 +13,6 @@ use chrono::{Duration, Local, Timelike};
 use json::JsonValue;
 use std::collections::HashSet;
 
-const CHECKIN_ORG_SETTINGS: &[&str] = &[
-    "circ.transit.min_checkin_interval",
-    "circ.transit.suppress_hold",
-];
-
 /// Performs item checkins
 impl Circulator {
     /// Checkin an item.
@@ -31,11 +26,12 @@ impl Circulator {
 
         self.init()?;
 
-        // Pre-cache some setting values.
-        self.settings.fetch_values(CHECKIN_ORG_SETTINGS)?;
-        self.basic_copy_checks()?;
-
         log::info!("{self} starting checkin");
+
+        // TODO
+        // do_permit
+
+        self.basic_copy_checks()?;
 
         self.fix_broken_transit_status()?;
         self.check_transit_checkin_interval()?;
@@ -120,10 +116,13 @@ impl Circulator {
 
         self.finish_fines_and_voiding()?;
 
-        if let Some(patron) = self.patron.as_ref() {
-            let patron_id = json_int(&patron["id"])?;
-            let circ_lib = self.circ_lib;
-            penalty::calculate_penalties(self.editor(), patron_id, circ_lib, None)?;
+        if self.patron.is_some() {
+            penalty::calculate_penalties(
+                self.editor.as_mut().unwrap(),
+                self.patron_id,
+                self.circ_lib,
+                None,
+            )?;
         }
 
         self.cleanup_events();
