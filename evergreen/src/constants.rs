@@ -58,7 +58,6 @@ pub const BTYPE_LABEL_DEPOSIT: &str = "System: Deposit";
 pub const BTYPE_LABEL_RENTAL: &str = "System: Rental";
 pub const BTYPE_NOTE_SYSTEM: &str = "SYSTEM GENERATED";
 
-
 // ---------------------------------------------------------------------
 // Hold Types
 // ---------------------------------------------------------------------

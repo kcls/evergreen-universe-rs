@@ -77,7 +77,7 @@ pub struct CircPolicy {
 ///
 /// Innards are 'pub' since the impl's are spread across multiple files.
 pub struct Circulator {
-    pub editor: Editor,
+    pub editor: Option<Editor>,
     pub settings: Settings,
     pub circ_lib: i64,
     pub copy: Option<JsonValue>,
@@ -186,7 +186,7 @@ impl Circulator {
         let circ_lib = e.requestor_ws_ou();
 
         Ok(Circulator {
-            editor: e,
+            editor: Some(e),
             settings,
             options,
             circ_lib,
@@ -222,6 +222,27 @@ impl Circulator {
             retarget_holds: None,
             circ_op: CircOp::Unset,
         })
+    }
+
+    /// Panics if we have no editor
+    pub fn editor(&mut self) -> &mut Editor {
+        self.editor.as_mut().unwrap()
+    }
+
+    /// Panics unless we have an editor and a requestor.
+    pub fn requestor_id(&self) -> i64 {
+        self.editor.as_ref().unwrap().requestor_id()
+    }
+
+    /// Consumes an editor so we can use it.
+    pub fn give_editor(&mut self, editor: Editor) {
+        self.editor = Some(editor);
+    }
+
+    /// Gives the caller our editor.
+    /// Panics if we have no editor.
+    pub fn take_editor(&mut self) -> Editor {
+        self.editor.take().unwrap()
     }
 
     pub fn is_renewal(&self) -> bool {
@@ -265,28 +286,16 @@ impl Circulator {
         json_int(&copy["circ_lib"]).expect("{self} invlid copy circ lib")
     }
 
-    /// Allows the caller to recover the original editor object after
-    /// the circ action has completed.  The caller can use this to
-    /// do other stuff with the original editor, make queries, etc.
-    /// then finally commit the transaction.
-    ///
-    /// For code simplicity, replace the value with a cloned Editor
-    /// instead of storing the Editor as an Option.
-    pub fn take_editor(&mut self) -> Editor {
-        let new_e = self.editor.clone();
-        std::mem::replace(&mut self.editor, new_e)
-    }
-
     pub fn begin(&mut self) -> EgResult<()> {
-        self.editor.xact_begin()
+        self.editor().xact_begin()
     }
 
     pub fn commit(&mut self) -> EgResult<()> {
-        self.editor.commit()
+        self.editor().commit()
     }
 
     pub fn rollback(&mut self) -> EgResult<()> {
-        self.editor.rollback()
+        self.editor().rollback()
     }
 
     /// Used for events that stop processing and should result in
@@ -347,7 +356,10 @@ impl Circulator {
         };
 
         if copy_id > 0 {
-            if let Some(copy) = self.editor.retrieve_with_ops("acp", copy_id, copy_flesh)? {
+            if let Some(copy) = self
+                .editor()
+                .retrieve_with_ops("acp", copy_id, copy_flesh)?
+            {
                 self.copy = Some(copy);
             } else {
                 self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
@@ -360,7 +372,11 @@ impl Circulator {
                 deleted: "f", // cstore turns json false into NULL :\
             };
 
-            if let Some(copy) = self.editor.search_with_ops("acp", query, copy_flesh)?.pop() {
+            if let Some(copy) = self
+                .editor()
+                .search_with_ops("acp", query, copy_flesh)?
+                .pop()
+            {
                 self.copy = Some(copy)
             } else {
                 if self.circ_op != CircOp::Checkout {
@@ -396,7 +412,11 @@ impl Circulator {
             flesh_fields: {aca: ["alert_type"]}
         };
 
-        for alert in self.editor.search_with_ops("aca", query, flesh)?.drain(..) {
+        for alert in self
+            .editor()
+            .search_with_ops("aca", query, flesh)?
+            .drain(..)
+        {
             self.runtime_copy_alerts.push(alert);
         }
 
@@ -409,18 +429,24 @@ impl Circulator {
             return Ok(());
         }
 
+        let circ_lib = self.circ_lib;
         let query = json::object! {
-            org: org::full_path(&mut self.editor, self.circ_lib, None)?
+            org: org::full_path(self.editor(), circ_lib, None)?
         };
 
         // actor.copy_alert_suppress
-        let suppressions = self.editor.search("acas", query)?;
+        let suppressions = self.editor().search("acas", query)?;
         let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
 
         let mut wanted_alerts = Vec::new();
 
         let is_renewal = self.is_renewal();
-        for alert in self.runtime_copy_alerts.drain(0..) {
+        loop {
+            let alert = match self.runtime_copy_alerts.pop() {
+                Some(a) => a,
+                None => break,
+            };
+
             let atype = &alert["alert_type"];
 
             // Does this alert type only apply to renewals?
@@ -454,7 +480,7 @@ impl Circulator {
 
             // Filter on "only at circ lib"
             if json_bool(&atype["at_circ"]) {
-                let at_circ_orgs = org::descendants(&mut self.editor, copy_circ_lib)?;
+                let at_circ_orgs = org::descendants(self.editor(), copy_circ_lib)?;
 
                 if json_bool(&atype["invert_location"]) {
                     if at_circ_orgs.contains(&self.circ_lib) {
@@ -468,7 +494,7 @@ impl Circulator {
             // filter on "only at owning lib"
             if json_bool(&atype["at_owning"]) {
                 let owner = json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
-                let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
+                let at_owner_orgs = org::descendants(self.editor(), owner)?;
 
                 if json_bool(&atype["invert_location"]) {
                     if at_owner_orgs.contains(&self.circ_lib) {
@@ -494,6 +520,8 @@ impl Circulator {
         if self.copy_id == 0 {
             return Ok(());
         }
+        let copy_id = self.copy_id;
+        let circ_lib = self.circ_lib;
 
         // System events need event types to focus on.
         let events: &[&str] = if self.circ_op == CircOp::Renew {
@@ -506,8 +534,8 @@ impl Circulator {
             return Ok(());
         };
 
-        let list = self.editor.json_query(json::object! {
-            from: ["asset.copy_state", self.copy_id]
+        let list = self.editor().json_query(json::object! {
+            from: ["asset.copy_state", copy_id]
         })?;
 
         let mut copy_state = "NORMAL";
@@ -525,13 +553,13 @@ impl Circulator {
         let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
 
         let query = json::object! {
-            org: org::full_path(&mut self.editor, self.circ_lib, None)?
+            org: org::full_path(self.editor(), circ_lib, None)?
         };
 
         // actor.copy_alert_suppress
-        let suppressions = self.editor.search("acas", query)?;
+        let suppressions = self.editor().search("acas", query)?;
 
-        let alert_orgs = org::ancestors(&mut self.editor, self.circ_lib)?;
+        let alert_orgs = org::ancestors(self.editor(), circ_lib)?;
 
         let is_renew_filter = if self.is_renewal() { "t" } else { "f" };
 
@@ -544,19 +572,19 @@ impl Circulator {
         };
 
         // config.copy_alert_type
-        let mut alert_types = self.editor.search("ccat", query)?;
+        let mut alert_types = self.editor().search("ccat", query)?;
         let mut wanted_types = Vec::new();
 
         while let Some(atype) = alert_types.pop() {
             // Filter on "only at circ lib"
             if json_bool(&atype["at_circ"]) {
-                let at_circ_orgs = org::descendants(&mut self.editor, copy_circ_lib)?;
+                let at_circ_orgs = org::descendants(self.editor(), copy_circ_lib)?;
 
                 if json_bool(&atype["invert_location"]) {
-                    if at_circ_orgs.contains(&self.circ_lib) {
+                    if at_circ_orgs.contains(&circ_lib) {
                         continue;
                     }
-                } else if !at_circ_orgs.contains(&self.circ_lib) {
+                } else if !at_circ_orgs.contains(&circ_lib) {
                     continue;
                 }
             }
@@ -564,13 +592,13 @@ impl Circulator {
             // filter on "only at owning lib"
             if json_bool(&atype["at_owning"]) {
                 let owner = json_int(&self.copy()["call_number"]["owning_lib"])?;
-                let at_owner_orgs = org::descendants(&mut self.editor, owner)?;
+                let at_owner_orgs = org::descendants(self.editor(), owner)?;
 
                 if json_bool(&atype["invert_location"]) {
-                    if at_owner_orgs.contains(&self.circ_lib) {
+                    if at_owner_orgs.contains(&circ_lib) {
                         continue;
                     }
-                } else if !at_owner_orgs.contains(&self.circ_lib) {
+                } else if !at_owner_orgs.contains(&circ_lib) {
                     continue;
                 }
             }
@@ -601,14 +629,14 @@ impl Circulator {
                 alert_type: atype["id"].clone(),
                 copy: self.copy_id,
                 temp: "t",
-                create_staff: self.editor.requestor_id(),
+                create_staff: self.requestor_id(),
                 create_time: "now",
-                ack_staff: self.editor.requestor_id(),
+                ack_staff: self.requestor_id(),
                 ack_time: "now",
             };
 
-            let alert = self.editor.idl().create_from("aca", alert)?;
-            let mut alert = self.editor.create(alert)?;
+            let alert = self.editor().idl().create_from("aca", alert)?;
+            let mut alert = self.editor().create(alert)?;
 
             alert["alert_type"] = atype.clone(); // flesh
 
@@ -740,7 +768,7 @@ impl Circulator {
                 checkin_time: JsonValue::Null,
             };
 
-            if let Some(circ) = self.editor.search("circ", query)?.pop() {
+            if let Some(circ) = self.editor().search("circ", query)?.pop() {
                 self.circ = Some(circ);
                 log::info!("{self} found an open circulation");
             }
@@ -753,63 +781,108 @@ impl Circulator {
     ///
     /// Also sets a value for self.circ if needed to find the patron.
     fn load_patron(&mut self) -> EgResult<()> {
-        if let Some(patron_id) = self.options.get("patron_id") {
-            let flesh = json::object! {
-                flesh: 1,
-                flesh_fields: {
-                    au: ["card"]
-                }
-            };
-
-            if let Some(patron) = self.editor.retrieve_with_ops("au", patron_id, flesh)? {
-                self.patron = Some(patron);
-            } else {
-                self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND")?;
-            }
-        } else if let Some(patron_barcode) = self.options.get("patron_barcode") {
-            let query = json::object! {barcode: patron_barcode.clone()};
-            let flesh = json::object! {flesh: 1, flesh_fields: {"ac": ["usr"]}};
-
-            if let Some(mut card) = self.editor.search_with_ops("ac", query, flesh)?.pop() {
-                let mut patron = card["usr"].take();
-                card["usr"] = patron["id"].clone(); // de-flesh card->user
-                patron["card"] = card; // flesh user->card
-            } else {
-                self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND")?;
-            }
-        } else if let Some(ref copy) = self.copy {
-            // See if we can find the circulation / patron related
-            // to the provided copy.
-
-            let query = json::object! {
-                target_copy: copy["id"].clone(),
-                checkin_time: JsonValue::Null,
-            };
-
-            let flesh = json::object! {
-                flesh: 2,
-                flesh_fields: {
-                    circ: ["usr"],
-                    au: ["card"],
-                }
-            };
-
-            if let Some(mut circ) = self.editor.search_with_ops("circ", query, flesh)?.pop() {
-                // Flesh consistently
-                let patron = circ["usr"].take();
-
-                circ["usr"] = patron["id"].clone();
-
-                self.patron = Some(patron);
-                self.circ = Some(circ);
-            }
+        if self.load_patron_by_id()? {
+            return Ok(());
         }
 
-        if let Some(p) = self.patron.as_ref() {
-            self.patron_id = json_int(&p["id"])?;
+        if self.load_patron_by_barcode()? {
+            return Ok(());
+        }
+
+        if self.load_patron_by_copy()? {
+            return Ok(());
         }
 
         Ok(())
+    }
+
+    /// Returns true if we were able to load the patron.
+    fn load_patron_by_copy(&mut self) -> EgResult<bool> {
+        let copy = match self.copy.as_ref() {
+            Some(c) => c,
+            None => return Ok(false),
+        };
+
+        // See if we can find the circulation / patron related
+        // to the provided copy.
+
+        let query = json::object! {
+            target_copy: copy["id"].clone(),
+            checkin_time: JsonValue::Null,
+        };
+
+        let flesh = json::object! {
+            flesh: 2,
+            flesh_fields: {
+                circ: ["usr"],
+                au: ["card"],
+            }
+        };
+
+        let mut circ = match self.editor().search_with_ops("circ", query, flesh)?.pop() {
+            Some(c) => c,
+            None => return Ok(false),
+        };
+
+        // Flesh consistently
+        let patron = circ["usr"].take();
+
+        circ["usr"] = patron["id"].clone();
+
+        self.patron_id = json_int(&patron["id"])?;
+        self.patron = Some(patron);
+        self.circ = Some(circ);
+
+        Ok(true)
+    }
+
+    /// Returns true if we were able to load the patron.
+    fn load_patron_by_barcode(&mut self) -> EgResult<bool> {
+        let barcode = match self.options.get("patron_barcode") {
+            Some(b) => b,
+            None => return Ok(false),
+        };
+
+        let query = json::object! {barcode: barcode.clone()};
+        let flesh = json::object! {flesh: 1, flesh_fields: {"ac": ["usr"]}};
+
+        let mut card = match self.editor().search_with_ops("ac", query, flesh)?.pop() {
+            Some(c) => c,
+            None => {
+                self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND")?;
+                return Ok(false);
+            }
+        };
+
+        let mut patron = card["usr"].take();
+
+        card["usr"] = patron["id"].clone(); // de-flesh card->user
+        patron["card"] = card; // flesh user->card
+
+        self.patron_id = json_int(&patron["id"])?;
+        self.patron = Some(patron);
+
+        return Ok(true);
+    }
+
+    /// Returns true if we were able to load the patron by ID.
+    fn load_patron_by_id(&mut self) -> EgResult<bool> {
+        let patron_id = match self.options.get("patron_id") {
+            Some(id) => id.clone(),
+            None => return Ok(false),
+        };
+
+        let flesh = json::object! {flesh: 1, flesh_fields: {au: ["card"]}};
+
+        let patron = self
+            .editor()
+            .retrieve_with_ops("au", patron_id, flesh)?
+            .ok_or_else(|| self.editor().die_event())?;
+
+        self.patron_id = json_int(&patron["id"])?;
+        self.patron = Some(patron);
+
+        Ok(true)
     }
 
     /// Load data common to most/all circulation operations.
@@ -848,16 +921,16 @@ impl Circulator {
             None => Err(format!("We have no copy to update"))?,
         };
 
-        copy["editor"] = json::from(self.editor.requestor_id());
+        copy["editor"] = json::from(self.requestor_id());
         copy["edit_date"] = json::from("now");
 
         for (k, v) in changes.entries_mut() {
             copy[k] = v.take();
         }
 
-        self.editor.idl().de_flesh_object(&mut copy)?;
+        self.editor().idl().de_flesh_object(&mut copy)?;
 
-        self.editor.update(copy)?;
+        self.editor().update(copy)?;
 
         // Load the updated copy with the usual fleshing.
         self.load_copy()?;
@@ -935,10 +1008,10 @@ impl Circulator {
             log::info!("{selfstr} attempting to override: {perm}");
 
             // Override permissions are all global
-            if !self.editor.allowed(&perm)? {
-                if let Some(e) = self.editor.last_event() {
+            if !self.editor().allowed(&perm)? {
+                if let Some(e) = self.editor().last_event().map(|e| e.clone()) {
                     // Track the permission failure as the event to return.
-                    self.failed_events.push(e.clone());
+                    self.failed_events.push(e);
                 } else {
                     // Should not get here.
                     self.failed_events.push(evt);
@@ -968,7 +1041,7 @@ impl Circulator {
             return Ok(());
         }
 
-        if let Some(services) = self.editor.client_mut().send_recv_one(
+        if let Some(services) = self.editor().client_mut().send_recv_one(
             "router",
             "opensrf.router.info.class.list",
             None,
@@ -1004,7 +1077,7 @@ impl Circulator {
             Some(list) => list.clone(),
             None => return Ok(()),
         };
-        holds::retarget_holds(&mut self.editor, hold_ids.as_slice())
+        holds::retarget_holds(self.editor(), hold_ids.as_slice())
     }
 
     /// Create A/T events for checkout/checkin/renewal actions.
@@ -1021,7 +1094,7 @@ impl Circulator {
         }
 
         trigger::create_events_for_object(
-            &mut self.editor,
+            self.editor.as_mut().unwrap(),
             action,
             circ,
             self.circ_lib,
