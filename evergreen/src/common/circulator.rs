@@ -78,6 +78,7 @@ pub struct CircPolicy {
 /// Innards are 'pub' since the impl's are spread across multiple files.
 pub struct Circulator {
     pub editor: Option<Editor>,
+    pub init_run: bool,
     pub settings: Settings,
     pub circ_lib: i64,
     pub copy: Option<JsonValue>,
@@ -120,7 +121,7 @@ pub struct Circulator {
     pub events: Vec<EgEvent>,
 
     pub renewal_remaining: i64,
-    pub auto_renewal_remaining: i64,
+    pub auto_renewal_remaining: Option<i64>,
 
     /// Override failures are tracked here so they can all be returned
     /// to the caller.
@@ -187,6 +188,7 @@ impl Circulator {
 
         Ok(Circulator {
             editor: Some(e),
+            init_run: false,
             settings,
             options,
             circ_lib,
@@ -206,7 +208,7 @@ impl Circulator {
             renewal_remaining: 0,
             deposit_billing: None,
             rental_billing: None,
-            auto_renewal_remaining: 0,
+            auto_renewal_remaining: None,
             fulfilled_hold_ids: None,
             circ_test_success: false,
             circ_policy_unlimited: false,
@@ -889,6 +891,13 @@ impl Circulator {
     ///
     /// This should be called before any other circulation actions.
     pub fn init(&mut self) -> EgResult<()> {
+        if self.init_run {
+            // May be called multiple times, e.g. renewals.
+            return Ok(());
+        }
+
+        self.init_run = true;
+
         if let Some(cl) = self.options.get("circ_lib") {
             self.circ_lib = json_int(cl)?;
         }
