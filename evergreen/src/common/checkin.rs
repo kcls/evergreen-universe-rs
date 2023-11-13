@@ -110,7 +110,7 @@ impl Circulator {
             self.reshelve_copy(false)?;
         }
 
-        if self.editor.has_pending_changes() {
+        if self.editor().has_pending_changes() {
             if self.events.len() == 0 {
                 self.add_event(EgEvent::success());
             }
@@ -121,12 +121,9 @@ impl Circulator {
         self.finish_fines_and_voiding()?;
 
         if let Some(patron) = self.patron.as_ref() {
-            penalty::calculate_penalties(
-                &mut self.editor,
-                json_int(&patron["id"])?,
-                self.circ_lib,
-                None,
-            )?;
+            let patron_id = json_int(&patron["id"])?;
+            let circ_lib = self.circ_lib;
+            penalty::calculate_penalties(self.editor(), patron_id, circ_lib, None)?;
         }
 
         self.cleanup_events();
@@ -184,7 +181,7 @@ impl Circulator {
             cancel_time: JsonValue::Null,
         };
 
-        let mut results = self.editor.search("atc", query)?;
+        let mut results = self.editor().search("atc", query)?;
 
         let transit = match results.pop() {
             Some(t) => t,
@@ -284,16 +281,18 @@ impl Circulator {
         }
 
         let query = json::object! {target_copy: json::from(self.copy_id)};
-        let parts = self.editor.search("acpm", query)?;
+        let parts = self.editor().search("acpm", query)?;
         let parts = parts
             .into_iter()
             .map(|p| json_int(&p["id"]).unwrap())
             .collect::<HashSet<_>>();
 
+        let copy_id = self.copy_id;
+        let circ_lib = self.circ_lib;
         let hold_data = holds::related_to_copy(
-            &mut self.editor,
-            self.copy_id,
-            Some(self.circ_lib),
+            self.editor(),
+            copy_id,
+            Some(circ_lib),
             None,
             None,
             Some(false), // already on holds shelf
@@ -303,7 +302,7 @@ impl Circulator {
         // let the targeter manage the transaction.  Otherwise, we could be
         // targeting a large number of holds within a single transaction
         // which is no bueno.
-        let mut hold_targeter = targeter::HoldTargeter::new(self.editor.clone());
+        let mut hold_targeter = targeter::HoldTargeter::new(self.editor().clone());
 
         for hold in hold_data.iter() {
             let target = hold.target();
@@ -357,8 +356,11 @@ impl Circulator {
         }
 
         if let Some(transit) = self.transit.as_ref() {
-            log::info!("{self} copy is both checked out and in transit.  Canceling transit");
-            transit::cancel_transit(&mut self.editor, transit["id"].clone(), false)?;
+            let transit_id = transit["id"].clone();
+            log::info!(
+                "{self} copy is both checked out and in transit.  Canceling transit {transit_id}"
+            );
+            transit::cancel_transit(self.editor(), transit_id, false)?;
             self.transit = None;
         }
 
@@ -389,7 +391,8 @@ impl Circulator {
             // Make sure no balance is owed, or the setting is meaningless.
 
             if let Some(circ) = self.circ.as_ref() {
-                if let Some(mbts) = self.editor.retrieve("mbts", circ["id"].clone())? {
+                let circ_id = circ["id"].clone();
+                if let Some(mbts) = self.editor().retrieve("mbts", circ_id)? {
                     dont_change = json_float(&mbts["balance_owed"])? == 0.0;
                 }
             }
@@ -411,12 +414,14 @@ impl Circulator {
             return Ok(());
         }
 
+        let float_id = float_id.clone();
+
         // Copy can float.  Can it float here?
 
         let float_group = self
-            .editor
-            .retrieve("cfg", float_id.clone())?
-            .ok_or_else(|| self.editor.die_event())?;
+            .editor()
+            .retrieve("cfg", float_id)?
+            .ok_or_else(|| self.editor().die_event())?;
 
         let query = json::object! {
             from: [
@@ -427,7 +432,7 @@ impl Circulator {
             ]
         };
 
-        if let Some(resp) = self.editor.json_query(query)?.first() {
+        if let Some(resp) = self.editor().json_query(query)?.first() {
             if json_bool(&resp["evergreen.can_float"]) {
                 self.set_option_true("can_float");
             }
@@ -442,7 +447,7 @@ impl Circulator {
             return Ok(());
         }
 
-        let ws_id = match self.editor.requestor_ws_id() {
+        let ws_id = match self.editor().requestor_ws_id() {
             Some(i) => i,
             // Cannot perform inventory without a workstation.
             None => return Ok(()),
@@ -462,7 +467,7 @@ impl Circulator {
             copy: self.copy()["id"].clone(),
         };
 
-        self.editor.create(aci)?;
+        self.editor().create(aci)?;
 
         Ok(())
     }
@@ -476,24 +481,26 @@ impl Circulator {
             return Ok(false);
         }
 
+        let copy_id = self.copy_id;
+
         if self.get_option_bool("clear_expired") {
             // Clear shelf-expired holds for this copy.
             // TODO run in the same transaction once ported to Rust.
 
             let params = vec![
-                json::from(self.editor.authtoken()),
+                json::from(self.editor().authtoken()),
                 json::from(self.circ_lib),
                 self.copy()["id"].clone(),
             ];
 
-            self.editor.client_mut().send_recv_one(
+            self.editor().client_mut().send_recv_one(
                 "open-ils.circ",
                 "open-ils.circ.hold.clear_shelf.process",
                 params,
             )?;
         }
 
-        let hold = match holds::captured_hold_for_copy(&mut self.editor, self.copy_id)? {
+        let hold = match holds::captured_hold_for_copy(self.editor(), copy_id)? {
             Some(h) => h,
             None => {
                 log::warn!("{self} Copy on holds shelf but there is no hold");
@@ -590,7 +597,7 @@ impl Circulator {
             xact: circ_id,
         };
 
-        let mut results = self.editor.search("mb", query)?;
+        let mut results = self.editor().search("mb", query)?;
         let deposit = match results.pop() {
             Some(d) => d,
             None => return Ok(()),
@@ -600,7 +607,7 @@ impl Circulator {
             // Caller suggests we void.  Verify settings allow it.
             if json_bool(self.settings.get_value("circ.void_item_deposit")?) {
                 let bill_id = json_int(&deposit["id"])?;
-                billing::void_bills(&mut self.editor, &[bill_id], Some("DEPOSIT ITEM RETURNED"))?;
+                billing::void_bills(self.editor(), &[bill_id], Some("DEPOSIT ITEM RETURNED"))?;
             }
         } else {
             let mut evt = EgEvent::new("ITEM_DEPOSIT_PAID");
@@ -629,6 +636,9 @@ impl Circulator {
         let copy_status = self.copy_status();
         let copy_circ_lib = self.copy_circ_lib();
 
+        let req_id = self.requestor_id();
+        let req_ws_id = self.editor().requestor_ws_id();
+
         let circ = self.circ.as_mut().unwrap();
         let circ_id: i64 = json_int(&circ["id"])?;
 
@@ -639,9 +649,9 @@ impl Circulator {
             .unwrap_or(json::from("now"));
 
         circ["checkin_scan_time"] = json::from("now");
-        circ["checkin_staff"] = json::from(self.editor.requestor_id());
+        circ["checkin_staff"] = json::from(req_id);
         circ["checkin_lib"] = json::from(self.circ_lib);
-        if let Some(id) = self.editor.requestor_ws_id() {
+        if let Some(id) = req_ws_id {
             circ["checkin_workstation"] = json::from(id);
         }
 
@@ -668,8 +678,8 @@ impl Circulator {
             // Caller has requested we leave well enough alone, i.e.
             // if an item was lost and paid, it's not eligible to be
             // re-opened for additional billing.
-            let circ = self.circ.as_ref().unwrap();
-            self.editor.update(circ.clone())?;
+            let circ = self.circ.as_ref().unwrap().clone();
+            self.editor().update(circ)?;
         } else {
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap();
@@ -692,8 +702,8 @@ impl Circulator {
                 }
             }
 
-            let circ = self.circ.as_ref().unwrap();
-            self.editor.update(circ.clone())?;
+            let circ = self.circ.as_ref().unwrap().clone();
+            self.editor().update(circ)?;
             self.handle_checkin_fines()?;
         }
 
@@ -702,10 +712,10 @@ impl Circulator {
         log::debug!("{selfstr} checking open transaction state");
 
         // Set/clear stop_fines as needed.
-        billing::check_open_xact(&mut self.editor, circ_id)?;
+        billing::check_open_xact(self.editor(), circ_id)?;
 
         // Get a post-save version of the circ to pick up any in-DB changes.
-        self.circ = self.editor.retrieve("circ", circ_id)?;
+        self.circ = self.editor().retrieve("circ", circ_id)?;
 
         Ok(())
     }
@@ -830,22 +840,23 @@ impl Circulator {
     fn circ_last_billing_activity(&mut self, maybe_setting: Option<&str>) -> EgResult<String> {
         let copy_circ_lib = self.copy_circ_lib();
         let circ = self.circ.as_ref().unwrap();
+        let circ_id = circ["id"].clone();
 
-        // due_date is a required string field.
-        let due_date = circ["due_date"].as_str().unwrap();
+        // to_string() early to avoid some mutable borrow issues
+        let due_date = circ["due_date"].as_str().unwrap().to_string();
 
         let setting = match maybe_setting {
             Some(s) => s,
-            None => return Ok(due_date.to_string()),
+            None => return Ok(due_date),
         };
 
         let use_activity = self.settings.get_value_at_org(setting, copy_circ_lib)?;
 
         if !json_bool(use_activity) {
-            return Ok(due_date.to_string());
+            return Ok(due_date);
         }
 
-        if let Some(mbts) = self.editor.retrieve("mbts", circ["id"].clone())? {
+        if let Some(mbts) = self.editor().retrieve("mbts", circ_id)? {
             if let Some(last_payment) = mbts["last_payment_ts"].as_str() {
                 return Ok(last_payment.to_string());
             }
@@ -855,7 +866,7 @@ impl Circulator {
         }
 
         // No billing activity.  Fall back to due date.
-        Ok(due_date.to_string())
+        Ok(due_date)
     }
 
     /// Compiles the exact backdate value.
@@ -932,16 +943,16 @@ impl Circulator {
         };
         if is_circ {
             if self.circ.as_ref().unwrap()["stop_fines"].is_null() {
-                billing::generate_fines_for_circ(&mut self.editor, xact_id)?;
+                billing::generate_fines_for_circ(self.editor(), xact_id)?;
 
                 // Update our copy of the circ after billing changes,
                 // which may apply a stop_fines value.
-                self.circ = self.editor.retrieve("circ", xact_id)?;
+                self.circ = self.editor().retrieve("circ", xact_id)?;
             }
 
             self.set_circ_stop_fines()?;
         } else {
-            billing::generate_fines_for_resv(&mut self.editor, xact_id)?;
+            billing::generate_fines_for_resv(self.editor(), xact_id)?;
         }
 
         if !self.get_option_bool("needs_lost_bill_handling") {
@@ -976,17 +987,17 @@ impl Circulator {
             }
         }
 
+        let void_cost_btype = ops["void_cost_btype"].as_i64().unwrap_or(0);
+        let void_fee_btype = ops["void_fee_btype"].as_i64().unwrap_or(0);
+
         if void_cost > 0.0 {
-            let void_cost_btype = match ops["void_cost_btype"].as_i64() {
-                Some(b) => b,
-                None => {
-                    log::warn!("Cannot zero {tag} circ without a billing type");
-                    return Ok(());
-                }
-            };
+            if void_cost_btype == 0 {
+                log::warn!("Cannot zero {tag} circ without a billing type");
+                return Ok(());
+            }
 
             billing::void_or_zero_bills_of_type(
-                &mut self.editor,
+                self.editor(),
                 xact_id,
                 copy_circ_lib,
                 void_cost_btype,
@@ -995,16 +1006,13 @@ impl Circulator {
         }
 
         if void_proc_fee > 0.0 {
-            let void_fee_btype = match ops["void_fee_btype"].as_i64() {
-                Some(b) => b,
-                None => {
-                    log::warn!("Cannot zero {tag} circ without a billing type");
-                    return Ok(());
-                }
-            };
+            if void_fee_btype == 0 {
+                log::warn!("Cannot zero {tag} circ without a billing type");
+                return Ok(());
+            }
 
             billing::void_or_zero_bills_of_type(
-                &mut self.editor,
+                self.editor(),
                 xact_id,
                 copy_circ_lib,
                 void_fee_btype,
@@ -1041,15 +1049,17 @@ impl Circulator {
             None => json::from("now"),
         };
 
-        let circ = self.circ.as_mut().unwrap();
+        let mut circ = circ.clone();
+
+        let circ_id = circ["id"].clone();
 
         circ["stop_fines"] = stop_fines;
         circ["stop_fines_time"] = stop_fines_time;
 
-        self.editor.update(circ.clone())?;
+        self.editor().update(circ)?;
 
         // Update our copy to get in-DB changes.
-        self.circ = self.editor.retrieve("circ", circ["id"].clone())?;
+        self.circ = self.editor().retrieve("circ", circ_id)?;
 
         Ok(())
     }
@@ -1061,10 +1071,11 @@ impl Circulator {
     ) -> EgResult<()> {
         let circ = self.circ.as_ref().unwrap();
         let circ_id = json_int(&circ["id"])?;
+        let void_max = json_float(&circ["max_fine"])?;
 
         let query = json::object! {xact: circ_id, btype: C::BTYPE_OVERDUE_MATERIALS};
         let ops = json::object! {"order_by": {"mb": "billing_ts desc"}};
-        let overdues = self.editor.search_with_ops("mb", query, ops)?;
+        let overdues = self.editor().search_with_ops("mb", query, ops)?;
 
         if overdues.len() == 0 {
             log::info!("{self} no overdues to reinstate on lost/lo checkin");
@@ -1078,12 +1089,11 @@ impl Circulator {
         };
         log::info!("{self} re-instating {} pre-{tag} overdues", overdues.len());
 
-        let void_max = json_float(&circ["max_fine"])?;
         let mut void_amount = 0.0;
 
         let billing_ids: Vec<JsonValue> = overdues.iter().map(|b| b["id"].clone()).collect();
         let voids = self
-            .editor
+            .editor()
             .search("maa", json::object! {"billing": billing_ids})?;
 
         if voids.len() > 0 {
@@ -1120,7 +1130,7 @@ impl Circulator {
         let note = format!("System: {tag} RETURNED - OVERDUES REINSTATED");
 
         billing::create_bill(
-            &mut self.editor,
+            self.editor(),
             void_amount,
             C::BTYPE_OVERDUE_MATERIALS,
             btype_label,
@@ -1151,13 +1161,14 @@ impl Circulator {
             self.set_option_true("fake_hold_dest");
         }
 
-        self.hold_transit = self.editor.retrieve("ahtc", transit_id)?;
+        self.hold_transit = self.editor().retrieve("ahtc", transit_id)?;
 
         if let Some(ht) = self.hold_transit.as_ref() {
+            let hold_id = ht["hold"].clone();
             // A hold transit can have a null "hold" value if the linked
             // hold was anonymized while in transit.
             if !ht["hold"].is_null() {
-                self.hold = self.editor.retrieve("ahr", ht["hold"].clone())?;
+                self.hold = self.editor().retrieve("ahr", hold_id)?;
             }
         }
 
@@ -1182,10 +1193,10 @@ impl Circulator {
         // Receive the transit
         let mut transit = self.transit.take().unwrap();
         transit["dest_recv_time"] = json::from("now");
-        self.editor.update(transit)?;
+        self.editor().update(transit)?;
 
         // Refresh our copy of the transit.
-        self.transit = self.editor.retrieve("atc", transit_id)?;
+        self.transit = self.editor().retrieve("atc", transit_id)?;
 
         // Apply the destination copy status.
         self.update_copy(json::object! {"status": transit_copy_status})?;
@@ -1224,12 +1235,12 @@ impl Circulator {
             return Ok(());
         }
 
-        let copy = self.copy.as_ref().unwrap();
+        let copy_id = self.copy_id;
 
         let mut alt_hold;
         let hold = match self.hold.as_mut() {
             Some(h) => h,
-            None => match holds::captured_hold_for_copy(&mut self.editor, copy["id"].clone())? {
+            None => match holds::captured_hold_for_copy(self.editor(), copy_id)? {
                 Some(h) => {
                     alt_hold = Some(h);
                     alt_hold.as_mut().unwrap()
@@ -1258,9 +1269,9 @@ impl Circulator {
             let mut hold = self.hold.take().unwrap();
             let hold_id = json_int(&hold["id"])?;
             hold["fulfillment_time"] = json::from("now");
-            self.editor.update(hold)?;
+            self.editor().update(hold)?;
 
-            self.hold = self.editor.retrieve("ahr", hold_id)?;
+            self.hold = self.editor().retrieve("ahr", hold_id)?;
 
             return Ok(());
         }
@@ -1328,12 +1339,12 @@ impl Circulator {
         hold["shelf_time"] = json::from("now");
         hold["current_shelf_lib"] = json::from(self.circ_lib);
 
-        if let Some(date) = holds::calc_hold_shelf_expire_time(&mut self.editor, &hold, None)? {
+        if let Some(date) = holds::calc_hold_shelf_expire_time(self.editor(), &hold, None)? {
             hold["shelf_expire_time"] = json::from(date);
         }
 
-        self.editor.update(hold)?;
-        self.hold = self.editor.retrieve("ahr", hold_id)?;
+        self.editor().update(hold)?;
+        self.hold = self.editor().retrieve("ahr", hold_id)?;
 
         Ok(())
     }
@@ -1382,8 +1393,9 @@ impl Circulator {
             return Ok(false);
         }
 
-        let maybe_found =
-            holds::find_nearest_permitted_hold(&mut self.editor, self.copy_id, false)?;
+        let copy_id = self.copy_id;
+
+        let maybe_found = holds::find_nearest_permitted_hold(self.editor(), copy_id, false)?;
 
         let (mut hold, retarget) = match maybe_found {
             Some(info) => info,
@@ -1428,8 +1440,8 @@ impl Circulator {
             self.put_hold_on_shelf()?;
         } else {
             let hold_id = json_int(&hold["id"])?;
-            self.editor.update(hold)?;
-            self.hold = self.editor.retrieve("ahr", hold_id)?;
+            self.editor().update(hold)?;
+            self.hold = self.editor().retrieve("ahr", hold_id)?;
         }
 
         Ok(true)
@@ -1441,12 +1453,12 @@ impl Circulator {
         }
 
         let params = vec![
-            json::from(self.editor.authtoken()),
+            json::from(self.editor().authtoken()),
             self.copy()["barcode"].clone(),
             json::from(true), // Avoid updating the copy.
         ];
 
-        let result = self.editor.client_mut().send_recv_one(
+        let result = self.editor().client_mut().send_recv_one(
             "open-ils.booking",
             "open-ils.booking.resources.capture_for_reservation",
             params,
@@ -1503,11 +1515,9 @@ impl Circulator {
             return Ok(None);
         }
 
-        let maybe_found = holds::find_nearest_permitted_hold(
-            &mut self.editor,
-            self.copy_id,
-            true, /* check only */
-        )?;
+        let copy_id = self.copy_id;
+        let maybe_found =
+            holds::find_nearest_permitted_hold(self.editor(), copy_id, true /* check only */)?;
 
         let (hold, retarget) = match maybe_found {
             Some(info) => info,
@@ -1532,11 +1542,11 @@ impl Circulator {
         }
 
         let params = vec![
-            json::from(self.editor.authtoken()),
+            json::from(self.editor().authtoken()),
             self.copy()["barcode"].clone(),
         ];
 
-        let result = self.editor.client_mut().send_recv_one(
+        let result = self.editor().client_mut().send_recv_one(
             "open-ils.booking",
             "open-ils.booking.reservations.could_capture",
             params,
@@ -1623,6 +1633,7 @@ impl Circulator {
         // If we are "transiting" an item to the holds shelf,
         // it's a hold transit.
         let maybe_remote_hold = self.options.get("remote_hold");
+        let has_remote_hold = maybe_remote_hold.is_some();
 
         if let Some(hold) = maybe_remote_hold.as_ref() {
             transit["hold"] = hold["id"].clone();
@@ -1632,20 +1643,20 @@ impl Circulator {
                 let mut h = (*hold).clone();
                 h["current_shelf_lib"].take();
                 h["shelf_time"].take();
-                self.editor.update(h)?;
+                self.editor().update(h)?;
             }
         }
 
         log::info!("{self} transiting copy to {dest_lib}");
 
-        if maybe_remote_hold.is_some() {
-            let t = self.editor.idl().create_from("ahtc", transit)?;
-            let t = self.editor.create(t)?;
-            self.hold_transit = self.editor.retrieve("ahtc", t["id"].clone())?;
+        if has_remote_hold {
+            let t = self.editor().idl().create_from("ahtc", transit)?;
+            let t = self.editor().create(t)?;
+            self.hold_transit = self.editor().retrieve("ahtc", t["id"].clone())?;
         } else {
-            let t = self.editor.idl().create_from("atc", transit)?;
-            let t = self.editor.create(t)?;
-            self.transit = self.editor.retrieve("ahtc", t["id"].clone())?;
+            let t = self.editor().idl().create_from("atc", transit)?;
+            let t = self.editor().create(t)?;
+            self.transit = self.editor().retrieve("ahtc", t["id"].clone())?;
         }
 
         self.update_copy(json::object! {"status": C::COPY_STATUS_IN_TRANSIT})?;
@@ -1657,7 +1668,7 @@ impl Circulator {
     fn finish_fines_and_voiding(&mut self) -> EgResult<()> {
         let void_overdues = self.get_option_bool("void_overdues");
         let mut backdate_maybe = match self.options.get("backate") {
-            Some(bd) => bd.as_str(),
+            Some(bd) => bd.as_str().map(|d| d.to_string()),
             None => None,
         };
 
@@ -1678,15 +1689,15 @@ impl Circulator {
         }
 
         billing::void_or_zero_overdues(
-            &mut self.editor,
+            self.editor(),
             circ_id,
-            backdate_maybe,
+            backdate_maybe.as_deref(),
             note_maybe,
             false,
             false,
         )?;
 
-        billing::check_open_xact(&mut self.editor, circ_id)
+        billing::check_open_xact(self.editor(), circ_id)
     }
 
     /// This assumes the caller is finished with all processing and makes
@@ -1701,7 +1712,7 @@ impl Circulator {
         copy["call_number"] = volume["id"].clone();
 
         // De-flesh the copy
-        self.editor.idl().de_flesh_object(&mut copy)?;
+        self.editor().idl().de_flesh_object(&mut copy)?;
 
         let mut payload = json::object! {
             "copy": copy,
@@ -1709,7 +1720,7 @@ impl Circulator {
         };
 
         if !self.is_precat_copy() {
-            if let Some(rec) = self.editor.retrieve("rmsr", record_id)? {
+            if let Some(rec) = self.editor().retrieve("rmsr", record_id)? {
                 payload["title"] = rec;
             }
         }
@@ -1717,7 +1728,7 @@ impl Circulator {
         if let Some(mut hold) = self.hold.take() {
             if hold["cancel_time"].is_null() {
                 hold["notes"] = json::from(
-                    self.editor
+                    self.editor()
                         .search("ahrn", json::object! {hold: hold["id"].clone()})?,
                 );
                 payload["hold"] = hold;
@@ -1733,10 +1744,9 @@ impl Circulator {
                 }
             };
 
-            if let Some(fcirc) = self
-                .editor
-                .retrieve_with_ops("circ", circ["id"].clone(), flesh)?
-            {
+            let circ_id = circ["id"].clone();
+
+            if let Some(fcirc) = self.editor().retrieve_with_ops("circ", circ_id, flesh)? {
                 payload["circ"] = fcirc;
             }
         }
@@ -1749,10 +1759,9 @@ impl Circulator {
                 }
             };
 
-            if let Some(fpatron) =
-                self.editor
-                    .retrieve_with_ops("au", patron["id"].clone(), flesh)?
-            {
+            let patron_id = patron["id"].clone();
+
+            if let Some(fpatron) = self.editor().retrieve_with_ops("au", patron_id, flesh)? {
                 payload["patron"] = fpatron;
             }
         }
@@ -1773,7 +1782,7 @@ impl Circulator {
             }
         };
 
-        if let Some(inventory) = self.editor.search_with_ops("alci", query, flesh)?.pop() {
+        if let Some(inventory) = self.editor().search_with_ops("alci", query, flesh)?.pop() {
             payload["copy"]["latest_inventory"] = inventory;
         }
 
@@ -1839,7 +1848,7 @@ impl Circulator {
             "limit": 1
         };
 
-        let mut hold = match self.editor.search_with_ops("ahr", query, ops)?.pop() {
+        let mut hold = match self.editor().search_with_ops("ahr", query, ops)?.pop() {
             Some(h) => h,
             None => return Ok(false),
         };
@@ -1868,7 +1877,7 @@ impl Circulator {
         hold["fulfillment_staff"].take();
         hold["fulfillment_lib"].take();
 
-        self.editor.update(hold)?;
+        self.editor().update(hold)?;
 
         self.update_copy(json::object! {"status": C::COPY_STATUS_ON_HOLDS_SHELF})?;
 

@@ -1,5 +1,6 @@
 use crate::common::org;
 use crate::common::settings::Settings;
+use crate::common::targeter;
 use crate::common::transit;
 use crate::constants as C;
 use crate::date;
@@ -520,6 +521,25 @@ where
     Ok(())
 }
 
+/// Consumes an editor, targets a hold, then returns the Editor.
+///
+/// Assumes the provided editor is running within a transaction
+/// that will be commited (or rollback back) by the caller.
+pub fn retarget_hold_in_xact(
+    editor: Editor,
+    hold_id: i64,
+) -> EgResult<(targeter::HoldTargetContext, Editor)> {
+    let mut targeter = targeter::HoldTargeter::new(editor);
+
+    targeter.init()?;
+
+    let ctx = targeter.target_hold(hold_id, None)?;
+
+    let editor = targeter.take_editor();
+
+    Ok((ctx, editor))
+}
+
 /// Reset a hold and retarget it.
 ///
 /// NOTE: Since retargeting must run outside of our transaction, and our
@@ -577,7 +597,6 @@ where
     editor.update(hold)?;
     editor.commit()?;
 
-    //let id = json_int(&hold_id)?; // TODO avoid this translation
     retarget_holds(&mut editor, &[hold_id])
 }
 
@@ -662,6 +681,7 @@ pub fn related_to_copy(
                 "selection_depth",
                 "request_time",
                 "cut_in_line",
+                "pickup_lib",
             ],
             "pgt": ["hold_priority"]
         },
@@ -694,9 +714,7 @@ pub fn related_to_copy(
         if v {
             query["where"]["+ahr"]["current_shelf_lib"] =
                 json::object! {"=": {"+ahr": "pickup_lib"}};
-
         } else {
-
             query["where"]["+ahr"]["-or"] = json::array! [
                 {"current_shelf_lib": JsonValue::Null},
                 {"current_shelf_lib": {"!=": {"+ahr": "pickup_lib"}}}

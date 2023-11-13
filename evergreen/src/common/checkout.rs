@@ -1,8 +1,8 @@
 use crate::common::billing;
 use crate::common::circulator::{CircOp, CircPolicy, Circulator};
+use crate::common::holds;
 use crate::common::noncat;
 use crate::common::org;
-use crate::common::holds;
 use crate::constants as C;
 use crate::date;
 use crate::event::EgEvent;
@@ -54,10 +54,9 @@ impl Circulator {
         self.build_checkout_circ()?;
         self.apply_due_date()?;
 
-        self.circ = Some(
-            // At this point we know we have a circ.
-            self.editor.create(self.circ.as_ref().unwrap().clone())?,
-        );
+        // At this point we know we have a circ.
+        let clone = self.circ.as_ref().unwrap().clone();
+        self.circ = Some(self.editor().create(clone)?);
 
         self.apply_limit_groups()?;
 
@@ -89,17 +88,20 @@ impl Circulator {
         let mut checkout_time = None;
         if let Some(ct) = self.options.get("checkout_time") {
             if let Some(ct2) = ct.as_str() {
-                checkout_time = Some(ct2);
+                checkout_time = Some(ct2.to_string());
             }
         }
 
+        let patron_id = self.patron_id;
+        let noncat_type = json_int(&noncat_type)?;
+
         let mut circs = noncat::checkout(
-            &mut self.editor,
-            json_int(&self.patron.as_ref().unwrap()["id"])?,
-            json_int(&noncat_type)?,
+            self.editor(),
+            patron_id,
+            noncat_type,
             circ_lib,
             count,
-            checkout_time,
+            checkout_time.as_deref(),
         )?;
 
         let mut evt = EgEvent::success();
@@ -114,8 +116,8 @@ impl Circulator {
 
     fn create_precat_copy(&mut self) -> EgResult<()> {
         if !self.is_renewal() {
-            if !self.editor.allowed("CREATE_PRECAT")? {
-                return Err(self.editor.die_event());
+            if !self.editor().allowed("CREATE_PRECAT")? {
+                return Err(self.editor().die_event());
             }
         }
 
@@ -124,6 +126,8 @@ impl Circulator {
         if self.copy.is_some() {
             return self.update_existing_precat();
         }
+
+        let reqr_id = self.requestor_id();
 
         let dummy_title = self
             .options
@@ -160,8 +164,8 @@ impl Circulator {
 
         let copy = json::object! {
             "circ_lib": self.circ_lib,
-            "creator": self.editor.requestor_id(),
-            "editor": self.editor.requestor_id(),
+            "creator": reqr_id,
+            "editor": reqr_id,
             "barcode": copy_barcode,
             "dummy_title": dummy_title,
             "dummy_author": dummy_author,
@@ -172,16 +176,19 @@ impl Circulator {
             "fine_level": C::PRECAT_COPY_FINE_LEVEL,
         };
 
-        let mut copy = self.editor.idl().create_from("acp", copy)?;
+        let mut copy = self.editor().idl().create_from("acp", copy)?;
 
-        let pclib = self.settings.get_value("circ.pre_cat_copy_circ_lib")?;
+        let pclib = self
+            .settings
+            .get_value("circ.pre_cat_copy_circ_lib")?
+            .clone();
 
         if let Some(sn) = pclib.as_str() {
-            let o = org::by_shortname(&mut self.editor, sn)?;
-            copy["circ_lib"] = json::from(o["id"].clone());
+            let o = org::by_shortname(self.editor(), sn)?;
+            copy["circ_lib"] = o["id"].clone();
         }
 
-        let copy = self.editor.create(copy)?;
+        let copy = self.editor().create(copy)?;
 
         self.copy_id = json_int(&copy["id"])?;
 
@@ -224,7 +231,7 @@ impl Circulator {
             .unwrap_or(copy["circ_modifier"].as_str());
 
         self.update_copy(json::object! {
-            "editor": self.editor.requestor_id(),
+            "editor": self.requestor_id(),
             "edit_date": "now",
             "dummy_title": dummy_title,
             "dummy_author": dummy_author,
@@ -256,7 +263,7 @@ impl Circulator {
             "checkin_time": JsonValue::Null,
         };
 
-        let mut circ = match self.editor.search("circ", query)?.pop() {
+        let mut circ = match self.editor().search("circ", query)?.pop() {
             Some(c) => c,
             None => return Ok(()),
         };
@@ -268,13 +275,13 @@ impl Circulator {
         circ["checkin_time"] = json::from("now");
         circ["checkin_scan_time"] = json::from("now");
         circ["checkin_lib"] = json::from(self.circ_lib);
-        circ["checkin_staff"] = json::from(self.editor.requestor_id());
+        circ["checkin_staff"] = json::from(self.requestor_id());
 
-        if let Some(id) = self.editor.requestor_ws_id() {
+        if let Some(id) = self.editor().requestor_ws_id() {
             circ["checkin_workstation"] = json::from(id);
         }
 
-        self.editor.update(circ).map(|_| ())
+        self.editor().update(circ).map(|_| ())
     }
 
     fn check_for_open_circ(&mut self) -> EgResult<()> {
@@ -287,7 +294,7 @@ impl Circulator {
             "checkin_time": JsonValue::Null,
         };
 
-        let circ = match self.editor.search("circ", query)?.pop() {
+        let circ = match self.editor().search("circ", query)?.pop() {
             Some(c) => c,
             None => return Ok(()),
         };
@@ -351,7 +358,7 @@ impl Circulator {
             ]
         };
 
-        let results = self.editor.json_query(query)?;
+        let results = self.editor().json_query(query)?;
 
         if results.len() == 0 {
             return self.exit_err_on_event_code("NO_POLICY_MATCHPOINT");
@@ -386,23 +393,23 @@ impl Circulator {
         };
 
         let mut duration_rule = self
-            .editor
+            .editor()
             .retrieve("crcd", policy["duration_rule"].clone())?
             .ok_or_else(err)?;
 
         let mut recurring_fine_rule = self
-            .editor
+            .editor()
             .retrieve("crrf", policy["recurring_fine_rule"].clone())?
             .ok_or_else(err)?;
 
         let max_fine_rule = self
-            .editor
+            .editor()
             .retrieve("crmf", policy["max_fine_rule"].clone())?
             .ok_or_else(err)?;
 
         // optional
         let hard_due_date = self
-            .editor
+            .editor()
             .retrieve("chdd", policy["hard_due_date"].clone())?;
 
         if let Ok(n) = json_int(&policy["renewals"]) {
@@ -454,13 +461,15 @@ impl Circulator {
     fn calc_max_fine(&mut self, max_fine_rule: &JsonValue) -> EgResult<f64> {
         let rule_amount = json_float(&max_fine_rule["amount"])?;
 
+        let copy_id = self.copy_id;
+
         if json_bool(&max_fine_rule["is_percent"]) {
-            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id)?;
+            let copy_price = billing::get_copy_price(self.editor(), copy_id)?;
             return Ok((copy_price * rule_amount) / 100.0);
         }
 
         if json_bool(self.settings.get_value("circ.max_fine.cap_at_price")?) {
-            let copy_price = billing::get_copy_price(&mut self.editor, self.copy_id)?;
+            let copy_price = billing::get_copy_price(self.editor(), copy_id)?;
             let amount = if rule_amount > copy_price {
                 copy_price
             } else {
@@ -478,10 +487,10 @@ impl Circulator {
             "target_copy": self.copy_id,
             "usr": self.patron_id,
             "circ_lib": self.circ_lib,
-            "circ_staff": self.editor.requestor_id(),
+            "circ_staff": self.requestor_id(),
         };
 
-        if let Some(ws) = self.editor.requestor_ws_id() {
+        if let Some(ws) = self.editor().requestor_ws_id() {
             circ["workstation"] = json::from(ws);
         };
 
@@ -561,21 +570,23 @@ impl Circulator {
 
     /// Apply the user-provided due date.
     fn set_manual_due_date(&mut self) -> EgResult<bool> {
-        if let Some(due_op) = self.options.get("due_date") {
-            let due_str = due_op.as_str().ok_or(format!("Invalid manual due date"))?;
+        let due_val = match self.options.get("due_date") {
+            Some(d) => d.clone(),
+            None => return Ok(false),
+        };
 
-            if !self
-                .editor
-                .allowed_at("CIRC_OVERRIDE_DUE_DATE", self.circ_lib)?
-            {
-                return Err(self.editor.die_event());
-            }
+        let circ_lib = self.circ_lib;
 
-            self.circ.as_mut().unwrap()["due_date"] = json::from(due_str);
-            return Ok(true);
+        if !self
+            .editor()
+            .allowed_at("CIRC_OVERRIDE_DUE_DATE", circ_lib)?
+        {
+            return Err(self.editor().die_event());
         }
 
-        Ok(false)
+        self.circ.as_mut().unwrap()["due_date"] = due_val;
+
+        return Ok(true);
     }
 
     /// Set the initial circ due date based on the circulation policy info.
@@ -627,14 +638,14 @@ impl Circulator {
         }
 
         let due_date = match self.circ.as_ref().unwrap()["due_date"].as_str() {
-            Some(s) => s,
+            Some(s) => s.to_string(),
             None => return Ok(false),
         };
 
         let query = json::object! {"barcode": self.copy()["barcode"].clone()};
         let flesh = json::object! {"flesh": 1, "flesh_fields": {"brsrc": ["type"]}};
 
-        let resource = match self.editor.search_with_ops("brsrc", query, flesh)?.pop() {
+        let resource = match self.editor().search_with_ops("brsrc", query, flesh)?.pop() {
             Some(r) => r,
             None => return Ok(false),
         };
@@ -647,14 +658,14 @@ impl Circulator {
         let query = json::object! {
             "resource": resource["id"].clone(),
             "search_start": "now",
-            "search_end": due_date,
+            "search_end": due_date.as_str(),
             "fields": {
                 "cancel_time": JsonValue::Null,
                 "return_time": JsonValue::Null,
             }
         };
 
-        let booking_ids_op = self.editor.client_mut().send_recv_one(
+        let booking_ids_op = self.editor().client_mut().send_recv_one(
             "open-ils.booking",
             "open-ils.booking.reservations.filtered_id_list",
             query,
@@ -670,7 +681,7 @@ impl Circulator {
         }
 
         // See if any of the reservations overlap with our checkout
-        let due_date_dt = date::parse_datetime(due_date)?;
+        let due_date_dt = date::parse_datetime(&due_date)?;
         let now_dt = date::now();
         let mut bookings = Vec::new();
 
@@ -678,9 +689,9 @@ impl Circulator {
         // reservation overlap / stop-circ setting.
         for id in booking_ids.members() {
             let booking = self
-                .editor
+                .editor()
                 .retrieve("bresv", id.clone())?
-                .ok_or_else(|| self.editor.die_event())?;
+                .ok_or_else(|| self.editor().die_event())?;
 
             let booking_start = date::parse_datetime(booking["start_time"].as_str().unwrap())?;
 
@@ -754,7 +765,8 @@ impl Circulator {
 
         let due_date_dt = date::parse_datetime(due_date_str)?;
 
-        let org_open_data = org::next_open_date(&mut self.editor, self.circ_lib, &due_date_dt)?;
+        let circ_lib = self.circ_lib;
+        let org_open_data = org::next_open_date(self.editor(), circ_lib, &due_date_dt)?;
 
         let due_date_dt = match org_open_data {
             // No org unit closuers to consider.
@@ -783,6 +795,9 @@ impl Circulator {
             None => return Ok(()),
         };
 
+        // Intervals can in theory be numeric; coerce to string result.
+        let renew_extend_min_res = json_string(&policy.matchpoint["renew_extend_min_interval"]);
+
         if !json_bool(&policy.matchpoint["renew_extends_due_date"]) {
             // Not configured to extend on the matching policy.
             return Ok(());
@@ -799,9 +814,9 @@ impl Circulator {
             .parent_circ
             .ok_or_else(|| format!("Renewals require a parent circ"))?;
 
-        let prev_circ = match self.editor.retrieve("circ", json::from(parent_circ))? {
+        let prev_circ = match self.editor().retrieve("circ", json::from(parent_circ))? {
             Some(c) => c,
-            None => return Err(self.editor.die_event()),
+            None => return Err(self.editor().die_event()),
         };
 
         let start_time_str = prev_circ["xact_start"].as_str().expect("required");
@@ -819,8 +834,8 @@ impl Circulator {
 
         // Make sure the renewal is not occurring too early in the
         // parent circ's lifecycle.
-        if let Some(intvl) = policy.matchpoint["renew_extend_min_interval"].as_str() {
-            let min_duration = date::interval_to_seconds(intvl)?;
+        if let Ok(intvl) = renew_extend_min_res {
+            let min_duration = date::interval_to_seconds(&intvl)?;
             let co_duration = now_time - start_time;
 
             if co_duration.num_seconds() < min_duration {
@@ -886,7 +901,7 @@ impl Circulator {
             ]
         };
 
-        self.editor.json_query(query)?;
+        self.editor().json_query(query)?;
 
         Ok(())
     }
@@ -906,14 +921,14 @@ impl Circulator {
 
         if is_deposit {
             if json_bool(self.settings.get_value("skip_deposit_fee")?)
-                || self.is_deposit_exempt()? {
+                || self.is_deposit_exempt()?
+            {
                 return Ok(());
             }
         }
 
         if is_rental {
-            if json_bool(self.settings.get_value("skip_rental_fee")?)
-                || self.is_rental_exempt()? {
+            if json_bool(self.settings.get_value("skip_rental_fee")?) || self.is_rental_exempt()? {
                 return Ok(());
             }
         }
@@ -926,15 +941,17 @@ impl Circulator {
             btype_label = C::BTYPE_LABEL_RENTAL;
         }
 
+        let circ_id = json_int(&self.circ.as_ref().unwrap()["id"])?;
+
         let bill = billing::create_bill(
-            &mut self.editor,
+            self.editor(),
             deposit_amount,
             btype,
             btype_label,
-            json_int(&self.circ.as_ref().unwrap()["id"])?,
+            circ_id,
             Some(C::BTYPE_NOTE_SYSTEM),
             None,
-            None
+            None,
         )?;
 
         if is_deposit {
@@ -980,12 +997,11 @@ impl Circulator {
         self.is_group_descendant(profile, parent_ids.as_slice())
     }
 
-
     /// Returns true if the child is a descendant of any of the parent
     /// profile group IDs
     fn is_group_descendant(&mut self, child_id: i64, parent_ids: &[i64]) -> EgResult<bool> {
         let query = json::object! {"from": ["permission.grp_ancestors", child_id] };
-        let ancestors = self.editor.json_query(query)?;
+        let ancestors = self.editor().json_query(query)?;
         for parent_id in parent_ids {
             for grp in &ancestors {
                 if &json_int(&grp["id"])? == parent_id {
@@ -1024,14 +1040,14 @@ impl Circulator {
         hold["hopeless_date"].take();
         hold["current_copy"] = json::from(self.copy_id);
         hold["fulfillment_time"] = json::from("now");
-        hold["fulfillment_staff"] = json::from(self.editor.requestor_id());
+        hold["fulfillment_staff"] = json::from(self.requestor_id());
         hold["fulfillment_lib"] = json::from(self.circ_lib);
 
         if hold["capture_time"].is_null() {
             hold["capture_time"] = json::from("now");
         }
 
-        self.editor.create(hold)?;
+        self.editor().create(hold)?;
 
         self.fulfilled_hold_ids = Some(vec![hold_id]);
 
@@ -1048,7 +1064,7 @@ impl Circulator {
             "fulfillment_time":  JsonValue::Null,
         };
 
-        let mut hold = match self.editor.search("ahr", query)?.pop() {
+        let mut hold = match self.editor().search("ahr", query)?.pop() {
             Some(h) => h,
             None => return Ok(None),
         };
@@ -1074,7 +1090,7 @@ impl Circulator {
             self.copy_id
         );
 
-        self.editor.update(hold).map(|_| None)
+        self.editor().update(hold).map(|_| None)
     }
 
     /// Find a similar hold to fulfill.
@@ -1099,9 +1115,15 @@ impl Circulator {
             return Ok(None);
         }
 
-        if !json_bool(self.settings.get_value("circ.checkout_fills_related_hold")?) {
+        if !json_bool(
+            self.settings
+                .get_value("circ.checkout_fills_related_hold")?,
+        ) {
             return Ok(None);
         }
+
+        let copy_id = self.copy_id;
+        let patron_id = self.patron_id;
 
         // find the oldest unfulfilled hold that has not yet hit the holds shelf.
         let query = json::object! {
@@ -1121,7 +1143,7 @@ impl Circulator {
             },
             "where": {
                 "+ahr": {
-                    "usr": self.patron_id,
+                    "usr": patron_id,
                     "fulfillment_time": JsonValue::Null,
                     "cancel_time": JsonValue::Null,
                    "-or": [
@@ -1130,7 +1152,7 @@ impl Circulator {
                     ]
                 },
                 "+ahcm": {
-                    "target_copy": self.copy_id,
+                    "target_copy": copy_id,
                 },
                 "+acp": {
                     "-or": [
@@ -1143,11 +1165,14 @@ impl Circulator {
             "limit": 1
         };
 
-        if let Some(hold) = self.editor.json_query(query)?.pop() {
-            return self.editor.retrieve("ahr", hold["id"].clone());
+        if let Some(hold) = self.editor().json_query(query)?.pop() {
+            return self.editor().retrieve("ahr", hold["id"].clone());
         }
 
-        if json_bool(self.settings.get_value("circ.checkout_fills_related_hold_exact_match_only")?) {
+        if json_bool(
+            self.settings
+                .get_value("circ.checkout_fills_related_hold_exact_match_only")?,
+        ) {
             // We only want exact matches and didn't find any.  We're done.
             return Ok(None);
         }
@@ -1155,12 +1180,16 @@ impl Circulator {
         // Expand our search to more hold types that could be filled
         // by our checked out copy.
 
+        let circ_lib = self.circ_lib;
+        let patron_id = self.patron_id;
+        let copy_id = self.copy_id;
+
         let hold_data = holds::related_to_copy(
-            &mut self.editor,
-            self.copy_id,
-            Some(self.circ_lib),
+            self.editor(),
+            copy_id,
+            Some(circ_lib),
             None, // frozen
-            Some(self.patron_id),
+            Some(patron_id),
             Some(false), // already on holds shelf
         )?;
 
@@ -1181,11 +1210,11 @@ impl Circulator {
             // The Perl only supports T and V holds.  Matching that for now.
 
             if hold.hold_type() == holds::HoldType::Title && target == record_id {
-                return self.editor.retrieve("ahr", hold.id());
+                return self.editor().retrieve("ahr", hold.id());
             }
 
             if hold.hold_type() == holds::HoldType::Volume && target == volume_id {
-                return self.editor.retrieve("ahr", hold.id());
+                return self.editor().retrieve("ahr", hold.id());
             }
         }
 
@@ -1199,12 +1228,13 @@ impl Circulator {
         let copy_ou = json_int(&self.copy()["circ_lib"])?;
 
         let copy_prox;
-        let ou_prox = org::proximity(&mut self.editor, home_ou, self.circ_lib)?.unwrap_or(-1);
+        let circ_lib = self.circ_lib;
+        let ou_prox = org::proximity(self.editor(), home_ou, circ_lib)?.unwrap_or(-1);
 
-        if copy_ou == self.circ_lib {
+        if copy_ou == circ_lib {
             copy_prox = ou_prox;
         } else {
-            copy_prox = org::proximity(&mut self.editor, copy_ou, self.circ_lib)?.unwrap_or(-1);
+            copy_prox = org::proximity(self.editor(), copy_ou, circ_lib)?.unwrap_or(-1);
         }
 
         let query = json::object! {
@@ -1213,7 +1243,7 @@ impl Circulator {
             "where": {
                 "+ausp": {
                     "usr": self.patron_id,
-                    "org_unit": org::full_path(&mut self.editor, self.circ_lib, None)?,
+                    "org_unit": org::full_path(self.editor(), circ_lib, None)?,
                     "-or": [
                         {"stop_date": JsonValue::Null},
                         {"stop_date": {">": "now"}}
@@ -1230,7 +1260,7 @@ impl Circulator {
             }
         };
 
-        let penalties = self.editor.json_query(query)?;
+        let penalties = self.editor().json_query(query)?;
         for pen in penalties {
             let mut evt = EgEvent::new(pen["name"].as_str().unwrap());
             if let Some(d) = pen["label"].as_str() {

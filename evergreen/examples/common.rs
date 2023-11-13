@@ -26,7 +26,7 @@ fn main() -> EgResult<()> {
         }
     }
 
-    let related = holds::related_to_copy(&mut editor, 3000, 4).unwrap();
+    let related = holds::related_to_copy(&mut editor, 3000, Some(4), None, None, None).unwrap();
     for hold in related {
         println!("related hold: {hold}");
     }
