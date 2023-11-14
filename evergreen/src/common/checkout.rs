@@ -544,8 +544,39 @@ impl Circulator {
         if self.circ_test_success {
             return Ok(());
         }
-        // TODO
 
+        if self.is_noncat {
+            // "no_item" failures are OK for non-cat checkouts.
+            self.circ_policy_results = self.circ_policy_results
+                .iter()
+                .filter(|r| {
+                    if let Some(fp) = r["fail_part"].as_str() {
+                        return fp != "no_item";
+                    }
+                    true
+                })
+                .collect();
+        }
+
+        if self.checkout_is_for_hold.is_some() {
+            // If this checkout will fulfill a hold, ignore CIRC blocks
+            // and rely instead on the (later-checked) FULFILL blocks.
+
+            let penalty_codes: Vec<&str> = self.circ_policy_results
+                .iter()
+                .filter(|r| r["fail_part"].is_string())
+                .map(|r| r.as_str().unwrap())
+                .collect();
+
+            let query = json::object! {
+                "name": penalty_codes,
+                "block_list": {"like": "%CIRC%"}
+            };
+
+            let block_pens = self.editor().search("csp", query)?;
+        }
+
+        // TODO
         Ok(())
     }
 
