@@ -25,8 +25,13 @@ impl Circulator {
         self.circ_op = CircOp::Renew;
         self.init()?;
 
+        log::info!("{self} starting renew");
+
         self.load_renewal_circ()?;
         self.basic_renewal_checks()?;
+        self.checkin()?;
+
+        // TODO checkout, etc.
 
         Ok(())
     }
@@ -66,7 +71,8 @@ impl Circulator {
         Ok(())
     }
 
-    /// Check various perms, policies, limits.
+    /// Check various perms, policies, limits before proceeding with
+    /// checkin+checkout.
     fn basic_renewal_checks(&mut self) -> EgResult<()> {
         let circ = self.circ.as_ref().unwrap();
         let patron = self.patron.as_ref().unwrap();

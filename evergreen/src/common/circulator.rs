@@ -133,6 +133,9 @@ pub struct Circulator {
     /// List of hold IDs for holds that need to be retargeted.
     pub retarget_holds: Option<Vec<i64>>,
 
+    pub checkout_is_for_hold: Option<JsonValue>,
+    pub hold_found_for_alt_patron: Option<JsonValue>,
+
     pub fulfilled_hold_ids: Option<Vec<i64>>,
 
     /// Storage for the large list of circulation API flags that we
@@ -210,6 +213,8 @@ impl Circulator {
             rental_billing: None,
             auto_renewal_remaining: None,
             fulfilled_hold_ids: None,
+            checkout_is_for_hold: None,
+            hold_found_for_alt_patron: None,
             circ_test_success: false,
             circ_policy_unlimited: false,
             circ_policy_rules: None,

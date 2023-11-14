@@ -13,6 +13,8 @@ use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
 use json::JsonValue;
 use std::time::Duration;
 
+const JSON_NULL: JsonValue = JsonValue::Null;
+
 /// Performs item checkins
 impl Circulator {
     /// Checkout an item.
@@ -24,18 +26,17 @@ impl Circulator {
             self.circ_op = CircOp::Checkout;
         }
 
-        log::info!("{self} starting checkout");
+        self.init()?;
 
-        if !self.is_renewal() {
-            // We'll already be init-ed if we're renewing.
-            self.init()?;
-        }
+        log::info!("{self} starting checkout");
 
         if self.patron.is_none() {
             return self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND");
         }
 
-        self.handle_deleted_copy();
+        self.set_circ_policy()?;
+        self.inspect_policy_failures()?;
+        self.try_override_events()?;
 
         if self.is_noncat {
             return self.checkout_noncat();
@@ -45,36 +46,29 @@ impl Circulator {
             self.create_precat_copy()?;
         } else if self.is_precat_copy() {
             self.exit_err_on_event_code("ITEM_NOT_CATALOGED")?;
-        } else if self.copy.is_none() {
-            self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
         }
 
+        self.basic_copy_checks()?;
+        self.set_item_deposit_events()?;
+        self.check_captured_hold()?;
         self.check_copy_status()?;
         self.handle_claims_returned()?;
         self.check_for_open_circ()?;
-        self.set_circ_policy()?;
+
+        self.try_override_events()?;
+
+        // We've tested everything we can.  Build the circulation.
+
         self.build_checkout_circ()?;
         self.apply_due_date()?;
-
-        // At this point we know we have a circ.
-        // Turn our circ hash into an IDL-classed object.
-        let circ = self.circ.as_ref().unwrap().clone();
-        let clone = self.editor().idl().create_from("circ", circ)?;
-        self.circ = Some(self.editor().create(clone)?);
-
+        self.save_checkout_circ()?;
         self.apply_limit_groups()?;
-
-        // We did it, we checked out a copy.  Mark it.
-        self.update_copy(json::object! {"status": C::COPY_STATUS_CHECKED_OUT})?;
 
         self.apply_deposit_fee()?;
         self.handle_checkout_holds()?;
 
-        // Update the patron penalty info in the DB.  Run it for
-        // permit-overrides, since the penalties are not updated during
-        // the permit phase.
         penalty::calculate_penalties(
-            self.editor.as_mut().unwrap(), // avoid a long mut borrow
+            self.editor.as_mut().unwrap(), // shorter mut borrow
             self.patron_id,
             self.circ_lib,
             None,
@@ -256,6 +250,75 @@ impl Circulator {
         return Ok(());
     }
 
+    fn set_item_deposit_events(&mut self) -> EgResult<()> {
+        if self.is_deposit() && !self.is_deposit_exempt()? {
+            let mut evt = EgEvent::new("ITEM_DEPOSIT_REQUIRED");
+            evt.set_payload(self.copy().clone());
+            self.add_event(evt)
+        }
+
+        if self.is_rental() && !self.is_rental_exempt()? {
+            let mut evt = EgEvent::new("ITEM_RENTAL_FEE_REQUIRED");
+            evt.set_payload(self.copy().clone());
+            self.add_event(evt)
+        }
+
+        Ok(())
+    }
+
+    fn check_captured_hold(&mut self) -> EgResult<()> {
+        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
+            return Ok(());
+        }
+
+        let query = json::object! {
+            "current_copy": self.copy_id,
+            "capture_time": {"!=": JSON_NULL },
+            "cancel_time": JSON_NULL,
+            "fulfillment_time": JSON_NULL
+        };
+
+        let flesh = json::object! {
+            "limit": 1,
+            "flesh": 1,
+            "flesh_fields": {"ahr": ["usr"]}
+        };
+
+        let hold = match self.editor().search_with_ops("ahr", query, flesh)?.pop() {
+            Some(h) => h,
+            None => return Ok(()),
+        };
+
+        if json_int(&hold["usr"]["id"])? == self.patron_id {
+            self.checkout_is_for_hold = Some(hold);
+            return Ok(());
+        }
+
+
+        log::info!("{self} item is on holds shelf for another patron");
+
+        // NOTE this is what the Perl does, but ideally patron display
+        // info is collected via the patron ID, not this bit of name logic.
+        let fname = json_string(&hold["usr"]["first_given_name"])?;
+        let lname = json_string(&hold["usr"]["family_name"])?;
+        let pid = json_int(&hold["usr"]["id"])?;
+        let hid = json_int(&hold["id"])?;
+
+        let payload = json::object! {
+            "patron_name": format!("{fname} {lname}"),
+            "patron_id": pid,
+            "hold_id": hid,
+        };
+
+        let mut evt = EgEvent::new("ITEM_ON_HOLDS_SHELF");
+        evt.set_payload(payload);
+        self.add_event(evt);
+
+        self.hold_found_for_alt_patron = Some(hold);
+
+        Ok(())
+    }
+
     fn check_copy_status(&mut self) -> EgResult<()> {
         if let Some(copy) = self.copy.as_ref() {
             if let Some(id) = copy["status"]["id"].as_i64() {
@@ -274,7 +337,7 @@ impl Circulator {
         let query = json::object! {
             "target_copy": self.copy_id,
             "stop_fines": "CLAIMSRETURNED",
-            "checkin_time": JsonValue::Null,
+            "checkin_time": JSON_NULL,
         };
 
         let mut circ = match self.editor().search("circ", query)?.pop() {
@@ -305,7 +368,7 @@ impl Circulator {
 
         let query = json::object! {
             "target_copy":  self.copy_id,
-            "checkin_time": JsonValue::Null,
+            "checkin_time": JSON_NULL,
         };
 
         let circ = match self.editor().search("circ", query)?.pop() {
@@ -356,9 +419,13 @@ impl Circulator {
             "action.item_user_circ_test"
         };
 
+        // We check permit test results before verifying we have a copy,
+        // because we need the results for noncat/precat checkouts.
         let copy_id =
-            if self.is_noncat || (self.is_precat() && !self.is_override && !self.is_renewal()) {
-                JsonValue::Null
+            if self.copy.is_none()
+                || self.is_noncat
+                || (self.is_precat() && !self.is_override && !self.is_renewal()) {
+                JSON_NULL
             } else {
                 json::from(self.copy_id)
             };
@@ -470,6 +537,16 @@ impl Circulator {
         self.circ_policy_results = Some(results);
 
         return Ok(());
+    }
+
+    /// Check for patron or item policy blocks and override where possible.
+    fn inspect_policy_failures(&mut self) -> EgResult<()> {
+        if self.circ_test_success {
+            return Ok(());
+        }
+        // TODO
+
+        Ok(())
     }
 
     fn calc_max_fine(&mut self, max_fine_rule: &JsonValue) -> EgResult<f64> {
@@ -674,8 +751,8 @@ impl Circulator {
             "search_start": "now",
             "search_end": due_date.as_str(),
             "fields": {
-                "cancel_time": JsonValue::Null,
-                "return_time": JsonValue::Null,
+                "cancel_time": JSON_NULL,
+                "return_time": JSON_NULL,
             }
         };
 
@@ -898,6 +975,21 @@ impl Circulator {
         Ok(())
     }
 
+    fn save_checkout_circ(&mut self) -> EgResult<()> {
+        // At this point we know we have a circ.
+        // Turn our circ hash into an IDL-classed object.
+        let circ = self.circ.as_ref().unwrap().clone();
+        let clone = self.editor().idl().create_from("circ", circ)?;
+
+        // Put it in the DB
+        self.circ = Some(self.editor().create(clone)?);
+
+        // We did it. We checked out a copy.
+        self.update_copy(json::object! {"status": C::COPY_STATUS_CHECKED_OUT})?;
+
+        Ok(())
+    }
+
     fn apply_limit_groups(&mut self) -> EgResult<()> {
         let limit_groups = match self.circ_policy_rules.as_ref() {
             Some(p) => match p.limit_groups.as_ref() {
@@ -920,18 +1012,31 @@ impl Circulator {
         Ok(())
     }
 
-    fn apply_deposit_fee(&mut self) -> EgResult<()> {
-        let deposit_amount = match self.copy()["deposit_amount"].as_f64() {
-            Some(n) => n,
-            None => return Ok(()),
-        };
-
-        if deposit_amount <= 0.0 {
-            return Ok(());
+    fn is_deposit(&self) -> bool {
+        if let Some(copy) = self.copy.as_ref() {
+            if let Some(amount) = copy["deposit_amount"].as_f64() {
+                return amount > 0.0 && json_bool(&copy["deposit"]);
+            }
         }
+        false
+    }
 
-        let is_deposit = json_bool(&self.copy()["deposit"]);
-        let is_rental = !is_deposit;
+    // True if we have a deposit_amount but the desposit flag is false.
+    fn is_rental(&self) -> bool {
+        if let Some(copy) = self.copy.as_ref() {
+            if let Some(amount) = copy["deposit_amount"].as_f64() {
+                return amount > 0.0 && !json_bool(&copy["deposit"]);
+            }
+        }
+        false
+    }
+
+    fn apply_deposit_fee(&mut self) -> EgResult<()> {
+        let is_deposit = self.is_deposit();
+        let is_rental = self.is_rental();
+
+        // confirmed above
+        let deposit_amount = self.copy()["deposit_amount"].as_f64().unwrap();
 
         if is_deposit {
             if json_bool(self.settings.get_value("skip_deposit_fee")?)
@@ -1034,7 +1139,13 @@ impl Circulator {
             return Ok(());
         }
 
-        let mut maybe_hold = self.handle_targeted_hold()?;
+        // checkout_is_for_hold will contain the hold we already know
+        // to be on the holds shelf for our patron + item.
+        let mut maybe_hold = self.checkout_is_for_hold.take();
+
+        if maybe_hold.is_none() {
+            maybe_hold = self.handle_targeted_hold()?;
+        }
 
         if maybe_hold.is_none() {
             maybe_hold = self.find_related_user_hold()?;
@@ -1068,29 +1179,15 @@ impl Circulator {
         Ok(())
     }
 
-    /// See if a hold directly targets our checked out copy.
-    /// If so and it's for our patron, great, otherwise reset the
-    /// hold so it can be retargeted.
+    /// If we have a hold that targets another patron -- we have already
+    /// overridden that event -- then reset the hold so it can go on
+    /// to target a different copy.
     fn handle_targeted_hold(&mut self) -> EgResult<Option<JsonValue>> {
-        let query = json::object! {
-            "current_copy": self.copy_id,
-            "cancel_time": JsonValue::Null,
-            "fulfillment_time":  JsonValue::Null,
-        };
-
-        let mut hold = match self.editor().search("ahr", query)?.pop() {
+        let mut hold = match self.hold_found_for_alt_patron.take() {
             Some(h) => h,
             None => return Ok(None),
         };
 
-        if json_int(&hold["usr"])? == self.patron_id {
-            return Ok(Some(hold));
-        }
-
-        // Found a hold targeting this copy for a different
-        // patron.  Reset the hold so it can find a different copy.
-
-        // take() sets the values to None == JsonNull
         hold["clear_prev_check_time"].take();
         hold["clear_current_copy"].take();
         hold["clear_capture_time"].take();
@@ -1099,9 +1196,8 @@ impl Circulator {
         hold["clear_current_shelf_lib"].take();
 
         log::info!(
-            "{self} un-targeting hold {} because copy {} is checking out",
+            "{self} un-targeting hold {} because our copy is checking out",
             hold["id"],
-            self.copy_id
         );
 
         self.editor().update(hold).map(|_| None)
@@ -1158,10 +1254,10 @@ impl Circulator {
             "where": {
                 "+ahr": {
                     "usr": patron_id,
-                    "fulfillment_time": JsonValue::Null,
-                    "cancel_time": JsonValue::Null,
+                    "fulfillment_time": JSON_NULL,
+                    "cancel_time": JSON_NULL,
                    "-or": [
-                        {"expire_time": JsonValue::Null},
+                        {"expire_time": JSON_NULL},
                         {"expire_time": {">": "now"}}
                     ]
                 },
@@ -1170,7 +1266,7 @@ impl Circulator {
                 },
                 "+acp": {
                     "-or": [
-                        {"id": JsonValue::Null}, // left-join copy may be nonexistent
+                        {"id": JSON_NULL}, // left-join copy may be nonexistent
                         {"status": {"!=": C::COPY_STATUS_ON_HOLDS_SHELF}},
                     ]
                 }
@@ -1259,14 +1355,14 @@ impl Circulator {
                     "usr": self.patron_id,
                     "org_unit": org::full_path(self.editor(), circ_lib, None)?,
                     "-or": [
-                        {"stop_date": JsonValue::Null},
+                        {"stop_date": JSON_NULL},
                         {"stop_date": {">": "now"}}
                     ]
                 },
                 "+csp": {
                     "block_list": {"like": "%FULFILL%"},
                     "-or": [
-                        {"ignore_proximity": JsonValue::Null},
+                        {"ignore_proximity": JSON_NULL},
                         {"ignore_proximity": {"<": ou_prox}},
                         {"ignore_proximity": {"<": copy_prox}}
                     ]
