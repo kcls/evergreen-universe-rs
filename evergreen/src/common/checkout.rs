@@ -1,6 +1,6 @@
 use crate::common::bib;
 use crate::common::billing;
-use crate::common::circulator::{CircOp, CircPolicy, Circulator};
+use crate::common::circulator::{CircOp, CircPolicy, Circulator, LEGACY_CIRC_EVENT_MAP};
 use crate::common::holds;
 use crate::common::noncat;
 use crate::common::org;
@@ -36,15 +36,16 @@ impl Circulator {
 
         self.set_circ_policy()?;
         self.inspect_policy_failures()?;
+        self.check_copy_alerts()?;
         self.try_override_events()?;
 
         if self.is_noncat {
             return self.checkout_noncat();
         }
 
-        if self.is_precat() {
+        if self.precat_requested() {
             self.create_precat_copy()?;
-        } else if self.is_precat_copy() {
+        } else if self.is_precat_copy() && !self.is_renewal() {
             self.exit_err_on_event_code("ITEM_NOT_CATALOGED")?;
         }
 
@@ -294,7 +295,6 @@ impl Circulator {
             return Ok(());
         }
 
-
         log::info!("{self} item is on holds shelf for another patron");
 
         // NOTE this is what the Perl does, but ideally patron display
@@ -421,14 +421,14 @@ impl Circulator {
 
         // We check permit test results before verifying we have a copy,
         // because we need the results for noncat/precat checkouts.
-        let copy_id =
-            if self.copy.is_none()
-                || self.is_noncat
-                || (self.is_precat() && !self.is_override && !self.is_renewal()) {
-                JSON_NULL
-            } else {
-                json::from(self.copy_id)
-            };
+        let copy_id = if self.copy.is_none()
+            || self.is_noncat
+            || (self.precat_requested() && !self.is_override && !self.is_renewal())
+        {
+            JSON_NULL
+        } else {
+            json::from(self.copy_id)
+        };
 
         let query = json::object! {
             "from": [
@@ -545,10 +545,16 @@ impl Circulator {
             return Ok(());
         }
 
-        if self.is_noncat {
-            // "no_item" failures are OK for non-cat checkouts.
-            self.circ_policy_results = self.circ_policy_results
-                .iter()
+        let mut policy_results = match self.circ_policy_results.take() {
+            Some(p) => p,
+            None => Err(format!("Non-success circ policy has no policy data"))?,
+        };
+
+        if self.is_noncat || self.precat_requested() {
+            // "no_item" failures are OK for non-cat checkouts and
+            // when precat is requested.
+            policy_results = policy_results
+                .into_iter()
                 .filter(|r| {
                     if let Some(fp) = r["fail_part"].as_str() {
                         return fp != "no_item";
@@ -562,7 +568,7 @@ impl Circulator {
             // If this checkout will fulfill a hold, ignore CIRC blocks
             // and rely instead on the (later-checked) FULFILL blocks.
 
-            let penalty_codes: Vec<&str> = self.circ_policy_results
+            let penalty_codes: Vec<&str> = policy_results
                 .iter()
                 .filter(|r| r["fail_part"].is_string())
                 .map(|r| r.as_str().unwrap())
@@ -574,9 +580,45 @@ impl Circulator {
             };
 
             let block_pens = self.editor().search("csp", query)?;
+            let block_pen_names: Vec<&str> = block_pens
+                .iter()
+                .map(|p| p["name"].as_str().unwrap())
+                .collect();
+
+            let mut keepers = Vec::new();
+
+            for pr in policy_results.drain(..) {
+                let pr_name = pr["fail_part"].as_str().unwrap_or("");
+                if !block_pen_names.contains(&pr_name) {
+                    keepers.push(pr);
+                }
+            }
+
+            policy_results = keepers;
         }
 
-        // TODO
+        // Map fail_part values to legacy event codes and add the
+        // events to our working list.
+        for pr in policy_results.iter() {
+            let fail_part = match pr["fail_part"].as_str() {
+                Some(fp) => fp,
+                None => continue,
+            };
+
+            // Use the mapped value if we have one or default to
+            // using the fail_part as the event code.
+            let evt_code = LEGACY_CIRC_EVENT_MAP
+                .iter()
+                .filter(|(fp, _)| fp == &fail_part)
+                .map(|(_, code)| code)
+                .next()
+                .unwrap_or(&fail_part);
+
+            self.add_event_code(evt_code);
+        }
+
+        self.circ_policy_results = Some(policy_results);
+
         Ok(())
     }
 

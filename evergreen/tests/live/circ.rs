@@ -118,7 +118,6 @@ fn checkout(tester: &mut util::Tester) -> EgResult<()> {
     Ok(())
 }
 
-
 fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
     let e = tester.editor.clone(); // circulator wants its own editor
 

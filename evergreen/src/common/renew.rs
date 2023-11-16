@@ -1,10 +1,10 @@
-use crate::common::circulator::{CircOp, CircPolicy, Circulator};
-use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
+use crate::common::circulator::{CircOp, Circulator};
+use crate::common::holds;
+use crate::date;
 use crate::event::EgEvent;
 use crate::result::EgResult;
-use crate::date;
+use crate::util::{json_bool, json_bool_op, json_int};
 use json::JsonValue;
-use crate::common::holds;
 /*
 use crate::common::bib;
 use crate::common::billing;
@@ -30,14 +30,11 @@ impl Circulator {
         self.load_renewal_circ()?;
         self.basic_renewal_checks()?;
         self.checkin()?;
-
-        // TODO checkout, etc.
-
-        Ok(())
+        self.checkout()
     }
 
+    /// Find the circ we're trying to renew and extra the patron info.
     pub fn load_renewal_circ(&mut self) -> EgResult<()> {
-
         let mut query = json::object! {
             "target_copy": self.copy_id,
             "xact_finish": JsonValue::Null,
@@ -57,7 +54,10 @@ impl Circulator {
             }
         };
 
-        let mut circ = self.editor().search_with_ops("circ", query, flesh)?.pop()
+        let mut circ = self
+            .editor()
+            .search_with_ops("circ", query, flesh)?
+            .pop()
             .ok_or_else(|| self.editor().die_event())?;
 
         let circ_id = json_int(&circ["id"])?;
@@ -77,7 +77,6 @@ impl Circulator {
         let circ = self.circ.as_ref().unwrap();
         let patron = self.patron.as_ref().unwrap();
 
-        let circ_id = json_int(&circ["id"])?;
         let orig_circ_lib = json_int(&circ["circ_lib"])?;
 
         let renewal_remaining = json_int(&circ["renewal_remaining"])?;
@@ -118,9 +117,7 @@ impl Circulator {
         }
 
         let copy_id = self.copy_id;
-        let block_for_holds = json_bool(
-            self.settings.get_value("circ.block_renews_for_holds")?
-        );
+        let block_for_holds = json_bool(self.settings.get_value("circ.block_renews_for_holds")?);
 
         if block_for_holds {
             let holds = holds::find_nearest_permitted_hold(self.editor(), copy_id, true)?;
@@ -138,9 +135,11 @@ impl Circulator {
         let is_desk = json_bool_op(self.options.get("desk_renewal"));
 
         if is_opac || is_auto {
-            if let Some(setting) = self.editor().retrieve(
-                "cgf", "circ.opac_renewal.use_original_circ_lib")?.take() {
-
+            if let Some(setting) = self
+                .editor()
+                .retrieve("cgf", "circ.opac_renewal.use_original_circ_lib")?
+                .take()
+            {
                 if json_bool(&setting["enabled"]) {
                     self.circ_lib = orig_circ_lib;
                     self.settings.set_org_id(orig_circ_lib);
@@ -150,9 +149,11 @@ impl Circulator {
         }
 
         if is_desk {
-            if let Some(setting) = self.editor().retrieve(
-                "cgf", "circ.desk_renewal.use_original_circ_lib")?.take() {
-
+            if let Some(setting) = self
+                .editor()
+                .retrieve("cgf", "circ.desk_renewal.use_original_circ_lib")?
+                .take()
+            {
                 if json_bool(&setting["enabled"]) {
                     self.circ_lib = orig_circ_lib;
                     self.settings.set_org_id(orig_circ_lib);
@@ -165,8 +166,3 @@ impl Circulator {
         Ok(self.circ_lib)
     }
 }
-
-
-
-
-

@@ -117,12 +117,12 @@ impl Circulator {
         self.finish_fines_and_voiding()?;
 
         if self.patron.is_some() {
-			penalty::calculate_penalties(
-				self.editor.as_mut().unwrap(), // shorter mut borrow
-				self.patron_id,
-				self.circ_lib,
-				None,
-			)?;
+            penalty::calculate_penalties(
+                self.editor.as_mut().unwrap(),
+                self.patron_id,
+                self.circ_lib,
+                None,
+            )?;
         }
 
         self.cleanup_events();
