@@ -29,6 +29,18 @@ impl Circulator {
 
         self.load_renewal_circ()?;
         self.basic_renewal_checks()?;
+
+        // Do this after self.basic_renewal_checks which may change
+        // our circ lib.
+        if !self
+            .editor
+            .as_mut()
+            .unwrap()
+            .allowed_at("COPY_CHECKOUT", self.circ_lib)?
+        {
+            return Err(self.editor().die_event());
+        }
+
         self.checkin()?;
         self.checkout()
     }
@@ -64,6 +76,9 @@ impl Circulator {
         let patron = circ["usr"].take(); // fleshed
         self.patron_id = json_int(&patron["id"])?;
         self.patron = Some(patron);
+
+        // Replace the usr value which was null-ified above w/ take()
+        circ["usr"] = json::from(self.patron_id);
 
         self.parent_circ = Some(circ_id);
         self.circ = Some(circ);

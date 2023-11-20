@@ -376,6 +376,14 @@ impl Circulator {
 
     /// Add a potentially overridable event to our events list.
     pub fn add_event(&mut self, evt: EgEvent) {
+        // Avoid duplicate success events.
+        // Retain the most recent.
+        if evt.is_success() {
+            if let Some(pos) = self.events.iter().position(|e| e.is_success()) {
+                self.events.remove(pos);
+            }
+        }
+
         self.events.push(evt);
     }
 
@@ -1038,7 +1046,7 @@ impl Circulator {
         }
 
         // If we have a success event, keep it for returning later.
-        let success: Option<EgEvent> = None;
+        let mut success: Option<EgEvent> = None;
         let selfstr = format!("{self}");
 
         loop {
@@ -1046,6 +1054,11 @@ impl Circulator {
                 Some(e) => e,
                 None => break,
             };
+
+            if evt.is_success() {
+                success = Some(evt);
+                continue;
+            }
 
             let can_override = self.can_override_event(evt.textcode());
 

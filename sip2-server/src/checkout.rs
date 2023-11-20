@@ -1,14 +1,11 @@
 use super::item::Item;
 use super::patron::Patron;
 use super::session::Session;
+use eg::common::circulator::Circulator;
 use eg::date;
 use eg::result::EgResult;
 use evergreen as eg;
-
-const RENEW_METHOD: &str = "open-ils.circ.renew";
-const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
-const CHECKOUT_METHOD: &str = "open-ils.circ.checkout.full";
-const CHECKOUT_OVERRIDE_METHOD: &str = "open-ils.circ.checkout.full.override";
+use std::collections::HashMap;
 
 pub struct CheckoutResult {
     /// Presence of a circ_id implies success.
@@ -156,45 +153,46 @@ impl Session {
         is_renewal: bool,
         ovride: bool,
     ) -> EgResult<CheckoutResult> {
-        let params = vec![
-            json::from(self.authtoken()?),
-            json::object! {
-                copy_barcode: item_barcode,
-                patron_barcode: patron_barcode,
-            },
-        ];
+        let mut options: HashMap<String, json::JsonValue> = HashMap::new();
 
-        let method = match is_renewal {
-            true => match ovride {
-                true => RENEW_OVERRIDE_METHOD,
-                false => RENEW_METHOD,
-            },
-            false => match ovride {
-                true => CHECKOUT_OVERRIDE_METHOD,
-                false => CHECKOUT_METHOD,
-            },
-        };
+        options.insert("copy_barcode".to_string(), item_barcode.into());
+        options.insert("patron_barcode".to_string(), patron_barcode.into());
 
-        let resp = match self
-            .osrf_client_mut()
-            .send_recv_one("open-ils.circ", method, params)?
-        {
-            Some(r) => r,
-            None => Err(format!("API call {method} failed to return a response"))?,
-        };
+        let editor = self.editor().clone();
 
-        log::debug!("{self} Checkout of {item_barcode} returned: {resp}");
+        let mut circulator = Circulator::new(editor, options)?;
+        circulator.is_override = ovride;
+        circulator.begin()?;
 
-        let event = if let json::JsonValue::Array(list) = resp {
-            list[0].to_owned()
+        // Collect needed data then kickoff the checkin process.
+        let api_result = if is_renewal {
+            circulator.renew()
         } else {
-            resp
+            circulator.checkout()
         };
+
+        let err_bind;
+        let evt = match api_result {
+            Ok(()) => {
+                circulator.commit()?;
+                circulator
+                    .events()
+                    .get(0)
+                    .ok_or_else(|| format!("API call failed to return an event"))?
+            }
+            Err(err) => {
+                circulator.rollback()?;
+                err_bind = Some(err.event_or_default());
+                err_bind.as_ref().unwrap()
+            }
+        };
+
+        log::debug!(
+            "{self} Checkout of {item_barcode} returned: {}",
+            evt.to_json_value().dump()
+        );
 
         let mut result = CheckoutResult::new();
-
-        let evt = eg::event::EgEvent::parse(&event)
-            .ok_or_else(|| format!("API call {method} failed to return an event"))?;
 
         if evt.is_success() {
             let circ = &evt.payload()["circ"];
@@ -212,6 +210,8 @@ impl Session {
                 }
 
                 return Ok(result);
+            } else {
+                log::error!("{self} checked out, but did not receive a circ object");
             }
         }
 
