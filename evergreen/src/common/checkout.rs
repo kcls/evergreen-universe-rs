@@ -28,6 +28,18 @@ impl Circulator {
 
         self.init()?;
 
+        if !self.is_renewal() {
+            // avoid dupe lookup
+            if !self
+                .editor
+                .as_mut()
+                .unwrap()
+                .allowed_at("COPY_CHECKOUT", self.circ_lib)?
+            {
+                return Err(self.editor().die_event());
+            }
+        }
+
         log::info!("{self} starting checkout");
 
         if self.patron.is_none() {
@@ -40,6 +52,15 @@ impl Circulator {
         self.try_override_events()?;
 
         if self.is_inspect() {
+            if !self
+                .editor
+                .as_mut()
+                .unwrap()
+                .allowed_at("VIEW_PERMIT_CHECKOUT", self.circ_lib)?
+            {
+                return Err(self.editor().die_event());
+            }
+
             return Ok(());
         }
 
@@ -444,6 +465,8 @@ impl Circulator {
         };
 
         let results = self.editor().json_query(query)?;
+
+        log::debug!("{self} {func} returned: {:?}", results);
 
         if results.len() == 0 {
             return self.exit_err_on_event_code("NO_POLICY_MATCHPOINT");
@@ -1058,6 +1081,8 @@ impl Circulator {
         let circ = self.circ.as_ref().unwrap().clone();
         let clone = self.editor().idl().create_from("circ", circ)?;
 
+        log::debug!("{self} creating circulation {}", clone.dump());
+
         // Put it in the DB
         self.circ = Some(self.editor().create(clone)?);
 
@@ -1111,6 +1136,10 @@ impl Circulator {
     fn apply_deposit_fee(&mut self) -> EgResult<()> {
         let is_deposit = self.is_deposit();
         let is_rental = self.is_rental();
+
+        if !is_deposit && !is_rental {
+            return Ok(());
+        }
 
         // confirmed above
         let deposit_amount = self.copy()["deposit_amount"].as_f64().unwrap();

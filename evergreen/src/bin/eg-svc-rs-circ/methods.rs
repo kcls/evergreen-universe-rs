@@ -221,19 +221,6 @@ pub fn checkout_renew_checkin(
         return session.respond(editor.event());
     }
 
-    let perm = if method.method().contains("checkout") {
-        "COPY_CHECKOUT"
-    } else if method.method().contains("checkin") {
-        "COPY_CHECKIN"
-    } else {
-        todo!()
-    };
-
-    // Initial perm check
-    if !editor.allowed(perm)? {
-        return session.respond(editor.event());
-    }
-
     let mut circulator = Circulator::new(editor, options)?;
     circulator.is_inspect = method.method().contains(".inspect");
     circulator.is_override = method.method().contains(".override");

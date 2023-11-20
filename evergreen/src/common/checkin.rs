@@ -26,10 +26,18 @@ impl Circulator {
 
         self.init()?;
 
-        log::info!("{self} starting checkin");
+        if !self.is_renewal() {
+            if !self
+                .editor
+                .as_mut()
+                .unwrap()
+                .allowed_at("COPY_CHECKIN", self.circ_lib)?
+            {
+                return Err(self.editor().die_event());
+            }
+        }
 
-        // TODO
-        // do_permit
+        log::info!("{self} starting checkin");
 
         self.basic_copy_checks()?;
 
@@ -670,7 +678,11 @@ impl Circulator {
                     log::info!("{self} leaving copy in missing status on remote checkin");
                 }
             }
-            _ => self.reshelve_copy(true)?,
+            _ => {
+                if !self.is_renewal() {
+                    self.reshelve_copy(true)?;
+                }
+            }
         }
 
         if self.get_option_bool("dont_change_lost_zero") {

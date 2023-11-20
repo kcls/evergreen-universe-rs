@@ -699,8 +699,19 @@ impl Parser {
         Ok((classname, self.get_pkey_value(obj)))
     }
 
+    /// Get the value from the primary key field.  If the value is
+    /// JSON NULL, return None.
     pub fn get_pkey_value(&self, obj: &JsonValue) -> Option<JsonValue> {
-        self.get_pkey_info(obj).map(|(_, v)| v)
+        match self.get_pkey_info(obj).map(|(_, v)| v) {
+            Some(v) => {
+                if v.is_null() {
+                    None
+                } else {
+                    Some(v)
+                }
+            }
+            None => None,
+        }
     }
 
     pub fn get_classname(&self, obj: &JsonValue) -> EgResult<String> {
@@ -711,6 +722,7 @@ impl Parser {
     }
 
     /// Get the primary key field and value from an IDL object if one exists.
+    /// Note the pkey value may be JSON NULL.
     pub fn get_pkey_info(&self, obj: &JsonValue) -> Option<(&Field, JsonValue)> {
         if !self.is_idl_object(obj) {
             return None;
