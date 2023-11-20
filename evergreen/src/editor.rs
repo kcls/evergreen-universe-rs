@@ -223,6 +223,16 @@ impl Editor {
         None
     }
 
+    pub fn perm_org(&self) -> i64 {
+        match self.requestor.as_ref() {
+            Some(r) => match r["ws_ou"].as_i64() {
+                Some(v) => v,
+                None => r["home_ou"].as_i64().unwrap(), // required
+            },
+            None => -1,
+        }
+    }
+
     pub fn requestor(&self) -> Option<&json::JsonValue> {
         self.requestor.as_ref()
     }
@@ -690,7 +700,8 @@ impl Editor {
     }
 
     /// Returns Result of true if our authenticated requestor has the
-    /// specified permission globally.
+    /// specified permission at their logged in workstation org unit,
+    /// or their home org unit if no workstation is active.
     pub fn allowed(&mut self, perm: &str) -> EgResult<bool> {
         self.allowed_maybe_at(perm, None)
     }
@@ -709,7 +720,7 @@ impl Editor {
 
         let org_id = match org_id_op {
             Some(i) => i,
-            None => 0,
+            None => self.perm_org(),
         };
 
         let query = json::object! {
@@ -718,11 +729,7 @@ impl Editor {
                     transform: "permission.usr_has_perm",
                     alias: "has_perm",
                     column: "id",
-                    params: if org_id > 0 {
-                        json::array! [perm, json::from(org_id)]
-                    } else {
-                        json::array! [perm]
-                    }
+                    params: json::array! [perm, json::from(org_id)]
                 } ]
             },
             from: "au",

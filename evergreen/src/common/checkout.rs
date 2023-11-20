@@ -39,6 +39,10 @@ impl Circulator {
         self.check_copy_alerts()?;
         self.try_override_events()?;
 
+        if self.is_inspect() {
+            return Ok(());
+        }
+
         if self.is_noncat {
             return self.checkout_noncat();
         }

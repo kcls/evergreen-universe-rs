@@ -27,7 +27,7 @@ pub static METHODS: &[StaticMethod] = &[
                 required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
-                desc: "Authentication Toaken",
+                desc: "Authentication Token",
             },
             StaticParam {
                 required: true,
@@ -47,7 +47,7 @@ pub static METHODS: &[StaticMethod] = &[
                 required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
-                desc: "Authentication Toaken",
+                desc: "Authentication Token",
             },
             StaticParam {
                 required: true,
@@ -67,7 +67,87 @@ pub static METHODS: &[StaticMethod] = &[
                 required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
-                desc: "Authentication Toaken",
+                desc: "Authentication Token",
+            },
+            StaticParam {
+                required: true,
+                name: "options",
+                datatype: ParamDataType::Object,
+                desc: "Options including copy_barcode, etc.",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "checkout.override",
+        desc: "Checkout a copy / Override edition",
+        param_count: ParamCount::Exactly(2),
+        handler: checkout_renew_checkin,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authentication Token",
+            },
+            StaticParam {
+                required: true,
+                name: "options",
+                datatype: ParamDataType::Object,
+                desc: "Options including copy_barcode, etc.",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "checkout.inspect",
+        desc: "Inspect checkout policy",
+        param_count: ParamCount::Exactly(2),
+        handler: checkout_renew_checkin,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authentication Token",
+            },
+            StaticParam {
+                required: true,
+                name: "options",
+                datatype: ParamDataType::Object,
+                desc: "Options including copy_barcode, etc.",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "renew",
+        desc: "Renew a copy",
+        param_count: ParamCount::Exactly(2),
+        handler: checkout_renew_checkin,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authentication Token",
+            },
+            StaticParam {
+                required: true,
+                name: "options",
+                datatype: ParamDataType::Object,
+                desc: "Options including copy_barcode, etc.",
+            },
+        ],
+    },
+    StaticMethod {
+        name: "renew.override",
+        desc: "Renew a copy / Override edition",
+        param_count: ParamCount::Exactly(2),
+        handler: checkout_renew_checkin,
+        params: &[
+            StaticParam {
+                required: true,
+                name: "authtoken",
+                datatype: ParamDataType::String,
+                desc: "Authentication Token",
             },
             StaticParam {
                 required: true,
@@ -155,6 +235,7 @@ pub fn checkout_renew_checkin(
     }
 
     let mut circulator = Circulator::new(editor, options)?;
+    circulator.is_inspect = method.method().contains(".inspect");
     circulator.is_override = method.method().contains(".override");
     circulator.begin()?;
 
@@ -162,14 +243,26 @@ pub fn checkout_renew_checkin(
         circulator.checkout()
     } else if method.method().contains("checkin") {
         circulator.checkin()
+    } else if method.method().contains("renew") {
+        circulator.renew()
     } else {
-        todo!()
+        return Err(format!("Unhandled method {}", method.method()));
     };
 
     if let Err(err) = result {
         circulator.rollback()?;
         // Return the error event to the caller.
         session.respond(&err.event_or_default())?;
+        return Ok(());
+    }
+
+    if circulator.is_inspect {
+        if let Some(mut results) = circulator.circ_policy_results.take() {
+            for res in results.drain(..) {
+                session.respond(res)?;
+            }
+        }
+        circulator.rollback()?;
         return Ok(());
     }
 

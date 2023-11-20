@@ -857,7 +857,10 @@ impl Parser {
             if json_arr.is_array() {
                 obj = self.array_to_hash(unpacked.class(), json_arr);
             } else {
-                panic!("IDL-encoded objects should be arrays");
+                // Occasionally we're asked to decode classed hashes
+                // which are part of the OpenSRF messaging for certain
+                // internal tasks, e.g. method introspection.
+                obj = json_arr;
             }
         } else {
             obj = value;
