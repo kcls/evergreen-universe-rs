@@ -108,10 +108,10 @@ pub struct Param {
 impl Param {
     pub fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            name: self.name.as_str(),
-            required: self.required,
-            datatype: self.datatype.to_string(),
-            desc: match self.desc.as_ref() {
+            "name": self.name.as_str(),
+            "required": self.required,
+            "datatype": self.datatype.to_string(),
+            "desc": match self.desc.as_ref() {
                 Some(d) => d.as_str().into(),
                 _ => json::JsonValue::Null,
             }
@@ -253,10 +253,12 @@ impl Method {
         }
 
         json::object! {
-            name: self.name(),
-            param_count: self.param_count().to_string(),
-            params: pa,
-            desc: match self.desc() {
+            "api_name": self.name(),
+            "argc": self.param_count().to_string(),
+            "params": pa,
+            // All Rust methods are streaming by default.
+            "stream": json::JsonValue::Boolean(true),
+            "desc": match self.desc() {
                 Some(d) => d.into(),
                 _ => json::JsonValue::Null,
             }

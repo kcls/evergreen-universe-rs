@@ -559,7 +559,7 @@ impl Shell {
 
         while let Some(resp) = req.recv()? {
             if self.command.contains("-names") {
-                println!("* {}", resp["name"]);
+                println!("* {}", resp["api_name"]);
             } else {
                 self.print_json_record(&resp)?;
             }

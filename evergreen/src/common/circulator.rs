@@ -125,6 +125,7 @@ pub struct Circulator {
     pub system_copy_alerts: Vec<JsonValue>,
     pub runtime_copy_alerts: Vec<JsonValue>,
     pub is_override: bool,
+    pub is_inspect: bool,
     pub circ_op: CircOp,
     pub parent_circ: Option<i64>,
     pub deposit_billing: Option<JsonValue>,
@@ -238,6 +239,7 @@ impl Circulator {
             transit: None,
             hold_transit: None,
             is_noncat: false,
+            is_inspect: false,
             renewal_remaining: 0,
             deposit_billing: None,
             rental_billing: None,
@@ -289,6 +291,10 @@ impl Circulator {
     /// Panics if the booking status is unknown.
     pub fn is_booking_enabled(&self) -> bool {
         self.is_booking_enabled.unwrap()
+    }
+
+    pub fn is_inspect(&self) -> bool {
+        self.is_inspect
     }
 
     /// Unchecked copy getter.
