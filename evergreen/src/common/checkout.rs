@@ -19,26 +19,14 @@ const JSON_NULL: JsonValue = JsonValue::Null;
 impl Circulator {
     /// Checkout an item.
     ///
-    /// Returns Ok(()) if the active transaction should be committed and
-    /// Err(EgError) if the active transaction should be rolled backed.
+    /// Returns Ok(()) if the active transaction completed and should
+    /// (probably) be committed and Err(EgError) if the active
+    /// transaction should be rolled backed.
     pub fn checkout(&mut self) -> EgResult<()> {
         if self.circ_op == CircOp::Unset {
             self.circ_op = CircOp::Checkout;
         }
-
         self.init()?;
-
-        if !self.is_renewal() {
-            // avoid dupe lookup
-            if !self
-                .editor
-                .as_mut()
-                .unwrap()
-                .allowed_at("COPY_CHECKOUT", self.circ_lib)?
-            {
-                return Err(self.editor().die_event());
-            }
-        }
 
         log::info!("{self} starting checkout");
 
@@ -46,21 +34,14 @@ impl Circulator {
             return self.exit_err_on_event_code("ACTOR_USER_NOT_FOUND");
         }
 
+        self.base_checkout_perms()?;
+
         self.set_circ_policy()?;
         self.inspect_policy_failures()?;
         self.check_copy_alerts()?;
         self.try_override_events()?;
 
         if self.is_inspect() {
-            if !self
-                .editor
-                .as_mut()
-                .unwrap()
-                .allowed_at("VIEW_PERMIT_CHECKOUT", self.circ_lib)?
-            {
-                return Err(self.editor().die_event());
-            }
-
             return Ok(());
         }
 
@@ -101,6 +82,26 @@ impl Circulator {
         )?;
 
         self.build_checkout_response()
+    }
+
+    /// Perms that are always needed for checkout.
+    fn base_checkout_perms(&mut self) -> EgResult<()> {
+        let cl = self.circ_lib;
+
+        if !self.is_renewal() {
+            if !self.editor().allowed_at("COPY_CHECKOUT", cl)? {
+                return Err(self.editor().die_event());
+            }
+        }
+
+        if self.patron_id != self.editor().requestor_id() {
+            // Users are allowed to "inspect" their own data.
+            if !self.editor().allowed_at("VIEW_PERMIT_CHECKOUT", cl)? {
+                return Err(self.editor().die_event());
+            }
+        }
+
+        Ok(())
     }
 
     fn checkout_noncat(&mut self) -> EgResult<()> {
