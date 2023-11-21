@@ -103,6 +103,22 @@ pub struct CircPolicy {
     pub limit_groups: Option<JsonValue>,
 }
 
+impl CircPolicy {
+    pub fn to_json_value(&self) -> JsonValue {
+        json::object! {
+            "max_fine": self.max_fine,
+            "duration": self.duration.as_str(),
+            "recurring_fine": self.recurring_fine,
+            "matchpoint": self.matchpoint.clone(),
+            "duration_rule": self.duration_rule.clone(),
+            "recurring_fine_rule": self.recurring_fine_rule.clone(),
+            "max_fine_rule": self.max_fine_rule.clone(),
+            "hard_due_date": self.hard_due_date.as_ref().map(|v| v.clone()),
+            "limit_groups": self.limit_groups.as_ref().map(|v| v.clone()),
+        }
+    }
+}
+
 /// Context and shared methods for circulation actions.
 ///
 /// Innards are 'pub' since the impl's are spread across multiple files.
@@ -261,6 +277,21 @@ impl Circulator {
             retarget_holds: None,
             circ_op: CircOp::Unset,
         })
+    }
+
+    pub fn policy_to_json_value(&self) -> JsonValue {
+        let mut value = json::object! {};
+
+        if let Some(rules) = self.circ_policy_rules.as_ref() {
+            value["rules"] = rules.to_json_value();
+        }
+
+        if let Some(results) = self.circ_policy_results.as_ref() {
+            let matches: Vec<JsonValue> = results.iter().map(|v| v.clone()).collect();
+            value["matches"] = json::from(matches);
+        }
+
+        return value;
     }
 
     /// Panics if we have no editor

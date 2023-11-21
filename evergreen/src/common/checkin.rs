@@ -680,6 +680,8 @@ impl Circulator {
             }
             _ => {
                 if !self.is_renewal() {
+                    // DB renew-permit function requires the renewed
+                    // copy to be in the checked-out status.
                     self.reshelve_copy(true)?;
                 }
             }

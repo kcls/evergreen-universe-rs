@@ -243,12 +243,8 @@ pub fn checkout_renew_checkin(
         return Ok(());
     }
 
-    if circulator.is_inspect {
-        if let Some(mut results) = circulator.circ_policy_results.take() {
-            for res in results.drain(..) {
-                session.respond(res)?;
-            }
-        }
+    if circulator.is_inspect() {
+        session.respond(circulator.policy_to_json_value())?;
         circulator.rollback()?;
         return Ok(());
     }
