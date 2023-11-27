@@ -9,6 +9,6 @@ After=redis-server.service
 Type=simple
 User=opensrf
 Group=opensrf
-ExecStart=/usr/local/bin/eg-svc-rs-actor
+ExecStart=/usr/local/bin/eg-service-rs-actor
 ExecReload=/bin/kill -HUP $MAINPID
 

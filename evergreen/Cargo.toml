@@ -78,7 +78,34 @@ path = "src/bin/bib-to-auth-linker.rs"
 name = "eg-parallel-ingest"
 path = "src/bin/parallel-ingest.rs"
 
+
+# TODO move this into the tests/live directory and make
+# it more test-like instead of just printing stuff.
 [[bin]]
 # End-to-end test for open-ils.rs-store
 name = "rs-store-e2e"
-path = "src/bin/eg-svc-rs-store/rs-store-e2e.rs"
+path = "src/services/store/rs-store-e2e.rs"
+
+
+# --- Services
+# Service names are prefixed with rs- to avoid confusion / prevent
+# clobberation with existing service names.
+
+[[bin]]
+name = "eg-service-rs-actor"
+path = "src/services/actor/main.rs"
+
+[[bin]]
+name = "eg-service-rs-circ"
+path = "src/services/circ/main.rs"
+
+[[bin]]
+name = "eg-service-rs-hold-targeter"
+path = "src/services/hold-targeter/main.rs"
+
+[[bin]]
+name = "eg-service-rs-store"
+path = "src/services/store/main.rs"
+
+
+

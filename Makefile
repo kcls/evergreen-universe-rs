@@ -49,21 +49,21 @@ install-evergreen: install-evergreen-config
 	cp ./target/debug/egsh ${TARGET}/bin
 	cp ./target/debug/eg-http-gateway ${TARGET}/bin
 	cp ./target/debug/eg-websockets ${TARGET}/bin
-	cp ./target/debug/eg-svc-rs-actor ${TARGET}/bin
-	cp ./target/debug/eg-svc-rs-circ ${TARGET}/bin
+	cp ./target/debug/eg-service-rs-actor ${TARGET}/bin
+	cp ./target/debug/eg-service-rs-circ ${TARGET}/bin
 
 install-evergreen-release: install-evergreen-config
 	cp ./target/release/egsh ${TARGET}/bin
 	cp ./target/release/eg-http-gateway ${TARGET}/bin
 	cp ./target/release/eg-websockets ${TARGET}/bin
-	cp ./target/release/eg-svc-rs-actor ${TARGET}/bin
-	cp ./target/release/eg-svc-rs-circ ${TARGET}/bin
+	cp ./target/release/eg-service-rs-actor ${TARGET}/bin
+	cp ./target/release/eg-service-rs-circ ${TARGET}/bin
 
 install-evergreen-config:
 	cp ./systemd/eg-http-gateway.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-websockets.service ${SYSTEMD_DIR}/
-	cp ./systemd/eg-svc-rs-actor.service ${SYSTEMD_DIR}/
-	cp ./systemd/eg-svc-rs-circ.service ${SYSTEMD_DIR}/
+	cp ./systemd/eg-service-rs-actor.service ${SYSTEMD_DIR}/
+	cp ./systemd/eg-service-rs-circ.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
 # --- SIP2 Server ---
