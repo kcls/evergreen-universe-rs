@@ -87,6 +87,9 @@ Commands
         Same as introspect, but only lists method names instead of
         the full method definition.
 
+    introspect-summary <service> [<prefix>]
+        Same as introspect, but only lists method names and params.
+
     router <domain> <command> [<router_class>]
         Sends <command> to the router at <domain> and reports the result.
         Specify "_" as the <domain> to send the request to the router
@@ -354,7 +357,7 @@ impl Shell {
             "db" => self.db_command(args),
             "req" | "request" => self.send_request(args),
             "reqauth" => self.send_reqauth(args),
-            "introspect" | "introspect-names" => self.introspect(args),
+            "introspect" | "introspect-names" | "introspect-summary" => self.introspect(args),
             "router" => self.send_router_command(args),
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
@@ -547,6 +550,8 @@ impl Shell {
     fn introspect(&mut self, args: &[&str]) -> Result<(), String> {
         self.args_min_length(args, 1)?;
 
+        let wants_summary = self.command.contains("-summary");
+
         let service = &args[0];
 
         let mut params = vec![];
@@ -554,12 +559,20 @@ impl Shell {
             params.push(json::from(*prefix));
         }
 
+        let method = if wants_summary {
+            "opensrf.system.method.all.summary"
+        } else {
+            "opensrf.system.method.all"
+        };
+
         let mut ses = self.ctx().client().session(service);
-        let mut req = ses.request("opensrf.system.method.all", params)?;
+        let mut req = ses.request(method, params)?;
 
         while let Some(resp) = req.recv()? {
             if self.command.contains("-names") {
                 println!("* {}", resp["api_name"]);
+            } else if wants_summary {
+                println!("* {}", resp.as_str().unwrap());
             } else {
                 self.print_json_record(&resp)?;
             }

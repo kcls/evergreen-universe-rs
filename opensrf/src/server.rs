@@ -350,12 +350,23 @@ impl Server {
             system_method_introspect,
         );
         method.set_desc("List published API definitions");
+
         method.add_param(method::Param {
             required: false,
             name: String::from("Prefix"),
             datatype: method::ParamDataType::String,
             desc: Some(String::from("API name prefix filter")),
         });
+
+        hash.insert(name.to_string(), method);
+
+        let name = "opensrf.system.method.all.summary";
+        let mut method = method::Method::new(
+            name,
+            method::ParamCount::Range(0, 1),
+            system_method_introspect,
+        );
+        method.set_desc("Summary list published API definitions");
 
         hash.insert(name.to_string(), method);
     }
@@ -563,7 +574,11 @@ fn system_method_introspect(
 
     for name in names {
         if let Some(meth) = worker.methods().get(name) {
-            session.respond(meth.to_json_value())?;
+            if method.method().contains("summary") {
+                session.respond(meth.to_summary_string())?;
+            } else {
+                session.respond(meth.to_json_value())?;
+            }
         }
     }
 

@@ -7,6 +7,7 @@ use eg::result::EgResult;
 use evergreen as eg;
 use std::collections::HashMap;
 
+// TODO move AlerType into sip2::spec
 pub enum AlertType {
     Unknown,
     LocalHold,

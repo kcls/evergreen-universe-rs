@@ -264,4 +264,19 @@ impl Method {
             }
         }
     }
+
+    pub fn to_summary_string(&self) -> String {
+        let mut s = format!("{} (", self.name());
+
+        if let Some(params) = self.params() {
+            for param in params {
+                s += &format!("'{}',", param.name);
+            }
+            s.pop(); // remove trailing ","
+        }
+
+        s += ")";
+
+        s
+    }
 }
