@@ -244,8 +244,6 @@ struct Session {
     /// are queued for delivery and relayed as soon as possible.
     max_parallel: usize,
 
-    log_trace: Option<String>,
-
     /// Any time we receive a 'format' request in a message, we
     /// set that as our default format going forward for this
     /// client session.  It's assumed that clients will generally
@@ -334,7 +332,6 @@ impl Session {
             max_parallel,
             reqs_in_flight: 0,
             format: None,
-            log_trace: None,
             shutdown,
             shutdown_session: shutdown_session,
             osrf_sessions: HashMap::new(),
@@ -541,9 +538,11 @@ impl Session {
         let mut msg_list = wrapper["osrf_msg"].take();
 
         if let Some(xid) = log_xid.as_str() {
-            self.log_trace = Some(xid.to_string());
+            Logger::set_log_trace(xid);
         } else {
-            self.log_trace = Some(Logger::mk_log_trace());
+            Logger::mk_log_trace();
+            // XXX TESTING
+            log::info!("We just made a log trace: {}", Logger::get_log_trace());
         };
 
         let thread = thread
@@ -658,9 +657,7 @@ impl Session {
             body_vec,
         );
 
-        if let Some(xid) = self.log_trace.as_ref() {
-            tm.set_osrf_xid(xid);
-        }
+        tm.set_osrf_xid(&Logger::get_log_trace());
 
         log::trace!(
             "{self} sending request to opensrf from {}",
@@ -672,8 +669,6 @@ impl Session {
         } else {
             self.osrf_sender.send(&tm)?;
         }
-
-        self.log_trace = None;
 
         Ok(())
     }
@@ -797,12 +792,10 @@ impl Session {
         };
 
         let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
-        let xid = self.log_trace.as_deref().unwrap_or("");
 
         log::info!(
-            "ACT:[{}:{}] {} {} {}",
+            "ACT:[{}] {} {} {}",
             self.client_ip,
-            xid,
             service,
             request.method(),
             log_params

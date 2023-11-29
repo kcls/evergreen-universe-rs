@@ -2,6 +2,7 @@
 use super::conf;
 use super::util;
 use log;
+use std::cell::RefCell;
 use std::fs;
 use std::io::Write;
 use std::os::unix::net::UnixDatagram;
@@ -10,6 +11,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use syslog;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
+
+// Thread-local version of the current log trace
+thread_local! {
+    static LOG_TRACE: RefCell<String> = RefCell::new(Logger::build_log_trace());
+}
 
 /// Main logging structure
 ///
@@ -128,13 +134,34 @@ impl Logger {
         }
     }
 
-    /// Generate a log trace string from the epoch time and thread id.
-    pub fn mk_log_trace() -> String {
+    fn build_log_trace() -> String {
         let t = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("SystemTime before UNIX EPOCH!");
 
-        format!("{}{:0>5}", t.as_millis(), util::thread_id())
+        format!("{}-{:0>5}", t.as_millis(), util::thread_id())
+    }
+
+    /// Generate and set a thread-local log trace string.
+    ///
+    /// Built from system time and thread id.
+    pub fn mk_log_trace() -> String {
+        let t = Logger::build_log_trace();
+        Logger::set_log_trace(&t);
+        t
+    }
+
+    pub fn set_log_trace(trace: &str) {
+        LOG_TRACE.with(|tr| *tr.borrow_mut() = trace.to_string());
+    }
+
+    /// Returns a clone of the current log trace.
+    ///
+    /// Cloning required here.
+    pub fn get_log_trace() -> String {
+        let mut trace: Option<String> = None;
+        LOG_TRACE.with(|tr| trace = Some((*tr.borrow()).to_string()));
+        trace.unwrap()
     }
 }
 
@@ -176,7 +203,7 @@ impl log::Log for Logger {
         };
 
         let mut message = format!(
-            "{}{} [{}:{}:{}:{}:{:0>5}] {}",
+            "{}{} [{}:{}:{}:{}",
             match self.writer.is_some() {
                 true => format!("<{}>", severity),
                 _ => format!("{} ", util::epoch_secs()),
@@ -188,10 +215,13 @@ impl log::Log for Logger {
             match record.line() {
                 Some(l) => l,
                 _ => 0,
-            },
-            util::thread_id(),
-            logmsg
+            }
         );
+
+        // Add the thread-local log trace
+        LOG_TRACE.with(|tr| message += &format!(":{}] ", *tr.borrow()));
+
+        message += &logmsg;
 
         if let Some(ref w) = self.writer {
             if w.send(message.as_bytes()).is_ok() {

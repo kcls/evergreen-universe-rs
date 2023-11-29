@@ -5,6 +5,7 @@ use evergreen as eg;
 use httparse;
 use mptc;
 use opensrf as osrf;
+use osrf::logging::Logger;
 use std::any::Any;
 use std::env;
 use std::io::{Read, Write};
@@ -28,7 +29,6 @@ struct GatewayRequest {
     stream: TcpStream,
     address: SocketAddr,
     start_time: date::EgDate,
-    log_trace: String,
 }
 
 impl GatewayRequest {
@@ -141,12 +141,7 @@ impl GatewayHandler {
         let duration = date::now() - request.start_time;
         let millis = (duration.num_milliseconds() as f64) / 1000.0;
 
-        log::debug!(
-            "[{}:{}] Request duration: {:.3}s",
-            request.address,
-            request.log_trace,
-            millis
-        );
+        log::debug!("[{}] Request duration: {:.3}s", request.address, millis);
 
         Ok(())
     }
@@ -494,9 +489,8 @@ impl GatewayHandler {
         let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
 
         log::info!(
-            "ACT:[{}:{}] {} {} {}",
+            "ACT:[{}] {} {} {}",
             request.address,
-            request.log_trace,
             req.service,
             method.method(),
             log_params
@@ -504,9 +498,8 @@ impl GatewayHandler {
 
         // Also log as INFO e.g. gateway.xx.log
         log::info!(
-            "[{}:{}] {} {} {}",
+            "[{}] {} {} {}",
             request.address,
-            request.log_trace,
             req.service,
             method.method(),
             log_params
@@ -529,11 +522,7 @@ impl mptc::RequestHandler for GatewayHandler {
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let mut request = GatewayRequest::downcast(&mut request);
 
-        log::debug!(
-            "[{}:{}] Gateway request received",
-            request.address,
-            request.log_trace
-        );
+        log::debug!("[{}] Gateway request received", request.address,);
 
         let result = self.handle_request(&mut request);
 
@@ -582,10 +571,12 @@ impl mptc::RequestStream for GatewayStream {
             },
         };
 
+        // Every new request gets its own log trace.
+        Logger::mk_log_trace();
+
         let request = GatewayRequest {
             stream,
             address,
-            log_trace: osrf::logging::Logger::mk_log_trace(),
             start_time: date::now(),
         };
 
