@@ -541,8 +541,6 @@ impl Session {
             Logger::set_log_trace(xid);
         } else {
             Logger::mk_log_trace();
-            // XXX TESTING
-            log::info!("We just made a log trace: {}", Logger::get_log_trace());
         };
 
         let thread = thread
@@ -650,14 +648,12 @@ impl Session {
             body_vec.push(msg);
         }
 
-        let mut tm = message::TransportMessage::with_body_vec(
+        let tm = message::TransportMessage::with_body_vec(
             &recipient,
             self.osrf_sender.address().as_str(),
             thread,
             body_vec,
         );
-
-        tm.set_osrf_xid(&Logger::get_log_trace());
 
         log::trace!(
             "{self} sending request to opensrf from {}",

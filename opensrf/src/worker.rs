@@ -12,6 +12,7 @@ use super::method;
 use super::method::ParamCount;
 use super::sclient::HostSettings;
 use super::session::ServerSession;
+use super::logging::Logger;
 use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
@@ -366,6 +367,10 @@ impl Worker {
         tmsg: &message::TransportMessage,
         appworker: &mut Box<dyn app::ApplicationWorker>,
     ) -> Result<(), String> {
+
+        // Always adopt the log trace of an inbound message.
+        Logger::set_log_trace(tmsg.osrf_xid());
+
         if self.session.is_none() || self.session().thread().ne(tmsg.thread()) {
             log::trace!("server: creating new server session for {}", tmsg.thread());
 

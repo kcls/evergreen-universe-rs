@@ -134,6 +134,7 @@ impl Logger {
         }
     }
 
+    /// Create a log trace string from the current time and thread id.
     fn build_log_trace() -> String {
         let t = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -143,14 +144,14 @@ impl Logger {
     }
 
     /// Generate and set a thread-local log trace string.
-    ///
-    /// Built from system time and thread id.
     pub fn mk_log_trace() -> String {
         let t = Logger::build_log_trace();
         Logger::set_log_trace(&t);
         t
     }
 
+    /// Set the thread-local log trace string, typically from
+    /// a log trace found in an opensrf message.
     pub fn set_log_trace(trace: &str) {
         LOG_TRACE.with(|tr| *tr.borrow_mut() = trace.to_string());
     }

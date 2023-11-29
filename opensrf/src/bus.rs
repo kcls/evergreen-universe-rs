@@ -1,5 +1,6 @@
 use super::addr::BusAddress;
 use super::conf;
+use super::logging::Logger;
 use super::message::TransportMessage;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::fmt;
@@ -262,7 +263,14 @@ impl Bus {
     /// Sends a TransportMessage to the specified BusAddress, regardless
     /// of what value is in the msg.to() field.
     pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), String> {
-        let json_str = msg.to_json_value().dump();
+        let mut json_val = msg.to_json_value();
+
+        // Play a little inside baseball here and tag the message
+        // with our log trace.  This way the layers above don't have
+        // to worry about it or pass us mutable messages.
+        json_val["osrf_xid"] = json::from(Logger::get_log_trace());
+
+        let json_str = json_val.dump();
 
         log::trace!("send() writing chunk to={}: {}", recipient, json_str);
 

@@ -18,6 +18,8 @@ use eg::init;
 
 use eg::util;
 use evergreen as eg;
+use opensrf as osrf;
+use osrf::logging::Logger;
 
 //const PROMPT: &str = "egsh# ";
 const PROMPT: &str = "\x1b[1;32megsh# \x1b[0m";
@@ -601,6 +603,9 @@ impl Shell {
             false => None,
         };
 
+        // We are the entry point for this request.  Give it a log trace.
+        Logger::mk_log_trace();
+
         // Assumes the caller wants to see the response for any
         // router request.
         if let Some(resp) = self.ctx().client().send_router_command(
@@ -644,6 +649,9 @@ impl Shell {
 
             params.push(param);
         }
+
+        // We are the entry point for this request.  Give it a log trace.
+        Logger::mk_log_trace();
 
         let mut ses = self.ctx().client().session(args[0]);
         let mut req = ses.request(args[1], params)?;
