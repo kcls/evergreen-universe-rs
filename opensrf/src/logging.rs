@@ -190,10 +190,19 @@ impl log::Log for Logger {
             record.module_path().unwrap_or_default()
         };
 
+        // HACK to avoid logging content from the rustyline crate, which
+        // is quite chatty.  If this list grows, consider alternative
+        // approaches to specifying which module's logs we want to
+        // handle.
+        if target.starts_with("rustyline") {
+            return;
+        }
+
         let mut logmsg = record.args().to_string();
 
         // This is a hack to support ACTIVITY logging via the existing
-        // log::* macros.
+        // log::* macros.  Ideally we could use e.g. Notice instead.
+        // https://github.com/rust-lang/log/issues/334
         let severity = if format!("{}", record.args()).starts_with("ACT:") {
             // Remove the ACT: tag since it will also be present in the
             // syslog level.
