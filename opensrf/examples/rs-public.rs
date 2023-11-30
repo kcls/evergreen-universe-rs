@@ -60,13 +60,13 @@ impl Application for RsPublicApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
-    ) -> Result<Vec<method::Method>, String> {
+    ) -> Result<Vec<method::MethodDef>, String> {
         let namer = |n| format!("{APPNAME}.{n}");
 
         Ok(vec![
-            method::Method::new(&namer("time"), ParamCount::Zero, relay),
-            method::Method::new(&namer("counter"), ParamCount::Zero, relay),
-            method::Method::new(&namer("sleep"), ParamCount::Range(0, 1), relay),
+            method::MethodDef::new(&namer("time"), ParamCount::Zero, relay),
+            method::MethodDef::new(&namer("counter"), ParamCount::Zero, relay),
+            method::MethodDef::new(&namer("sleep"), ParamCount::Range(0, 1), relay),
         ])
     }
 
@@ -79,7 +79,7 @@ struct RsPublicWorker {
     env: Option<RsPublicEnv>,
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
-    methods: Option<Arc<HashMap<String, method::Method>>>,
+    methods: Option<Arc<HashMap<String, method::MethodDef>>>,
     host_settings: Option<Arc<HostSettings>>,
     // Worker/thread-specific value that persists for the life of the worker.
     relay_count: usize,
@@ -126,7 +126,7 @@ impl ApplicationWorker for RsPublicWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, method::Method>> {
+    fn methods(&self) -> &Arc<HashMap<String, method::MethodDef>> {
         &self.methods.as_ref().unwrap()
     }
 
@@ -136,7 +136,7 @@ impl ApplicationWorker for RsPublicWorker {
         client: Client,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
-        methods: Arc<HashMap<String, method::Method>>,
+        methods: Arc<HashMap<String, method::MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         self.client = Some(client);
@@ -164,7 +164,7 @@ impl ApplicationWorker for RsPublicWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::Method, _error: &str) {}
+    fn api_call_error(&mut self, _request: &message::MethodCall, _error: &str) {}
 
     fn end_session(&mut self) -> Result<(), String> {
         Ok(())
@@ -191,7 +191,7 @@ fn main() {
 fn relay(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let mut worker = RsPublicWorker::downcast(worker)?;
     worker.relay_count += 1;

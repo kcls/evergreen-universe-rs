@@ -65,17 +65,17 @@ impl Application for RsPrivateApplication {
         _client: client::Client,
         _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
-    ) -> Result<Vec<method::Method>, String> {
+    ) -> Result<Vec<method::MethodDef>, String> {
         log::info!("Registering methods for {}", self.name());
 
         Ok(vec![
-            method::Method::new("opensrf.rs-private.time", method::ParamCount::Zero, time),
-            method::Method::new(
+            method::MethodDef::new("opensrf.rs-private.time", method::ParamCount::Zero, time),
+            method::MethodDef::new(
                 "opensrf.rs-private.counter",
                 method::ParamCount::Zero,
                 counter,
             ),
-            method::Method::new(
+            method::MethodDef::new(
                 "opensrf.rs-private.sleep",
                 method::ParamCount::Range(0, 1),
                 sleep,
@@ -93,7 +93,7 @@ struct RsPrivateWorker {
     client: Option<client::Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
-    methods: Option<Arc<HashMap<String, method::Method>>>,
+    methods: Option<Arc<HashMap<String, method::MethodDef>>>,
     count: usize,
 }
 
@@ -129,7 +129,7 @@ impl ApplicationWorker for RsPrivateWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, method::Method>> {
+    fn methods(&self) -> &Arc<HashMap<String, method::MethodDef>> {
         &self.methods.as_ref().unwrap()
     }
 
@@ -139,7 +139,7 @@ impl ApplicationWorker for RsPrivateWorker {
         client: client::Client,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
-        methods: Arc<HashMap<String, method::Method>>,
+        methods: Arc<HashMap<String, method::MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         self.client = Some(client);
@@ -180,7 +180,7 @@ impl ApplicationWorker for RsPrivateWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::Method, _error: &str) {}
+    fn api_call_error(&mut self, _request: &message::MethodCall, _error: &str) {}
 }
 
 fn main() {
@@ -194,7 +194,7 @@ fn main() {
 fn time(
     _worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    _method: &message::Method,
+    _method: &message::MethodCall,
 ) -> Result<(), String> {
     let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     session.respond(json::from(dur.as_secs()))?;
@@ -204,7 +204,7 @@ fn time(
 fn counter(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    _method: &message::Method,
+    _method: &message::MethodCall,
 ) -> Result<(), String> {
     let mut worker = RsPrivateWorker::downcast(worker)?;
     worker.count += 1;
@@ -219,7 +219,7 @@ fn counter(
 fn sleep(
     _worker: &mut Box<dyn ApplicationWorker>,
     _session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     // Param count may be zero
     let secs = match method.params().get(0) {
