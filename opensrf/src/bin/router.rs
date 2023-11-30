@@ -700,7 +700,7 @@ impl Router {
 
     fn process_router_api_request(
         &mut self,
-        m: &message::Method,
+        m: &message::MethodCall,
     ) -> Result<json::JsonValue, String> {
         match m.method() {
             "opensrf.router.info.class.list" => {

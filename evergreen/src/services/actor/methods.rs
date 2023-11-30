@@ -206,7 +206,7 @@ pub static METHODS: &[StaticMethodDef] = &[
 pub fn get_barcodes(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     // Cast our worker instance into something we know how to use.
     let worker = app::RsActorWorker::downcast(worker)?;
@@ -279,7 +279,7 @@ pub fn get_barcodes(
 pub fn user_has_work_perm_at_batch(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     // Cast our worker instance into something we know how to use.
     let worker = app::RsActorWorker::downcast(worker)?;
@@ -323,7 +323,7 @@ pub fn user_has_work_perm_at_batch(
 pub fn retrieve_cascade_settigs(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsActorWorker::downcast(worker)?;
 
@@ -373,7 +373,7 @@ pub fn retrieve_cascade_settigs(
 pub fn ou_setting_ancestor_default_batch(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsActorWorker::downcast(worker)?;
     let org_id = util::json_int(method.param(0))?;
@@ -422,7 +422,7 @@ pub fn ou_setting_ancestor_default_batch(
 pub fn user_opac_vital_stats(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsActorWorker::downcast(worker)?;
     let authtoken = util::json_string(method.param(0))?;
@@ -498,7 +498,7 @@ pub fn user_opac_vital_stats(
 pub fn update_penalties(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsActorWorker::downcast(worker)?;
     let authtoken = util::json_string(method.param(0))?;

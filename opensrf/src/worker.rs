@@ -538,7 +538,7 @@ impl Worker {
                 unpacked_params.push(s.unpack(p.clone()));
             }
         }
-        let request = message::Method::new(request.method(), unpacked_params);
+        let request = message::MethodCall::new(request.method(), unpacked_params);
 
         if let Err(ref err) = (method.handler())(appworker, self.session_mut(), &request) {
             let msg = format!("{self} method {} failed with {err}", request.method());

@@ -225,5 +225,5 @@ impl ApplicationWorker for RsActorWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::Method, _error: &str) {}
+    fn api_call_error(&mut self, _request: &message::MethodCall, _error: &str) {}
 }

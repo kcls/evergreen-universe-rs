@@ -217,7 +217,7 @@ impl ApplicationWorker for RsCircWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::Method, error: &str) {
+    fn api_call_error(&mut self, _request: &message::MethodCall, error: &str) {
         log::debug!("API failed: {error}");
     }
 }

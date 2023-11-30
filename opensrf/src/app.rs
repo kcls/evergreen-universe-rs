@@ -61,7 +61,7 @@ pub trait ApplicationWorker: Any {
     /// within the configured timeout.
     fn keepalive_timeout(&mut self) -> Result<(), String>;
 
-    fn api_call_error(&mut self, request: &message::Method, error: &str);
+    fn api_call_error(&mut self, request: &message::MethodCall, error: &str);
 }
 
 pub trait Application {

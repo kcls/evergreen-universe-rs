@@ -528,7 +528,7 @@ impl Server {
 fn system_method_echo(
     _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     for p in method.params() {
         session.respond(p.clone())?;
@@ -539,7 +539,7 @@ fn system_method_echo(
 fn system_method_time(
     _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    _method: &message::Method,
+    _method: &message::MethodCall,
 ) -> Result<(), String> {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => session.respond(t.as_secs()),
@@ -550,7 +550,7 @@ fn system_method_time(
 fn system_method_introspect(
     worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let prefix = match method.params().get(0) {
         Some(p) => p.as_str(),

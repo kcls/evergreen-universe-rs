@@ -164,7 +164,7 @@ impl MessageStatus {
 /// The message payload is the core of the message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
-    Method(Method),
+    Method(MethodCall),
     Result(Result),
     Status(Status),
     NoPayload,
@@ -508,7 +508,7 @@ impl Message {
         payload_obj: json::JsonValue,
     ) -> Option<Payload> {
         match mtype {
-            MessageType::Request => match Method::from_json_value(payload_obj) {
+            MessageType::Request => match MethodCall::from_json_value(payload_obj) {
                 Some(method) => Some(Payload::Method(method)),
                 _ => None,
             },
@@ -711,15 +711,15 @@ impl fmt::Display for Status {
 
 /// A single API request with method name and parameters.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Method {
+pub struct MethodCall {
     method: String,
     params: Vec<json::JsonValue>,
     msg_class: String,
 }
 
-impl Method {
+impl MethodCall {
     pub fn new(method: &str, params: Vec<json::JsonValue>) -> Self {
-        Method {
+        MethodCall {
             params: params,
             method: String::from(method),
             msg_class: String::from("osrfMethod"), // only supported value
@@ -746,7 +746,7 @@ impl Method {
             params = vec;
         }
 
-        Some(Method {
+        Some(MethodCall {
             method,
             params,
             msg_class: msg_wrapper.class().to_string(),
@@ -776,7 +776,7 @@ impl Method {
         self.params.get(index).unwrap_or(&JSON_NULL)
     }
 
-    /// Create a JsonValue from a Method
+    /// Create a JsonValue from a MethodCall
     pub fn to_json_value(&self) -> json::JsonValue {
         let obj = json::object! {
             method: self.method(),

@@ -130,7 +130,7 @@ fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> Result<String, St
 pub fn retrieve(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
@@ -152,7 +152,7 @@ pub fn retrieve(
 pub fn search(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
@@ -176,7 +176,7 @@ pub fn search(
 pub fn delete(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
@@ -197,7 +197,7 @@ pub fn delete(
 pub fn create(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
@@ -216,7 +216,7 @@ pub fn create(
 pub fn update(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
@@ -239,7 +239,7 @@ pub fn update(
 pub fn manage_xact(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let db = worker.database();

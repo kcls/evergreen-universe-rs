@@ -202,7 +202,7 @@ pub static METHODS: &[StaticMethodDef] = &[
 pub fn checkout_renew_checkin(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsCircWorker::downcast(worker)?;
     let authtoken = util::json_string(method.param(0))?;
@@ -266,7 +266,7 @@ pub fn checkout_renew_checkin(
 pub fn renewal_chain_summary(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsCircWorker::downcast(worker)?;
     let authtoken = util::json_string(method.param(0))?;
@@ -290,7 +290,7 @@ pub fn renewal_chain_summary(
 pub fn prev_renewal_chain_summary(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::RsCircWorker::downcast(worker)?;
     let authtoken = util::json_string(method.param(0))?;

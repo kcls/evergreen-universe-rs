@@ -48,7 +48,7 @@ impl mptc::Request for GatewayRequest {
 #[derive(Debug)]
 struct ParsedGatewayRequest {
     service: String,
-    method: Option<osrf::message::Method>,
+    method: Option<osrf::message::MethodCall>,
     format: idl::DataFormat,
     http_method: String,
 }
@@ -454,7 +454,7 @@ impl GatewayHandler {
 
         let service = service.ok_or(format!("Request contains no service name"))?;
 
-        let osrf_method = osrf::message::Method::new(method, params);
+        let osrf_method = osrf::message::MethodCall::new(method, params);
 
         Ok(ParsedGatewayRequest {
             format,

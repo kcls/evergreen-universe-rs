@@ -6,7 +6,7 @@ use std::fmt;
 pub type MethodHandler = fn(
     &mut Box<dyn app::ApplicationWorker>,
     &mut session::ServerSession,
-    &message::Method,
+    &message::MethodCall,
 ) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]
@@ -256,6 +256,7 @@ impl MethodDef {
         }
     }
 
+    /// Produces e.g. "foo.bar.baz('param1', 'param2')"
     pub fn to_summary_string(&self) -> String {
         let mut s = format!("{} (", self.name());
 

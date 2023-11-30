@@ -29,7 +29,7 @@ pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
 pub fn target(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method,
+    method: &message::MethodCall,
 ) -> Result<(), String> {
     let worker = app::HoldTargeterWorker::downcast(worker)?;
 

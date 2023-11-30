@@ -4,7 +4,7 @@ use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
 use super::message::MessageType;
-use super::message::Method;
+use super::message::MethodCall;
 use super::message::Payload;
 use super::message::Status;
 use super::message::TransportMessage;
@@ -467,7 +467,7 @@ impl Session {
             Message::new(
                 MessageType::Request,
                 trace,
-                Payload::Method(Method::new(method, params)),
+                Payload::Method(MethodCall::new(method, params)),
             ),
         );
 
