@@ -14,20 +14,13 @@ const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
 // Thread-local version of the current log trace
 thread_local! {
-    static LOG_TRACE: RefCell<String> = RefCell::new(Logger::build_log_trace());
+    static THREAD_LOCAL_LOG_TRACE: RefCell<String> = RefCell::new(Logger::build_log_trace());
 }
 
 /// Main logging structure
 ///
 /// NOTE this logs directly to the syslog UNIX path instead of going through
 /// the syslog crate.  This approach gives us much more control.
-///
-/// TODO: As it stands, there's no way to apply a log trace value to the
-/// logger, since the global logger isn't generally writable or accessible
-/// to individual threads.  Additionally, each thread will have its own
-/// log trace values. Log traces currently have to be passed by the
-/// log::* caller within the log message.  Consider alternatives.
-///
 pub struct Logger {
     logfile: conf::LogFile,
     loglevel: log::LevelFilter,
@@ -97,14 +90,28 @@ impl Logger {
     ///
     /// Attempts to connect to syslog unix socket if possible.
     pub fn init(mut self) -> Result<(), String> {
-        if self.logfile == conf::LogFile::Syslog {
-            self.writer = match Logger::writer() {
-                Ok(w) => Some(w),
-                Err(e) => {
-                    eprintln!("Cannot init Logger: {e}");
-                    return Err(format!("Cannot init Logger: {e}"));
+        match self.logfile {
+            conf::LogFile::Syslog => {
+                self.writer = match Logger::writer() {
+                    Ok(w) => Some(w),
+                    Err(e) => {
+                        eprintln!("Cannot init Logger: {e}");
+                        return Err(format!("Cannot init Logger: {e}"));
+                    }
                 }
-            };
+            }
+            conf::LogFile::Filename(ref name) => {
+                if let Err(e) = fs::File::options()
+                    .create(true)
+                    .write(true)
+                    .append(true)
+                    .open(name)
+                {
+                    let err = format!("Cannot open file for writing: {name} {e}");
+                    eprintln!("{err}");
+                    return Err(err);
+                }
+            }
         }
 
         log::set_max_level(self.loglevel);
@@ -153,7 +160,7 @@ impl Logger {
     /// Set the thread-local log trace string, typically from
     /// a log trace found in an opensrf message.
     pub fn set_log_trace(trace: &str) {
-        LOG_TRACE.with(|tr| *tr.borrow_mut() = trace.to_string());
+        THREAD_LOCAL_LOG_TRACE.with(|tr| *tr.borrow_mut() = trace.to_string());
     }
 
     /// Returns a clone of the current log trace.
@@ -161,7 +168,7 @@ impl Logger {
     /// Cloning required here.
     pub fn get_log_trace() -> String {
         let mut trace: Option<String> = None;
-        LOG_TRACE.with(|tr| trace = Some((*tr.borrow()).to_string()));
+        THREAD_LOCAL_LOG_TRACE.with(|tr| trace = Some((*tr.borrow()).to_string()));
         trace.unwrap()
     }
 }
@@ -220,7 +227,7 @@ impl log::Log for Logger {
         );
 
         // Add the thread-local log trace
-        LOG_TRACE.with(|tr| message += &format!(":{}] ", *tr.borrow()));
+        THREAD_LOCAL_LOG_TRACE.with(|tr| message += &format!(":{}] ", *tr.borrow()));
 
         message += &logmsg;
 
@@ -229,7 +236,12 @@ impl log::Log for Logger {
                 return;
             }
         } else if let conf::LogFile::Filename(ref name) = self.logfile {
-            if let Ok(mut file) = fs::File::options().append(true).open(name) {
+            if let Ok(mut file) = fs::File::options()
+                .create(true)
+                .write(true)
+                .append(true)
+                .open(name)
+            {
                 message += "\n";
                 if file.write_all(message.as_bytes()).is_ok() {
                     return;

@@ -2,6 +2,7 @@ use super::addr::BusAddress;
 use super::app;
 use super::client::{Client, ClientSingleton};
 use super::conf;
+use super::logging::Logger;
 use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
@@ -12,7 +13,6 @@ use super::method;
 use super::method::ParamCount;
 use super::sclient::HostSettings;
 use super::session::ServerSession;
-use super::logging::Logger;
 use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
@@ -367,7 +367,6 @@ impl Worker {
         tmsg: &message::TransportMessage,
         appworker: &mut Box<dyn app::ApplicationWorker>,
     ) -> Result<(), String> {
-
         // Always adopt the log trace of an inbound message.
         Logger::set_log_trace(tmsg.osrf_xid());
 
