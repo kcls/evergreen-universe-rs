@@ -5,7 +5,7 @@ use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWo
 use opensrf::client::Client;
 use opensrf::conf;
 use opensrf::message;
-use opensrf::method::Method;
+use opensrf::method::MethodDef;
 use opensrf::sclient::HostSettings;
 use std::any::Any;
 use std::cell::RefCell;
@@ -65,7 +65,7 @@ impl RsStoreApplication {
     }
 
     /// Register CRUD (and search) methods for classes we control.
-    fn register_auto_methods(&self, methods: &mut Vec<Method>) {
+    fn register_auto_methods(&self, methods: &mut Vec<MethodDef>) {
         let classes = self.idl.as_ref().unwrap().classes().values();
 
         // Filter function to find classes with the wanted controllers.
@@ -87,7 +87,7 @@ impl RsStoreApplication {
         {
             for mtype in DIRECT_METHODS {
                 // Each direct method type has a stub method defined
-                // in our list of StaticMethod's.  Use the stub as the
+                // in our list of StaticMethodDef's.  Use the stub as the
                 // basis for each auto-method.  The stubs themselves are
                 // not registered.
                 let stub = methods::METHODS
@@ -109,7 +109,7 @@ impl RsStoreApplication {
         log::info!("{APPNAME} registered {} auto methods", methods.len());
     }
 
-    fn register_xact_methods(&self, methods: &mut Vec<Method>) {
+    fn register_xact_methods(&self, methods: &mut Vec<MethodDef>) {
         let api = "transaction.begin";
         let begin = methods::METHODS
             .iter()
@@ -174,8 +174,8 @@ impl Application for RsStoreApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
-    ) -> Result<Vec<Method>, String> {
-        let mut methods: Vec<Method> = Vec::new();
+    ) -> Result<Vec<MethodDef>, String> {
+        let mut methods: Vec<MethodDef> = Vec::new();
 
         self.register_auto_methods(&mut methods);
         self.register_xact_methods(&mut methods);
@@ -196,7 +196,7 @@ pub struct RsStoreWorker {
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
-    methods: Option<Arc<HashMap<String, Method>>>,
+    methods: Option<Arc<HashMap<String, MethodDef>>>,
     database: Option<Rc<RefCell<DatabaseConnection>>>,
     last_work_timer: Option<opensrf::util::Timer>,
 }
@@ -300,7 +300,7 @@ impl ApplicationWorker for RsStoreWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, Method>> {
+    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
         &self.methods.as_ref().unwrap()
     }
 
@@ -312,7 +312,7 @@ impl ApplicationWorker for RsStoreWorker {
         client: Client,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
-        methods: Arc<HashMap<String, Method>>,
+        methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         let worker_env = env

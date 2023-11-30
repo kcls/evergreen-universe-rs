@@ -35,7 +35,7 @@ pub struct WorkerThread {
 
 pub struct Server {
     application: Box<dyn app::Application>,
-    methods: Option<Arc<HashMap<String, method::Method>>>,
+    methods: Option<Arc<HashMap<String, method::MethodDef>>>,
     config: Arc<conf::Config>,
     client: Client,
     // Worker threads are tracked via their bus address.
@@ -192,7 +192,7 @@ impl Server {
         service: String,
         worker_id: u64,
         config: Arc<conf::Config>,
-        methods: Arc<HashMap<String, method::Method>>,
+        methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) {
         log::trace!("Creating new worker {worker_id}");
@@ -307,7 +307,7 @@ impl Server {
         let list = self
             .app_mut()
             .register_methods(client, config, host_settings)?;
-        let mut hash: HashMap<String, method::Method> = HashMap::new();
+        let mut hash: HashMap<String, method::MethodDef> = HashMap::new();
         for m in list {
             hash.insert(m.name().to_string(), m);
         }
@@ -317,8 +317,8 @@ impl Server {
         Ok(())
     }
 
-    fn add_atomic_methods(&self, hash: &mut HashMap<String, method::Method>) {
-        let mut atomic_hash: HashMap<String, method::Method> = HashMap::new();
+    fn add_atomic_methods(&self, hash: &mut HashMap<String, method::MethodDef>) {
+        let mut atomic_hash: HashMap<String, method::MethodDef> = HashMap::new();
 
         for method in hash.values() {
             let mut atomic_method = method.clone();
@@ -332,19 +332,19 @@ impl Server {
         hash.extend(atomic_hash);
     }
 
-    fn add_system_methods(&self, hash: &mut HashMap<String, method::Method>) {
+    fn add_system_methods(&self, hash: &mut HashMap<String, method::MethodDef>) {
         let name = "opensrf.system.echo";
-        let mut method = method::Method::new(name, method::ParamCount::Any, system_method_echo);
+        let mut method = method::MethodDef::new(name, method::ParamCount::Any, system_method_echo);
         method.set_desc("Echo back any values sent");
         hash.insert(name.to_string(), method);
 
         let name = "opensrf.system.time";
-        let mut method = method::Method::new(name, method::ParamCount::Zero, system_method_time);
+        let mut method = method::MethodDef::new(name, method::ParamCount::Zero, system_method_time);
         method.set_desc("Respond with system time in epoch seconds");
         hash.insert(name.to_string(), method);
 
         let name = "opensrf.system.method.all";
-        let mut method = method::Method::new(
+        let mut method = method::MethodDef::new(
             name,
             method::ParamCount::Range(0, 1),
             system_method_introspect,
@@ -361,7 +361,7 @@ impl Server {
         hash.insert(name.to_string(), method);
 
         let name = "opensrf.system.method.all.summary";
-        let mut method = method::Method::new(
+        let mut method = method::MethodDef::new(
             name,
             method::ParamCount::Range(0, 1),
             system_method_introspect,

@@ -4,7 +4,7 @@ use eg::util;
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
-use opensrf::method::{ParamCount, ParamDataType, StaticMethod, StaticParam};
+use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use opensrf::session::ServerSession;
 
 // Import our local app module
@@ -13,7 +13,7 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethod] = &[StaticMethod {
+pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
     name: "target",
     desc: "Target one or more holds",
     param_count: ParamCount::Range(0, 1),

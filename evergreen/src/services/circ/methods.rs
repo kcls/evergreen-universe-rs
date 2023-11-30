@@ -6,7 +6,7 @@ use evergreen as eg;
 use json;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
-use opensrf::method::{ParamCount, ParamDataType, StaticMethod, StaticParam};
+use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use opensrf::session::ServerSession;
 use std::collections::HashMap;
 
@@ -16,8 +16,8 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethod] = &[
-    StaticMethod {
+pub static METHODS: &[StaticMethodDef] = &[
+    StaticMethodDef {
         name: "checkin",
         desc: "Checkin a copy",
         param_count: ParamCount::Exactly(2),
@@ -37,7 +37,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "checkin.override",
         desc: "Checkin a copy / Override edition. See checkin",
         param_count: ParamCount::Exactly(2),
@@ -57,7 +57,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "checkout",
         desc: "Checkout a copy",
         param_count: ParamCount::Exactly(2),
@@ -77,7 +77,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "checkout.override",
         desc: "Checkout a copy / Override edition",
         param_count: ParamCount::Exactly(2),
@@ -97,7 +97,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "checkout.inspect",
         desc: "Inspect checkout policy",
         param_count: ParamCount::Exactly(2),
@@ -117,7 +117,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "renew",
         desc: "Renew a copy",
         param_count: ParamCount::Exactly(2),
@@ -137,7 +137,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "renew.override",
         desc: "Renew a copy / Override edition",
         param_count: ParamCount::Exactly(2),
@@ -157,7 +157,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "renewal_chain.retrieve_by_circ.summary",
         desc: "Circulation Renewal Chain Summary",
         param_count: ParamCount::Exactly(2),
@@ -177,7 +177,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "prev_renewal_chain.retrieve_by_circ.summary",
         desc: "Previous Circulation Renewal Chain Summary",
         param_count: ParamCount::Exactly(2),

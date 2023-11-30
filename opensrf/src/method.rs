@@ -32,21 +32,11 @@ impl ParamCount {
     /// ```
     pub fn matches(pc: &ParamCount, count: u8) -> bool {
         match *pc {
-            ParamCount::Any => {
-                return true;
-            }
-            ParamCount::Zero => {
-                return count == 0;
-            }
-            ParamCount::Exactly(c) => {
-                return count == c;
-            }
-            ParamCount::AtLeast(c) => {
-                return count >= c;
-            }
-            ParamCount::Range(s, e) => {
-                return s <= count && e >= count;
-            }
+            ParamCount::Any => true,
+            ParamCount::Zero => count == 0,
+            ParamCount::Exactly(c) => count == c,
+            ParamCount::AtLeast(c) => count >= c,
+            ParamCount::Range(s, e) => s <= count && e >= count,
         }
     }
 }
@@ -77,15 +67,16 @@ pub enum ParamDataType {
 
 impl fmt::Display for ParamDataType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ParamDataType::String => write!(f, "String"),
-            ParamDataType::Number => write!(f, "Number"),
-            ParamDataType::Array => write!(f, "Array"),
-            ParamDataType::Object => write!(f, "Object"),
-            ParamDataType::Boolish => write!(f, "Boolish"),
-            ParamDataType::Scalar => write!(f, "Scalar"),
-            ParamDataType::Any => write!(f, "Any"),
-        }
+        let s = match *self {
+            ParamDataType::String => "String",
+            ParamDataType::Number => "Number",
+            ParamDataType::Array => "Array",
+            ParamDataType::Object => "Object",
+            ParamDataType::Boolish => "Boolish",
+            ParamDataType::Scalar => "Scalar",
+            ParamDataType::Any => "Any",
+        };
+        write!(f, "{s}")
     }
 }
 
@@ -121,7 +112,7 @@ impl Param {
 
 /// A variation of a Method that can be used when creating static
 /// method definitions.
-pub struct StaticMethod {
+pub struct StaticMethodDef {
     pub name: &'static str,
     pub desc: &'static str,
     pub param_count: ParamCount,
@@ -129,7 +120,7 @@ pub struct StaticMethod {
     pub params: &'static [StaticParam],
 }
 
-impl StaticMethod {
+impl StaticMethodDef {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -141,7 +132,7 @@ impl StaticMethod {
     }
 
     /// Translate static method content into proper Method's
-    pub fn into_method(&self, api_prefix: &str) -> Method {
+    pub fn into_method(&self, api_prefix: &str) -> MethodDef {
         let mut params: Vec<Param> = Vec::new();
 
         for p in self.params {
@@ -159,7 +150,7 @@ impl StaticMethod {
             params.push(param)
         }
 
-        let mut m = Method::new(
+        let mut m = MethodDef::new(
             &format!("{}.{}", api_prefix, self.name()),
             self.param_count().clone(),
             self.handler,
@@ -178,7 +169,7 @@ impl StaticMethod {
 }
 
 #[derive(Clone)]
-pub struct Method {
+pub struct MethodDef {
     pub name: String,
     pub desc: Option<String>,
     pub param_count: ParamCount,
@@ -187,9 +178,9 @@ pub struct Method {
     pub atomic: bool,
 }
 
-impl Method {
-    pub fn new(name: &str, param_count: ParamCount, handler: MethodHandler) -> Method {
-        Method {
+impl MethodDef {
+    pub fn new(name: &str, param_count: ParamCount, handler: MethodHandler) -> MethodDef {
+        MethodDef {
             handler,
             param_count,
             params: None,

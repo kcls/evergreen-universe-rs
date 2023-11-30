@@ -6,7 +6,7 @@ use eg::util;
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
-use opensrf::method::{ParamCount, ParamDataType, StaticMethod, StaticParam};
+use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use opensrf::session::ServerSession;
 use std::collections::HashMap;
 
@@ -16,8 +16,8 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethod] = &[
-    StaticMethod {
+pub static METHODS: &[StaticMethodDef] = &[
+    StaticMethodDef {
         name: "get_barcodes",
         desc: "Find matching barcodes by type",
         param_count: ParamCount::Exactly(4),
@@ -49,7 +49,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "user_has_work_perm_at.batch",
         desc: "Find org units where the provided user has the requested permissions",
         param_count: ParamCount::Range(2, 3),
@@ -75,7 +75,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "ou_setting.ancestor_default.batch",
         desc: "Get org unit setting values",
         param_count: ParamCount::Range(2, 3),
@@ -101,7 +101,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "settings.retrieve",
         desc: "Get workstation/user/org unit setting values",
         param_count: ParamCount::Range(1, 3),
@@ -127,7 +127,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "user.opac.vital_stats",
         desc: "Key patron counts and info",
         param_count: ParamCount::Range(1, 2),
@@ -147,7 +147,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "user.penalties.update",
         desc: "Update User Penalties",
         param_count: ParamCount::Range(2, 3),
@@ -174,7 +174,7 @@ pub static METHODS: &[StaticMethod] = &[
             },
         ],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "user.penalties.update_at_home",
         desc: "Update User Penalties using Staff Context Org Unit",
         param_count: ParamCount::Range(2, 3),

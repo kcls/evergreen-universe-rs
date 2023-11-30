@@ -64,7 +64,7 @@ pub struct Worker {
     // True if the caller has requested a stateful conversation.
     connected: bool,
 
-    methods: Arc<HashMap<String, method::Method>>,
+    methods: Arc<HashMap<String, method::MethodDef>>,
 
     // Currently active session.
     // A worker can only have one active session at a time.
@@ -92,7 +92,7 @@ impl Worker {
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
         stopping: Arc<AtomicBool>,
-        methods: Arc<HashMap<String, method::Method>>,
+        methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> Result<Worker, String> {
         let client = Client::connect(config.clone())?;

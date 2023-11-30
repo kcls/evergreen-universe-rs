@@ -24,11 +24,11 @@ pub trait ApplicationWorker: Any {
         client: client::Client,
         config: Arc<conf::Config>,
         host_settings: Arc<sclient::HostSettings>,
-        methods: Arc<HashMap<String, method::Method>>,
+        methods: Arc<HashMap<String, method::MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String>;
 
-    fn methods(&self) -> &Arc<HashMap<String, method::Method>>;
+    fn methods(&self) -> &Arc<HashMap<String, method::MethodDef>>;
 
     /// Called after absorb_env, but before any work occurs.
     fn worker_start(&mut self) -> Result<(), String>;
@@ -84,7 +84,7 @@ pub trait Application {
         client: client::Client,
         config: Arc<conf::Config>,
         host_settings: Arc<sclient::HostSettings>,
-    ) -> Result<Vec<method::Method>, String>;
+    ) -> Result<Vec<method::MethodDef>, String>;
 
     /// Returns a function pointer (ApplicationWorkerFactory) that returns
     /// new ApplicationWorker's when called.

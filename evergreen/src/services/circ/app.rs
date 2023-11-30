@@ -4,7 +4,7 @@ use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWo
 use opensrf::client::Client;
 use opensrf::conf;
 use opensrf::message;
-use opensrf::method::Method;
+use opensrf::method::MethodDef;
 use opensrf::sclient::HostSettings;
 use std::any::Any;
 use std::collections::HashMap;
@@ -89,8 +89,8 @@ impl Application for RsCircApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
-    ) -> Result<Vec<Method>, String> {
-        let mut methods: Vec<Method> = Vec::new();
+    ) -> Result<Vec<MethodDef>, String> {
+        let mut methods: Vec<MethodDef> = Vec::new();
 
         // Create Method objects from our static method definitions.
         for def in methods::METHODS.iter() {
@@ -112,7 +112,7 @@ pub struct RsCircWorker {
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
-    methods: Option<Arc<HashMap<String, Method>>>,
+    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
 impl RsCircWorker {
@@ -156,7 +156,7 @@ impl ApplicationWorker for RsCircWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, Method>> {
+    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
         &self.methods.as_ref().unwrap()
     }
 
@@ -168,7 +168,7 @@ impl ApplicationWorker for RsCircWorker {
         client: Client,
         config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
-        methods: Arc<HashMap<String, Method>>,
+        methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         let worker_env = env

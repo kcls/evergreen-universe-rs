@@ -2,7 +2,7 @@ use eg::idldb::{IdlClassSearch, Translator};
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
-use opensrf::method::{ParamCount, ParamDataType, StaticMethod, StaticParam};
+use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use opensrf::session::ServerSession;
 use std::sync::Arc;
 
@@ -12,22 +12,22 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethod] = &[
-    StaticMethod {
+pub static METHODS: &[StaticMethodDef] = &[
+    StaticMethodDef {
         name: "transaction.begin",
         desc: "Start a database transaction",
         param_count: ParamCount::Zero,
         handler: manage_xact,
         params: &[],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "transaction.rollback",
         desc: "Rollback a database transaction",
         param_count: ParamCount::Zero,
         handler: manage_xact,
         params: &[],
     },
-    StaticMethod {
+    StaticMethodDef {
         name: "transaction.commit",
         desc: "Commit a database transaction",
         param_count: ParamCount::Zero,
@@ -35,7 +35,7 @@ pub static METHODS: &[StaticMethod] = &[
         params: &[],
     },
     // Stub method for *.create calls.  Not directly published.
-    StaticMethod {
+    StaticMethodDef {
         name: "create-stub",
         desc: "Create a new IDL object",
         param_count: ParamCount::Exactly(1),
@@ -48,7 +48,7 @@ pub static METHODS: &[StaticMethod] = &[
         }],
     },
     // Stub method for *.retrieve calls. Not directly published.
-    StaticMethod {
+    StaticMethodDef {
         name: "retrieve-stub",
         desc: "Retrieve an IDL object by its primary key",
         param_count: ParamCount::Exactly(1),
@@ -61,7 +61,7 @@ pub static METHODS: &[StaticMethod] = &[
         }],
     },
     // Stub method for *.search calls. Not directly published.
-    StaticMethod {
+    StaticMethodDef {
         name: "search-stub",
         desc: "search an IDL object by its primary key",
         param_count: ParamCount::Exactly(1),
@@ -74,7 +74,7 @@ pub static METHODS: &[StaticMethod] = &[
         }],
     },
     // Stub method for *.update calls. Not directly published.
-    StaticMethod {
+    StaticMethodDef {
         name: "update-stub",
         desc: "Update an IDL object",
         param_count: ParamCount::Exactly(1),
@@ -87,7 +87,7 @@ pub static METHODS: &[StaticMethod] = &[
         }],
     },
     // Stub method for *.delete calls.  Not directly published.
-    StaticMethod {
+    StaticMethodDef {
         name: "delete-stub",
         desc: "Delete an IDL object by its primary key",
         param_count: ParamCount::Exactly(1),
