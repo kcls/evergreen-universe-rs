@@ -7,6 +7,11 @@ use eg::result::EgResult;
 use evergreen as eg;
 use std::collections::HashMap;
 
+const RENEW_METHOD: &str = "open-ils.circ.renew";
+const RENEW_OVERRIDE_METHOD: &str = "open-ils.circ.renew.override";
+const CHECKOUT_METHOD: &str = "open-ils.circ.checkout.full";
+const CHECKOUT_OVERRIDE_METHOD: &str = "open-ils.circ.checkout.full.override";
+
 pub struct CheckoutResult {
     /// Presence of a circ_id implies success.
     circ_id: Option<i64>,
@@ -146,6 +151,124 @@ impl Session {
     }
 
     fn checkout(
+        &mut self,
+        item_barcode: &str,
+        patron_barcode: &str,
+        fee_ack: bool,
+        is_renewal: bool,
+        ovride: bool,
+    ) -> EgResult<CheckoutResult> {
+        if self.account().settings().use_native_checkout() {
+            self.checkout_native(item_barcode, patron_barcode, fee_ack, is_renewal, ovride)
+        } else {
+            self.checkout_api(item_barcode, patron_barcode, fee_ack, is_renewal, ovride)
+        }
+    }
+
+    /// Checkout variant that calls the traditional open-ils.circ APIs.
+    fn checkout_api(
+        &mut self,
+        item_barcode: &str,
+        patron_barcode: &str,
+        fee_ack: bool,
+        is_renewal: bool,
+        ovride: bool,
+    ) -> EgResult<CheckoutResult> {
+        let params = vec![
+            json::from(self.authtoken()?),
+            json::object! {
+                copy_barcode: item_barcode,
+                patron_barcode: patron_barcode,
+            },
+        ];
+
+        let method = match is_renewal {
+            true => match ovride {
+                true => RENEW_OVERRIDE_METHOD,
+                false => RENEW_METHOD,
+            },
+            false => match ovride {
+                true => CHECKOUT_OVERRIDE_METHOD,
+                false => CHECKOUT_METHOD,
+            },
+        };
+
+        let resp = match self
+            .osrf_client_mut()
+            .send_recv_one("open-ils.circ", method, params)?
+        {
+            Some(r) => r,
+            None => Err(format!("API call {method} failed to return a response"))?,
+        };
+
+        log::debug!("{self} Checkout of {item_barcode} returned: {resp}");
+
+        let event = if let json::JsonValue::Array(list) = resp {
+            list[0].to_owned()
+        } else {
+            resp
+        };
+
+        let mut result = CheckoutResult::new();
+
+        let evt = eg::event::EgEvent::parse(&event)
+            .ok_or_else(|| format!("API call {method} failed to return an event"))?;
+
+        if evt.is_success() {
+            let circ = &evt.payload()["circ"];
+
+            if circ.is_object() {
+                result.circ_id = Some(eg::util::json_int(&circ["id"])?);
+                result.renewal_remaining = eg::util::json_int(&circ["renewal_remaining"])?;
+
+                let iso_date = circ["due_date"].as_str().unwrap(); // required
+                if self.account().settings().due_date_use_sip_date_format() {
+                    let due_dt = date::parse_pg_date(iso_date)?;
+                    result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
+                } else {
+                    result.due_date = Some(iso_date.to_string());
+                }
+
+                return Ok(result);
+            } else {
+                log::error!("{self} checked out, but did not receive a circ object");
+            }
+        }
+
+        if !ovride
+            && self
+                .account()
+                .settings()
+                .checkout_override()
+                .contains(&evt.textcode().to_string())
+        {
+            return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
+        }
+
+        if !ovride && fee_ack {
+            // Caller acknowledges a fee is required.
+            if evt.textcode().eq("ITEM_DEPOSIT_FEE_REQUIRED")
+                || evt.textcode().eq("ITEM_RENTAL_FEE_REQUIRED")
+            {
+                return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
+            }
+        }
+
+        // TODO gettext() can be used for these string literals below, but
+        // it's a massive dependency for just a couple of sentances.
+        // There's likely a better approach.
+        if evt.textcode().eq("OPEN_CIRCULATION_EXISTS") {
+            result.screen_msg = Some("This item is already checked out");
+        } else {
+            result.screen_msg = Some("Patron is not allowed to checkout the selected item");
+        }
+
+        Ok(result)
+    }
+
+    /// Checkout that runs within the current thread as a direct
+    /// Rust call.
+    fn checkout_native(
         &mut self,
         item_barcode: &str,
         patron_barcode: &str,

@@ -193,6 +193,181 @@ impl Session {
         cancel: bool,
         ovride: bool,
     ) -> EgResult<CheckinResult> {
+        if self.account().settings().use_native_checkin() {
+            self.checkin_native(item, current_loc_op, return_date, cancel, ovride)
+        } else {
+            self.checkin_api(item, current_loc_op, return_date, cancel, ovride)
+        }
+    }
+
+    /// Checkin variant that calls the traditional open-ils.circ APIs.
+    fn checkin_api(
+        &mut self,
+        item: &item::Item,
+        current_loc_op: &Option<String>,
+        return_date: &str,
+        cancel: bool,
+        ovride: bool,
+    ) -> EgResult<CheckinResult> {
+        let mut args = json::object! {
+            copy_barcode: item.barcode.as_str(),
+            hold_as_transit: self.account().settings().checkin_holds_as_transits(),
+        };
+
+        if cancel {
+            args["revert_hold_fulfillment"] = json::from(cancel);
+        }
+
+        if return_date.trim().len() == 18 {
+            let fmt = sip2::spec::SIP_DATE_FORMAT;
+
+            // Use NaiveDate since SIP dates don't typically include a
+            // time zone value.
+            if let Some(sip_date) = NaiveDateTime::parse_from_str(return_date, fmt).ok() {
+                let iso_date = sip_date.format("%Y-%m-%d").to_string();
+                log::info!("{self} Checking in with backdate: {iso_date}");
+
+                args["backdate"] = json::from(iso_date);
+            } else {
+                log::warn!("{self} Invalid checkin return date: {return_date}");
+            }
+        }
+
+        if let Some(sn) = current_loc_op {
+            if let Some(org) = self.org_from_sn(sn)? {
+                args["circ_lib"] = org["id"].clone();
+            }
+        }
+
+        if !args.has_key("circ_lib") {
+            args["circ_lib"] = json::from(self.get_ws_org_id()?);
+        }
+
+        let method = match ovride {
+            true => "open-ils.circ.checkin.override",
+            false => "open-ils.circ.checkin",
+        };
+
+        let params = vec![json::from(self.authtoken()?), args];
+
+        let resp = match self
+            .osrf_client_mut()
+            .send_recv_one("open-ils.circ", method, params)?
+        {
+            Some(r) => r,
+            None => Err(format!("API call {method} failed to return a response"))?,
+        };
+
+        log::debug!("{self} Checkin of {} returned: {resp}", item.barcode);
+
+        let evt_json = match resp {
+            json::JsonValue::Array(list) => {
+                if list.len() > 0 {
+                    list[0].to_owned()
+                } else {
+                    json::JsonValue::Null
+                }
+            }
+            _ => resp,
+        };
+
+        let evt = eg::event::EgEvent::parse(&evt_json)
+            .ok_or(format!("API call {method} failed to return an event"))?;
+
+        if !ovride
+            && self
+                .account()
+                .settings()
+                .checkin_override()
+                .contains(&evt.textcode().to_string())
+        {
+            return self.checkin(item, current_loc_op, return_date, cancel, true);
+        }
+
+        let mut current_loc = item.current_loc.to_string(); // item.circ_lib
+        let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
+        let mut destination_loc = None;
+        if let Some(org_id) = evt.org() {
+            if let Some(org) = self.org_from_id(*org_id)? {
+                if let Some(sn) = org["shortname"].as_str() {
+                    destination_loc = Some(sn.to_string());
+                }
+            }
+        }
+
+        let copy = &evt.payload()["copy"];
+        if copy.is_object() {
+            // If the API returned a copy, collect data about the copy
+            // for our response.  It could mean the copy's circ lib
+            // changed because it floats.
+
+            log::debug!("{self} Checkin of {} returned a copy object", item.barcode);
+
+            if let Ok(circ_lib) = eg::util::json_int(&copy["circ_lib"]) {
+                if circ_lib != item.circ_lib {
+                    if let Some(org) = self.org_from_id(circ_lib)? {
+                        let loc = org["shortname"].as_str().unwrap();
+                        current_loc = loc.to_string();
+                        permanent_loc = loc.to_string();
+                    }
+                }
+            }
+        }
+
+        let mut result = CheckinResult {
+            ok: false,
+            current_loc,
+            permanent_loc,
+            destination_loc,
+            patron_barcode: None,
+            alert_type: None,
+            hold_patron_name: None,
+            hold_patron_barcode: None,
+        };
+
+        let circ = &evt.payload()["circ"];
+        if circ.is_object() {
+            log::debug!(
+                "{self} Checkin of {} returned a circulation object",
+                item.barcode
+            );
+
+            if let Some(user) = self.get_user_and_card(eg::util::json_int(&circ["usr"])?)? {
+                if let Some(bc) = user["card"]["barcode"].as_str() {
+                    result.patron_barcode = Some(bc.to_string());
+                }
+            }
+        }
+
+        self.handle_hold(&evt, &mut result)?;
+
+        if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
+            result.ok = true;
+        } else if evt.textcode().eq("ROUTE_ITEM") {
+            result.ok = true;
+            if result.alert_type.is_none() {
+                result.alert_type = Some(AlertType::Transit);
+            }
+        } else {
+            result.ok = false;
+            if result.alert_type.is_none() {
+                result.alert_type = Some(AlertType::Unknown);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Checkoin that runs within the current thread as a direct
+    /// Rust call.
+    fn checkin_native(
+        &mut self,
+        item: &item::Item,
+        current_loc_op: &Option<String>,
+        return_date: &str,
+        cancel: bool,
+        ovride: bool,
+    ) -> EgResult<CheckinResult> {
         let mut options: HashMap<String, json::JsonValue> = HashMap::new();
         options.insert("copy_barcode".to_string(), item.barcode.as_str().into());
 

@@ -72,6 +72,12 @@ setting-groups:
     # If true, all checkout calls are mde with the global override flag
     checkout-override-all: false
 
+    # EXPERIMENTAL: Use the native Rust checkin API
+    use-native-checkin: false
+
+    # EXPERIMENTAL: Use the native Rust checkout API
+    use-native-checkout: false
+
     # List of checkin event text codes to automatically override.
     # These are ignored if checkin-override-all is true.
     checkin-override:

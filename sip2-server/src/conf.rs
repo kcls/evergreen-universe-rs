@@ -79,6 +79,8 @@ pub struct SipSettings {
     checkin_override: Vec<String>,
     field_filters: Vec<FieldFilter>,
     sc_status_library_info: bool,
+    use_native_checkin: bool,
+    use_native_checkout: bool,
 }
 
 impl SipSettings {
@@ -99,7 +101,17 @@ impl SipSettings {
             checkout_override: Vec::new(),
             checkin_override: Vec::new(),
             field_filters: Vec::new(),
+            use_native_checkin: false,
+            use_native_checkout: false,
         }
+    }
+    /// If true, uses the native Rust checkin API.
+    pub fn use_native_checkin(&self) -> bool {
+        self.use_native_checkin
+    }
+    /// If true, uses the native Rust checkout API.
+    pub fn use_native_checkout(&self) -> bool {
+        self.use_native_checkout
     }
     pub fn institution(&self) -> &str {
         &self.institution
@@ -355,6 +367,9 @@ impl Config {
                 "sc-status-library-info",
                 &mut grp.sc_status_library_info,
             );
+
+            set_bool(group, "use-native-checkin", &mut grp.use_native_checkin);
+            set_bool(group, "use-native-checkout", &mut grp.use_native_checkout);
 
             if let Some(s) = group["msg64-hold-datatype"].as_str() {
                 if s.to_lowercase().starts_with("t") {
