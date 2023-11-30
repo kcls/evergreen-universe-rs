@@ -7,7 +7,7 @@ use super::session::ResponseIterator;
 use super::session::SessionHandle;
 use super::util;
 use json::JsonValue;
-use log::{info, trace};
+use log::info;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -160,7 +160,6 @@ impl ClientSingleton {
     /// message backlog that matches the provided thread.
     fn recv_session_from_backlog(&mut self, thread: &str) -> Option<message::TransportMessage> {
         if let Some(index) = self.backlog.iter().position(|tm| tm.thread() == thread) {
-            trace!("Found a backlog reply for thread {thread}");
             Some(self.backlog.remove(index))
         } else {
             None

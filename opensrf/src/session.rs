@@ -227,7 +227,7 @@ impl Session {
     }
 
     fn reset(&mut self) {
-        log::trace!("{self} resetting...");
+        //log::trace!("{self} resetting...");
         self.worker_addr = None;
         self.connected = false;
         self.backlog.clear();
@@ -266,7 +266,7 @@ impl Session {
             .iter()
             .position(|m| m.thread_trace() == thread_trace)
         {
-            log::trace!("{self} found a reply in the backlog for request {thread_trace}");
+            //log::trace!("{self} found a reply in the backlog for request {thread_trace}");
 
             self.backlog.remove(index)
         } else {
@@ -279,10 +279,12 @@ impl Session {
 
         let mut first_loop = true;
         loop {
+            /*
             log::trace!(
                 "{self} in recv() for trace {thread_trace} with {} remaining",
                 timer.remaining()
             );
+            */
 
             if let Some(msg) = self.recv_from_backlog(thread_trace) {
                 return self.unpack_reply(&mut timer, msg);
@@ -325,7 +327,7 @@ impl Session {
         mut msg: Message,
     ) -> Result<Option<Response>, String> {
         if let Payload::Result(resp) = msg.payload_mut() {
-            log::trace!("unpack_reply() status={}", resp.status());
+            log::trace!("{self} Unpacking osrf message status={}", resp.status());
 
             // take_content() because this message is about to get dropped.
             let mut value = resp.take_content();
@@ -410,7 +412,7 @@ impl Session {
 
         match stat {
             MessageStatus::Ok => {
-                log::trace!("{self} Marking self as connected");
+                //log::trace!("{self} Marking self as connected");
                 self.connected = true;
                 Ok(None)
             }
