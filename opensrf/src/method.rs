@@ -9,7 +9,7 @@ pub type MethodHandler = fn(
     &message::MethodCall,
 ) -> Result<(), String>;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ParamCount {
     Any,
     Zero,
@@ -258,16 +258,38 @@ impl MethodDef {
 
     /// Produces e.g. "foo.bar.baz('param1', 'param2')"
     pub fn to_summary_string(&self) -> String {
-        let mut s = format!("{} (", self.name());
+        let mut s = format!("{}", self.name());
+
+        match self.param_count {
+            ParamCount::Zero => {}
+            _ => s += " (",
+        }
 
         if let Some(params) = self.params() {
             for param in params {
-                s += &format!("'{}',", param.name);
+                s += &format!(
+                    "{}'{}',",
+                    match param.required {
+                        true => "*",
+                        _ => "",
+                    },
+                    param.name
+                );
             }
             s.pop(); // remove trailing ","
+        } else if self.param_count == ParamCount::Any {
+            s += "..";
         }
 
-        s += ")";
+        match self.param_count {
+            ParamCount::AtLeast(_) => s += ",..",
+            _ => {}
+        }
+
+        match self.param_count {
+            ParamCount::Zero => {}
+            _ => s += ")",
+        }
 
         s
     }

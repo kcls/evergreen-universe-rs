@@ -13,6 +13,7 @@ use super::method;
 use super::method::ParamCount;
 use super::sclient::HostSettings;
 use super::session::ServerSession;
+use super::util;
 use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
@@ -460,27 +461,11 @@ impl Worker {
             _ => return self.reply_bad_request("Request sent without payload"),
         };
 
-        let mut log_params: Option<String> = None;
-
-        if self
-            .config
-            .log_protect()
-            .iter()
-            .filter(|m| request.method().starts_with(&m[..]))
-            .next()
-            .is_none()
-        {
-            log_params = Some(
-                request
-                    .params()
-                    .iter()
-                    .map(|p| p.dump())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
-        };
-
-        let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
+        let log_params = util::stringify_params(
+            request.method(),
+            request.params(),
+            self.config.log_protect(),
+        );
 
         // Log the API call
         log::info!("CALL: {} {}", request.method(), log_params);

@@ -3,6 +3,8 @@ use rand::Rng;
 use std::thread;
 use std::time::{Instant, SystemTime};
 
+const REDACTED_PARAMS_STR: &str = "**PARAMS REDACTED**";
+
 /// Current thread ID as u64.
 ///
 /// Eventually this will not be needed.
@@ -97,4 +99,28 @@ pub fn epoch_secs() -> f64 {
 
 pub fn epoch_secs_str() -> String {
     format!("{:0<3}", epoch_secs())
+}
+
+/// Creates a (JSON) String verion of a list of method parameters,
+/// replacing params with a generic REDACTED message for log-protected
+/// methods.
+pub fn stringify_params(
+    method: &str,
+    params: &Vec<json::JsonValue>,
+    log_protect: &Vec<String>,
+) -> String {
+    if log_protect
+        .iter()
+        .filter(|m| method.starts_with(&m[..]))
+        .next()
+        .is_none()
+    {
+        params
+            .iter()
+            .map(|p| p.dump())
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        REDACTED_PARAMS_STR.to_string()
+    }
 }

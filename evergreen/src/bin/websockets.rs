@@ -767,30 +767,23 @@ impl Session {
             _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
-        let mut log_params: Option<String> = None;
-
-        if self
-            .conf
-            .log_protect()
-            .iter()
-            .filter(|m| request.method().starts_with(&m[..]))
-            .next()
-            .is_none()
-        {
-            log_params = Some(
-                request
-                    .params()
-                    .iter()
-                    .map(|p| p.dump())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
-        };
-
-        let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
+        let log_params = osrf::util::stringify_params(
+            request.method(),
+            request.params(),
+            self.conf.log_protect(),
+        );
 
         log::info!(
             "ACT:[{}] {} {} {}",
+            self.client_ip,
+            service,
+            request.method(),
+            log_params
+        );
+
+        // Also log as INFO e.g. gateway.xx.log
+        log::info!(
+            "[{}] {} {} {}",
             self.client_ip,
             service,
             request.method(),

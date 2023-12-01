@@ -465,28 +465,13 @@ impl GatewayHandler {
     }
 
     fn log_request(&self, request: &GatewayRequest, req: &ParsedGatewayRequest) {
-        let mut log_params: Option<String> = None;
         let method = req.method.as_ref().unwrap();
 
-        if self
-            .osrf_conf
-            .log_protect()
-            .iter()
-            .filter(|m| method.method().starts_with(&m[..]))
-            .next()
-            .is_none()
-        {
-            log_params = Some(
-                method
-                    .params()
-                    .iter()
-                    .map(|p| p.dump())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
-        };
-
-        let log_params = log_params.as_deref().unwrap_or("**PARAMS REDACTED**");
+        let log_params = osrf::util::stringify_params(
+            method.method(),
+            method.params(),
+            self.osrf_conf.log_protect(),
+        );
 
         log::info!(
             "ACT:[{}] {} {} {}",
