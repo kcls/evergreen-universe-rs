@@ -312,11 +312,13 @@ impl Server {
             hash.insert(m.name().to_string(), m);
         }
         self.add_system_methods(&mut hash);
-        self.add_atomic_methods(&mut hash);
+        //self.add_atomic_methods(&mut hash);
         self.methods = Some(Arc::new(hash));
         Ok(())
     }
 
+    // currently unused
+    /*
     fn add_atomic_methods(&self, hash: &mut HashMap<String, method::MethodDef>) {
         let mut atomic_hash: HashMap<String, method::MethodDef> = HashMap::new();
 
@@ -331,6 +333,7 @@ impl Server {
 
         hash.extend(atomic_hash);
     }
+    */
 
     fn add_system_methods(&self, hash: &mut HashMap<String, method::MethodDef>) {
         let name = "opensrf.system.echo";

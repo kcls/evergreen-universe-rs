@@ -477,25 +477,34 @@ impl Worker {
             self.client.clear()?;
         }
 
-        let method = match self.methods.get(request.method()) {
-            Some(m) => {
-                // Clone the method since we have mutable borrows below.
-                // Note this is the method definition, not the request,
-                // which may have non-clone-friendly bulky parameters.
-                m.clone()
-            }
-            None => {
-                log::warn!("Method not found: {}", request.method());
-                return self.reply_with_status(
-                    MessageStatus::MethodNotFound,
-                    &format!("Method not found: {}", request.method()),
-                );
-            }
-        };
+        // Clone the method since we have mutable borrows below.  Note
+        // this is the method definition, not the param-laden request.
+        let mut method = self.methods.get(request.method()).map(|m| m.clone());
 
-        if method.atomic() {
-            self.session_mut().new_atomic_resp_queue();
+        if method.is_none() {
+            // Atomic methods are not registered/published in advance
+            // since every method has an atomic variant.
+            if request.method().ends_with(".atomic") {
+                let meth = request.method().replace(".atomic", "");
+                if let Some(m) = self.methods.get(&meth) {
+                    // Creating a new queue tells our session to treat
+                    // this as an atomic request.
+                    method = Some(m.clone());
+                    self.session_mut().new_atomic_resp_queue();
+                }
+            }
         }
+
+        if method.is_none() {
+            log::warn!("Method not found: {}", request.method());
+
+            return self.reply_with_status(
+                MessageStatus::MethodNotFound,
+                &format!("Method not found: {}", request.method()),
+            );
+        }
+
+        let method = method.unwrap();
 
         let pcount = method.param_count();
 

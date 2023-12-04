@@ -175,7 +175,6 @@ pub struct MethodDef {
     pub param_count: ParamCount,
     pub handler: MethodHandler,
     pub params: Option<Vec<Param>>,
-    pub atomic: bool,
 }
 
 impl MethodDef {
@@ -185,7 +184,6 @@ impl MethodDef {
             param_count,
             params: None,
             desc: None,
-            atomic: false,
             name: name.to_string(),
         }
     }
@@ -204,13 +202,6 @@ impl MethodDef {
 
     pub fn set_name(&mut self, name: &str) {
         self.name = name.to_string();
-    }
-
-    pub fn atomic(&self) -> bool {
-        self.atomic
-    }
-    pub fn set_atomic(&mut self, atomic: bool) {
-        self.atomic = atomic;
     }
 
     pub fn params(&self) -> Option<&Vec<Param>> {
