@@ -238,7 +238,7 @@ impl MethodDef {
             "api_name": self.name(),
             "argc": self.param_count().to_string(),
             "params": pa,
-            // All Rust methods are streaming by default.
+            // All Rust methods are streaming.
             "stream": json::JsonValue::Boolean(true),
             "desc": match self.desc() {
                 Some(d) => d.into(),

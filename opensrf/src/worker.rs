@@ -312,11 +312,11 @@ impl Worker {
                 // Caller failed to send a message within the keepliave interval.
                 log::warn!("{selfstr} timeout waiting on request while connected");
 
-                self.set_active()?;
-
                 if let Err(e) = self.reply_with_status(MessageStatus::Timeout, "Timeout") {
                     Err(format!("server: could not reply with Timeout message: {e}"))?;
                 }
+
+                self.set_active()?;
 
                 return Ok((true, false)); // work occurred
             }
@@ -332,7 +332,7 @@ impl Worker {
             appworker.start_session()?;
         }
 
-        if let Err(e) = self.handle_transport_message(&tmsg, appworker) {
+        if let Err(e) = self.handle_transport_message(tmsg, appworker) {
             // An error within our worker's method handler is not enough
             // to shut down the worker.  Log, force a disconnect on the
             // session (if applicable) and move on.
@@ -365,10 +365,10 @@ impl Worker {
 
     fn handle_transport_message(
         &mut self,
-        tmsg: &message::TransportMessage,
+        mut tmsg: message::TransportMessage,
         appworker: &mut Box<dyn app::ApplicationWorker>,
     ) -> Result<(), String> {
-        // Always adopt the log trace of an inbound message.
+        // Always adopt the log trace of an inbound API call.
         Logger::set_log_trace(tmsg.osrf_xid());
 
         if self.session.is_none() || self.session().thread().ne(tmsg.thread()) {
@@ -383,7 +383,7 @@ impl Worker {
             ));
         }
 
-        for msg in tmsg.body().iter() {
+        for msg in tmsg.body_mut().drain(..) {
             self.handle_message(msg, appworker)?;
         }
 
@@ -399,7 +399,7 @@ impl Worker {
 
     fn handle_message(
         &mut self,
-        msg: &message::Message,
+        msg: message::Message,
         appworker: &mut Box<dyn app::ApplicationWorker>,
     ) -> Result<(), String> {
         self.session_mut().set_last_thread_trace(msg.thread_trace());
@@ -453,22 +453,22 @@ impl Worker {
 
     fn handle_request(
         &mut self,
-        msg: &message::Message,
+        mut msg: message::Message,
         appworker: &mut Box<dyn app::ApplicationWorker>,
     ) -> Result<(), String> {
-        let request = match msg.payload() {
+        let method_call = match msg.payload_mut() {
             message::Payload::Method(m) => m,
-            _ => return self.reply_bad_request("Request sent without payload"),
+            _ => return self.reply_bad_request("Request sent without a MethoCall payload"),
         };
 
-        let log_params = util::stringify_params(
-            request.method(),
-            request.params(),
-            self.config.log_protect(),
-        );
+        let mut params = method_call.take_params();
+        let param_count = params.len();
+        let api_name = method_call.method();
+
+        let log_params = util::stringify_params(api_name, &params, self.config.log_protect());
 
         // Log the API call
-        log::info!("CALL: {} {}", request.method(), log_params);
+        log::info!("CALL: {} {}", api_name, log_params);
 
         // Before we begin processing a service-level request, clear our
         // local message bus to avoid encountering any stale messages
@@ -479,28 +479,30 @@ impl Worker {
 
         // Clone the method since we have mutable borrows below.  Note
         // this is the method definition, not the param-laden request.
-        let mut method = self.methods.get(request.method()).map(|m| m.clone());
+        let mut method = self.methods.get(api_name).map(|m| m.clone());
 
         if method.is_none() {
             // Atomic methods are not registered/published in advance
             // since every method has an atomic variant.
-            if request.method().ends_with(".atomic") {
-                let meth = request.method().replace(".atomic", "");
+            // Find the root method and use it.
+            if api_name.ends_with(".atomic") {
+                let meth = api_name.replace(".atomic", "");
                 if let Some(m) = self.methods.get(&meth) {
+                    method = Some(m.clone());
+
                     // Creating a new queue tells our session to treat
                     // this as an atomic request.
-                    method = Some(m.clone());
                     self.session_mut().new_atomic_resp_queue();
                 }
             }
         }
 
         if method.is_none() {
-            log::warn!("Method not found: {}", request.method());
+            log::warn!("Method not found: {}", api_name);
 
             return self.reply_with_status(
                 MessageStatus::MethodNotFound,
-                &format!("Method not found: {}", request.method()),
+                &format!("Method not found: {}", api_name),
             );
         }
 
@@ -510,34 +512,27 @@ impl Worker {
 
         // Make sure the number of params sent by the caller matches the
         // parameter count for the method.
-        if !ParamCount::matches(&pcount, request.params().len() as u8) {
+        if !ParamCount::matches(&pcount, param_count as u8) {
             return self.reply_bad_request(&format!(
                 "Invalid param count sent: method={} sent={} needed={}",
-                request.method(),
-                request.params().len(),
-                &pcount,
+                api_name, param_count, &pcount,
             ));
         }
 
-        // De-serialize the inbound parameters.
+        // Drain the parameters, deserialize/unpack them, and stack them
+        // back into our method call.
         let mut unpacked_params = Vec::new();
         if let Some(s) = self.client.singleton().borrow().serializer() {
-            for p in request.params() {
-                // TODO if these are unpacked at message create time,
-                // we could avoid the clone.  Not a huge deal since
-                // inbound params are typically small, but still.
-                //
-                // TODO we could verify at this point whether each
-                // paramater matches its documented ParamDataType.
-                unpacked_params.push(s.unpack(p.clone()));
+            for p in params.drain(..) {
+                unpacked_params.push(s.unpack(p));
             }
         }
-        let request = message::MethodCall::new(request.method(), unpacked_params);
+        method_call.set_params(unpacked_params);
 
-        if let Err(ref err) = (method.handler())(appworker, self.session_mut(), &request) {
-            let msg = format!("{self} method {} failed with {err}", request.method());
+        if let Err(ref err) = (method.handler())(appworker, self.session_mut(), &method_call) {
+            let msg = format!("{self} method {} failed with {err}", method_call.method());
             log::error!("{msg}");
-            appworker.api_call_error(&request, err);
+            appworker.api_call_error(&method_call, err);
             self.reply_server_error(&msg)?;
             Err(msg)?;
         }
