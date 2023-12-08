@@ -91,6 +91,11 @@ impl Request {
         self.first_with_timeout(DEFAULT_REQUEST_TIMEOUT)
     }
 
+    /// Returns the first response.
+    ///
+    /// This still waits for all responses to arrive so the request can
+    /// be marked as complete and no responses are left lingering on the
+    /// message bus.
     pub fn first_with_timeout(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
         let mut resp: Option<JsonValue> = None;
         while !self.complete {
@@ -823,96 +828,142 @@ impl ServerSession {
         self.responded_complete
     }
 
-    pub fn respond<T>(&mut self, value: T) -> Result<(), String>
-    where
-        T: Into<JsonValue>,
-    {
-        let mut value = json::from(value);
+    /// Compiles a MessageType::Result Message with the provided
+    /// respone value, taking into account whether a response
+    /// should even be sent if this the result to an atomic request.
+    fn build_result_message(
+        &mut self,
+        mut result: JsonValue,
+        complete: bool
+    ) -> Result<Option<Message>, String> {
+
         if let Some(s) = self.client.singleton().borrow().serializer() {
-            value = s.pack(value);
+            // Serialize the data for the network
+            result = s.pack(result);
         }
 
-        if let Some(queue) = &mut self.atomic_resp_queue {
-            queue.push(value);
-            return Ok(());
+        let result_value;
+
+        if self.atomic_resp_queue.is_some() {
+            // Add the reply to the queue.
+            let q = self.atomic_resp_queue.as_mut().unwrap();
+            q.push(result);
+
+            if complete {
+                // If we're completing the call and we have an atomic
+                // response queue, return the entire contents of the
+                // queue to the caller and leave the queue cleared
+                // [take() above].
+
+                let q = self.atomic_resp_queue.take().unwrap();
+                result_value = json::from(q);
+
+            } else {
+                // Nothing left to do since this atmoic request
+                // is still producing results.
+                return Ok(None);
+            }
+
+        } else {
+            // Non-atomic request.  Just return the value as is.
+            result_value = result;
         }
 
-        let msg = Message::new(
+        Ok(Some(Message::new(
             MessageType::Result,
             self.last_thread_trace(),
             Payload::Result(message::Result::new(
                 MessageStatus::Ok,
                 "OK",
                 "osrfResult",
-                value,
+                result_value,
             )),
-        );
+        )))
+    }
 
-        let tmsg = TransportMessage::with_body(
+    /// Respond with a value and/or a complete message.
+    fn respond_with_parts(
+        &mut self,
+        mut value: Option<JsonValue>,
+        complete: bool
+    ) -> Result<(), String> {
+
+        if self.responded_complete {
+            log::warn!(
+                r#"Dropping trailing replies after already sending a
+                Request Complete message for thread {}"#,
+                self.thread()
+            );
+            return Ok(());
+        }
+
+
+        let mut result_msg = None;
+        let mut complete_msg = None;
+
+        if let Some(result) = value.take() {
+            result_msg = self.build_result_message(result, complete)?;
+        }
+
+        if complete {
+            // Add a Request Complete message
+            self.responded_complete = true;
+
+            complete_msg = Some(
+                Message::new(
+                    MessageType::Status,
+                    self.last_thread_trace(),
+                    Payload::Status(message::Status::new(
+                        MessageStatus::Complete,
+                        "Request Complete",
+                        "osrfStatus",
+                    )),
+                )
+            );
+        }
+
+        if result_msg.is_none() && complete_msg.is_none() {
+            // Nothing to send to the caller.
+            return Ok(());
+        }
+
+        // We have at least one message to return.
+        // Pack what we have into a single transport message.
+
+        let mut tmsg = TransportMessage::new(
             self.sender.as_str(),
             self.client.address().as_str(),
             self.thread(),
-            msg,
         );
 
-        let domain = self.sender.domain();
+        if let Some(msg) = result_msg.take() {
+            tmsg.body_mut().push(msg);
+        }
+
+        if let Some(msg) = complete_msg.take() {
+            tmsg.body_mut().push(msg);
+        }
 
         self.client_internal_mut()
-            .get_domain_bus(domain)?
+            .get_domain_bus(self.sender.domain())?
             .send(&tmsg)
+    }
+
+    pub fn send_complete(&mut self) -> Result<(), String> {
+        self.respond_with_parts(None, true)
+    }
+
+    pub fn respond<T>(&mut self, value: T) -> Result<(), String>
+    where
+        T: Into<JsonValue>,
+    {
+        self.respond_with_parts(Some(value.into()), false)
     }
 
     pub fn respond_complete<T>(&mut self, value: T) -> Result<(), String>
     where
         T: Into<JsonValue>,
     {
-        if self.responded_complete {
-            log::warn!(
-                r#"respond_complete() called multiple times for
-                thread {}.  Dropping trailing responses"#,
-                self.thread()
-            );
-            return Ok(());
-        }
-
-        self.respond(value)?;
-        self.send_complete()
-    }
-
-    /// Send the Request Complete status message to our caller.
-    ///
-    /// This is the same as respond_complete() without a response value.
-    pub fn send_complete(&mut self) -> Result<(), String> {
-        self.responded_complete = true;
-
-        if let Some(queue) = self.atomic_resp_queue.take() {
-            log::debug!("{self} respding with contents of atomic queue");
-            // Clear the resposne queue and send the whole list
-            // back to the caller.
-            self.respond(queue)?;
-        }
-
-        let msg = Message::new(
-            MessageType::Status,
-            self.last_thread_trace(),
-            Payload::Status(message::Status::new(
-                MessageStatus::Complete,
-                "Request Complete",
-                "osrfStatus",
-            )),
-        );
-
-        let tmsg = TransportMessage::with_body(
-            self.sender.as_str(),
-            self.client.address().as_str(),
-            self.thread(),
-            msg,
-        );
-
-        let domain = self.sender.domain();
-
-        self.client_internal_mut()
-            .get_domain_bus(domain)?
-            .send(&tmsg)
+        self.respond_with_parts(Some(value.into()), true)
     }
 }
