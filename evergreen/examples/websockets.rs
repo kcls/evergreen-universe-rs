@@ -127,13 +127,12 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
         }
     };
 
+    // NOTE this one-for-one message approach only works if we only send
+    // one thing to echo AND the server packages the Request Complete
+    // message in the same transport message as the reply.
     if let Message::Text(text) = response {
         if let Some(resp) = unpack_response(&text) {
-            let _resp = resp.as_str().expect("Wanting a string response");
-            // The responses may not match the expected value, because
-            // we may also receive status messages, which throws off the
-            // one-to-one comparison of outbound to inbound messages.
-            //assert_eq!(resp, echostr);
+            assert_eq!(resp, echostr);
             print!("+");
             std::io::stdout().flush().ok();
         }

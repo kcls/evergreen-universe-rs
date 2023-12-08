@@ -540,8 +540,16 @@ fn system_method_echo(
     session: &mut session::ServerSession,
     method: &message::MethodCall,
 ) -> Result<(), String> {
-    for p in method.params() {
-        session.respond(p.clone())?;
+    let count = method.params().len();
+    for (idx, val) in method.params().iter().enumerate() {
+        if idx == count - 1 {
+            // Package the final response and the COMPLETE message
+            // into the same transport message for consistency
+            // with the Perl code for load testing, etc. comparisons.
+            session.respond_complete(val.clone())?;
+        } else {
+            session.respond(val.clone())?;
+        }
     }
     Ok(())
 }
@@ -552,7 +560,7 @@ fn system_method_time(
     _method: &message::MethodCall,
 ) -> Result<(), String> {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(t) => session.respond(t.as_secs()),
+        Ok(t) => session.respond_complete(t.as_secs()),
         Err(e) => Err(format!("System time error: {e}")),
     }
 }
