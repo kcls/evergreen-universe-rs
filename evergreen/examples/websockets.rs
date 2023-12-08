@@ -24,7 +24,7 @@ const THREAD_COUNT: usize = 10;
 const DEFAULT_URI: &str = "ws://127.0.0.1:7682";
 
 /// How many times we repeat the entire batch.
-const NUM_ITERS: usize = 5;
+const NUM_ITERS: usize = 20;
 
 /// If non-zero, have each thread pause this many ms between requests.
 /// Helpful for focusing on endurance / real-world traffic patterns more
@@ -34,7 +34,8 @@ const REQ_PAUSE: u64 = 0;
 
 // Since we're testing Websockets, which is a public-facing gateway,
 // the destination service must be a public service.
-const SERVICE: &str = "open-ils.actor";
+//const SERVICE: &str = "open-ils.actor";
+const SERVICE: &str = "open-ils.rs-circ";
 
 fn main() {
     let mut batches = 0;
@@ -127,15 +128,19 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     };
 
     if let Message::Text(text) = response {
-        let resp = unpack_response(&text);
-        let resp = resp.as_str().expect("Wanting a string response");
-        assert_eq!(resp, echostr);
-        print!("+");
-        std::io::stdout().flush().ok();
+        if let Some(resp) = unpack_response(&text) {
+            let _resp = resp.as_str().expect("Wanting a string response");
+            // The responses may not match the expected value, because
+            // we may also receive status messages, which throws off the
+            // one-to-one comparison of outbound to inbound messages.
+            //assert_eq!(resp, echostr);
+            print!("+");
+            std::io::stdout().flush().ok();
+        }
     }
 }
 
-fn unpack_response(text: &str) -> json::JsonValue {
+fn unpack_response(text: &str) -> Option<json::JsonValue> {
     let mut ws_msg = json::parse(&text).unwrap();
     let mut osrf_list = ws_msg["osrf_msg"].take();
     let osrf_msg = osrf_list[0].take();
@@ -147,14 +152,19 @@ fn unpack_response(text: &str) -> json::JsonValue {
     let mut msg = message::Message::from_json_value(osrf_msg).unwrap();
 
     if let message::Payload::Result(ref mut res) = msg.payload_mut() {
-        res.take_content()
+        Some(res.take_content())
+    } else if let message::Payload::Status(stat) = msg.payload() {
+        if *(stat.status()) as isize >= 300 {
+            panic!("Unexpected response status: {:?}", stat);
+        }
+        return None;
     } else {
         panic!("No response data");
     }
 }
 
 /// Testing the HASH format for parameters and responses.
-fn test_formats() {
+fn _test_formats() {
     println!("EG init");
 
     let ctx = eg::init::init().expect("EG init");
@@ -221,8 +231,9 @@ fn test_formats() {
     };
 
     if let Message::Text(text) = response {
-        let resp = unpack_response(&text);
-        println!("Bucket created returned WS response: {}", resp.dump());
+        if let Some(resp) = unpack_response(&text) {
+            println!("Bucket created returned WS response: {}", resp.dump());
+        }
     }
 
     // Now fetch the bucket and make sure we can retrieve it as a hash
@@ -265,8 +276,9 @@ fn test_formats() {
     };
 
     if let Message::Text(text) = response {
-        let resp = unpack_response(&text);
-        println!("Bucket retrieve returned WS response: {}", resp.dump());
+        if let Some(resp) = unpack_response(&text) {
+            println!("Bucket retrieve returned WS response: {}", resp.dump());
+        }
     }
 
     client.close(None).ok();

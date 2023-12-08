@@ -24,7 +24,7 @@ const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
 const IDLE_WAKE_TIME: u64 = 3;
 /// Max time in seconds to allow active workers to finish their tasks.
 const SHUTDOWN_MAX_WAIT: i32 = 30;
-const DEFAULT_MIN_WORKERS: usize = 1;
+const DEFAULT_MIN_WORKERS: usize = 3;
 const DEFAULT_MAX_WORKERS: usize = 30;
 
 #[derive(Debug)]

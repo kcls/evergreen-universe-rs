@@ -261,7 +261,7 @@ impl Worker {
             }
         }
 
-        log::trace!("{self} exiting listen loop");
+        log::debug!("{self} exiting listen loop and cleaning up");
 
         if let Err(e) = appworker.worker_end() {
             log::error!("{selfstr} worker_end failed {e}");

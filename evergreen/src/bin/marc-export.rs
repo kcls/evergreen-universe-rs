@@ -16,23 +16,23 @@ const HOLDINGS_SUBFIELD: &str = "852";
 
 /// Map MARC subfields to SQL row field names.
 /// Some are handled manually but left here for documentation.
-const ITEM_SUBFIELD_MAP: &[&(&str, &str)] = &[
-    &("b", "owning_lib"),
-    &("b", "circ_lib"),
-    &("b", "acpl_name"),
-    &("k", "call_number_prefix"),
-    &("j", "call_number"),
-    &("m", "call_number_suffix"),
-    &("g", "circ_modifier"),
-    &("p", "barcode"),
-    &("s", "status"),
-    // &("y", "price"),
-    &("t", "copy_number"),
+const ITEM_SUBFIELD_MAP: [(&str, &str); 10] = [
+    ("b", "owning_lib"),
+    ("b", "circ_lib"),
+    ("b", "acpl_name"),
+    ("k", "call_number_prefix"),
+    ("j", "call_number"),
+    ("m", "call_number_suffix"),
+    ("g", "circ_modifier"),
+    ("p", "barcode"),
+    ("s", "status"),
+    // ("y", "price"),
+    ("t", "copy_number"),
     // Handled separately
-    // &("x", "ref"),
-    // &("x", "holdable"),
-    // &("x", "circulate"),
-    // &("x", "opac_visible"),
+    // ("x", "ref"),
+    // ("x", "holdable"),
+    // ("x", "circulate"),
+    // ("x", "opac_visible"),
 ];
 
 struct ExportOptions {
@@ -562,7 +562,7 @@ fn add_items(
         for (subfield, fname) in ITEM_SUBFIELD_MAP {
             if let Ok(value) = row.try_get::<&str, &str>(fname) {
                 if value != "" {
-                    field.add_subfield(*subfield, value)?;
+                    field.add_subfield(subfield, value)?;
                 }
             }
         }
