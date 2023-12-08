@@ -834,9 +834,8 @@ impl ServerSession {
     fn build_result_message(
         &mut self,
         mut result: JsonValue,
-        complete: bool
+        complete: bool,
     ) -> Result<Option<Message>, String> {
-
         if let Some(s) = self.client.singleton().borrow().serializer() {
             // Serialize the data for the network
             result = s.pack(result);
@@ -857,13 +856,11 @@ impl ServerSession {
 
                 let q = self.atomic_resp_queue.take().unwrap();
                 result_value = json::from(q);
-
             } else {
                 // Nothing left to do since this atmoic request
                 // is still producing results.
                 return Ok(None);
             }
-
         } else {
             // Non-atomic request.  Just return the value as is.
             result_value = result;
@@ -885,9 +882,8 @@ impl ServerSession {
     fn respond_with_parts(
         &mut self,
         mut value: Option<JsonValue>,
-        complete: bool
+        complete: bool,
     ) -> Result<(), String> {
-
         if self.responded_complete {
             log::warn!(
                 r#"Dropping trailing replies after already sending a
@@ -896,7 +892,6 @@ impl ServerSession {
             );
             return Ok(());
         }
-
 
         let mut result_msg = None;
         let mut complete_msg = None;
@@ -909,17 +904,15 @@ impl ServerSession {
             // Add a Request Complete message
             self.responded_complete = true;
 
-            complete_msg = Some(
-                Message::new(
-                    MessageType::Status,
-                    self.last_thread_trace(),
-                    Payload::Status(message::Status::new(
-                        MessageStatus::Complete,
-                        "Request Complete",
-                        "osrfStatus",
-                    )),
-                )
-            );
+            complete_msg = Some(Message::new(
+                MessageType::Status,
+                self.last_thread_trace(),
+                Payload::Status(message::Status::new(
+                    MessageStatus::Complete,
+                    "Request Complete",
+                    "osrfStatus",
+                )),
+            ));
         }
 
         if result_msg.is_none() && complete_msg.is_none() {
