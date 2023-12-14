@@ -16,7 +16,7 @@ impl ClassifiedJson {
     /// Returns the JSON value stored in the ClassifiedJson struct,
     /// replacing the value with JsonValue::Null;
     pub fn take_json(&mut self) -> json::JsonValue {
-        std::mem::replace(&mut self.json, json::JsonValue::Null)
+        self.json.take()
     }
 
     /// Returns the class name / hint value for the classified object.
@@ -37,8 +37,8 @@ impl ClassifiedJson {
     ///
     pub fn classify(json: json::JsonValue, class: &str) -> json::JsonValue {
         let mut hash = json::JsonValue::new_object();
-        hash.insert(JSON_CLASS_KEY, class).ok();
-        hash.insert(JSON_PAYLOAD_KEY, json).ok();
+        hash.insert(JSON_CLASS_KEY, class).unwrap();
+        hash.insert(JSON_PAYLOAD_KEY, json).unwrap();
 
         hash
     }

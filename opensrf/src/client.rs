@@ -14,8 +14,6 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const DEFAULT_ROUTER_COMMAND_TIMEOUT: i32 = 10;
-
 pub trait DataSerializer {
     fn pack(&self, value: JsonValue) -> JsonValue;
     fn unpack(&self, value: JsonValue) -> JsonValue;
@@ -156,8 +154,8 @@ impl ClientSingleton {
         self.get_domain_bus(domain)
     }
 
-    /// Returns the first transport message pulled from the transport
-    /// message backlog that matches the provided thread.
+    /// Removes and returns the first transport message pulled from the
+    /// transport message backlog that matches the provided thread.
     fn recv_session_from_backlog(&mut self, thread: &str) -> Option<message::TransportMessage> {
         if let Some(index) = self.backlog.iter().position(|tm| tm.thread() == thread) {
             Some(self.backlog.remove(index))
@@ -219,8 +217,7 @@ impl ClientSingleton {
         domain: &str,
         router_command: &str,
         router_class: Option<&str>,
-        await_reply: bool,
-    ) -> Result<Option<JsonValue>, String> {
+    ) -> Result<(), String> {
         let addr = BusAddress::for_router(username, domain);
 
         // Always use the address of our primary Bus
@@ -238,34 +235,7 @@ impl ClientSingleton {
         let bus = self.get_domain_bus(domain)?;
         bus.send(&tmsg)?;
 
-        if !await_reply {
-            return Ok(None);
-        }
-
-        // Always listen on our primary bus.
-        // TODO rethink this.  If we have replies from other requests
-        // sitting in the bus, they may be received here instead
-        // of the expected router response.  self.bus.clear() before
-        // send is one option, but pretty heavy-handed.
-        match self.bus_mut().recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
-            Some(tm) => match tm.router_reply() {
-                Some(reply) => match json::parse(reply) {
-                    Ok(jv) => Ok(Some(jv)),
-                    Err(e) => Err(format!(
-                        "Router command {} return unparseable content: {} {}",
-                        router_command, reply, e
-                    )),
-                },
-                _ => Err(format!(
-                    "Router command {} returned without reply_content",
-                    router_command
-                )),
-            },
-            _ => Err(format!(
-                "Router command {} returned no results in {} seconds",
-                router_command, DEFAULT_ROUTER_COMMAND_TIMEOUT
-            )),
-        }
+        Ok(())
     }
 }
 
@@ -375,15 +345,10 @@ impl Client {
         domain: &str,
         command: &str,
         router_class: Option<&str>,
-        await_reply: bool,
-    ) -> Result<Option<JsonValue>, String> {
-        self.singleton().borrow_mut().send_router_command(
-            username,
-            domain,
-            command,
-            router_class,
-            await_reply,
-        )
+    ) -> Result<(), String> {
+        self.singleton()
+            .borrow_mut()
+            .send_router_command(username, domain, command, router_class)
     }
 
     /// Send a request and receive a ResponseIterator for iterating

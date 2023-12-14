@@ -255,13 +255,8 @@ impl Server {
         for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: registering with router at {domain}");
 
-            self.client.send_router_command(
-                username,
-                domain,
-                "register",
-                Some(self.service()),
-                false,
-            )?;
+            self.client
+                .send_router_command(username, domain, "register", Some(self.service()))?;
         }
 
         Ok(())
@@ -276,7 +271,6 @@ impl Server {
                 domain,
                 "unregister",
                 Some(self.service()),
-                false,
             )?;
         }
         Ok(())

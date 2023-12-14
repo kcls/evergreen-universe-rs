@@ -2,9 +2,9 @@ use super::addr::BusAddress;
 use super::conf;
 use super::logging::Logger;
 use super::message::TransportMessage;
+use super::util;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::fmt;
-use std::time;
 
 /// Manages the Redis connection.
 pub struct Bus {
@@ -22,17 +22,12 @@ impl Bus {
 
         log::trace!("Bus::new() connecting to {:?}", info);
 
-        let client = match redis::Client::open(info) {
-            Ok(c) => c,
-            Err(e) => {
-                return Err(format!("Error opening Redis connection: {e}"));
-            }
-        };
+        let client = redis::Client::open(info)
+            .or_else(|e| Err(format!("Error opening Redis connection: {e}")))?;
 
-        let connection = match client.get_connection() {
-            Ok(c) => c,
-            Err(e) => Err(format!("Bus connect error: {e}"))?,
-        };
+        let connection = client
+            .get_connection()
+            .or_else(|e| Err(format!("Bus connect error: {e}")))?;
 
         let username = config.username();
         let domain = config.domain().name();
@@ -127,19 +122,18 @@ impl Bus {
         } else {
             // Blocking
 
-            // BLPOP returns the name of the popped list and the value.
             if timeout < 0 {
                 // Timeout 0 means block indefinitely in Redis.
                 timeout = 0;
             }
 
-            let mut resp: Vec<String> = match self.connection().blpop(&recipient, timeout as usize)
-            {
-                Ok(r) => r,
-                Err(e) => return Err(format!("Redis list pop error: {e} recipient={recipient}")),
-            };
+            let mut resp: Vec<String> = self
+                .connection()
+                .blpop(&recipient, timeout as usize)
+                .or_else(|e| Err(format!("Redis blpop error recipient={recipient} : {e}")))?;
 
             if resp.len() > 1 {
+                // BLPOP returns the name of the popped list and the value.
                 // resp = [key, value]
                 value = resp.remove(1);
             } else {
@@ -171,9 +165,7 @@ impl Bus {
 
         match json::parse(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),
-            Err(err_msg) => {
-                return Err(format!("Error parsing JSON: {:?}", err_msg));
-            }
+            Err(err_msg) => Err(format!("Error parsing JSON: {:?}", err_msg)),
         }
     }
 
@@ -207,23 +199,13 @@ impl Bus {
         }
 
         // Keep trying until we have a result or exhaust the timeout.
+        let timer = util::Timer::new(timeout);
 
-        let mut seconds = timeout;
+        while !timer.done() {
+            option = self.recv_one_value(timer.remaining(), recipient)?;
 
-        while seconds > 0 {
-            let now = time::SystemTime::now();
-
-            option = self.recv_one_value(timeout, recipient)?;
-
-            match option {
-                None => {
-                    if seconds < 0 {
-                        return Ok(None);
-                    }
-                    seconds -= now.elapsed().unwrap().as_secs() as i32;
-                    continue;
-                }
-                _ => return Ok(option),
+            if option.is_some() {
+                return Ok(option);
             }
         }
 

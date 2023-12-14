@@ -36,6 +36,7 @@ const REQ_PAUSE: u64 = 0;
 // the destination service must be a public service.
 //const SERVICE: &str = "open-ils.actor";
 const SERVICE: &str = "open-ils.rs-circ";
+//const SERVICE: &str = "open-ils.auth";
 
 fn main() {
     let mut batches = 0;
@@ -127,9 +128,9 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
         }
     };
 
-    // NOTE this one-for-one message approach only works if we only send
-    // one thing to echo AND the server packages the Request Complete
-    // message in the same transport message as the reply.
+    // NOTE this one-for-one request/response approach only works if we
+    // send exactly 1 thing to echo AND the server packages the Request
+    // Complete message in the same transport message as the reply.
     if let Message::Text(text) = response {
         if let Some(resp) = unpack_response(&text) {
             assert_eq!(resp, echostr);

@@ -92,11 +92,6 @@ Commands
     introspect-summary <service> [<prefix>]
         Same as introspect, but only lists method names and params.
 
-    router <domain> <command> [<router_class>]
-        Sends <command> to the router at <domain> and reports the result.
-        Specify "_" as the <domain> to send the request to the router
-        on the same node as the primary connection node for egsh.
-
     pref set <name> <value>
         Set a preference value
 
@@ -360,7 +355,6 @@ impl Shell {
             "req" | "request" => self.send_request(args),
             "reqauth" => self.send_reqauth(args),
             "introspect" | "introspect-names" | "introspect-summary" => self.introspect(args),
-            "router" => self.send_router_command(args),
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
             "cstore" => self.handle_cstore(args),
@@ -578,44 +572,6 @@ impl Shell {
             } else {
                 self.print_json_record(&resp)?;
             }
-        }
-
-        Ok(())
-    }
-
-    fn send_router_command(&mut self, args: &[&str]) -> Result<(), String> {
-        self.args_min_length(args, 3)?;
-
-        let mut username = args[0];
-        let mut domain = args[1];
-        let command = args[2];
-
-        if username.eq("_") {
-            username = self.ctx().config().client().router_name();
-        }
-
-        if domain.eq("_") {
-            domain = self.ctx().config().client().domain().name();
-        }
-
-        let router_class = match args.len() > 3 {
-            true => Some(args[3]),
-            false => None,
-        };
-
-        // We are the entry point for this request.  Give it a log trace.
-        Logger::mk_log_trace();
-
-        // Assumes the caller wants to see the response for any
-        // router request.
-        if let Some(resp) = self.ctx().client().send_router_command(
-            username,
-            domain,
-            command,
-            router_class,
-            true,
-        )? {
-            self.print_json_record(&resp)?;
         }
 
         Ok(())
