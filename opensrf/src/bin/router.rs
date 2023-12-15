@@ -46,6 +46,11 @@ struct ServiceInstance {
     /// differentiating service instances.
     address: BusAddress,
 
+    /// Address where this instance will respond to API requests.
+    listen_address: BusAddress,
+
+    route_count: usize,
+
     /// When was this instance registered with the router.
     register_time: f64,
 }
@@ -54,15 +59,19 @@ impl ServiceInstance {
     fn address(&self) -> &BusAddress {
         &self.address
     }
-
+    fn listen_address(&self) -> &BusAddress {
+        &self.listen_address
+    }
     fn register_time(&self) -> f64 {
         self.register_time
     }
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            address: json::from(self.address().as_str()),
-            register_time: json::from(self.register_time()),
+            "route_count": self.route_count,
+            "address": self.address().as_str(),
+            "listen_address": self.listen_address().as_str(),
+            "register_time": self.register_time(),
         }
     }
 }
@@ -77,7 +86,10 @@ struct ServiceEntry {
     name: String,
 
     /// Which specific instances of this service are registered.
-    controllers: Vec<ServiceInstance>,
+    instances: Vec<ServiceInstance>,
+
+    /// Allows us to round-robin through our instances.
+    instance_index: usize,
 
     /// How many API requests have been routed to this service.
     route_count: usize,
@@ -88,27 +100,46 @@ impl ServiceEntry {
         &self.name
     }
 
-    fn controllers(&self) -> &Vec<ServiceInstance> {
-        &self.controllers
+    fn instances(&self) -> &Vec<ServiceInstance> {
+        &self.instances
     }
 
-    /// Remove a specific service controller from the set
-    /// of registered controllers.
-    fn remove_controller(&mut self, address: &BusAddress) {
+    /// Returns the next round-robin service instanace and
+    /// increments our route count if we have an instance to return.
+    fn next_instance(&mut self) -> Option<&ServiceInstance> {
+        if self.instance_index >= self.instances.len() {
+            self.instance_index = 0;
+        }
+
+        let instance = match self.instances.get_mut(self.instance_index) {
+            Some(i) => i,
+            None => return None,
+        };
+
+        instance.route_count += 1;
+        self.route_count += 1;
+
+        // Now return the non-mut version
+        self.instances.get(self.instance_index)
+    }
+
+    /// Remove a specific service instance from the set
+    /// of registered instances.
+    fn remove_instance(&mut self, address: &BusAddress) {
         if let Some(pos) = self
-            .controllers
+            .instances
             .iter()
             .position(|c| c.address().as_str().eq(address.as_str()))
         {
             log::debug!(
-                "Removing controller for service={} address={}",
+                "Removing instance for service={} address={}",
                 self.name,
                 address.as_str()
             );
-            self.controllers.remove(pos);
+            self.instances.remove(pos);
         } else {
             log::debug!(
-                "Cannot remove unknown controller service={} address={}",
+                "Cannot remove unknown instance service={} address={}",
                 self.name,
                 address.as_str()
             );
@@ -117,12 +148,12 @@ impl ServiceEntry {
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            name: json::from(self.name()),
-            route_count: json::from(self.route_count),
-            controllers: json::from(
-                self.controllers().iter()
-                    .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
-            )
+            "name": self.name(),
+            "route_count": self.route_count,
+            "instances": self.instances()
+                .iter()
+                .map(|s| s.to_json_value())
+                .collect::<Vec<json::JsonValue>>()
         }
     }
 }
@@ -143,8 +174,8 @@ struct RouterDomain {
 
     /// How many requests have been routed to this domain.
     ///
-    /// We count domain-level routing instead of service controller-level
-    /// routing, since we can't guarantee which service controller will
+    /// We count domain-level routing instead of service instance-level
+    /// routing, since we can't guarantee which service instance will
     /// pick up any given request routed to a domain.
     route_count: usize,
 
@@ -185,12 +216,19 @@ impl RouterDomain {
         &self.services
     }
 
-    /// Get a service by service name.
+    /// Get a service by service name and increment our route count.
     fn get_service_mut(&mut self, name: &str) -> Option<&mut ServiceEntry> {
-        self.services
-            .iter_mut()
-            .filter(|s| s.name().eq(name))
-            .next()
+        let has_any = self.services.iter().any(|s| s.name().eq(name));
+
+        if has_any {
+            self.route_count += 1;
+            self.services
+                .iter_mut()
+                .filter(|s| s.name().eq(name))
+                .next()
+        } else {
+            None
+        }
     }
 
     /// Remove a service entry and its linked ServiceInstance's from
@@ -198,11 +236,11 @@ impl RouterDomain {
     fn remove_service(&mut self, service: &str, address: &BusAddress) {
         if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
-            svc.remove_controller(address);
+            svc.remove_instance(address);
 
-            if svc.controllers.len() == 0 {
+            if svc.instances.len() == 0 {
                 log::debug!(
-                    "Removing registration for service={} on removal of last controller address={}",
+                    "Removing registration for service={} on removal of last instance address={}",
                     service,
                     address.as_str()
                 );
@@ -216,15 +254,16 @@ impl RouterDomain {
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            domain: json::from(self.domain()),
-            route_count: json::from(self.route_count()),
-            services: json::from(self.services().iter()
-                .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
-            )
+            "domain": self.domain(),
+            "route_count": self.route_count(),
+            "services": self.services()
+                .iter()
+                .map(|s| s.to_json_value())
+                .collect::<Vec<json::JsonValue>>()
         }
     }
 
-    /// Connect to the Redis instance on this domain.
+    /// Connect to the Redis instance on our primary domain.
     fn connect(&mut self) -> Result<(), String> {
         if self.bus.is_some() {
             return Ok(());
@@ -262,7 +301,7 @@ struct Router {
     /// Primary domain for this router instance.
     primary_domain: RouterDomain,
 
-    /// Well-known address where top-level API calls should be routed.
+    /// Well-known address where API calls should be routed.
     listen_address: BusAddress,
 
     /// All other domains where services we care about are running.
@@ -332,11 +371,12 @@ impl Router {
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            listen_address: json::from(self.listen_address.as_str()),
-            primary_domain: self.primary_domain().to_json_value(),
-            remote_domains: json::from(self.remote_domains().iter()
-                .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
-            )
+            "listen_address": self.listen_address.as_str(),
+            "primary_domain": self.primary_domain().to_json_value(),
+            "remote_domains": self.remote_domains()
+                .iter()
+                .map(|s| s.to_json_value())
+                .collect::<Vec<json::JsonValue>>()
         }
     }
 
@@ -379,7 +419,7 @@ impl Router {
         if self.primary_domain.domain.eq(domain) {
             // When removing a service from the primary domain, leave the
             // domain as a whole intact since we'll likely need it again.
-            // Remove services and controllers as necessary, though.
+            // Remove services and instances as necessary, though.
 
             self.primary_domain.remove_service(service, &address);
             return Ok(());
@@ -434,14 +474,18 @@ impl Router {
 
         let r_domain = self.find_or_create_domain(domain)?;
 
+        // Where our new instance will listen for routed API calls.
+        // opensrf:service:$username:$domain:$service
+        let listen_address = BusAddress::for_service(address.username(), address.domain(), service);
+
         for svc in &mut r_domain.services {
             // See if we have a ServiceEntry for this service on this domain.
 
             if svc.name.eq(service) {
-                for controller in &mut svc.controllers {
-                    if controller.address.as_str().eq(address.as_str()) {
+                for instance in &mut svc.instances {
+                    if instance.address.as_str().eq(address.as_str()) {
                         log::warn!(
-                            "Controller with address {} already registered for service {} and domain {}",
+                            "instance with address {} already registered for service {} and domain {}",
                             address.as_str(), service, domain
                         );
                         return Ok(());
@@ -455,8 +499,10 @@ impl Router {
                     address.as_str()
                 );
 
-                svc.controllers.push(ServiceInstance {
-                    address: address.clone(),
+                svc.instances.push(ServiceInstance {
+                    address,
+                    listen_address,
+                    route_count: 0,
                     register_time: util::epoch_secs(),
                 });
 
@@ -477,8 +523,11 @@ impl Router {
         r_domain.services.push(ServiceEntry {
             name: service.to_string(),
             route_count: 0,
-            controllers: vec![ServiceInstance {
-                address: address,
+            instance_index: 0,
+            instances: vec![ServiceInstance {
+                address,
+                listen_address,
+                route_count: 0,
                 register_time: util::epoch_secs(),
             }],
         });
@@ -557,7 +606,7 @@ impl Router {
     fn route_api_request(
         &mut self,
         to_addr: &BusAddress,
-        tm: TransportMessage,
+        mut tm: TransportMessage,
     ) -> Result<(), String> {
         let service = to_addr
             .service()
@@ -568,50 +617,53 @@ impl Router {
         }
 
         let client_addr = BusAddress::from_str(tm.from())?;
-        let domain = client_addr.domain();
+        let client_domain = client_addr.domain();
 
         let mut matches = self
             .trusted_client_domains
             .iter()
-            .filter(|d| d.as_str().eq(domain));
+            .filter(|d| d.as_str().eq(client_domain));
 
         if matches.next().is_none() {
             return Err(format!(
-                "Domain {domain} is not a trusted client domain for this router {client_addr} : {self}"));
+                r#"Domain {client_domain} is not a trusted client domain for this
+                router {client_addr} : {self}"#
+            ));
         }
 
-        // TODO
-        // Use the domain of the service instance to determine which
-        // bus domain should receive the routed API request.  E.g. a
-        // router running on public.localhost may (will likely) have
-        // service instances that are actually listening on the
-        // private.localhost bus domain. RouterDomain::send_to_domain
-        // will need a destination addresses / domain to determine
-        // the destination bus domain.
+        // The recipient address for a routed API call will not include
+        // the username or domain of the recipient, trusting that the
+        // router will determine the best destination.  Chose a service
+        // instance destination below and use its listen_address as the
+        // destination.
 
         if let Some(svc) = self.primary_domain.get_service_mut(service) {
-            svc.route_count += 1;
-            self.primary_domain.route_count += 1;
-            return self.primary_domain.send_to_domain(tm);
+            if let Some(instance) = svc.next_instance() {
+                tm.set_to(instance.listen_address().as_str());
+                return self.primary_domain.send_to_domain(tm);
+            }
         }
 
         for r_domain in &mut self.remote_domains {
+            let has_bus = r_domain.bus.is_some();
+
             if let Some(svc) = r_domain.get_service_mut(service) {
-                svc.route_count += 1;
-                r_domain.route_count += 1;
+                if let Some(instance) = svc.next_instance() {
+                    tm.set_to(instance.listen_address().as_str());
 
-                if r_domain.bus.is_none() {
-                    // We only connect to remote domains when it's
-                    // time to send them a message.
-                    r_domain.connect()?;
+                    if !has_bus {
+                        // We only connect to remote domains when it's
+                        // time to send them a message.
+                        r_domain.connect()?;
+                    }
+
+                    return r_domain.send_to_domain(tm);
                 }
-
-                return r_domain.send_to_domain(tm);
             }
         }
 
         log::error!(
-            "Router at {} has no service controllers for service {service}",
+            "Router at {} has no service instances for service {service}",
             self.primary_domain.domain()
         );
 
@@ -622,11 +674,11 @@ impl Router {
         ));
 
         let mut trace = 0;
-        if tm.body().len() > 0 {
+        if let Some(body) = tm.body().get(0) {
             // It would be odd, but not impossible to receive a
             // transport message destined for a service that has no
-            // messages in its body.
-            trace = tm.body()[0].thread_trace();
+            // messages body.
+            trace = body.thread_trace();
         }
 
         let from = match self.primary_domain.bus() {
@@ -715,6 +767,7 @@ impl Router {
 
                 Ok(json::from(names))
             }
+            "opensrf.router.info.summarize" => Ok(self.to_json_value()),
             _ => Err(format!("Router cannot handle api {}", m.method())),
         }
     }
@@ -756,39 +809,11 @@ impl Router {
         match router_command {
             "register" => self.handle_register(from_addr, router_class()?),
             "unregister" => self.handle_unregister(&from_addr, router_class()?),
-            _ => self.deliver_information(from_addr, tm),
-        }
-    }
-
-    /// Deliver stats, etc. to clients that request it.
-    fn deliver_information(
-        &mut self,
-        from_addr: BusAddress,
-        mut tm: TransportMessage,
-    ) -> Result<(), String> {
-        let router_command = tm.router_command().unwrap(); // known exists
-        log::debug!("Handling info router command : {router_command}");
-
-        match router_command {
-            "summarize" => tm.set_router_reply(&self.to_json_value().dump()),
             _ => {
-                return Err(format!("Unsupported router command: {router_command}"));
+                log::warn!("{self} unknown router command: {router_command}");
+                return Ok(());
             }
         }
-
-        // Bounce the message back to the caller with the requested data.
-        // Should our FROM address be our unique bus address or the router
-        // address? Does it matter?
-        tm.set_from(self.primary_domain.bus().unwrap().address().as_str());
-        tm.set_to(from_addr.as_str());
-
-        let r_domain = self.find_or_create_domain(from_addr.domain())?;
-
-        if r_domain.bus.is_none() {
-            r_domain.connect()?;
-        }
-
-        r_domain.send_to_domain(tm)
     }
 
     /// Receive the next message destined for this router on this
