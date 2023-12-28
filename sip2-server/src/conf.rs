@@ -276,10 +276,16 @@ impl Config {
         let yaml_text = fs::read_to_string(filename)
             .or_else(|e| Err(format!("Error reading YAML configuration file: {e}")))?;
 
-        let yaml_docs = YamlLoader::load_from_str(&yaml_text)
+        let mut yaml_docs = YamlLoader::load_from_str(&yaml_text)
             .or_else(|e| Err(format!("Error parsing configuration file as YAML: {e}")))?;
 
-        let root = &yaml_docs[0];
+        let root = if yaml_docs.len() > 0 {
+            yaml_docs.remove(0)
+        } else {
+            return Err(format!(
+                "Error unpacking YAML document for config {filename}"
+            ));
+        };
 
         if let Some(v) = root["sip-address"].as_str() {
             self.sip_address = String::from(v);
@@ -309,10 +315,10 @@ impl Config {
             self.sc_status_before_login = v;
         }
 
-        self.add_setting_groups(root);
-        self.add_accounts(root)?;
+        self.add_setting_groups(&root);
+        self.add_accounts(&root)?;
 
-        self.source = Some(root.to_owned());
+        self.source = Some(root);
 
         Ok(())
     }

@@ -250,25 +250,21 @@ impl Session {
 
         let params = vec![json::from(self.authtoken()?), args];
 
-        let resp = match self
-            .osrf_client_mut()
-            .send_recv_one("open-ils.circ", method, params)?
-        {
-            Some(r) => r,
-            None => Err(format!("API call {method} failed to return a response"))?,
-        };
+        let mut resp =
+            match self
+                .osrf_client_mut()
+                .send_recv_one("open-ils.circ", method, params)?
+            {
+                Some(r) => r,
+                None => Err(format!("API call {method} failed to return a response"))?,
+            };
 
         log::debug!("{self} Checkin of {} returned: {resp}", item.barcode);
 
-        let evt_json = match resp {
-            json::JsonValue::Array(list) => {
-                if list.len() > 0 {
-                    list[0].to_owned()
-                } else {
-                    json::JsonValue::Null
-                }
-            }
-            _ => resp,
+        let evt_json = if resp.is_array() {
+            resp[0].take()
+        } else {
+            resp
         };
 
         let evt = eg::event::EgEvent::parse(&evt_json)

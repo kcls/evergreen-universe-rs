@@ -581,13 +581,9 @@ impl Session {
 
         let ops = json::object! { limit: 1usize };
 
-        let copies = self.editor_mut().search_with_ops("acp", search, ops)?;
+        let mut copies = self.editor_mut().search_with_ops("acp", search, ops)?;
 
-        if copies.len() == 1 {
-            return Ok(Some(copies[0].to_owned()));
-        } else {
-            return Ok(None);
-        }
+        Ok(copies.pop())
     }
 
     fn set_patron_summary_items(&mut self, patron: &mut Patron) -> EgResult<()> {
@@ -827,7 +823,7 @@ impl Session {
         }
 
         let mut user = cards[0]["usr"].take();
-        user["card"] = cards[0].to_owned();
+        user["card"] = cards.remove(0);
 
         Ok(Some(user))
     }

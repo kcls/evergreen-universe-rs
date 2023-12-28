@@ -264,12 +264,12 @@ impl Server {
             id: {"!=": json::JsonValue::Null},
         };
 
-        let orgs = e.search("aou", search)?;
+        let mut orgs = e.search("aou", search)?;
 
         let mut map = HashMap::new();
 
-        for org in orgs {
-            map.insert(eg::util::json_int(&org["id"])?, org.clone());
+        for org in orgs.drain(..) {
+            map.insert(eg::util::json_int(&org["id"])?, org);
         }
 
         self.org_cache = Some(map);

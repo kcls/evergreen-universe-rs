@@ -55,14 +55,13 @@ impl Session {
             }
         }
 
-        let orgs = self
+        let mut orgs = self
             .editor_mut()
             .search("aou", json::object! {shortname: sn})?;
 
-        if orgs.len() > 0 {
-            let org = &orgs[0];
+        if let Some(org) = orgs.pop() {
             let id = eg::util::json_int(&org["id"])?;
-            self.org_cache_mut().insert(id, orgs[0].to_owned());
+            self.org_cache_mut().insert(id, org);
             return Ok(self.org_cache().get(&id));
         }
 

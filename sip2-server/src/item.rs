@@ -227,13 +227,9 @@ impl Session {
             flesh_fields: {ahr: ["pickup_lib", "usr"], au: ["card"]},
         };
 
-        let holds = self.editor_mut().search_with_ops("ahr", search, flesh)?;
+        let mut holds = self.editor_mut().search_with_ops("ahr", search, flesh)?;
 
-        if holds.len() > 0 {
-            Ok(Some(holds[0].to_owned()))
-        } else {
-            Ok(None)
-        }
+        Ok(holds.pop())
     }
 
     /// Find the active transit for a copy if one exists.
@@ -259,13 +255,9 @@ impl Session {
             flesh_fields: {atc: ["dest"]},
         };
 
-        let transits = self.editor_mut().search_with_ops("atc", search, flesh)?;
+        let mut transits = self.editor_mut().search_with_ops("atc", search, flesh)?;
 
-        if transits.len() > 0 {
-            Ok(Some(transits[0].to_owned()))
-        } else {
-            Ok(None)
-        }
+        Ok(transits.pop())
     }
 
     fn circ_status(&self, copy_status: i64) -> &str {
@@ -330,12 +322,8 @@ impl Session {
             ]
         };
 
-        let circs = self.editor_mut().search("circ", search)?;
+        let mut circs = self.editor_mut().search("circ", search)?;
 
-        if let Some(c) = circs.get(0) {
-            Ok(Some(c.to_owned()))
-        } else {
-            Ok(None)
-        }
+        Ok(circs.pop())
     }
 }

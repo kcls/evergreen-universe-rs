@@ -210,7 +210,7 @@ fn _test_formats() {
                     __c: "osrfMethod",
                     __p:{
                         method: "open-ils.actor.container.create",
-                        params: [token, "biblio", bucket.to_owned()]
+                        params: [token, "biblio", bucket.clone()]
                     }
                 }
             }

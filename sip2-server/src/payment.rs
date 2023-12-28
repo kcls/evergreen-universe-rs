@@ -69,7 +69,7 @@ impl Session {
 
         // Swap the fleshing to favor usr->card over card->usr
         let mut user = cards[0]["usr"].take();
-        user["card"] = cards[0].to_owned();
+        user["card"] = cards.remove(0);
 
         let payments: Vec<(i64, f64)>;
 

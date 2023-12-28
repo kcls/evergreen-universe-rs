@@ -193,18 +193,19 @@ impl Session {
             },
         };
 
-        let resp = match self
-            .osrf_client_mut()
-            .send_recv_one("open-ils.circ", method, params)?
-        {
-            Some(r) => r,
-            None => Err(format!("API call {method} failed to return a response"))?,
-        };
+        let mut resp =
+            match self
+                .osrf_client_mut()
+                .send_recv_one("open-ils.circ", method, params)?
+            {
+                Some(r) => r,
+                None => Err(format!("API call {method} failed to return a response"))?,
+            };
 
         log::debug!("{self} Checkout of {item_barcode} returned: {resp}");
 
-        let event = if let json::JsonValue::Array(list) = resp {
-            list[0].to_owned()
+        let event = if resp.is_array() {
+            resp[0].take()
         } else {
             resp
         };
