@@ -1,5 +1,6 @@
 use evergreen as eg;
 mod circ;
+mod json_query;
 mod util;
 
 /// Set to 'ignored' by default since it requires a running system
@@ -27,6 +28,7 @@ fn main() -> eg::EgResult<()> {
     };
 
     circ::run_live_tests(&mut tester)?;
+    json_query::run_live_tests(&mut tester)?;
 
     Ok(())
 }

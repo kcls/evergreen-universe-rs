@@ -12,6 +12,29 @@ const DEFAULT_DB_HOST: &str = "localhost";
 const DEFAULT_DB_USER: &str = "evergreen";
 const DEFAULT_DB_NAME: &str = "evergreen";
 
+const SUPPORTED_OPERATORS: [&'static str; 20] = [
+    "IS",
+    "IS NOT",
+    "IN",
+    "NOT IN",
+    "LIKE",
+    "ILIKE",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "<>",
+    "!=",
+    "~",
+    "=",
+    "!~",
+    "!~*",
+    "~*",
+    "SIMILAR TO",
+    "IS DISTINCT FROM",
+    "IS NOT DISTINCT FROM",
+];
+
 /// For compiling a set of connection parameters
 ///
 /// Values are applied like so:
@@ -361,4 +384,23 @@ impl DatabaseConnection {
     pub fn into_shared(self) -> Rc<RefCell<DatabaseConnection>> {
         Rc::new(RefCell::new(self))
     }
+}
+
+/// Determine whether a string is potentially a valid SQL identifier.
+pub fn is_identifier(s: &str) -> bool {
+    let s = s.trim();
+    for c in s.chars() {
+        // NOTE: is the 'ascii' check to strict?
+        if c.is_ascii_alphanumeric() || c == '$' || c == '_' || c == '.' {
+            // OK
+        } else {
+            return false;
+        }
+    }
+    s.len() > 0
+}
+
+/// Verify a query operator provided by the caller is allowed.
+pub fn is_supported_operator(op: &str) -> bool {
+    SUPPORTED_OPERATORS.contains(&op.to_uppercase().as_str())
 }

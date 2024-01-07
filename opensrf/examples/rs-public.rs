@@ -193,7 +193,7 @@ fn relay(
     session: &mut ServerSession,
     method: &message::MethodCall,
 ) -> Result<(), String> {
-    let mut worker = RsPublicWorker::downcast(worker)?;
+    let worker = RsPublicWorker::downcast(worker)?;
     worker.relay_count += 1;
     let api_name = method.method().replace("rs-public", "rs-private");
 

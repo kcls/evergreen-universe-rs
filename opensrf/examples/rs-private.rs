@@ -206,7 +206,7 @@ fn counter(
     session: &mut ServerSession,
     _method: &message::MethodCall,
 ) -> Result<(), String> {
-    let mut worker = RsPrivateWorker::downcast(worker)?;
+    let worker = RsPrivateWorker::downcast(worker)?;
     worker.count += 1;
     log::info!(
         "Here's some data from the environment: {}",

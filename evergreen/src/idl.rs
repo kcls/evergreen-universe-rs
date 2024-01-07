@@ -113,6 +113,7 @@ pub struct Field {
     i18n: bool,
     array_pos: usize,
     is_virtual: bool, // vim at least thinks 'virtual' is reserved
+    suppress_controller: Option<String>,
 }
 
 impl fmt::Display for Field {
@@ -144,9 +145,12 @@ impl Field {
     pub fn is_virtual(&self) -> bool {
         self.is_virtual
     }
+    pub fn suppress_controller(&self) -> Option<&str> {
+        self.suppress_controller.as_deref()
+    }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RelType {
     HasA,
     HasMany,
@@ -191,6 +195,24 @@ pub struct Link {
     class: String,
 }
 
+impl Link {
+    pub fn field(&self) -> &str {
+        &self.field
+    }
+    pub fn reltype(&self) -> RelType {
+        self.reltype
+    }
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+    pub fn map(&self) -> Option<&str> {
+        self.map.as_deref()
+    }
+    pub fn class(&self) -> &str {
+        &self.class
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     classname: String,
@@ -205,6 +227,7 @@ pub struct Class {
     fields: HashMap<String, Field>,
     links: HashMap<String, Link>,
     tablename: Option<String>,
+    source_definition: Option<String>,
     controller: Option<String>,
     is_virtual: bool,
 }
@@ -219,6 +242,10 @@ impl Class {
         } else {
             None
         }
+    }
+
+    pub fn source_definition(&self) -> Option<&str> {
+        self.source_definition.as_deref()
     }
 
     pub fn classname(&self) -> &str {
@@ -461,6 +488,7 @@ impl Parser {
             classname: name.to_string(),
             label: label,
             is_virtual,
+            source_definition: None,
             fields: HashMap::new(),
             links: HashMap::new(),
             pkey: None,
@@ -495,6 +523,10 @@ impl Parser {
                     self.add_link(&mut class, &link_node);
                 }
             }
+
+            if child.tag_name().name() == "source_definition" {
+                class.source_definition = child.text().map(|t| t.to_string());
+            }
         }
 
         self.add_auto_fields(&mut class, field_array_pos);
@@ -513,6 +545,7 @@ impl Parser {
                     i18n: false,
                     array_pos: pos,
                     is_virtual: true,
+                    suppress_controller: None,
                 },
             );
 
@@ -541,6 +574,10 @@ impl Parser {
             None => false,
         };
 
+        let suppress_controller = node
+            .attribute((OILS_NS_PERSIST, "suppress_controller"))
+            .map(|c| c.to_string());
+
         let field = Field {
             name: node.attribute("name").unwrap().to_string(),
             label,
@@ -548,6 +585,7 @@ impl Parser {
             i18n,
             array_pos: pos,
             is_virtual,
+            suppress_controller,
         };
 
         class.fields.insert(field.name.to_string(), field);
