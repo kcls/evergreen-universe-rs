@@ -20,6 +20,42 @@ const SUPPORTED_OPERANDS: &[&'static str] = &[
 ];
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum JoinType {
+    Left,
+    Right,
+    Full,
+    Inner
+}
+
+#[derive(Debug)]
+pub struct JsonQueryContext {
+    core_class: Option<String>,
+    from_function: Option<String>,
+    query_string: Option<String>,
+    params: Option<Vec<String>>,
+    joins: Option<Vec<JoinDef>>,
+}
+
+impl JsonQueryContext {
+    pub fn query_string(&self) -> Option<&str> {
+        self.query_string.as_deref()
+    }
+    pub fn params(&self) -> Option<&Vec<String>> {
+        self.params.as_ref()
+    }
+}
+
+#[derive(Debug)]
+pub struct JoinDef {
+    classname: String,
+    tablename: String,
+    alias: String,
+    field: Option<String>,
+    fkey: Option<String>,
+    join_type: JoinType
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum OrderByDir {
     Asc,
     Desc,
@@ -943,4 +979,283 @@ impl Translator {
             _ => Err(format!("Unsupported column type: {col_type}").into()),
         }
     }
+
+    /// Compile a json_query structure into its constituent parts.
+    pub fn compile_json_query(&self, json_hash: &JsonValue) -> EgResult<JsonQueryContext> {
+        if !json_hash.is_object() {
+            return Err(format!("json_query must be a JSON hash").into());
+        }
+
+        self.jq_compile(
+            JsonQueryContext {
+                params: None,
+                core_class: None,
+                query_string: None,
+                from_function: None,
+                joins: None,
+            },
+            json_hash
+        )
+    }
+
+    fn jq_compile(
+        &self,
+        mut ctx: JsonQueryContext,
+        json_query: &JsonValue
+    ) -> EgResult<JsonQueryContext> {
+
+        // TODO union, intersect, except
+
+        self.jq_get_core_class(&mut ctx, &json_query["from"])?;
+
+        if let Some(core_class) = ctx.core_class.as_ref() {
+            // At this point, core_class has been verified to exist.
+            let idl_class = self.idl().classes().get(core_class).unwrap();
+
+            self.jq_compile_joins(&mut ctx, &json_query["from"], idl_class)?;
+        }
+
+        Ok(ctx)
+    }
+
+    fn jq_get_core_class(
+        &self,
+        ctx: &mut JsonQueryContext,
+        from_blob: &JsonValue,
+    ) -> EgResult<()> {
+
+        if from_blob.is_object() && from_blob.len() == 1 {
+            // "from":{"aou": ...}
+
+            let (class, _) = from_blob.entries().next().unwrap();
+            ctx.core_class = Some(class.to_string());
+
+        } else if from_blob.is_array() {
+            // "from": ["my.func", ... ]
+
+            if let Some(func) = from_blob[0].as_str() {
+                ctx.from_function = Some(func.to_string());
+            }
+
+        } else if let Some(class) = from_blob.as_str() {
+            // "from": "aou"
+
+            ctx.core_class = Some(class.to_string());
+        }
+
+        // Sanity check our results.
+
+        if let Some(class) = ctx.core_class.as_ref() {
+            if self.idl().classes().get(class).is_none() {
+                return Err(format!("Invalid IDL class: {class}").into());
+            }
+        } else if ctx.from_function.is_none() {
+            return Err(format!(
+                "Malformed FROM clause: {}", from_blob.dump()).into());
+        }
+
+
+        Ok(())
+    }
+
+    fn jq_compile_joins(
+        &self,
+        ctx: &mut JsonQueryContext,
+        from_blob: &JsonValue,
+        base_class: &idl::Class,
+    ) -> EgResult<()> {
+
+        let mut join_list: JsonValue;
+
+        if from_blob.is_array() {
+            join_list = from_blob.clone();
+        } else {
+            join_list = json::array! [];
+
+            let sub_hash = if let Some(from) = from_blob.as_str() {
+                let mut h = json::object! {};
+                h[from] = JsonValue::Null;
+                h
+            } else if from_blob.is_object() {
+                from_blob.clone()
+            } else {
+                return Err(format!(
+                    "JOIN failed; expected JSON object/string: {}", from_blob.dump()
+                ).into());
+            };
+
+            join_list.push(sub_hash);
+        }
+
+        let mut left_class = base_class.classname();
+        for list_entry in join_list.members() {
+            let mut sub_hash;
+            let mut sub_hash_ref = list_entry;
+
+            if let Some(class) = list_entry.as_str() {
+                sub_hash = json::object! {};
+                sub_hash[class] = JsonValue::Null;
+                sub_hash_ref = &sub_hash;
+            }
+
+            for (key, val) in sub_hash_ref.entries() {
+                self.add_one_join(ctx, left_class, key, val)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn add_one_join(
+        &self,
+        ctx: &mut JsonQueryContext,
+        left_class: &str,
+        join_alias: &str,
+        join_body: &JsonValue,
+    ) -> EgResult<()> {
+
+        let join_class = if let Some(class) = join_body["class"].as_str() {
+            class
+        } else {
+            // If there's no "class" in the hash, the alias is the classname
+            join_alias
+        };
+
+        let idl_class = self.idl().classes().get(join_class)
+            .ok_or_else(|| format!( "No such IDL class in JOIN: {join_class}"))?;
+
+        let tablename = idl_class.tablename().ok_or_else(
+            || format!("Cannot join to a class with no table: {join_class}"))?;
+
+        let mut join_def = JoinDef {
+            classname: join_class.to_string(),
+            alias: join_alias.to_string(),
+            tablename: tablename.to_string(),
+            join_type: JoinType::Inner,
+            field: join_body["fkey"].as_str().map(|s| s.to_string()),
+            fkey: join_body["field"].as_str().map(|s| s.to_string()),
+        };
+
+        if join_def.field.is_some() && join_def.fkey.is_none() {
+            // Look up the corresponding join column in the IDL.  The
+            // link must be defined in the joined table, and point to
+            // the source table.
+
+            let field_name = join_def.field.as_ref().unwrap();
+            let idl_link = idl_class.links().get(field_name)
+                .ok_or_else(|| format!("No such link {field_name}"))?;
+
+            let reltype = idl_link.reltype();
+
+            let other_class = idl_link.class();
+            if reltype == idl::RelType::HasMany {
+                if other_class == join_class {
+                    join_def.fkey = Some(idl_link.key().to_string());
+                }
+            }
+
+            if join_def.fkey.is_none() {
+                return Err(format!(
+                    "JOIN failed.  No link defined from {field_name} to {other_class}"
+                ).into());
+            }
+        } else if join_def.field.is_none() && join_def.fkey.is_some() {
+            // TODO refactor / duplication
+
+            let fkey_name = join_def.fkey.as_ref().unwrap();
+            let left_idl_class = self.idl().classes().get(left_class).unwrap();
+
+            let idl_link = left_idl_class.links().get(fkey_name)
+                .ok_or_else(|| format!("No such link {fkey_name}"))?;
+
+            let reltype = idl_link.reltype();
+
+            let other_class = idl_link.class();
+            if reltype == idl::RelType::HasMany {
+                if other_class == join_class {
+                    join_def.field = Some(idl_link.key().to_string());
+                }
+            }
+
+            if join_def.field.is_none() {
+                return Err(format!(
+                    "JOIN failed. No link defined from {fkey_name} to {other_class}"
+                ).into());
+            }
+
+        } else if join_def.field.is_none() && join_def.fkey.is_none() {
+            let left_idl_class = self.idl().classes().get(left_class).unwrap();
+
+            for (link_key, cur_link) in left_idl_class.links() {
+                let other_class = cur_link.class();
+
+                if other_class == join_class {
+                    let reltype = cur_link.reltype();
+                    if reltype == idl::RelType::HasMany {
+                        join_def.fkey = Some(link_key.to_string());
+                        join_def.field = Some(cur_link.key().to_string());
+                        break;
+                    }
+                }
+            }
+
+            // Do another search with the classes reversed.
+            if join_def.field.is_none() && join_def.fkey.is_none() {
+                for (link_key, cur_link) in idl_class.links() {
+                    let other_class = cur_link.class();
+
+                    if other_class == left_class {
+                        let reltype = cur_link.reltype();
+                        if reltype == idl::RelType::HasMany {
+                            join_def.fkey = Some(link_key.to_string());
+                            join_def.field = Some(cur_link.key().to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if join_def.field.is_none() && join_def.fkey.is_none() {
+                return Err(format!(
+                    "No link defined between {left_class} and {join_class}"
+                ).into());
+            }
+        }
+
+
+        if let Some(join_type) = join_body["type"].as_str() {
+            join_def.join_type = match join_type {
+                "left" => JoinType::Left,
+                "right" => JoinType::Right,
+                "full" => JoinType::Full,
+                _ => JoinType::Inner,
+            };
+        }
+
+        if ctx.joins.is_none() {
+            ctx.joins = Some(vec![join_def]);
+        } else {
+            ctx.joins.as_mut().unwrap().push(join_def);
+        }
+
+        // TODO filter
+
+        if join_body["join"].is_object() {
+            // Add sub-joins
+            self.jq_compile_joins(ctx, &join_body["join"], &idl_class)?;
+        }
+
+        Ok(())
+    }
+
+    fn jq_compile_select(
+        &self,
+        ctx: &mut JsonQueryContext,
+        select: &JsonValue,
+    ) -> EgResult<()> {
+
+        todo!()
+    }
 }
+
+

@@ -146,7 +146,7 @@ impl Field {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RelType {
     HasA,
     HasMany,
@@ -189,6 +189,24 @@ pub struct Link {
     key: String,
     map: Option<String>,
     class: String,
+}
+
+impl Link {
+    pub fn field(&self) -> &str {
+        &self.field
+    }
+    pub fn reltype(&self) ->  RelType {
+        self.reltype
+    }
+    pub fn key(&self) ->  &str {
+        &self.key
+    }
+    pub fn map(&self) ->  Option<&str> {
+        self.map.as_deref()
+    }
+    pub fn class(&self) ->  &str {
+        &self.class
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
