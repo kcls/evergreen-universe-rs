@@ -195,16 +195,16 @@ impl Link {
     pub fn field(&self) -> &str {
         &self.field
     }
-    pub fn reltype(&self) ->  RelType {
+    pub fn reltype(&self) -> RelType {
         self.reltype
     }
-    pub fn key(&self) ->  &str {
+    pub fn key(&self) -> &str {
         &self.key
     }
-    pub fn map(&self) ->  Option<&str> {
+    pub fn map(&self) -> Option<&str> {
         self.map.as_deref()
     }
-    pub fn class(&self) ->  &str {
+    pub fn class(&self) -> &str {
         &self.class
     }
 }

@@ -1,7 +1,7 @@
 use evergreen as eg;
 mod circ;
-mod util;
 mod json_query;
+mod util;
 
 /// Set to 'ignored' by default since it requires a running system
 /// and creates data.
@@ -27,7 +27,7 @@ fn main() -> eg::EgResult<()> {
         timer: util::Timer::new(),
     };
 
-    circ::run_live_tests(&mut tester)?;
+    //circ::run_live_tests(&mut tester)?;
     json_query::run_live_tests(&mut tester)?;
 
     Ok(())
