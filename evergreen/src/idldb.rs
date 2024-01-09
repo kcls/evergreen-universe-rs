@@ -1011,7 +1011,11 @@ impl Translator {
             // At this point, core_class has been verified to exist.
             let idl_class = self.idl().classes().get(core_class).unwrap();
 
-            self.jq_compile_joins(&mut ctx, &json_query["from"], idl_class)?;
+            self.jq_compile_joins(
+                &mut ctx,
+                &json_query["from"][idl_class.classname()],
+                idl_class
+            )?;
         }
 
         Ok(ctx)
@@ -1054,6 +1058,7 @@ impl Translator {
         from_blob: &JsonValue,
         base_class: &idl::Class,
     ) -> EgResult<()> {
+        println!("Compiling JOIN: {}\n", from_blob.dump());
         let mut join_list: JsonValue;
 
         if from_blob.is_array() {
@@ -1066,12 +1071,7 @@ impl Translator {
                 h[from] = JsonValue::Null;
                 h
             } else if from_blob.is_object() {
-                if from_blob.len() != 1 {
-                    return Err(format!("JOIN failed; invalid clause: {}", from_blob.dump()).into());
-                }
-
-                // Take the contents of the root of the hash
-                from_blob.entries().next().map(|(_, v)| v).unwrap().clone()
+                from_blob.clone()
             } else {
                 return Err(format!(
                     "JOIN failed; expected JSON object/string: {}",
@@ -1087,6 +1087,8 @@ impl Translator {
         for list_entry in join_list.members() {
             let mut sub_hash;
             let mut sub_hash_ref = list_entry;
+
+            println!("JOIN list member: {}\n", list_entry.dump());
 
             if let Some(class) = list_entry.as_str() {
                 sub_hash = json::object! {};
@@ -1117,7 +1119,7 @@ impl Translator {
         };
 
         println!(
-            "add_one_join() left={} alias={} body={}",
+            "add_one_join() left={} alias={} body={}\n",
             left_class,
             join_alias,
             join_body.dump()
