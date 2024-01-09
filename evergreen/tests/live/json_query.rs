@@ -73,5 +73,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     println!("JQ = {jq:?}");
 
+    println!("SQL =\n{}\n", jq.query_string().expect("SHOULD HAVE SQL"));
+
     Ok(())
 }

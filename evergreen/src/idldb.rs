@@ -50,6 +50,10 @@ pub struct JoinDef {
     classname: String,
     tablename: String,
     alias: String,
+    /// Alias of the joined-to table.
+    left_alias: String,
+    /// Classname of the joined-to table.
+    left_class: String,
     field: Option<String>,
     fkey: Option<String>,
     join_type: JoinType,
@@ -986,39 +990,48 @@ impl Translator {
             return Err(format!("json_query must be a JSON hash").into());
         }
 
-        self.jq_compile(
-            JsonQueryContext {
-                params: None,
-                core_class: None,
-                query_string: None,
-                from_function: None,
-                joins: None,
-            },
-            json_hash,
-        )
+        let mut ctx = JsonQueryContext {
+            params: None,
+            core_class: None,
+            query_string: None,
+            from_function: None,
+            joins: None,
+        };
+
+        self.jq_compile(&mut ctx, json_hash)?;
+
+        let mut sql = String::new();
+
+        if let Some(join_sql) = self.jq_joins_to_sql(&mut ctx)? {
+            sql += &join_sql;
+        }
+
+        ctx.query_string = Some(sql);
+
+        Ok(ctx)
     }
 
     fn jq_compile(
         &self,
-        mut ctx: JsonQueryContext,
+        ctx: &mut JsonQueryContext,
         json_query: &JsonValue,
-    ) -> EgResult<JsonQueryContext> {
+    ) -> EgResult<()> {
         // TODO union, intersect, except
 
-        self.jq_get_core_class(&mut ctx, &json_query["from"])?;
+        self.jq_get_core_class(ctx, &json_query["from"])?;
 
         if let Some(core_class) = ctx.core_class.as_ref() {
             // At this point, core_class has been verified to exist.
             let idl_class = self.idl().classes().get(core_class).unwrap();
 
             self.jq_compile_joins(
-                &mut ctx,
+                ctx,
                 &json_query["from"][idl_class.classname()],
                 idl_class
             )?;
         }
 
-        Ok(ctx)
+        Ok(())
     }
 
     fn jq_get_core_class(&self, ctx: &mut JsonQueryContext, from_blob: &JsonValue) -> EgResult<()> {
@@ -1083,7 +1096,7 @@ impl Translator {
             join_list.push(sub_hash);
         }
 
-        let mut left_class = base_class.classname();
+        let left_class = base_class.classname();
         for list_entry in join_list.members() {
             let mut sub_hash;
             let mut sub_hash_ref = list_entry;
@@ -1096,8 +1109,11 @@ impl Translator {
                 sub_hash_ref = &sub_hash;
             }
 
+            let mut left_alias;
+            let mut left_alias_ref = left_class;
             for (key, val) in sub_hash_ref.entries() {
-                self.add_one_join(ctx, left_class, key, val)?;
+                left_alias = self.add_one_join(ctx, left_class, left_alias_ref, key, val)?;
+                left_alias_ref = left_alias.as_ref();
             }
         }
 
@@ -1108,9 +1124,10 @@ impl Translator {
         &self,
         ctx: &mut JsonQueryContext,
         left_class: &str,
+        left_alias: &str,
         join_alias: &str,
         join_body: &JsonValue,
-    ) -> EgResult<()> {
+    ) -> EgResult<String> {
         let join_classname = if let Some(class) = join_body["class"].as_str() {
             class
         } else {
@@ -1138,6 +1155,8 @@ impl Translator {
         let mut join_def = JoinDef {
             classname: join_classname.to_string(),
             alias: join_alias.to_string(),
+            left_alias: left_alias.to_string(),
+            left_class: left_class.to_string(),
             tablename: tablename.to_string(),
             join_type: JoinType::Inner,
             field: join_body["field"].as_str().map(|s| s.to_string()),
@@ -1259,7 +1278,48 @@ impl Translator {
             self.jq_compile_joins(ctx, &join_body["join"], &join_class)?;
         }
 
-        Ok(())
+        Ok(left_alias.to_string())
+    }
+
+    fn jq_joins_to_sql(&self, ctx: &mut JsonQueryContext) -> EgResult<Option<String>> {
+
+        let join_list = match ctx.joins.as_ref() {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        let mut sql = String::new();
+
+        for join in join_list {
+            let fieldname = join.field.as_ref()
+                .ok_or_else(|| format!("JOIN requires a field name"))?;
+
+            let fkey = join.fkey.as_ref()
+                .ok_or_else(|| format!("JOIN requires a fkey value"))?;
+
+            sql += match join.join_type {
+                JoinType::Left => " LEFT JOIN",
+                JoinType::Right => " RIGHT JOIN",
+                JoinType::Full =>  " FULL JOIN",
+                JoinType::Inner => " INNER JOIN",
+            };
+
+            sql += &format!(
+                " {} AS \"{}\" ON ( \"{}\".{} = \"{}\".{}",
+                join.tablename,
+                join.alias,
+                join.alias,
+                fieldname,
+                join.left_alias,
+                fkey
+            );
+
+
+            // TODO JOIN FILTER
+            sql += " ) ";
+        }
+
+        Ok(Some(sql))
     }
 
     fn jq_compile_select(&self, ctx: &mut JsonQueryContext, select: &JsonValue) -> EgResult<()> {
