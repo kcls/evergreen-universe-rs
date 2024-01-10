@@ -968,12 +968,20 @@ pub struct JoinDef {
 }
 
 #[derive(Debug)]
+pub struct SelectDef {
+    classname: String,
+    alias: String,
+    fields: Vec<String>,
+}
+
+#[derive(Debug)]
 pub struct JsonQueryCompiler {
     idl: Arc<idl::Parser>,
     core_class: Option<String>,
     from_function: Option<String>,
     query_string: Option<String>,
     params: Option<Vec<String>>,
+    selects: Option<Vec<SelectDef>>,
     joins: Option<Vec<JoinDef>>,
 }
 
@@ -985,6 +993,7 @@ impl JsonQueryCompiler {
             from_function: None,
             query_string: None,
             params: None,
+            selects: None,
             joins: None,
         }
     }
@@ -1019,6 +1028,7 @@ impl JsonQueryCompiler {
             // TODO searchValueTransform
         } else {
             self.compile_select(&query["select"])?;
+            sql += &self.selects_to_sql()?;
 
             // core_class with a tablename is guaranteed here.
             let table = self.get_core_class().tablename().unwrap();
@@ -1039,8 +1049,13 @@ impl JsonQueryCompiler {
     fn get_core_class(&self) -> &idl::Class {
         self.idl
             .classes()
-            .get(self.core_class.as_ref().unwrap())
-            .unwrap()
+            .get(self.get_core_classname())
+            .expect("get_core_class() has no class")
+    }
+
+    /// Panics if our core_class is unset
+    fn get_core_classname(&self) -> &str {
+        self.core_class.as_ref().expect("get_core_classname() has no class")
     }
 
     fn set_core_class(&mut self, from_blob: &JsonValue) -> EgResult<()> {
@@ -1274,6 +1289,32 @@ impl JsonQueryCompiler {
         Ok(left_alias.to_string())
     }
 
+    /// Collect all of our SelectDef entries into a single SQL string.
+    fn selects_to_sql(&mut self) -> EgResult<String> {
+        let mut sql = format!("SELECT");
+
+        // At this point we have to have something to select.
+        let selects = self.selects
+            .as_ref()
+            .ok_or_else(|| format!("selects_to_sql() has no selects"))?;
+
+        let mut first = true;
+        for select in selects {
+            for field in &select.fields {
+                if first {
+                    first = false;
+                    sql += " ";
+                } else {
+                    sql += ", ";
+                }
+                sql += &format!("\"{}\".{}", select.alias, field);
+            }
+        }
+
+        Ok(sql)
+    }
+
+    /// Collect all of our JoinDef entries into a single SQL string.
     fn joins_to_sql(&mut self) -> EgResult<Option<String>> {
         let join_list = match self.joins.as_ref() {
             Some(v) => v,
@@ -1318,6 +1359,7 @@ impl JsonQueryCompiler {
         // fields are the wildcard character.
 
         let mut default_needed = false;
+        let classname = self.get_core_classname().to_string(); // parallal muts
 
         if select.is_null() {
             default_needed = true;
@@ -1325,8 +1367,7 @@ impl JsonQueryCompiler {
             return Err(format!("SELECT clause must be a hash: {}", select.dump()).into());
         }
 
-        let core_class = self.core_class.as_ref().unwrap(); // known
-        let select_list = &select[core_class];
+        let select_list = &select[&classname];
         if let Some(sel_str) = select_list.as_str() {
             if sel_str == "*" {
                 default_needed = true;
@@ -1336,8 +1377,33 @@ impl JsonQueryCompiler {
         }
 
         if default_needed {
-            // TODO
-            // select[core_class] = self.default_select_list();
+            self.add_default_select_list(&classname)?;
+        }
+
+        Ok(())
+    }
+
+    /// Creates a default list of columns to select from an alias'ed IDL
+    /// class.
+    fn add_default_select_list(&mut self, alias: &str) -> EgResult<()> {
+        // The table alias may not match an IDL class name.
+        // TODO idl_class = self.search_all_alias(alias)
+        let idl_class = self.idl.classes().get(alias).unwrap(); // TODO
+
+        let def = SelectDef {
+            classname: idl_class.classname().to_string(),
+            alias: alias.to_string(),
+            fields: idl_class
+                .real_field_names_sorted()
+                .iter()
+                .map(|f| f.to_string())
+                .collect()
+        };
+
+        if let Some(selects) = self.selects.as_mut() {
+            selects.push(def)
+        } else {
+            self.selects = Some(vec![def]);
         }
 
         Ok(())

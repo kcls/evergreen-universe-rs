@@ -12,7 +12,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     let query = json::object! {
         "select": {
-            "acp": ["id", "circ_lib"],
+            "acp": "*",
             "acn": ["label", "owning_lib"],
             "bre": ["editor"]
         },
@@ -68,7 +68,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     jq_compiler.compile(&query)?;
 
-    println!("JQ = {jq_compiler:?}");
+    //println!("JQ = {jq_compiler:?}");
 
     println!(
         "SQL =\n{}\n",
