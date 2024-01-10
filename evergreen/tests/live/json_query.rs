@@ -2,16 +2,13 @@ use crate::util;
 use eg::constants as C;
 use eg::db::DatabaseConnection;
 use eg::idldb;
-use eg::idldb::{IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
+use eg::idldb::JsonQueryCompiler;
 use eg::result::EgResult;
 use evergreen as eg;
 use json::JsonValue;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
-    // Not connecting the DB here.  Not needed.  At least, not yet.
-    let db = DatabaseConnection::builder().build().into_shared();
-
-    let mut translator = Translator::new(tester.ctx.idl().clone(), db.clone());
+    let mut jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
 
     let query = json::object! {
         "select": {
@@ -69,11 +66,14 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     println!("\n{}\n", query.dump());
 
-    let jq = translator.compile_json_query(&query)?;
+    jq_compiler.compile(&query)?;
 
-    println!("JQ = {jq:?}");
+    println!("JQ = {jq_compiler:?}");
 
-    println!("SQL =\n{}\n", jq.query_string().expect("SHOULD HAVE SQL"));
+    println!(
+        "SQL =\n{}\n",
+        jq_compiler.query_string().expect("SHOULD HAVE SQL")
+    );
 
     Ok(())
 }
