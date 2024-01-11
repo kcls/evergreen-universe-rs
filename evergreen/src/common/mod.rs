@@ -6,6 +6,7 @@ pub mod checkout;
 pub mod circ;
 pub mod circulator;
 pub mod holds;
+pub mod jq;
 pub mod noncat;
 pub mod org;
 pub mod penalty;

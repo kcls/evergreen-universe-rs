@@ -1,8 +1,5 @@
 use crate::util;
-use eg::constants as C;
-use eg::db::DatabaseConnection;
-use eg::idldb;
-use eg::idldb::JsonQueryCompiler;
+use eg::common::jq::JsonQueryCompiler;
 use eg::result::EgResult;
 use evergreen as eg;
 use json::JsonValue;
@@ -14,7 +11,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         "select": {
             "acp": "*",
             "acn": ["label", "owning_lib"],
-            "bre": ["editor"]
+            "bre": "editor"
         },
         "from": {
             "acp": {
@@ -71,7 +68,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     //println!("JQ = {jq_compiler:?}");
 
     println!(
-        "SQL =\n{}\n",
+        "\n{}\n",
         jq_compiler.query_string().expect("SHOULD HAVE SQL")
     );
 

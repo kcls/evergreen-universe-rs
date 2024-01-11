@@ -113,6 +113,7 @@ pub struct Field {
     i18n: bool,
     array_pos: usize,
     is_virtual: bool, // vim at least thinks 'virtual' is reserved
+    suppress_controller: Option<String>,
 }
 
 impl fmt::Display for Field {
@@ -143,6 +144,9 @@ impl Field {
     }
     pub fn is_virtual(&self) -> bool {
         self.is_virtual
+    }
+    pub fn suppress_controller(&self) -> Option<&str> {
+        self.suppress_controller.as_deref()
     }
 }
 
@@ -531,6 +535,7 @@ impl Parser {
                     i18n: false,
                     array_pos: pos,
                     is_virtual: true,
+                    suppress_controller: None,
                 },
             );
 
@@ -559,6 +564,10 @@ impl Parser {
             None => false,
         };
 
+        let suppress_controller = node
+            .attribute((OILS_NS_PERSIST, "suppress_controller"))
+            .map(|c| c.to_string());
+
         let field = Field {
             name: node.attribute("name").unwrap().to_string(),
             label,
@@ -566,6 +575,7 @@ impl Parser {
             i18n,
             array_pos: pos,
             is_virtual,
+            suppress_controller,
         };
 
         class.fields.insert(field.name.to_string(), field);
