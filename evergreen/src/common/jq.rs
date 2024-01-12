@@ -48,8 +48,10 @@ pub struct FieldDef {
     alias: Option<String>,
     i18n_required: bool,
     aggregate: bool,
+    distinct: bool,
     transform: Option<String>,
     transform_result_field: Option<String>,
+    transform_params: Option<Vec<JsonValue>>,
 }
 
 #[derive(Debug)]
@@ -419,6 +421,40 @@ impl JsonQueryCompiler {
                 .ok_or_else(|| format!("{} has no primary key", select.classname))?;
 
             for field in &select.fields {
+                if let Some(xform) = field.transform.as_ref() {
+                    if field.transform_result_field.is_some() {
+                        // So later we can append (...).xform_field.
+                        sql += "(";
+                    }
+
+                    sql += &format!(" {}(", &self.force_valid_ident(xform)?.to_uppercase());
+
+                    if field.distinct {
+                        sql += "DISTINCT ";
+                    }
+
+                    // TODO this should also do the i18n dance.  The C code
+                    // doesn't either, so I'm guessing it just hasn't come up.
+
+                    sql += &format!(
+                        "\"{}\".{}",
+                        self.force_valid_ident(&select.alias)?,
+                        self.force_valid_ident(&field.name)?
+                    );
+
+                    // PARAMS
+
+                    sql += ")";
+
+                    if let Some(xform_field) = field.transform_result_field.as_ref() {
+                        // Append (...).xform_field.
+                        sql += &format!(").\"{}\"", self.force_valid_ident(xform_field)?);
+                    }
+
+                    sql += ",";
+
+                    continue;
+                }
 
                 if let Some(locale) = self.locale.as_ref() {
                     if field.i18n_required {
@@ -540,8 +576,10 @@ impl JsonQueryCompiler {
                         alias: None,
                         i18n_required: idl_field.i18n(),
                         aggregate: false,
+                        distinct: false,
                         transform: None,
                         transform_result_field: None,
+                        transform_params: None,
                     });
                 }
 
@@ -563,8 +601,10 @@ impl JsonQueryCompiler {
                         alias: None,
                         i18n_required: idl_field.i18n(),
                         aggregate: false,
+                        distinct: false,
                         transform: None,
                         transform_result_field: None,
+                        transform_params: None,
                     });
                 }
                 continue;
@@ -591,13 +631,22 @@ impl JsonQueryCompiler {
                 None
             };
 
+            let mut params: Option<Vec<JsonValue>> = None;
+            if field_struct["params"].is_array() {
+                params = Some(
+                    field_struct["params"].members().map(|j| j.clone()).collect()
+                );
+            }
+
             let field_def = FieldDef {
                 name: column.to_string(),
                 alias: alias,
                 i18n_required: idl_field.i18n(),
                 aggregate: util::json_bool(&field_struct["aggregate"]),
+                distinct: util::json_bool(&field_struct["distinct"]),
                 transform: field_struct["transform"].as_str().map(|s| s.to_string()),
                 transform_result_field: field_struct["result_field"].as_str().map(|s| s.to_string()),
+                transform_params: params,
             };
 
             select_def.fields.push(field_def);
@@ -667,8 +716,10 @@ impl JsonQueryCompiler {
                     alias: None,
                     i18n_required: f.i18n(),
                     aggregate: false,
+                    distinct: false,
                     transform: None,
                     transform_result_field: None,
+                    transform_params: None,
                 })
                 .collect(),
         };
