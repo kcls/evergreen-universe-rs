@@ -1,8 +1,8 @@
+use crate::db;
 ///! JSON Query Parser
 use crate::idl;
 use crate::result::EgResult;
 use crate::util;
-use crate::db;
 use json::JsonValue;
 use std::fmt;
 use std::sync::Arc;
@@ -43,6 +43,12 @@ pub struct JoinDef {
 }
 
 #[derive(Debug)]
+pub struct ParamDef {
+    value: JsonValue,
+    index: usize,
+}
+
+#[derive(Debug)]
 pub struct FieldDef {
     name: String,
     alias: Option<String>,
@@ -51,7 +57,7 @@ pub struct FieldDef {
     distinct: bool,
     transform: Option<String>,
     transform_result_field: Option<String>,
-    transform_params: Option<Vec<JsonValue>>,
+    transform_params: Option<Vec<ParamDef>>,
 }
 
 #[derive(Debug)]
@@ -75,6 +81,7 @@ pub struct JsonQueryCompiler {
     params: Option<Vec<String>>,
     selects: Option<Vec<SelectDef>>,
     joins: Option<Vec<JoinDef>>,
+    param_index: usize,
 }
 
 impl JsonQueryCompiler {
@@ -89,6 +96,7 @@ impl JsonQueryCompiler {
             params: None,
             selects: None,
             joins: None,
+            param_index: 0,
         }
     }
 
@@ -134,7 +142,12 @@ impl JsonQueryCompiler {
 
             // core_class with a tablename is guaranteed here.
             let table = self.get_core_class().tablename().unwrap();
-            sql += &format!(" FROM {table}");
+            let cc = self.get_core_class();
+            sql += &format!(
+                " FROM {} AS \"{}\"",
+                cc.tablename().as_ref().unwrap(),
+                cc.classname()
+            );
         }
 
         if let Some(join_sql) = self.joins_to_sql()? {
@@ -398,7 +411,7 @@ impl JsonQueryCompiler {
 
     fn force_valid_ident<'a>(&'a self, s: &'a str) -> EgResult<&str> {
         if db::is_identifier(s) {
-            return Ok(s)
+            return Ok(s);
         } else {
             return Err(format!("Value is not a valid identifier: {s}").into());
         }
@@ -417,7 +430,8 @@ impl JsonQueryCompiler {
         for select in selects {
             let idl_class = self.idl.classes().get(&select.classname).unwrap();
 
-            let pkey = idl_class.pkey()
+            let pkey = idl_class
+                .pkey()
                 .ok_or_else(|| format!("{} has no primary key", select.classname))?;
 
             for field in &select.fields {
@@ -442,7 +456,14 @@ impl JsonQueryCompiler {
                         self.force_valid_ident(&field.name)?
                     );
 
-                    // PARAMS
+                    if let Some(params) = field.transform_params.as_ref() {
+                        if params.len() > 0 {
+                            for _ in params {
+                                // Values will be replaced at query execution time.
+                                sql += ", ?";
+                            }
+                        }
+                    }
 
                     sql += ")";
 
@@ -613,13 +634,18 @@ impl JsonQueryCompiler {
             // Here we have a column definition HASH with more SELECT
             // requirements than a simple column name.
 
-            let column = field_struct["column"].as_str()
-                .ok_or_else(|| format!("SELECT hash requires a 'column': {}", field_struct.dump()))?;
+            let column = field_struct["column"].as_str().ok_or_else(|| {
+                format!("SELECT hash requires a 'column': {}", field_struct.dump())
+            })?;
 
             let idl_field = self
                 .field_may_be_selected(column, &classname)
-                .ok_or_else(|| format!(
-                    "Field '{column}' does not exist in class '{classname}' or may not be selected"))?;
+                .ok_or_else(|| {
+                    format!(
+                    "Field '{column}' does not exist in class '{classname}' or may not be selected")
+                })?;
+
+            let i18n_required = idl_field.i18n();
 
             // Determine the column alias.
 
@@ -631,21 +657,30 @@ impl JsonQueryCompiler {
                 None
             };
 
-            let mut params: Option<Vec<JsonValue>> = None;
+            let mut params: Option<Vec<ParamDef>> = None;
             if field_struct["params"].is_array() {
-                params = Some(
-                    field_struct["params"].members().map(|j| j.clone()).collect()
-                );
+                let mut list = Vec::new();
+                for param in field_struct["params"].members() {
+                    let def = ParamDef {
+                        value: param.clone(),
+                        index: self.param_index,
+                    };
+                    self.param_index += 1;
+                    list.push(def);
+                }
+                params = Some(list);
             }
 
             let field_def = FieldDef {
                 name: column.to_string(),
-                alias: alias,
-                i18n_required: idl_field.i18n(),
+                alias,
+                i18n_required,
                 aggregate: util::json_bool(&field_struct["aggregate"]),
                 distinct: util::json_bool(&field_struct["distinct"]),
                 transform: field_struct["transform"].as_str().map(|s| s.to_string()),
-                transform_result_field: field_struct["result_field"].as_str().map(|s| s.to_string()),
+                transform_result_field: field_struct["result_field"]
+                    .as_str()
+                    .map(|s| s.to_string()),
                 transform_params: params,
             };
 
