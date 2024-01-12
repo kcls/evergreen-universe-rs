@@ -1,6 +1,7 @@
 ///! JSON Query Parser
 use crate::idl;
 use crate::result::EgResult;
+use crate::util;
 use json::JsonValue;
 use std::fmt;
 use std::sync::Arc;
@@ -43,7 +44,9 @@ pub struct JoinDef {
 #[derive(Debug)]
 pub struct FieldDef {
     name: String,
+    alias: Option<String>,
     i18n_required: bool,
+    aggregate: bool,
 }
 
 #[derive(Debug)]
@@ -128,6 +131,9 @@ impl JsonQueryCompiler {
         if let Some(join_sql) = self.joins_to_sql()? {
             sql += &join_sql;
         }
+
+        // TODO GROUP BY (reminder: aggregates)
+        // TODO ORDER BY
 
         self.query_string = Some(sql);
 
@@ -410,7 +416,7 @@ impl JsonQueryCompiler {
                             select.alias,
                             pkey,
                             locale,
-                            field.name
+                            field.alias.as_ref().unwrap_or(&field.name)
                         );
 
                         continue;
@@ -507,7 +513,9 @@ impl JsonQueryCompiler {
                 if let Some(idl_field) = self.field_may_be_selected(col, &classname) {
                     select_def.fields.push(FieldDef {
                         name: col.to_string(),
+                        alias: None,
                         i18n_required: idl_field.i18n(),
+                        aggregate: false,
                     });
                 }
 
@@ -526,15 +534,42 @@ impl JsonQueryCompiler {
                 if let Some(idl_field) = self.field_may_be_selected(column, &classname) {
                     select_def.fields.push(FieldDef {
                         name: column.to_string(),
+                        alias: None,
                         i18n_required: idl_field.i18n(),
+                        aggregate: false,
                     });
                 }
                 continue;
             }
 
-            for (key, value) in field_def.entries() {
-                // TODO
+            let column = field_def["column"].as_str()
+                .ok_or_else(|| format!("SELECT hash requires a 'column': {}", field_def.dump()))?;
+
+            let idl_field = self
+                .field_may_be_selected(column, &classname)
+                .ok_or_else(|| format!(
+                    "Field '{column}' does not exist in class '{classname}' or may not be selected"))?;
+
+            // Determine the column alias.
+
+            let alias = if let Some(a) = field_def["alias"].as_str() {
+                Some(a.to_string())
+            } else if let Some(a) = field_def["result_field"].as_str() {
+                Some(a.to_string())
+            } else {
+                None
+            };
+
+            if !field_def["transform"].is_null() {
+                // TODO searchFieldTransform()
             }
+
+            select_def.fields.push(FieldDef {
+                name: column.to_string(),
+                alias: alias,
+                i18n_required: idl_field.i18n(),
+                aggregate: util::json_bool(&field_def["aggregate"])
+            });
         }
 
         self.add_select(select_def);
@@ -598,7 +633,9 @@ impl JsonQueryCompiler {
                 .filter(|f| self.field_may_be_selected(f.name(), classname).is_some())
                 .map(|f| FieldDef {
                     name: f.name().to_string(),
+                    alias: None,
                     i18n_required: f.i18n(),
+                    aggregate: false,
                 })
                 .collect(),
         };

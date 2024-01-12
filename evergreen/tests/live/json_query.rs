@@ -14,7 +14,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
             "acn": ["label", "owning_lib"],
             "bre": "editor",
             "acpl": "name",
-            "ccs": [{"column": "label", "alias": "status_label"}]
+            "ccs": [{"column": "name", "alias": "status_label"}]
         },
         "from": {
             "acp": {
