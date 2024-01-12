@@ -84,7 +84,7 @@ impl JsonQueryCompiler {
         }
     }
 
-    pub fn set_local(&mut self, locale: &str) {
+    pub fn set_locale(&mut self, locale: &str) {
         self.locale = Some(locale.to_string());
     }
 
@@ -392,8 +392,31 @@ impl JsonQueryCompiler {
             .ok_or_else(|| format!("selects_to_sql() has no selects"))?;
 
         for select in selects {
+            let idl_class = self.idl.classes().get(&select.classname).unwrap();
+
+            let pkey = idl_class.pkey()
+                .ok_or_else(|| format!("{} has no primary key", select.classname))?;
+
             for field in &select.fields {
-                // TODO i18n
+
+                if let Some(locale) = self.locale.as_ref() {
+                    if field.i18n_required {
+                        sql += &format!(
+                            " oils_i18n_xlate('{}', '{}', '{}', '{}', \"{}\".{}::TEXT, '{}') AS \"{}\",",
+                            select.classname,
+                            select.alias,
+                            field.name,
+                            pkey,
+                            select.alias,
+                            pkey,
+                            locale,
+                            field.name
+                        );
+
+                        continue;
+                    }
+                }
+
                 sql += &format!(" \"{}\".{},", select.alias, field.name);
             }
         }
@@ -580,11 +603,7 @@ impl JsonQueryCompiler {
                 .collect(),
         };
 
-        if let Some(selects) = self.selects.as_mut() {
-            selects.push(def)
-        } else {
-            self.selects = Some(vec![def]);
-        }
+        self.add_select(def);
 
         Ok(())
     }
