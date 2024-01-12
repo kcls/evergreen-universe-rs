@@ -362,3 +362,17 @@ impl DatabaseConnection {
         Rc::new(RefCell::new(self))
     }
 }
+
+/// Determine whether a string is potentially a valid SQL identifier.
+pub fn is_identifier(s: &str) -> bool {
+    let s = s.trim();
+    for c in s.chars() {
+        // NOTE: is the 'ascii' check to strict?
+        if c.is_ascii_alphanumeric() || c == '$' || c == '_' || c == '.' {
+            // OK
+        } else {
+            return false;
+        }
+    }
+    s.len() > 0
+}

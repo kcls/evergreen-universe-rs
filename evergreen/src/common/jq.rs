@@ -2,6 +2,7 @@
 use crate::idl;
 use crate::result::EgResult;
 use crate::util;
+use crate::db;
 use json::JsonValue;
 use std::fmt;
 use std::sync::Arc;
@@ -47,6 +48,8 @@ pub struct FieldDef {
     alias: Option<String>,
     i18n_required: bool,
     aggregate: bool,
+    transform: Option<String>,
+    transform_result_field: Option<String>,
 }
 
 #[derive(Debug)]
@@ -87,8 +90,12 @@ impl JsonQueryCompiler {
         }
     }
 
-    pub fn set_locale(&mut self, locale: &str) {
+    pub fn set_locale(&mut self, locale: &str) -> EgResult<()> {
+        if locale.chars().any(|b| !b.is_ascii_alphabetic() && b != '-') {
+            return Err(format!("Invalid locale: '{locale}'").into());
+        }
         self.locale = Some(locale.to_string());
+        Ok(())
     }
 
     pub fn query_string(&self) -> Option<&str> {
@@ -387,6 +394,14 @@ impl JsonQueryCompiler {
         Ok(left_alias.to_string())
     }
 
+    fn force_valid_ident<'a>(&'a self, s: &'a str) -> EgResult<&str> {
+        if db::is_identifier(s) {
+            return Ok(s)
+        } else {
+            return Err(format!("Value is not a valid identifier: {s}").into());
+        }
+    }
+
     /// Collect all of our SelectDef entries into a single SQL string.
     fn selects_to_sql(&mut self) -> EgResult<String> {
         let mut sql = format!("SELECT");
@@ -409,21 +424,25 @@ impl JsonQueryCompiler {
                     if field.i18n_required {
                         sql += &format!(
                             " oils_i18n_xlate('{}', '{}', '{}', '{}', \"{}\".{}::TEXT, '{}') AS \"{}\",",
-                            select.classname,
-                            select.alias,
-                            field.name,
-                            pkey,
-                            select.alias,
-                            pkey,
-                            locale,
-                            field.alias.as_ref().unwrap_or(&field.name)
+                            self.force_valid_ident(&select.classname)?,
+                            self.force_valid_ident(&select.alias)?,
+                            self.force_valid_ident(&field.name)?,
+                            self.force_valid_ident(pkey)?,
+                            self.force_valid_ident(&select.alias)?,
+                            self.force_valid_ident(pkey)?,
+                            locale, // e.g. en-US
+                            self.force_valid_ident(field.alias.as_ref().unwrap_or(&field.name))?
                         );
 
                         continue;
                     }
                 }
 
-                sql += &format!(" \"{}\".{},", select.alias, field.name);
+                sql += &format!(
+                    " \"{}\".{},",
+                    self.force_valid_ident(&select.alias)?,
+                    self.force_valid_ident(&field.name)?,
+                );
             }
         }
 
@@ -461,7 +480,12 @@ impl JsonQueryCompiler {
 
             sql += &format!(
                 " {} AS \"{}\" ON ( \"{}\".{} = \"{}\".{}",
-                join.tablename, join.alias, join.alias, fieldname, join.left_alias, fkey
+                self.force_valid_ident(&join.tablename)?,
+                self.force_valid_ident(&join.alias)?,
+                self.force_valid_ident(&join.alias)?,
+                self.force_valid_ident(&fieldname)?,
+                self.force_valid_ident(&join.left_alias)?,
+                self.force_valid_ident(fkey)?,
             );
 
             // TODO JOIN FILTER
@@ -516,6 +540,8 @@ impl JsonQueryCompiler {
                         alias: None,
                         i18n_required: idl_field.i18n(),
                         aggregate: false,
+                        transform: None,
+                        transform_result_field: None,
                     });
                 }
 
@@ -529,21 +555,26 @@ impl JsonQueryCompiler {
             return Err(format!("SELECT must be string, null, or array").into());
         }
 
-        for field_def in payload.members() {
-            if let Some(column) = field_def.as_str() {
+        for field_struct in payload.members() {
+            if let Some(column) = field_struct.as_str() {
                 if let Some(idl_field) = self.field_may_be_selected(column, &classname) {
                     select_def.fields.push(FieldDef {
                         name: column.to_string(),
                         alias: None,
                         i18n_required: idl_field.i18n(),
                         aggregate: false,
+                        transform: None,
+                        transform_result_field: None,
                     });
                 }
                 continue;
             }
 
-            let column = field_def["column"].as_str()
-                .ok_or_else(|| format!("SELECT hash requires a 'column': {}", field_def.dump()))?;
+            // Here we have a column definition HASH with more SELECT
+            // requirements than a simple column name.
+
+            let column = field_struct["column"].as_str()
+                .ok_or_else(|| format!("SELECT hash requires a 'column': {}", field_struct.dump()))?;
 
             let idl_field = self
                 .field_may_be_selected(column, &classname)
@@ -552,24 +583,24 @@ impl JsonQueryCompiler {
 
             // Determine the column alias.
 
-            let alias = if let Some(a) = field_def["alias"].as_str() {
+            let alias = if let Some(a) = field_struct["alias"].as_str() {
                 Some(a.to_string())
-            } else if let Some(a) = field_def["result_field"].as_str() {
+            } else if let Some(a) = field_struct["result_field"].as_str() {
                 Some(a.to_string())
             } else {
                 None
             };
 
-            if !field_def["transform"].is_null() {
-                // TODO searchFieldTransform()
-            }
-
-            select_def.fields.push(FieldDef {
+            let field_def = FieldDef {
                 name: column.to_string(),
                 alias: alias,
                 i18n_required: idl_field.i18n(),
-                aggregate: util::json_bool(&field_def["aggregate"])
-            });
+                aggregate: util::json_bool(&field_struct["aggregate"]),
+                transform: field_struct["transform"].as_str().map(|s| s.to_string()),
+                transform_result_field: field_struct["result_field"].as_str().map(|s| s.to_string()),
+            };
+
+            select_def.fields.push(field_def);
         }
 
         self.add_select(select_def);
@@ -636,6 +667,8 @@ impl JsonQueryCompiler {
                     alias: None,
                     i18n_required: f.i18n(),
                     aggregate: false,
+                    transform: None,
+                    transform_result_field: None,
                 })
                 .collect(),
         };

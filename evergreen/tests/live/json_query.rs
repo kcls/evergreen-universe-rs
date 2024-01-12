@@ -6,7 +6,7 @@ use json::JsonValue;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     let mut jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
-    jq_compiler.set_locale("en-US");
+    jq_compiler.set_locale("en-US").expect("OK Locale");
 
     let query = json::object! {
         "select": {
@@ -14,7 +14,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
             "acn": ["label", "owning_lib"],
             "bre": "editor",
             "acpl": "name",
-            "ccs": [{"column": "name", "alias": "status_label"}]
+            "ccs": [{"column": "name", "alias": "status_label", "transform": "uppercase"}]
         },
         "from": {
             "acp": {
