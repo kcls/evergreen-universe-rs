@@ -7,12 +7,26 @@ use json::JsonValue;
 use std::fmt;
 use std::sync::Arc;
 
+const DEFAULT_LOCALE: &str = "en-US";
+
+/// SQL joins
 #[derive(Debug, Clone, PartialEq)]
 pub enum JoinType {
     Left,
     Right,
     Full,
     Inner,
+}
+
+impl From<&JoinType> for &str {
+    fn from(jt: &JoinType) -> &'static str {
+        match *jt {
+            JoinType::Left => "LEFT JOIN",
+            JoinType::Right => "RIGHT JOIN",
+            JoinType::Full => "FULL JOIN",
+            JoinType::Inner => "INNER JOIN",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -44,19 +58,33 @@ pub struct JoinDef {
 
 #[derive(Debug)]
 pub struct ParamDef {
+    /// Parameter value.
+    /// Valid options are strings, numbers, bools, and null.
     value: JsonValue,
+
+    /// 0-based offset of this parameter in the list of parameters.
+    /// This is used when passing the query to the DB backend
+    /// for ?-based variable replacements.
     index: usize,
 }
 
+/// A SELECTED field.
 #[derive(Debug)]
 pub struct FieldDef {
     name: String,
     alias: Option<String>,
+    /// True if this is a string that must be loaded via oils_i18n_xlate()
     i18n_required: bool,
     aggregate: bool,
     distinct: bool,
+
+    /// Transform the value with this function
     transform: Option<String>,
+
+    /// Collect the value from this column returned by the function.
     transform_result_field: Option<String>,
+
+    /// Parameters to pass to the transform function.
     transform_params: Option<Vec<ParamDef>>,
 }
 
@@ -72,15 +100,39 @@ pub struct SelectDef {
 
 #[derive(Debug)]
 pub struct JsonQueryCompiler {
+    /// So we can see how classes relate to each other.
     idl: Arc<idl::Parser>,
+
+    /// Used for oils_i18n_xlate() if set.
+    /// If unset, use the default.
     locale: Option<String>,
-    modulename: Option<String>,
+
+    /// I.e. EG service name.  Compare to 'suppress_controller' values
+    /// to see of this instance can view selected fields.
+    controllername: Option<String>,
+
+    /// Root IDL class of a JSON query.
     core_class: Option<String>,
+
+    /// If set, we're pulling values from a DB function instead of
+    /// SELECTing from a table.
     from_function: Option<String>,
+
+    /// Final compiled SQL string
     query_string: Option<String>,
+
+    /// Parameters passed to the WHERE clause and transform functions.
     params: Option<Vec<String>>,
+
+    /// Unpacked collection of SELECT field lists.
     selects: Option<Vec<SelectDef>>,
+
+    /// Unpacked collection of table JOINs
     joins: Option<Vec<JoinDef>>,
+
+    /// Global parameter index.  This value increases by one with
+    /// every WHERE/transform parameter added so that each has a
+    /// unique value.
     param_index: usize,
 }
 
@@ -89,7 +141,7 @@ impl JsonQueryCompiler {
         Self {
             idl,
             locale: None,
-            modulename: None,
+            controllername: None,
             core_class: None,
             from_function: None,
             query_string: None,
@@ -100,6 +152,7 @@ impl JsonQueryCompiler {
         }
     }
 
+    /// Set the locale for use with oils_i18n_xlate().
     pub fn set_locale(&mut self, locale: &str) -> EgResult<()> {
         if locale.chars().any(|b| !b.is_ascii_alphabetic() && b != '-') {
             return Err(format!("Invalid locale: '{locale}'").into());
@@ -136,18 +189,23 @@ impl JsonQueryCompiler {
         if let Some(from_func) = self.from_function.as_ref() {
             // TODO self.compile_from_select()?;
             // TODO searchValueTransform
+
         } else {
+
             self.compile_select(&query["select"])?;
             sql += &self.selects_to_sql()?;
 
             // core_class with a tablename is guaranteed here.
-            let table = self.get_core_class().tablename().unwrap();
             let cc = self.get_core_class();
             sql += &format!(
                 " FROM {} AS \"{}\"",
                 cc.tablename().as_ref().unwrap(),
                 cc.classname()
             );
+        }
+
+        if !query["where"].is_null() {
+            self.compile_where(&query["where"])?;
         }
 
         if let Some(join_sql) = self.joins_to_sql()? {
@@ -159,6 +217,12 @@ impl JsonQueryCompiler {
 
         self.query_string = Some(sql);
 
+        Ok(())
+    }
+
+    /// Unpacks the WHERE clause into its constituent parts.
+    fn compile_where(&mut self, where_struct: &JsonValue) -> EgResult<()> {
+        // TODO
         Ok(())
     }
 
@@ -178,6 +242,9 @@ impl JsonQueryCompiler {
             .expect("get_core_classname() has no class")
     }
 
+    /// Determine the core IDL class from the main FROM clause.
+    /// If this is a function call instead, no core class is set,
+    /// and the name of the function is stored.
     fn set_core_class(&mut self, from_blob: &JsonValue) -> EgResult<()> {
         if from_blob.is_object() && from_blob.len() == 1 {
             // "from":{"aou": ...}
@@ -209,6 +276,7 @@ impl JsonQueryCompiler {
         Ok(())
     }
 
+    /// Unpack the JOIN clauses into their constituent parts.
     fn compile_joins(&mut self, from_blob: &JsonValue, base_classname: &str) -> EgResult<()> {
         let mut join_list: JsonValue;
 
@@ -256,6 +324,7 @@ impl JsonQueryCompiler {
         Ok(())
     }
 
+    /// Unpack one JOIN clause.
     fn add_one_join(
         &mut self,
         left_class: &str,
@@ -409,6 +478,7 @@ impl JsonQueryCompiler {
         Ok(left_alias.to_string())
     }
 
+    /// Verify the provided string may act as a valid PG identifier.
     fn force_valid_ident<'a>(&'a self, s: &'a str) -> EgResult<&str> {
         if db::is_identifier(s) {
             return Ok(s);
@@ -477,22 +547,22 @@ impl JsonQueryCompiler {
                     continue;
                 }
 
-                if let Some(locale) = self.locale.as_ref() {
-                    if field.i18n_required {
-                        sql += &format!(
-                            " oils_i18n_xlate('{}', '{}', '{}', '{}', \"{}\".{}::TEXT, '{}') AS \"{}\",",
-                            self.force_valid_ident(&select.classname)?,
-                            self.force_valid_ident(&select.alias)?,
-                            self.force_valid_ident(&field.name)?,
-                            self.force_valid_ident(pkey)?,
-                            self.force_valid_ident(&select.alias)?,
-                            self.force_valid_ident(pkey)?,
-                            locale, // e.g. en-US
-                            self.force_valid_ident(field.alias.as_ref().unwrap_or(&field.name))?
-                        );
+                if field.i18n_required {
+                    let locale = self.locale.as_deref().unwrap_or(DEFAULT_LOCALE);
 
-                        continue;
-                    }
+                    sql += &format!(
+                        " oils_i18n_xlate('{}', '{}', '{}', '{}', \"{}\".{}::TEXT, '{}') AS \"{}\",",
+                        self.force_valid_ident(&select.classname)?,
+                        self.force_valid_ident(&select.alias)?,
+                        self.force_valid_ident(&field.name)?,
+                        self.force_valid_ident(pkey)?,
+                        self.force_valid_ident(&select.alias)?,
+                        self.force_valid_ident(pkey)?,
+                        locale, // e.g. en-US
+                        self.force_valid_ident(field.alias.as_ref().unwrap_or(&field.name))?
+                    );
+
+                    continue;
                 }
 
                 sql += &format!(
@@ -528,12 +598,8 @@ impl JsonQueryCompiler {
                 .as_ref()
                 .ok_or_else(|| format!("JOIN requires a fkey value"))?;
 
-            sql += match join.join_type {
-                JoinType::Left => " LEFT JOIN",
-                JoinType::Right => " RIGHT JOIN",
-                JoinType::Full => " FULL JOIN",
-                JoinType::Inner => " INNER JOIN",
-            };
+            sql += " ";
+            sql += (&join.join_type).into(); // Into<&str>
 
             sql += &format!(
                 " {} AS \"{}\" ON ( \"{}\".{} = \"{}\".{}",
@@ -552,11 +618,10 @@ impl JsonQueryCompiler {
         Ok(Some(sql))
     }
 
+    /// Unpack and generate the SELECT field lists.
+    ///
+    /// If no SELECT fields are provided, uses the default set.
     fn compile_select(&mut self, select: &JsonValue) -> EgResult<()> {
-        // Provide a default SELECT column list if the select itself
-        // is NULL, the selected fields are NULL or the selected
-        // fields are the wildcard character.
-
         if select.is_null() {
             let cn = self.core_class.as_ref().unwrap().to_string(); // parallel mutes
             return self.add_default_select_list(&cn);
@@ -571,6 +636,8 @@ impl JsonQueryCompiler {
         Ok(())
     }
 
+    /// Generate the SELECT list for one component -- a potentially aliased
+    /// IDL class -- of the SELECT clause.
     fn add_selects_for_class(&mut self, alias: &str, payload: &JsonValue) -> EgResult<()> {
         let classname = self
             .find_alias(alias)
@@ -588,9 +655,14 @@ impl JsonQueryCompiler {
         };
 
         if let Some(col) = payload.as_str() {
+
             if col == "*" {
+                // Wildcard queries use the default select list.
                 return self.add_default_select_list(&classname);
+
             } else {
+                // Selecting a single column by name.
+
                 if let Some(idl_field) = self.field_may_be_selected(col, &classname) {
                     select_def.fields.push(FieldDef {
                         name: col.to_string(),
@@ -614,8 +686,13 @@ impl JsonQueryCompiler {
             return Err(format!("SELECT must be string, null, or array").into());
         }
 
+        // Columns to select are packed in an array.
+
         for field_struct in payload.members() {
+
             if let Some(column) = field_struct.as_str() {
+                // Field entry is a string field name.
+
                 if let Some(idl_field) = self.field_may_be_selected(column, &classname) {
                     select_def.fields.push(FieldDef {
                         name: column.to_string(),
@@ -692,6 +769,7 @@ impl JsonQueryCompiler {
         Ok(())
     }
 
+    /// Add a collection of SELECT fields to our list in progress.
     fn add_select(&mut self, select: SelectDef) {
         if let Some(selects) = self.selects.as_mut() {
             selects.push(select);
@@ -718,7 +796,7 @@ impl JsonQueryCompiler {
         }
 
         if let Some(suppress) = idl_field.suppress_controller() {
-            if let Some(module) = self.modulename.as_ref() {
+            if let Some(module) = self.controllername.as_ref() {
                 if suppress.contains(module) {
                     // Field is not visible to this module.
                     return None;
