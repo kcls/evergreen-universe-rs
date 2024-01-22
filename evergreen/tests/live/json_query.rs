@@ -6,7 +6,7 @@ use json::JsonValue;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     let mut jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
-    jq_compiler.set_locale("en-US").expect("OK Locale");
+    jq_compiler.set_locale("en-US").expect("set locale");
 
     let query = json::object! {
         "select": {
@@ -53,7 +53,12 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
             "+acp": {
                 "circulate": "t",
                 "deleted": "f",
-                "holdable": "t"
+                "holdable": "t",
+                "circ_lib": {"not in": [1, 2, 3]},
+                "-or": [
+                    {"mint_condition": true},
+                    {"deposit": false}
+                ]
             },
             "+acpm": {
                 "target_copy": JsonValue::Null

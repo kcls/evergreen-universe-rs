@@ -70,7 +70,7 @@ pub struct ParamDef {
 
 /// A SELECTED field.
 #[derive(Debug)]
-pub struct FieldDef {
+pub struct SelectFieldDef {
     name: String,
     alias: Option<String>,
     /// True if this is a string that must be loaded via oils_i18n_xlate()
@@ -95,7 +95,52 @@ pub struct SelectDef {
     /// Table alias.
     alias: String,
     /// What fields do we want?
-    fields: Vec<FieldDef>,
+    fields: Vec<SelectFieldDef>,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum WhereJoinOp {
+    And,
+    Or,
+}
+
+#[derive(Debug)]
+pub enum WherePredicate {
+    /// Comparing simple scalar values.
+    /// a = b, x in [1, 2, 3], ...
+    Values(Vec<ParamDef>),
+
+    /// OR List, AND List, EXISTS, NOT EXISTS
+    SubWhere(WhereClassDef),
+
+    /// Complete Sub-Query
+    SubQuery(JsonQueryCompiler),
+}
+
+#[derive(Debug)]
+pub struct WhereFieldDef {
+    /// Field name to filter on
+    name: String,
+
+    /// Are we AND'ing or OR'ing this filter.
+    /// None needed if this is the first/only field we're filtering
+    /// at this level.
+    join_op: Option<WhereJoinOp>,
+
+    operator: String, // TODO Make an enum in idldb?
+
+    /// How the value of this field will be compared.
+    predicate: WherePredicate,
+}
+
+#[derive(Debug)]
+pub struct WhereClassDef {
+    /// IDL classname, e.g. "aou"
+    classname: String,
+    /// Table alias.
+    alias: String,
+    /// What fields do we want?
+    filters: Vec<WhereFieldDef>,
 }
 
 #[derive(Debug)]
@@ -176,6 +221,7 @@ impl JsonQueryCompiler {
         }
 
         // TODO union, intersect, except
+        // TODO wholly separate the FROM/array compilation
 
         self.set_core_class(&query["from"])?;
 
@@ -187,11 +233,11 @@ impl JsonQueryCompiler {
         let mut sql = String::new();
 
         if let Some(from_func) = self.from_function.as_ref() {
+            // maybe shortcut this and exit this function early.
+            //
             // TODO self.compile_from_select()?;
             // TODO searchValueTransform
-
         } else {
-
             self.compile_select(&query["select"])?;
             sql += &self.selects_to_sql()?;
 
@@ -204,12 +250,16 @@ impl JsonQueryCompiler {
             );
         }
 
-        if !query["where"].is_null() {
-            self.compile_where(&query["where"])?;
-        }
-
         if let Some(join_sql) = self.joins_to_sql()? {
             sql += &join_sql;
+        }
+
+        if !query["where"].is_null() && self.core_class.is_some() {
+            let alias = self.get_core_classname().to_string();
+
+            // TODO separate WHERE unpacking and compilation.
+            sql += " WHERE ";
+            sql += &self.compile_where(&query["where"], &alias, WhereJoinOp::And)?;
         }
 
         // TODO GROUP BY (reminder: aggregates)
@@ -221,9 +271,141 @@ impl JsonQueryCompiler {
     }
 
     /// Unpacks the WHERE clause into its constituent parts.
-    fn compile_where(&mut self, where_struct: &JsonValue) -> EgResult<()> {
-        // TODO
-        Ok(())
+    fn compile_where(
+        &mut self,
+        where_blob: &JsonValue,
+        parent_alias: &str,
+        join_op: WhereJoinOp,
+    ) -> EgResult<String> {
+        let mut s = String::new();
+
+        let and_or = if join_op == WhereJoinOp::And {
+            "and"
+        } else {
+            "or"
+        };
+
+        if where_blob.is_array() {
+            if where_blob.len() == 0 {
+                return Err(format!("Invalid WHERE clause / empty array").into());
+            }
+
+            let mut first = true;
+            for part in where_blob.members() {
+                if first {
+                    first = false;
+                } else {
+                    s += &format!(" {and_or} ");
+                }
+                let sub_pred = self.compile_where(part, parent_alias, join_op)?;
+                s += &format!("( {sub_pred} )");
+            }
+
+            return Ok(s);
+        } else if where_blob.is_object() {
+            if where_blob.is_empty() {
+                return Err(format!("Invalid predicate structure: empty JSON object"))?;
+            }
+
+            let mut first = true;
+            for (key, sub_blob) in where_blob.entries() {
+                if first {
+                    first = false;
+                } else {
+                    s += &format!(" {and_or} ");
+                }
+
+                if key.starts_with("+") && key.len() > 1 {
+                    // Class alias
+                    // E.g. {"+aou": {"shortname": "BR1"}}
+
+                    let alias = &key[1..];
+                    let classname = self
+                        .find_alias(alias)
+                        .ok_or_else(|| format!("Invalid class alias: {alias}"))?;
+
+                    if let Some(field) = sub_blob.as_str() {
+                        // We verified above this is a valid classname.
+                        // Now verif it's a valid field name.
+                        if !self
+                            .idl
+                            .classes()
+                            .get(classname)
+                            .unwrap()
+                            .has_real_field(field)
+                        {
+                            return Err(
+                                format!("Class {classname} has no field named {field}").into()
+                            );
+                        }
+
+                        // {"+aou": "shortname"} ?
+                        // Does this really happen?  I'm missing something.
+                        s += &format!(" \"{alias}\".{field} ");
+                    } else {
+                        //
+
+                        let sub_pred = self.compile_where(sub_blob, alias, join_op)?;
+                        s += &format!("( {sub_pred} )");
+                    }
+                } else if key.starts_with("-") {
+                    if key == "-or" {
+                        let sub_pred =
+                            self.compile_where(sub_blob, parent_alias, WhereJoinOp::Or)?;
+                        s += &format!("( {sub_pred} )");
+                    } else if key == "-and" {
+                        let sub_pred =
+                            self.compile_where(sub_blob, parent_alias, WhereJoinOp::And)?;
+                        s += &format!("( {sub_pred} )");
+                    } else if key == "-not" {
+                        let sub_pred =
+                            self.compile_where(sub_blob, parent_alias, WhereJoinOp::And)?;
+                        s += &format!("NOT ( {sub_pred} )");
+                    } else if key == "-exists" {
+                        // TODO this needs to build a whole new parser
+                        //let sub_pred = self.compile_where(sub_blob, parent_alias, WhereJoinOp::And)?;
+                        //s += &format!("EXISTS ( {sub_pred} )");
+                    } else if key == "-not-exists" {
+                        // TODO this needs to build a whole new parser
+                        //let sub_pred = self.compile_where(sub_blob, parent_alias, WhereJoinOp::And)?;
+                        //s += &format!("NOT EXISTS ( {sub_pred} )");
+                    }
+                } else {
+                    // key is assumed to be a field name
+
+                    let classname = self
+                        .find_alias(parent_alias)
+                        .ok_or_else(|| format!("Invalid class alias: {parent_alias}"))?;
+
+                    // classname verified above.
+                    // Make sure it's a valid field name
+                    if !self
+                        .idl
+                        .classes()
+                        .get(classname)
+                        .unwrap()
+                        .has_real_field(key)
+                    {
+                        return Err(format!("Class {classname} has no field called {key}").into());
+                    }
+
+                    s += &self.search_predicate(parent_alias, key, sub_blob)?;
+                }
+            }
+        } else {
+            return Err(format!("Invalid WHERE structure: {}", where_blob.dump()).into());
+        }
+
+        Ok(s)
+    }
+
+    fn search_predicate(
+        &mut self,
+        parent_alias: &str,
+        field: &str,
+        field_blob: &JsonValue,
+    ) -> EgResult<String> {
+        Ok(String::new())
     }
 
     /// Panics if our core_class is unset or we have an invalid core class.
@@ -655,16 +837,14 @@ impl JsonQueryCompiler {
         };
 
         if let Some(col) = payload.as_str() {
-
             if col == "*" {
                 // Wildcard queries use the default select list.
                 return self.add_default_select_list(&classname);
-
             } else {
                 // Selecting a single column by name.
 
                 if let Some(idl_field) = self.field_may_be_selected(col, &classname) {
-                    select_def.fields.push(FieldDef {
+                    select_def.fields.push(SelectFieldDef {
                         name: col.to_string(),
                         alias: None,
                         i18n_required: idl_field.i18n(),
@@ -689,12 +869,11 @@ impl JsonQueryCompiler {
         // Columns to select are packed in an array.
 
         for field_struct in payload.members() {
-
             if let Some(column) = field_struct.as_str() {
                 // Field entry is a string field name.
 
                 if let Some(idl_field) = self.field_may_be_selected(column, &classname) {
-                    select_def.fields.push(FieldDef {
+                    select_def.fields.push(SelectFieldDef {
                         name: column.to_string(),
                         alias: None,
                         i18n_required: idl_field.i18n(),
@@ -748,7 +927,7 @@ impl JsonQueryCompiler {
                 params = Some(list);
             }
 
-            let field_def = FieldDef {
+            let field_def = SelectFieldDef {
                 name: column.to_string(),
                 alias,
                 i18n_required,
@@ -824,7 +1003,7 @@ impl JsonQueryCompiler {
                 .real_fields_sorted()
                 .iter()
                 .filter(|f| self.field_may_be_selected(f.name(), classname).is_some())
-                .map(|f| FieldDef {
+                .map(|f| SelectFieldDef {
                     name: f.name().to_string(),
                     alias: None,
                     i18n_required: f.i18n(),

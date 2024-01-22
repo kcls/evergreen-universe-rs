@@ -14,9 +14,27 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const SUPPORTED_OPERANDS: [&'static str; 17] = [
-    "IS", "IS NOT", "IN", "NOT IN", "LIKE", "ILIKE", "<", "<=", ">", ">=", "<>", "!=", "~", "=",
-    "!~", "!~*", "~*",
+const SUPPORTED_OPERATORS: [&'static str; 20] = [
+    "IS",
+    "IS NOT",
+    "IN",
+    "NOT IN",
+    "LIKE",
+    "ILIKE",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "<>",
+    "!=",
+    "~",
+    "=",
+    "!~",
+    "!~*",
+    "~*",
+    "SIMILAR TO",
+    "IS DISTINCT FROM",
+    "IS NOT DISTINCT FROM",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -186,7 +204,7 @@ impl Translator {
 
     /// Verify a query operand provided by the caller is allowed.
     pub fn is_supported_operand(op: &str) -> bool {
-        SUPPORTED_OPERANDS.contains(&op.to_uppercase().as_str())
+        SUPPORTED_OPERATORS.contains(&op.to_uppercase().as_str())
     }
 
     /// Retrieve an IDL object via pkey lookup.
