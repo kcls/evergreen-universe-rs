@@ -13,6 +13,7 @@ use eg::db::DatabaseConnection;
 use eg::editor;
 use eg::event;
 use eg::idl;
+use eg::db;
 use eg::idldb;
 use eg::init;
 
@@ -44,7 +45,7 @@ Commands
         Retrieve and IDL-classed object by primary key directly
         from the database.
 
-    db idl search <classname> <field> <operand> <value>
+    db idl search <classname> <field> <operator> <value>
         Examples:
             db idl search aou name ~* "branch"
             db idl search aout depth > 1
@@ -700,7 +701,7 @@ impl Shell {
 
         let classname = args[2];
         let fieldname = args[3];
-        let operand = args[4];
+        let operator = args[4];
         let value = args[5];
 
         let idl_class = self
@@ -714,8 +715,8 @@ impl Shell {
             Err(format!("No such IDL field: {fieldname}"))?;
         }
 
-        if !idldb::Translator::is_supported_operand(&operand) {
-            Err(format!("Invalid query operand: {operand}"))?;
+        if !db::is_supported_operator(&operator) {
+            Err(format!("Invalid query operator: {operator}"))?;
         }
 
         let value = json::parse(value)
@@ -730,7 +731,7 @@ impl Shell {
 
         let mut filter = json::JsonValue::new_object();
         let mut subfilter = json::JsonValue::new_object();
-        subfilter[operand] = value;
+        subfilter[operator] = value;
         filter[fieldname] = subfilter;
 
         search.set_filter(filter);

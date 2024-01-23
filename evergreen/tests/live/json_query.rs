@@ -18,7 +18,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
                 "column": "name",
                 "alias": "status_label",
                 "transform": "uppercase",
-                //"params": [1, 2, 3], // TESTING
+                "params": [1, 2, 3], // TESTING
             }]
         },
         "from": {

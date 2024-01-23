@@ -104,6 +104,7 @@ pub enum WhereJoinOp {
     Or,
 }
 
+/*
 #[derive(Debug)]
 pub enum WherePredicate {
     /// Comparing simple scalar values.
@@ -127,7 +128,7 @@ pub struct WhereFieldDef {
     /// at this level.
     join_op: Option<WhereJoinOp>,
 
-    operator: String, // TODO Make an enum in idldb?
+    operator: String, // TODO Make an enum in db?
 
     /// How the value of this field will be compared.
     predicate: WherePredicate,
@@ -142,6 +143,7 @@ pub struct WhereClassDef {
     /// What fields do we want?
     filters: Vec<WhereFieldDef>,
 }
+*/
 
 #[derive(Debug)]
 pub struct JsonQueryCompiler {
@@ -166,8 +168,8 @@ pub struct JsonQueryCompiler {
     /// Final compiled SQL string
     query_string: Option<String>,
 
-    /// Parameters passed to the WHERE clause and transform functions.
-    params: Option<Vec<String>>,
+    /// Parameters passed to the WHERE clause
+    params: Option<Vec<ParamDef>>,
 
     /// Unpacked collection of SELECT field lists.
     selects: Option<Vec<SelectDef>>,
@@ -193,7 +195,7 @@ impl JsonQueryCompiler {
             params: None,
             selects: None,
             joins: None,
-            param_index: 0,
+            param_index: 1,
         }
     }
 
@@ -210,7 +212,7 @@ impl JsonQueryCompiler {
         self.query_string.as_deref()
     }
 
-    pub fn params(&self) -> Option<&Vec<String>> {
+    pub fn params(&self) -> Option<&Vec<ParamDef>> {
         self.params.as_ref()
     }
 
@@ -244,7 +246,7 @@ impl JsonQueryCompiler {
             // core_class with a tablename is guaranteed here.
             let cc = self.get_core_class();
             sql += &format!(
-                " FROM {} AS \"{}\"",
+                r#" FROM {} AS "{}""#,
                 cc.tablename().as_ref().unwrap(),
                 cc.classname()
             );
@@ -341,7 +343,7 @@ impl JsonQueryCompiler {
 
                         // {"+aou": "shortname"} ?
                         // Does this really happen?  I'm missing something.
-                        s += &format!(" \"{alias}\".{field} ");
+                        s += &format!(r#" "{alias}".{field} "#);
                     } else {
                         //
 
@@ -405,8 +407,111 @@ impl JsonQueryCompiler {
         field: &str,
         field_blob: &JsonValue,
     ) -> EgResult<String> {
+
+        if field_blob.is_array() {
+            // Equality IN search
+            return self.search_in_predicate(parent_alias, field, field_blob);
+
+        } else if field_blob.is_object() {
+            if field_blob.len() > 1 {
+                return Err(format!("Multiple predicates for field: {}", field_blob.dump()).into());
+            }
+
+            // TODO TODO oils_sql.c:3279
+
+        } else if field_blob.is_null() {
+            return Ok(format!(r#""{parent_alias}".field IS NULL"#));
+        } else if let Some(s) = field_blob.as_str() {
+            return self.simple_search_predicate("=", parent_alias, field, field_blob);
+        }
+
+        // TODO remove
         Ok(String::new())
     }
+
+    fn search_in_predicate(
+        &mut self,
+        parent_alias: &str,
+        field: &str,
+        field_blob: &JsonValue,
+    ) -> EgResult<String> {
+        let mut s = String::new();
+
+        // TODO
+        Ok(s)
+    }
+
+    fn simple_search_predicate(
+        &mut self,
+        mut operator: &str,
+        parent_alias: &str,
+        field: &str,
+        value: &JsonValue,
+    ) -> EgResult<String> {
+        if !db::is_supported_operator(operator) {
+            return Err(format!("Operator '{operator}' not supported").into());
+        }
+
+        if value.is_object() || value.is_array() {
+            return Err(format!(
+                "Invalid simple search predicate: {}", value.dump()).into());
+        }
+
+        let prefix = format!(r#""{parent_alias}".{field}"#);
+
+        if value.is_null() {
+
+            let val_str = if operator == "=" || operator.to_uppercase() == "IS" {
+                "NULL"
+            } else {
+                "NOT NULL"
+            };
+
+            return Ok(format!("{prefix} IS {val_str}"));
+
+        } else if let Some(b) = value.as_bool() {
+            let val_str = if b {
+                "TRUE"
+            } else {
+                "FALSE"
+            };
+
+            return Ok(format!("{prefix} {operator} {val_str}"));
+        }
+
+        // Numbers and strings from here on out.
+
+        // If the field in question is non-numeric, then we need
+        // to treat it as a replaceable parameter.
+
+        let classname = self.find_alias(parent_alias)
+            .ok_or_else(|| format!("Alias {parent_alias} not found"))?;
+
+        let idl_class = self.idl.classes().get(classname)
+            .ok_or_else(|| format!("IDL class {classname} not found"))?;
+
+        let idl_field = idl_class.get_field(field)
+            .ok_or_else(|| format!("IDL class {classname} has no field named {field}"))?;
+
+        if idl_field.datatype().is_numeric() {
+            if let Some(num) = value.as_number() {
+                // No need to quote pure numbers
+                Ok(format!("{prefix} {operator} {num}"))
+            } else {
+                return Err(format!(
+                    "Field {field} is numeric, but query value isn't: {}",
+                    value.dump()
+                ).into());
+            }
+        } else {
+            // IDL field is non-numeric but may still contain numeric
+            // values.  Quote 'em.
+
+            let idx = self.add_param(value);
+            Ok(format!("{prefix} {operator} ${idx}"))
+        }
+    }
+
 
     /// Panics if our core_class is unset or we have an invalid core class.
     /// Generally, core_class is unset if we're compiling a from-func.
@@ -703,17 +808,14 @@ impl JsonQueryCompiler {
                     // doesn't either, so I'm guessing it just hasn't come up.
 
                     sql += &format!(
-                        "\"{}\".{}",
+                        r#""{}".{}"#,
                         self.force_valid_ident(&select.alias)?,
                         self.force_valid_ident(&field.name)?
                     );
 
                     if let Some(params) = field.transform_params.as_ref() {
-                        if params.len() > 0 {
-                            for _ in params {
-                                // Values will be replaced at query execution time.
-                                sql += ", ?";
-                            }
+                        for param in params {
+                            sql += &format!(", ${}", param.index);
                         }
                     }
 
@@ -721,7 +823,7 @@ impl JsonQueryCompiler {
 
                     if let Some(xform_field) = field.transform_result_field.as_ref() {
                         // Append (...).xform_field.
-                        sql += &format!(").\"{}\"", self.force_valid_ident(xform_field)?);
+                        sql += &format!(r#")."{}""#, self.force_valid_ident(xform_field)?);
                     }
 
                     sql += ",";
@@ -733,7 +835,7 @@ impl JsonQueryCompiler {
                     let locale = self.locale.as_deref().unwrap_or(DEFAULT_LOCALE);
 
                     sql += &format!(
-                        " oils_i18n_xlate('{}', '{}', '{}', '{}', \"{}\".{}::TEXT, '{}') AS \"{}\",",
+                        r#" oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{}') AS "{}","#,
                         self.force_valid_ident(&select.classname)?,
                         self.force_valid_ident(&select.alias)?,
                         self.force_valid_ident(&field.name)?,
@@ -748,7 +850,7 @@ impl JsonQueryCompiler {
                 }
 
                 sql += &format!(
-                    " \"{}\".{},",
+                    r#" "{}".{},"#,
                     self.force_valid_ident(&select.alias)?,
                     self.force_valid_ident(&field.name)?,
                 );
@@ -784,7 +886,7 @@ impl JsonQueryCompiler {
             sql += (&join.join_type).into(); // Into<&str>
 
             sql += &format!(
-                " {} AS \"{}\" ON ( \"{}\".{} = \"{}\".{}",
+                r#" {} AS "{}" ON ( "{}".{} = "{}".{}"#,
                 self.force_valid_ident(&join.tablename)?,
                 self.force_valid_ident(&join.alias)?,
                 self.force_valid_ident(&join.alias)?,
@@ -955,6 +1057,27 @@ impl JsonQueryCompiler {
         } else {
             self.selects = Some(vec![select]);
         }
+    }
+
+    /// Adds a query parameter to the pile and increments our
+    /// param index.
+    fn add_param(&mut self, value: &JsonValue) -> usize {
+        let index = self.param_index;
+        self.param_index += 1;
+
+        let def = ParamDef {
+            index,
+            value: value.clone(),
+        };
+
+        if let Some(list) = self.params.as_mut() {
+            list.push(def);
+        } else {
+            self.params = Some(vec![def]);
+        }
+
+        // TODO in theory won't need to return this in the end.
+        return index;
     }
 
     /// Returns option of IDL field if the field is valid for the class,

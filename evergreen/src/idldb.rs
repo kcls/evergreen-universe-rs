@@ -14,29 +14,6 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const SUPPORTED_OPERATORS: [&'static str; 20] = [
-    "IS",
-    "IS NOT",
-    "IN",
-    "NOT IN",
-    "LIKE",
-    "ILIKE",
-    "<",
-    "<=",
-    ">",
-    ">=",
-    "<>",
-    "!=",
-    "~",
-    "=",
-    "!~",
-    "!~*",
-    "~*",
-    "SIMILAR TO",
-    "IS DISTINCT FROM",
-    "IS NOT DISTINCT FROM",
-];
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum OrderByDir {
     Asc,
@@ -200,11 +177,6 @@ impl Translator {
     /// Roll back an in-progress transaction.
     pub fn xact_rollback(&mut self) -> EgResult<()> {
         self.db.borrow_mut().xact_rollback()
-    }
-
-    /// Verify a query operand provided by the caller is allowed.
-    pub fn is_supported_operand(op: &str) -> bool {
-        SUPPORTED_OPERATORS.contains(&op.to_uppercase().as_str())
     }
 
     /// Retrieve an IDL object via pkey lookup.
@@ -820,7 +792,7 @@ impl Translator {
 
         let operand = key.to_uppercase();
 
-        if !Translator::is_supported_operand(&operand) {
+        if !db::is_supported_operator(&operand) {
             Err(format!("Unsupported operand: {operand} : {obj}"))?;
         }
 
@@ -858,7 +830,7 @@ impl Translator {
         operand: &str,
     ) -> EgResult<String> {
         let operand = operand.to_uppercase();
-        if !Translator::is_supported_operand(&operand) {
+        if !db::is_supported_operator(&operand) {
             Err(format!("Unsupported operand: {operand} : {arr}"))?;
         }
 
