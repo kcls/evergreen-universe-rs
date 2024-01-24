@@ -8,6 +8,12 @@ use std::sync::Arc;
 
 const DEFAULT_LOCALE: &str = "en-US";
 
+#[derive(Debug, Clone, Copy)]
+pub enum JoinOp {
+    And,
+    Or,
+}
+
 #[derive(Debug)]
 pub struct SourceDef {
     is_base_class: bool,
@@ -140,10 +146,11 @@ impl JsonQueryCompiler {
         }
 
         self.set_base_class(&query["from"])?;
+        let base_class = self.get_base_classname()?.to_string();
 
         // Compile JOINs first so we can collect the remaining
         // table sources.
-        let join_str = self.compile_joins(&query["from"][self.get_base_classname()?])?;
+        let join_str = self.compile_joins_for_class(&base_class, &query["from"][&base_class])?;
 
         /*
         if let Some(classname) = self.base_class.as_ref() {
@@ -197,7 +204,7 @@ impl JsonQueryCompiler {
     }
 
     /// Unpack the JOIN clauses into their constituent parts.
-    fn compile_joins(&mut self, joins: &JsonValue) -> EgResult<String> {
+    fn compile_joins_for_class(&mut self, left_alias: &str, joins: &JsonValue) -> EgResult<String> {
         let mut sql = String::new();
 
         let class_to_hash = |c| {
@@ -219,7 +226,6 @@ impl JsonQueryCompiler {
             vec![joins]
         };
 
-        let left_alias = self.get_base_classname()?.to_string();
         for join_entry in join_list {
             let mut hash_binding;
 
@@ -231,7 +237,7 @@ impl JsonQueryCompiler {
             };
 
             for (right_alias, join_def) in hash_ref.entries() {
-                sql += &self.add_one_join(&left_alias, right_alias, join_def)?;
+                sql += &self.add_one_join(left_alias, right_alias, join_def)?;
             }
         }
 
@@ -282,7 +288,7 @@ impl JsonQueryCompiler {
                 .links()
                 .get(rfield_name)
                 .ok_or_else(||
-                    format!("No such link {rfield_name} for class {right_class}")
+                    format!("No such link  for class '{right_class}'")
                 )?;
 
             let reltype = idl_link.reltype();
@@ -365,33 +371,6 @@ impl JsonQueryCompiler {
             }
         }
 
-
-        let join_type = if let Some(jtype) = join_def["type"].as_str() {
-            match jtype {
-                "left" => "LEFT JOIN",
-                "right" => "RIGHT JOIN",
-                "full" => "FULL JOIN",
-                _ => "INNER JOIN",
-            }
-        } else {
-            "INNER JOIN"
-        };
-
-        let mut sql = format!(
-            r#"{} {} AS "{}" ON ("{}".{} = "{}".{}"#,
-            join_type,
-            self.force_valid_ident(tablename)?,
-            self.force_valid_ident(right_alias)?,
-            self.force_valid_ident(right_alias)?,
-            self.force_valid_ident(right_join_field.as_deref().unwrap())?,
-            self.force_valid_ident(left_alias)?,
-            self.force_valid_ident(left_join_field.as_deref().unwrap())?,
-        );
-
-        // TODO filters / params
-
-        sql += ") ";
-
         // Add this new class to our list of sources.
         let mut source_def = SourceDef {
             classname: right_class.to_string(),
@@ -407,9 +386,65 @@ impl JsonQueryCompiler {
 
         self.sources.push(source_def);
 
+        let join_type = if let Some(jtype) = join_def["type"].as_str() {
+            match jtype {
+                "left" => "LEFT JOIN",
+                "right" => "RIGHT JOIN",
+                "full" => "FULL JOIN",
+                _ => "INNER JOIN",
+            }
+        } else {
+            "INNER JOIN"
+        };
+
+        let mut sql = format!(
+            r#" {} {} AS "{}" ON ("{}".{} = "{}".{}"#,
+            join_type,
+            self.force_valid_ident(tablename)?,
+            self.force_valid_ident(right_alias)?,
+            self.force_valid_ident(right_alias)?,
+            self.force_valid_ident(right_join_field.as_deref().unwrap())?,
+            self.force_valid_ident(left_alias)?,
+            self.force_valid_ident(left_join_field.as_deref().unwrap())?,
+        );
+
+        // Some JOINS have filters, which are mini WHERE clauses tacked
+        // on to the JOIN.
+        let filter = &join_def["filter"];
+        if !filter.is_null() {
+            let mut op = " AND ";
+            if let Some(filter_op) = filter["filter_op"].as_str() {
+                if filter_op == "or" {
+                    op = " OR ";
+                }
+            }
+            sql += op;
+            sql += &self.compile_wheres(filter, right_alias, JoinOp::And)?;
+        }
+
+        sql += ")";
+
+        // Add nested JOINs if we have any
+        let sub_join = &join_def["join"];
+        if !sub_join.is_null() {
+            sql += &self.compile_joins_for_class(right_alias, sub_join)?;
+        }
+
         Ok(sql)
     }
 
+    fn compile_wheres(
+        &mut self,
+        where_blob: &JsonValue,
+        class_alias: &str,
+        join_op: JoinOp
+    ) -> EgResult<String> {
+        let mut sql = String::new();
+
+        // TODO
+
+        Ok(sql)
+    }
 
     /// Verify the provided string may act as a valid PG identifier.
     fn force_valid_ident<'a>(&'a self, s: &'a str) -> EgResult<&str> {
