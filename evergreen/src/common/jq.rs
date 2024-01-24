@@ -143,7 +143,7 @@ impl JsonQueryCompiler {
 
         // Compile JOINs first so we can collect the remaining
         // table sources.
-        self.compile_joins(&query["from"][self.get_base_classname()?])?;
+        let join_str = self.compile_joins(&query["from"][self.get_base_classname()?])?;
 
         /*
         if let Some(classname) = self.base_class.as_ref() {
@@ -151,8 +151,6 @@ impl JsonQueryCompiler {
             self.compile_joins(&query["from"][&classname], &classname)?;
         }
         */
-
-        let mut sql = String::new();
 
         /*
 
@@ -191,7 +189,9 @@ impl JsonQueryCompiler {
 
         */
 
-        self.query_string = Some(sql);
+        self.query_string = Some(
+            format!(" ... {join_str}")
+        );
 
         Ok(())
     }
@@ -244,8 +244,6 @@ impl JsonQueryCompiler {
         right_alias: &str,
         join_def: &JsonValue,
     ) -> EgResult<String> {
-        let mut sql = String::new();
-
         let right_class = if let Some(class) = join_def["class"].as_str() {
             class
         } else {
@@ -327,9 +325,72 @@ impl JsonQueryCompiler {
                 )
                 .into());
             }
-        } else {
+        } else if right_join_field.is_none() && left_join_field.is_none() {
+            // See if we can determine the left and right join fields
+            // based solely on the 2 tables being joined.
+
+            for (link_key, cur_link) in left_idl_class.links() {
+                let maybe_right_class = cur_link.class();
+
+                if maybe_right_class == right_class {
+                    let reltype = cur_link.reltype();
+                    if reltype != idl::RelType::HasMany {
+                        left_join_field = Some(link_key);
+                        right_join_field = Some(cur_link.key());
+                        break;
+                    }
+                }
+            }
+
+            // Do another search with the classes reversed.
+            if right_join_field.is_none() && left_join_field.is_none() {
+                for (link_key, cur_link) in right_idl_class.links() {
+                    let maybe_left_class = cur_link.class();
+
+                    if maybe_left_class == left_class {
+                        let reltype = cur_link.reltype();
+                        if reltype != idl::RelType::HasMany {
+                            left_join_field = Some(link_key);
+                            right_join_field = Some(cur_link.key());
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if right_join_field.is_none() && left_join_field.is_none() {
+                return Err(
+                    format!("Could not find link between classes {left_class} and {right_class}").into(),
+                );
+            }
         }
 
+
+        let join_type = if let Some(jtype) = join_def["type"].as_str() {
+            match jtype {
+                "left" => "LEFT JOIN",
+                "right" => "RIGHT JOIN",
+                "full" => "FULL JOIN",
+                _ => "INNER JOIN",
+            }
+        } else {
+            "INNER JOIN"
+        };
+
+        let mut sql = format!(
+            r#"{} {} AS "{}" ON ("{}".{} = "{}".{}"#,
+            join_type,
+            self.force_valid_ident(tablename)?,
+            self.force_valid_ident(right_alias)?,
+            self.force_valid_ident(right_alias)?,
+            self.force_valid_ident(right_join_field.as_deref().unwrap())?,
+            self.force_valid_ident(left_alias)?,
+            self.force_valid_ident(left_join_field.as_deref().unwrap())?,
+        );
+
+        // TODO filters / params
+
+        sql += ") ";
 
         // Add this new class to our list of sources.
         let mut source_def = SourceDef {
