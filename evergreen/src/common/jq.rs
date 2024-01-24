@@ -18,6 +18,7 @@ pub enum JoinOp {
 pub struct SourceDef {
     is_base_class: bool,
     classname: String,
+    tablename: String,
     alias: Option<String>,
 }
 
@@ -119,6 +120,14 @@ impl JsonQueryCompiler {
         .ok_or(format!("No such class alias: {alias}").into())
     }
 
+    fn get_base_source(&self) -> EgResult<&SourceDef> {
+        self.sources
+            .iter()
+            .filter(|s| s.is_base_class)
+            .next()
+            .ok_or(format!("No bass class has been set").into())
+    }
+
     /// Returns the IDL classname of the base class, i.e. the root
     /// class of the FROM clause.
     fn get_base_classname(&self) -> EgResult<&str> {
@@ -128,6 +137,35 @@ impl JsonQueryCompiler {
             .map(|s| s.classname.as_ref())
             .next()
             .ok_or(format!("No bass class has been set").into())
+    }
+
+    /// Returns option of IDL field if the field is valid exists on the
+    /// class, isn't virtual, and may be viewed by this module.
+    fn field_may_be_selected(&self, name: &str, class: &str) -> Option<&idl::Field> {
+        let idl_class = match self.idl.classes().get(class) {
+            Some(c) => c,
+            None => return None,
+        };
+
+        let idl_field = match idl_class.fields().get(name) {
+            Some(f) => f,
+            None => return None,
+        };
+
+        if idl_field.is_virtual() {
+            return None;
+        }
+
+        if let Some(suppress) = idl_field.suppress_controller() {
+            if let Some(module) = self.controllername.as_ref() {
+                if suppress.contains(module) {
+                    // Field is not visible to this module.
+                    return None;
+                }
+            }
+        }
+
+        Some(idl_field)
     }
 
     /// Compile a json_query structure into its constituent parts.
@@ -148,59 +186,157 @@ impl JsonQueryCompiler {
         self.set_base_class(&query["from"])?;
         let base_class = self.get_base_classname()?.to_string();
 
-        // Compile JOINs first so we can collect the remaining
+        // Compile JOINs first so we can preload the remaining
         // table sources.
         let join_str = self.compile_joins_for_class(&base_class, &query["from"][&base_class])?;
+        let sel_str = self.compile_selects(&query["select"])?;
 
-        /*
-        if let Some(classname) = self.base_class.as_ref() {
-            let classname = classname.clone(); // parallel mutables
-            self.compile_joins(&query["from"][&classname], &classname)?;
-        }
-        */
-
-        /*
-
-        if let Some(from_func) = self.from_function.as_ref() {
-            // maybe shortcut this and exit this function early.
-            //
-            // TODO self.compile_from_select()?;
-            // TODO searchValueTransform
-        } else {
-            self.compile_select(&query["select"])?;
-            sql += &self.selects_to_sql()?;
-
-            // base_class with a tablename is guaranteed here.
-            let cc = self.get_base_class();
-            sql += &format!(
-                r#" FROM {} AS "{}""#,
-                cc.tablename().as_ref().unwrap(),
-                cc.classname()
-            );
-        }
-
-        if let Some(join_sql) = self.joins_to_sql()? {
-            sql += &join_sql;
-        }
-
-        if !query["where"].is_null() && self.base_class.is_some() {
-            let alias = self.get_base_classname().to_string();
-
-            // TODO separate WHERE unpacking and compilation.
-            sql += " WHERE ";
-            sql += &self.compile_where(&query["where"], &alias, WhereJoinOp::And)?;
-        }
-
+        // TODO WHERE
         // TODO GROUP BY (reminder: aggregates)
         // TODO ORDER BY
 
-        */
+        let source = self.get_base_source()?;
 
         self.query_string = Some(
-            format!(" ... {join_str}")
+            format!(
+                r#"SELECT {sel_str} FROM {} AS "{}" {join_str}"#,
+                source.tablename,
+                source.alias.as_ref().unwrap_or(&source.classname)
+            )
         );
 
         Ok(())
+    }
+
+    fn compile_selects(&mut self, select_def: &JsonValue) -> EgResult<String> {
+
+        if select_def.is_null() {
+            let cn = self.get_base_classname()?.to_string(); // parallel mutes
+
+            // If we have no SELECT clause at all, just select the default fields.
+            return self.build_default_select_list(&cn);
+
+        } else if !select_def.is_object() {
+            // The root SELECT clause is a map of classname (or alias) to field list
+            return Err(format!("Invalid SELECT clause: {}", select_def.dump()).into());
+        }
+
+        let mut sql = String::new();
+        for (alias, payload) in select_def.entries() {
+            sql += &self.compile_selects_for_class(alias, payload)?;
+        }
+
+        Ok(sql)
+    }
+
+    fn compile_selects_for_class(
+        &mut self,
+        class_alias: &str,
+        select_def: &JsonValue
+    ) -> EgResult<String> {
+        if select_def.is_null() {
+            return self.build_default_select_list(class_alias);
+        }
+
+        let classname = self.get_alias_classname(class_alias)?;
+        let idl_class = self.idl.classes().get(classname).unwrap(); // verified
+
+        if let Some(col) = select_def.as_str() {
+            if col == "*" {
+                // Wildcard queries use the default select list.
+                return self.build_default_select_list(class_alias);
+            } else {
+                // Selecting a single column by name.
+
+                if let Some(idl_field) = self.field_may_be_selected(col, classname) {
+                    return Ok(format!(" {}",
+                        self.select_one_field(class_alias, idl_class, None, idl_field)?
+                    ));
+                }
+            }
+        }
+
+        if !select_def.is_array() {
+            return Err(format!("SELECT must be string, null, or array").into());
+        }
+
+        let mut sql = String::new();
+
+        for field_struct in select_def.members() {
+            if let Some(column) = field_struct.as_str() {
+                // Field entry is a string field name.
+
+                if let Some(idl_field) = self.field_may_be_selected(column, classname) {
+                    sql += " ";
+                    sql += &self.select_one_field(class_alias, idl_class, None, idl_field)?
+                }
+
+                continue;
+            }
+
+            // TODO
+        }
+
+        Ok(sql)
+    }
+
+    fn build_default_select_list(&mut self, alias: &str) -> EgResult<String> {
+        let classname = self.get_alias_classname(alias)?;
+
+        // If we have an alias it's known to be valid
+        let idl_class = self.idl.classes().get(classname).unwrap();
+
+        let mut sql = String::new();
+
+        for idl_field in idl_class
+            .real_fields_sorted()
+            .iter()
+            .filter(|f| self.field_may_be_selected(f.name(), classname).is_some())
+        {
+            sql += " ";
+            sql += &self.select_one_field(alias, idl_class, None, idl_field)?;
+            sql += ","
+        }
+
+        // Remove final ","
+        sql.pop();
+
+        Ok(sql)
+    }
+
+    fn select_one_field(
+        &self,
+        class_alias: &str,
+        idl_class: &idl::Class,
+        field_alias: Option<&str>,
+        idl_field: &idl::Field
+    ) -> EgResult<String> {
+
+        if !idl_field.i18n() {
+            return Ok(format!(
+                r#" "{}".{},"#,
+                self.force_valid_ident(class_alias)?,
+                self.force_valid_ident(idl_field.name())?,
+            ));
+        }
+
+        let locale = self.locale.as_deref().unwrap_or(DEFAULT_LOCALE);
+
+        let pkey = idl_class
+            .pkey()
+            .ok_or_else(|| format!("{} has no primary key", idl_class.classname()))?;
+
+        Ok(format!(
+            r#" oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{}') AS "{}""#,
+            self.force_valid_ident(idl_class.classname())?,
+            self.force_valid_ident(class_alias)?,
+            self.force_valid_ident(idl_field.name())?,
+            self.force_valid_ident(pkey)?,
+            self.force_valid_ident(class_alias)?,
+            self.force_valid_ident(pkey)?,
+            locale, // e.g. en-US
+            self.force_valid_ident(field_alias.unwrap_or(idl_field.name()))?
+        ))
     }
 
     /// Unpack the JOIN clauses into their constituent parts.
@@ -371,9 +507,13 @@ impl JsonQueryCompiler {
             }
         }
 
+        let tablename = right_idl_class.tablename()
+            .ok_or_else(|| format!("JOINed class has no table name: {right_class}"))?;
+
         // Add this new class to our list of sources.
         let mut source_def = SourceDef {
             classname: right_class.to_string(),
+            tablename: tablename.to_string(),
             alias: None,
             is_base_class: false,
         };
@@ -475,35 +615,6 @@ impl JsonQueryCompiler {
         return index;
     }
 
-    /// Returns option of IDL field if the field is valid for the class,
-    /// isn't virtual, and may be viewed by this module.
-    fn field_may_be_selected(&self, name: &str, class: &str) -> Option<&idl::Field> {
-        let idl_class = match self.idl.classes().get(class) {
-            Some(c) => c,
-            None => return None,
-        };
-
-        let idl_field = match idl_class.fields().get(name) {
-            Some(f) => f,
-            None => return None,
-        };
-
-        if idl_field.is_virtual() {
-            return None;
-        }
-
-        if let Some(suppress) = idl_field.suppress_controller() {
-            if let Some(module) = self.controllername.as_ref() {
-                if suppress.contains(module) {
-                    // Field is not visible to this module.
-                    return None;
-                }
-            }
-        }
-
-        Some(idl_field)
-    }
-
     /// Determine the core IDL class from the main FROM clause.
     fn set_base_class(&mut self, from_blob: &JsonValue) -> EgResult<()> {
 
@@ -521,12 +632,15 @@ impl JsonQueryCompiler {
 
         // Sanity check our results.
 
-        if self.idl.classes().get(&classname).is_none() {
-            return Err(format!("Invalid IDL class: {classname}").into());
-        }
+        let idl_class = self.idl.classes().get(&classname)
+            .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
+
+        let tablename = idl_class.tablename()
+            .ok_or_else(|| format!("Base class requires a tablename"))?;
 
         self.sources.push(SourceDef {
             classname,
+            tablename: tablename.to_string(),
             // Base classes cannot have aliases.  (right?)
             alias: None,
             is_base_class: true,
@@ -534,43 +648,4 @@ impl JsonQueryCompiler {
 
         Ok(())
     }
-
-
-    /// Creates a default list of columns to select from an alias'ed IDL
-    /// class.
-    fn add_default_select_list(&mut self, alias: &str) -> EgResult<()> {
-        /*
-        let classname = self
-            .find_alias(alias)
-            .ok_or_else(|| format!("Unknown SELECT alias: {alias}"))?;
-
-        // If we have an alias it's known to be valid
-        let idl_class = self.idl.classes().get(classname).unwrap();
-
-        let def = SelectDef {
-            classname: idl_class.classname().to_string(),
-            alias: alias.to_string(),
-            fields: idl_class
-                .real_fields_sorted()
-                .iter()
-                .filter(|f| self.field_may_be_selected(f.name(), classname).is_some())
-                .map(|f| SelectFieldDef {
-                    name: f.name().to_string(),
-                    alias: None,
-                    i18n_required: f.i18n(),
-                    aggregate: false,
-                    distinct: false,
-                    transform: None,
-                    transform_result_field: None,
-                    transform_params: None,
-                })
-                .collect(),
-        };
-
-        self.add_select(def);
-        */
-
-        Ok(())
-    }
-
 }
