@@ -14,7 +14,7 @@ pub enum JoinOp {
     Or,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SourceDef {
     is_base_class: bool,
     classname: String,
@@ -52,6 +52,9 @@ pub struct JsonQueryCompiler {
     /// If unset, use the default.
     locale: Option<String>,
 
+    /// Avoid calling oils_i18n_xlate()
+    disable_i18n: bool,
+
     /// I.e. EG service name.  Compare to 'suppress_controller' values
     /// to see of this instance can view selected fields.
     controllername: Option<String>,
@@ -74,6 +77,12 @@ pub struct JsonQueryCompiler {
     /// every WHERE/transform parameter added so that each has a
     /// unique value.
     param_index: usize,
+
+    /// TODO
+    group_by: Vec<usize>,
+
+    /// TODO
+    select_index: usize,
 }
 
 impl JsonQueryCompiler {
@@ -85,8 +94,11 @@ impl JsonQueryCompiler {
             sources: Vec::new(),
             from_function: None,
             query_string: None,
+            disable_i18n: false,
             params: None,
             param_index: 1,
+            group_by: Vec::new(),
+            select_index: 0,
         }
     }
 
@@ -141,31 +153,31 @@ impl JsonQueryCompiler {
 
     /// Returns option of IDL field if the field is valid exists on the
     /// class, isn't virtual, and may be viewed by this module.
-    fn field_may_be_selected(&self, name: &str, class: &str) -> Option<&idl::Field> {
+    fn field_may_be_selected(&self, name: &str, class: &str) -> bool {
         let idl_class = match self.idl.classes().get(class) {
             Some(c) => c,
-            None => return None,
+            None => return false,
         };
 
         let idl_field = match idl_class.fields().get(name) {
             Some(f) => f,
-            None => return None,
+            None => return false,
         };
 
         if idl_field.is_virtual() {
-            return None;
+            return false;
         }
 
         if let Some(suppress) = idl_field.suppress_controller() {
             if let Some(module) = self.controllername.as_ref() {
                 if suppress.contains(module) {
                     // Field is not visible to this module.
-                    return None;
+                    return false;
                 }
             }
         }
 
-        Some(idl_field)
+        true
     }
 
     /// Compile a json_query structure into its constituent parts.
@@ -183,25 +195,24 @@ impl JsonQueryCompiler {
             return Ok(())
         }
 
-        self.set_base_class(&query["from"])?;
-        let base_class = self.get_base_classname()?.to_string();
+        // Clone the source to avoid a number of parellel mut's below.
+        let base_source = self.set_base_source(&query["from"])?.clone();
+        let cname = &base_source.classname;
 
-        // Compile JOINs first so we can preload the remaining
-        // table sources.
-        let join_str = self.compile_joins_for_class(&base_class, &query["from"][&base_class])?;
+        // Compile JOINs first so we can populate our sources.
+        let join_str = self.compile_joins_for_class(cname, &query["from"][cname])?;
+
         let sel_str = self.compile_selects(&query["select"])?;
 
         // TODO WHERE
-        // TODO GROUP BY (reminder: aggregates)
+        // TODO GROUP BY (reminder: aggregates / distinct)
         // TODO ORDER BY
-
-        let source = self.get_base_source()?;
 
         self.query_string = Some(
             format!(
                 r#"SELECT {sel_str} FROM {} AS "{}" {join_str}"#,
-                source.tablename,
-                source.alias.as_ref().unwrap_or(&source.classname)
+                self.force_valid_ident(&base_source.tablename)?,
+                self.force_valid_ident(base_source.alias.as_deref().unwrap_or(cname))?,
             )
         );
 
@@ -223,8 +234,17 @@ impl JsonQueryCompiler {
 
         let mut sql = String::new();
         for (alias, payload) in select_def.entries() {
+            sql += " ";
             sql += &self.compile_selects_for_class(alias, payload)?;
         }
+
+        if sql.len() > 0 {
+            // Remove first space.
+            sql.remove(0);
+        }
+
+        // remove final trailing ","
+        sql.pop();
 
         Ok(sql)
     }
@@ -238,8 +258,7 @@ impl JsonQueryCompiler {
             return self.build_default_select_list(class_alias);
         }
 
-        let classname = self.get_alias_classname(class_alias)?;
-        let idl_class = self.idl.classes().get(classname).unwrap(); // verified
+        let classname = self.get_alias_classname(class_alias)?.to_string(); // mut's
 
         if let Some(col) = select_def.as_str() {
             if col == "*" {
@@ -248,9 +267,9 @@ impl JsonQueryCompiler {
             } else {
                 // Selecting a single column by name.
 
-                if let Some(idl_field) = self.field_may_be_selected(col, classname) {
-                    return Ok(format!(" {}",
-                        self.select_one_field(class_alias, idl_class, None, idl_field)?
+                if self.field_may_be_selected(col, &classname) {
+                    return Ok(format!("{},",
+                        self.select_one_field(class_alias, None, col, None)?
                     ));
                 }
             }
@@ -266,55 +285,124 @@ impl JsonQueryCompiler {
             if let Some(column) = field_struct.as_str() {
                 // Field entry is a string field name.
 
-                if let Some(idl_field) = self.field_may_be_selected(column, classname) {
+                if self.field_may_be_selected(column, &classname) {
                     sql += " ";
-                    sql += &self.select_one_field(class_alias, idl_class, None, idl_field)?
+                    sql += &self.select_one_field(class_alias, None, column, None)?;
+                    sql += ",";
                 }
 
                 continue;
             }
 
-            // TODO
+            let column = field_struct["column"].as_str().ok_or_else(|| {
+                format!("SELECT hash requires a 'column': {}", field_struct.dump())
+            })?;
+
+            if !self.field_may_be_selected(column, &classname) {
+                continue;
+            }
+
+            sql += " ";
+            sql += &self.select_one_field(
+                class_alias,
+                field_struct["alias"].as_str(),
+                column,
+                Some(field_struct),
+            )?;
+
+            sql += ",";
+        }
+
+        if sql.len() > 0 {
+            // remove opening space
+            sql.remove(0);
         }
 
         Ok(sql)
     }
 
     fn build_default_select_list(&mut self, alias: &str) -> EgResult<String> {
-        let classname = self.get_alias_classname(alias)?;
+        let classname = self.get_alias_classname(alias)?.to_string(); // mut's
 
         // If we have an alias it's known to be valid
-        let idl_class = self.idl.classes().get(classname).unwrap();
+        let idl_class = self.idl.classes().get(&classname).unwrap();
 
         let mut sql = String::new();
 
-        for idl_field in idl_class
+        let field_names: Vec<String> = idl_class
             .real_fields_sorted()
             .iter()
-            .filter(|f| self.field_may_be_selected(f.name(), classname).is_some())
-        {
+            .filter(|f| self.field_may_be_selected(f.name(), &classname))
+            .map(|f| f.name().to_string())
+            .collect();
+
+        for field_name in field_names.iter() {
             sql += " ";
-            sql += &self.select_one_field(alias, idl_class, None, idl_field)?;
+            sql += &self.select_one_field(alias, None, field_name, None)?;
             sql += ","
         }
-
-        // Remove final ","
-        sql.pop();
 
         Ok(sql)
     }
 
     fn select_one_field(
-        &self,
+        &mut self,
         class_alias: &str,
-        idl_class: &idl::Class,
         field_alias: Option<&str>,
-        idl_field: &idl::Field
+        field_name: &str,
+        field_def: Option<&JsonValue>,
     ) -> EgResult<String> {
 
-        if !idl_field.i18n() {
+        let idl_class = self.idl.classes().get(self.get_alias_classname(class_alias)?)
+            .ok_or_else(|| format!("Invalid alias: {class_alias}"))?;
+
+        let idl_field = idl_class.fields().get(field_name)
+            .ok_or_else(|| format!("Invalid field {}::{field_name}", idl_class.classname()))?;
+
+        // TODO maybe some dedupe / refactoring here.
+
+        if let Some(fdef) = field_def {
+            // If we have a field_def, it may mean the field has extended
+            // properties, like a transform or other flags.
+
+            if let Some(xform) = fdef["transform"].as_str() {
+                let mut sql = String::new();
+
+                sql += &format!(" {}(", &self.force_valid_ident(xform)?.to_uppercase());
+
+                if util::json_bool(&fdef["distinct"]) {
+                    sql += "DISTINCT ";
+                }
+
+                // NOTE this should theoretically also do the i18n
+                // dance.  The existing code doesn't do it, so I'm
+                // guessing it just hasn't come up.
+
+                sql += &format!(
+                    r#""{}".{}"#,
+                    self.force_valid_ident(class_alias)?,
+                    self.force_valid_ident(idl_field.name())?,
+                );
+
+                for param in fdef["params"].members() {
+                    let index = self.add_param(param);
+                    sql += &format!(", ${index}");
+                }
+
+                sql += ")";
+
+                if let Some(rfield) = fdef["result_field"].as_str() {
+                    // Append (...).xform_result_field.
+                    sql = format!(r#"({sql})."{}""#, self.force_valid_ident(rfield)?);
+                }
+
+                return Ok(sql);
+            }
+        }
+
+        if !idl_field.i18n() || self.disable_i18n {
             return Ok(format!(
-                r#" "{}".{},"#,
+                r#""{}".{}"#,
                 self.force_valid_ident(class_alias)?,
                 self.force_valid_ident(idl_field.name())?,
             ));
@@ -327,7 +415,7 @@ impl JsonQueryCompiler {
             .ok_or_else(|| format!("{} has no primary key", idl_class.classname()))?;
 
         Ok(format!(
-            r#" oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{}') AS "{}""#,
+            r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{}') AS "{}""#,
             self.force_valid_ident(idl_class.classname())?,
             self.force_valid_ident(class_alias)?,
             self.force_valid_ident(idl_field.name())?,
@@ -373,8 +461,13 @@ impl JsonQueryCompiler {
             };
 
             for (right_alias, join_def) in hash_ref.entries() {
+                sql += " ";
                 sql += &self.add_one_join(left_alias, right_alias, join_def)?;
             }
+        }
+
+        if sql.len() > 0 {
+            sql.remove(0);
         }
 
         Ok(sql)
@@ -538,7 +631,7 @@ impl JsonQueryCompiler {
         };
 
         let mut sql = format!(
-            r#" {} {} AS "{}" ON ("{}".{} = "{}".{}"#,
+            r#"{} {} AS "{}" ON ("{}".{} = "{}".{}"#,
             join_type,
             self.force_valid_ident(tablename)?,
             self.force_valid_ident(right_alias)?,
@@ -567,6 +660,7 @@ impl JsonQueryCompiler {
         // Add nested JOINs if we have any
         let sub_join = &join_def["join"];
         if !sub_join.is_null() {
+            sql += " ";
             sql += &self.compile_joins_for_class(right_alias, sub_join)?;
         }
 
@@ -616,7 +710,7 @@ impl JsonQueryCompiler {
     }
 
     /// Determine the core IDL class from the main FROM clause.
-    fn set_base_class(&mut self, from_blob: &JsonValue) -> EgResult<()> {
+    fn set_base_source(&mut self, from_blob: &JsonValue) -> EgResult<&SourceDef> {
 
         let classname =  if from_blob.is_object() && from_blob.len() == 1 {
             // "from":{"aou": ...}
@@ -638,6 +732,7 @@ impl JsonQueryCompiler {
         let tablename = idl_class.tablename()
             .ok_or_else(|| format!("Base class requires a tablename"))?;
 
+        // Add our first source
         self.sources.push(SourceDef {
             classname,
             tablename: tablename.to_string(),
@@ -646,6 +741,6 @@ impl JsonQueryCompiler {
             is_base_class: true,
         });
 
-        Ok(())
+        Ok(self.sources.get(0).unwrap())
     }
 }
