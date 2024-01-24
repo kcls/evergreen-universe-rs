@@ -78,7 +78,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     jq_compiler.compile(&query)?;
 
-    //println!("JQ = {jq_compiler:?}");
+    println!("JQ = {jq_compiler:?}");
 
     println!(
         "\n{}\n",
