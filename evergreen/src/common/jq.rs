@@ -93,6 +93,18 @@ pub struct JsonQueryCompiler {
     select_index: usize,
 }
 
+impl Clone for JsonQueryCompiler {
+    fn clone(self: &JsonQueryCompiler) -> JsonQueryCompiler {
+        let mut new = JsonQueryCompiler::new(self.idl.clone());
+
+        new.locale = self.locale.clone();
+        new.disable_i18n = self.disable_i18n;
+        new.controllername = self.controllername.clone();
+
+        new
+    }
+}
+
 impl JsonQueryCompiler {
     pub fn new(idl: Arc<idl::Parser>) -> Self {
         Self {
@@ -152,7 +164,15 @@ impl JsonQueryCompiler {
             })
             .map(|c| c.classname.as_str())
             .next()
-            .ok_or(format!("No such class alias: {alias}").into())
+            .ok_or_else(|| format!("No such class alias: {alias}").into())
+    }
+
+    fn get_idl_class(&self, classname: &str) -> EgResult<&idl::Class> {
+        self
+            .idl
+            .classes()
+            .get(classname)
+            .ok_or_else(|| format!("Invalid IDL class: {classname}").into())
     }
 
     fn get_base_source(&self) -> EgResult<&SourceDef> {
@@ -160,7 +180,7 @@ impl JsonQueryCompiler {
             .iter()
             .filter(|s| s.is_base_class)
             .next()
-            .ok_or(format!("No bass class has been set").into())
+            .ok_or_else(|| format!("No bass class has been set").into())
     }
 
     /// Returns the IDL classname of the base class, i.e. the root
@@ -171,15 +191,15 @@ impl JsonQueryCompiler {
             .filter(|s| s.is_base_class)
             .map(|s| s.classname.as_ref())
             .next()
-            .ok_or(format!("No bass class has been set").into())
+            .ok_or_else(|| format!("No bass class has been set").into())
     }
 
     /// Returns option of IDL field if the field is valid exists on the
     /// class, isn't virtual, and may be viewed by this module.
     fn field_may_be_selected(&self, name: &str, class: &str) -> bool {
-        let idl_class = match self.idl.classes().get(class) {
-            Some(c) => c,
-            None => return false,
+        let idl_class = match self.get_idl_class(class) {
+            Ok(c) => c,
+            Err(_) => return false,
         };
 
         let idl_field = match idl_class.fields().get(name) {
@@ -226,13 +246,13 @@ impl JsonQueryCompiler {
         let join_str = self.compile_joins_for_class(cname, &query["from"][cname])?;
 
         let sel_str = self.compile_selects(&query["select"])?;
+        let where_str = self.compile_where_for_class(&query["where"], cname, JoinOp::And)?;
 
-        // TODO WHERE
         // TODO GROUP BY (reminder: aggregates / distinct)
         // TODO ORDER BY
 
         self.query_string = Some(format!(
-            r#"SELECT {sel_str} FROM {} AS "{}" {join_str}"#,
+            r#"SELECT {sel_str} FROM {} AS "{}" {join_str} WHERE {where_str}"#,
             self.force_valid_ident(&base_source.tablename)?,
             self.force_valid_ident(base_source.alias.as_deref().unwrap_or(cname))?,
         ));
@@ -345,7 +365,7 @@ impl JsonQueryCompiler {
         let classname = self.get_alias_classname(alias)?.to_string(); // mut's
 
         // If we have an alias it's known to be valid
-        let idl_class = self.idl.classes().get(&classname).unwrap();
+        let idl_class = self.get_idl_class(&classname)?;
 
         let mut sql = String::new();
 
@@ -372,18 +392,12 @@ impl JsonQueryCompiler {
         field_name: &str,
         field_def: Option<&JsonValue>,
     ) -> EgResult<String> {
-        let idl_class = self
-            .idl
-            .classes()
-            .get(self.get_alias_classname(class_alias)?)
-            .ok_or_else(|| format!("Invalid alias: {class_alias}"))?;
+        let idl_class = self.get_idl_class(self.get_alias_classname(class_alias)?)?;
 
         let idl_field = idl_class
             .fields()
             .get(field_name)
             .ok_or_else(|| format!("Invalid field {}::{field_name}", idl_class.classname()))?;
-
-        // TODO maybe some dedupe / refactoring here.
 
         if let Some(fdef) = field_def {
             // If we have a field_def, it may mean the field has extended
@@ -523,25 +537,13 @@ impl JsonQueryCompiler {
         right_alias: &str,
         join_def: &JsonValue,
     ) -> EgResult<String> {
-        let right_class = if let Some(class) = join_def["class"].as_str() {
-            class
-        } else {
-            // If there's no "class" in the hash, the alias is the classname
-            right_alias
-        };
 
-        let right_idl_class = self
-            .idl
-            .classes()
-            .get(right_class)
-            .ok_or_else(|| format!("No such IDL class in JOIN: {right_class}"))?;
-
-        let tablename = right_idl_class
-            .tablename()
-            .ok_or_else(|| format!("Cannot join to a class with no table: {right_class}"))?;
+        // If there's no "class" in the hash, the alias is the classname
+        let right_class = join_def["class"].as_str().unwrap_or(right_alias);
+        let right_idl_class = self.get_idl_class(right_class)?;
 
         let left_class = self.get_alias_classname(left_alias)?;
-        let left_idl_class = self.idl.classes().get(left_class).unwrap();
+        let left_idl_class = self.get_idl_class(left_class)?;
 
         // Field on the left/source table to JOIN on. Optional.
         let mut left_join_field = join_def["fkey"].as_str();
@@ -642,23 +644,8 @@ impl JsonQueryCompiler {
 
         let tablename = right_idl_class
             .tablename()
-            .ok_or_else(|| format!("JOINed class has no table name: {right_class}"))?;
-
-        // Add this new class to our list of sources.
-        let mut source_def = SourceDef {
-            classname: right_class.to_string(),
-            tablename: tablename.to_string(),
-            alias: None,
-            is_base_class: false,
-        };
-
-        if right_alias != right_class {
-            // No need to allocate/track an alias if it's the same
-            // as the classname.
-            source_def.alias = Some(right_alias.to_string());
-        }
-
-        self.sources.push(source_def);
+            .ok_or_else(|| format!("JOINed class has no table name: {right_class}"))?
+            .to_string();
 
         let join_type = if let Some(jtype) = join_def["type"].as_str() {
             match jtype {
@@ -674,13 +661,32 @@ impl JsonQueryCompiler {
         let mut sql = format!(
             r#"{} {} AS "{}" ON ("{}".{} = "{}".{}"#,
             join_type,
-            self.force_valid_ident(tablename)?,
+            self.force_valid_ident(&tablename)?,
             self.force_valid_ident(right_alias)?,
             self.force_valid_ident(right_alias)?,
             self.force_valid_ident(right_join_field.as_deref().unwrap())?,
             self.force_valid_ident(left_alias)?,
             self.force_valid_ident(left_join_field.as_deref().unwrap())?,
         );
+
+        // ----
+        // Add this new class to our list of sources before we
+        // potentially start adding recursive JOINs.
+        let mut source_def = SourceDef {
+            classname: right_class.to_string(),
+            tablename,
+            alias: None,
+            is_base_class: false,
+        };
+
+        if right_alias != right_class {
+            // No need to allocate/track an alias if it's the same
+            // as the classname.
+            source_def.alias = Some(right_alias.to_string());
+        }
+
+        self.sources.push(source_def);
+        // ----
 
         // Some JOINS have filters, which are mini WHERE clauses tacked
         // on to the JOIN.
@@ -755,25 +761,18 @@ impl JsonQueryCompiler {
                     let classname = self.get_alias_classname(class_alias)?;
 
                     if let Some(field) = sub_blob.as_str() {
-                        // We verified above this is a valid classname.
-                        // Now verif it's a valid field name.
-                        if !self
-                            .idl
-                            .classes()
-                            .get(classname)
-                            .unwrap()
-                            .has_real_field(field)
-                        {
+                        // {"+aou": "shortname"} ?
+                        // Does this really happen?  I'm missing something.
+
+                        if !self.get_idl_class(classname)?.has_real_field(field) {
                             return Err(
                                 format!("Class {classname} has no field named {field}").into()
                             );
                         }
 
-                        // {"+aou": "shortname"} ?
-                        // Does this really happen?  I'm missing something.
                         sql += &format!(r#" "{alias}".{field} "#);
                     } else {
-                        //
+                        // {"+aou": {"shortname": ...}}
 
                         let sub_pred = self.compile_where_for_class(sub_blob, alias, join_op)?;
                         sql += &format!("({sub_pred})");
@@ -791,14 +790,32 @@ impl JsonQueryCompiler {
                         let sub_pred =
                             self.compile_where_for_class(sub_blob, class_alias, JoinOp::And)?;
                         sql += &format!("NOT ({sub_pred})");
-                    } else if key == "-exists" {
-                        // TODO this needs to build a whole new parser
-                        //let sub_pred = self.compile_where_for_class(sub_blob, class_alias, JoinOp::And)?;
-                        //sql += &format!("EXISTS ( {sub_pred} )");
-                    } else if key == "-not-exists" {
-                        // TODO this needs to build a whole new parser
-                        //let sub_pred = self.compile_where_for_class(sub_blob, class_alias, JoinOp::And)?;
-                        //sql += &format!("NOT EXISTS ( {sub_pred} )");
+
+                    } else if key == "-exists" || key == "-not-exists" {
+                        // EXIST queries run atop a fully formed json query
+                        // object.  Collect the SQL via a single-use sub-compiler.
+                        let mut compiler = self.clone();
+
+                        compiler.compile(sub_blob)?;
+
+                        let sub_sql = compiler.query_string.as_ref().ok_or_else(
+                            || format!("EXISTS clause produced no SQL: {}", sub_blob))?;
+
+                        // Absorb parameter information collected by
+                        // our sub-compiler.
+                        if let Some(params) = compiler.params.as_ref() {
+                            for param in params {
+                                self.add_param(&param.value);
+                            }
+                        }
+
+                        let question = if key.contains("not") {
+                            "NOT EXISTS"
+                        } else {
+                            "EXISTS"
+                        };
+
+                        sql += &format!("{question} ({sub_sql})");
                     }
                 } else {
                     // key is assumed to be a field name
@@ -807,13 +824,7 @@ impl JsonQueryCompiler {
 
                     // classname verified above.
                     // Make sure it's a valid field name
-                    if !self
-                        .idl
-                        .classes()
-                        .get(classname)
-                        .unwrap()
-                        .has_real_field(key)
-                    {
+                    if !self.get_idl_class(classname)?.has_real_field(key) {
                         return Err(format!("Class {classname} has no field called {key}").into());
                     }
 
@@ -833,22 +844,69 @@ impl JsonQueryCompiler {
         field_name: &str,
         field_def: &JsonValue,
     ) -> EgResult<String> {
+
         if field_def.is_array() {
             // Equality IN search
-            self.search_in_predicate(class_alias, field_name, field_def)
+            self.search_in_predicate(class_alias, field_name, field_def, false)
+
         } else if field_def.is_object() {
-            if field_def.len() > 1 {
-                return Err(format!("Multiple predicates for field: {}", field_def.dump()).into());
+            if field_def.len() != 1 {
+                return Err(format!(
+                    "Multiple predicates for field: {field_name} {}",
+                    field_def.dump()
+                ).into());
             }
 
-            // TODO TODO oils_sql.c:3279
+            let (key, sub_def) = field_def.entries().next().unwrap(); // above
 
-            Ok(String::new()) // TODO
+            if key == "between" {
+                self.search_between_predicate(class_alias, field_name, sub_def)
+            } else if key == "in" || key == "not in" {
+                self.search_in_predicate(class_alias, field_name, sub_def, key.contains("not"))
+            } else if sub_def.is_array() {
+                self.search_function_predicate(key, class_alias, field_name, sub_def)
+            } else if sub_def.is_object() {
+                self.search_field_transform_predicate(key, class_alias, field_name, sub_def)
+            } else {
+                self.simple_search_predicate(key, class_alias, field_name, field_def)
+            }
+
         } else {
             self.simple_search_predicate("=", class_alias, field_name, field_def)
         }
     }
 
+    fn search_field_transform_predicate(
+        &mut self,
+        operator: &str,
+        class_alias: &str,
+        field: &str,
+        value: &JsonValue,
+    ) -> EgResult<String> {
+        todo!();
+    }
+
+    fn search_function_predicate(
+        &mut self,
+        operator: &str,
+        class_alias: &str,
+        field: &str,
+        value: &JsonValue,
+    ) -> EgResult<String> {
+        todo!();
+    }
+
+
+    fn search_between_predicate(
+        &mut self,
+        class_alias: &str,
+        field: &str,
+        value: &JsonValue,
+    ) -> EgResult<String> {
+        todo!();
+    }
+
+    /// This is your class a.b = 'c' scenario.
     fn simple_search_predicate(
         &mut self,
         mut operator: &str,
@@ -887,11 +945,7 @@ impl JsonQueryCompiler {
 
         let classname = self.get_alias_classname(class_alias)?;
 
-        let idl_class = self
-            .idl
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("IDL class {classname} not found"))?;
+        let idl_class = self.get_idl_class(classname)?;
 
         let idl_field = idl_class
             .get_field(field)
@@ -922,6 +976,7 @@ impl JsonQueryCompiler {
         class_alias: &str,
         field_name: &str,
         field_def: &JsonValue,
+        is_negative: bool,
     ) -> EgResult<String> {
         let mut sql = String::new();
 
@@ -973,11 +1028,7 @@ impl JsonQueryCompiler {
 
         // Sanity check our results.
 
-        let idl_class = self
-            .idl
-            .classes()
-            .get(&classname)
-            .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
+        let idl_class = self.get_idl_class(&classname)?;
 
         let tablename = idl_class
             .tablename()
