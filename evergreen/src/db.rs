@@ -35,7 +35,6 @@ const SUPPORTED_OPERATORS: [&'static str; 20] = [
     "IS NOT DISTINCT FROM",
 ];
 
-
 /// For compiling a set of connection parameters
 ///
 /// Values are applied like so:
@@ -405,5 +404,3 @@ pub fn is_identifier(s: &str) -> bool {
 pub fn is_supported_operator(op: &str) -> bool {
     SUPPORTED_OPERATORS.contains(&op.to_uppercase().as_str())
 }
-
-

@@ -9,11 +9,11 @@ use rustyline;
 
 use eg::auth::AuthSession;
 use eg::common::settings;
+use eg::db;
 use eg::db::DatabaseConnection;
 use eg::editor;
 use eg::event;
 use eg::idl;
-use eg::db;
 use eg::idldb;
 use eg::init;
 

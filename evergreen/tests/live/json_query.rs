@@ -85,10 +85,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         jq_compiler.query_string().expect("SHOULD HAVE SQL")
     );
 
-    println!(
-        "\nPARRAMS: {}\n",
-        jq_compiler.param_values().dump()
-    );
+    println!("\nPARRAMS: {}\n", jq_compiler.param_values().dump());
 
     Ok(())
 }
