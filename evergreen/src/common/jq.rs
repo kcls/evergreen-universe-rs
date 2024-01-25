@@ -102,6 +102,21 @@ impl JsonQueryCompiler {
         }
     }
 
+    pub fn params(&self) -> Option<&Vec<ParamDef>> {
+        self.params.as_ref()
+    }
+
+    /// Returns a JSON array of parameter values; primarily for debugging.
+    pub fn param_values(&self) -> JsonValue {
+        let mut array = json::array! [];
+        if let Some(params) = self.params.as_ref() {
+            for param in params {
+                array.push(param.value.clone());
+            }
+        }
+        array
+    }
+
     /// Set the locale for use with oils_i18n_xlate().
     pub fn set_locale(&mut self, locale: &str) -> EgResult<()> {
         if locale.chars().any(|b| !b.is_ascii_alphabetic() && b != '-') {
@@ -374,15 +389,10 @@ impl JsonQueryCompiler {
                     sql += "DISTINCT ";
                 }
 
-                // NOTE this should theoretically also do the i18n
-                // dance.  The existing code doesn't do it, so I'm
-                // guessing it just hasn't come up.
-
-                sql += &format!(
-                    r#""{}".{}"#,
-                    self.force_valid_ident(class_alias)?,
-                    self.force_valid_ident(idl_field.name())?,
-                );
+                // Avoid sending the field alias here since any alias
+                // should apply to our transform as a whole.
+                sql += &self.format_one_select_field(
+                    class_alias, idl_class, None, idl_field)?;
 
                 for param in fdef["params"].members() {
                     let index = self.add_param(param);
@@ -394,37 +404,65 @@ impl JsonQueryCompiler {
                 if let Some(rfield) = fdef["result_field"].as_str() {
                     // Append (...).xform_result_field.
                     sql = format!(r#"({sql})."{}""#, self.force_valid_ident(rfield)?);
+                } else if let Some(alias) = field_alias {
+                    sql += &format!(r#" AS "{}""#, self.force_valid_ident(alias)?);
                 }
 
                 return Ok(sql);
             }
         }
 
+        self.format_one_select_field(class_alias, idl_class, field_alias, idl_field)
+    }
+
+    /// Format the SELECT component for a single field, adding the
+    /// oils_i18n_xlate() where needed.
+    fn format_one_select_field(
+        &self,
+        class_alias: &str,
+        idl_class: &idl::Class,
+        field_alias: Option<&str>,
+        idl_field: &idl::Field,
+    ) -> EgResult<String> {
+        let mut sql;
+
         if !idl_field.i18n() || self.disable_i18n {
-            return Ok(format!(
+            sql = format!(
                 r#""{}".{}"#,
                 self.force_valid_ident(class_alias)?,
+                self.force_valid_ident(idl_field.name())?
+            );
+
+        } else {
+
+            let locale = self.locale.as_deref().unwrap_or(DEFAULT_LOCALE);
+
+            let pkey = idl_class
+                .pkey()
+                .ok_or_else(|| format!("{} has no primary key", idl_class.classname()))?;
+
+            let tablename = idl_class
+                .tablename()
+                .ok_or_else(|| format!("{} has no table name", idl_class.classname()))?;
+
+            // Our 'locale' string format is validated at set time.
+
+            sql = format!(
+                r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{locale}')"#,
+                self.force_valid_ident(tablename)?,
+                self.force_valid_ident(class_alias)?,
                 self.force_valid_ident(idl_field.name())?,
-            ));
+                self.force_valid_ident(pkey)?,
+                self.force_valid_ident(class_alias)?,
+                self.force_valid_ident(pkey)?,
+            );
         }
 
-        let locale = self.locale.as_deref().unwrap_or(DEFAULT_LOCALE);
+        if let Some(alias) = field_alias {
+            sql += &format!(r#" AS "{}""#, self.force_valid_ident(alias)?);
+        }
 
-        let pkey = idl_class
-            .pkey()
-            .ok_or_else(|| format!("{} has no primary key", idl_class.classname()))?;
-
-        Ok(format!(
-            r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{}') AS "{}""#,
-            self.force_valid_ident(idl_class.classname())?,
-            self.force_valid_ident(class_alias)?,
-            self.force_valid_ident(idl_field.name())?,
-            self.force_valid_ident(pkey)?,
-            self.force_valid_ident(class_alias)?,
-            self.force_valid_ident(pkey)?,
-            locale, // e.g. en-US
-            self.force_valid_ident(field_alias.unwrap_or(idl_field.name()))?
-        ))
+        Ok(sql)
     }
 
     /// Unpack the JOIN clauses into their constituent parts.
