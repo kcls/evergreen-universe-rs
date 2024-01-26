@@ -305,6 +305,7 @@ impl JsonQueryCompiler {
         for (alias, payload) in select_def.entries() {
             sql += " ";
             sql += &self.compile_selects_for_class(alias, payload)?;
+            sql += ",";
         }
 
         if sql.len() > 0 {
@@ -361,9 +362,9 @@ impl JsonQueryCompiler {
                 continue;
             }
 
-            let column = field_struct["column"].as_str().ok_or_else(|| {
-                format!("SELECT hash requires a 'column': {field_struct}")
-            })?;
+            let column = field_struct["column"]
+                .as_str()
+                .ok_or_else(|| format!("SELECT hash requires a 'column': {field_struct}"))?;
 
             if !self.field_may_be_selected(column, &classname) {
                 continue;
@@ -876,6 +877,13 @@ impl JsonQueryCompiler {
     /// Does the provided field match some value?
     /// Value may be a simple thing, like a string, or a more complex
     /// comparison (IN list, between, etc.)
+    ///
+    /// Examples:
+    ///
+    /// {"shortname": "BR1"}
+    /// {"shortname": ["BR1", "BR2"]}
+    /// {"shortname": {"not in": ["BR1", "BR2"]}}
+    /// {"shortname": {"not in": {"select": ...}}}
     fn search_predicate(
         &mut self,
         class_alias: &str,
@@ -918,20 +926,48 @@ impl JsonQueryCompiler {
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
-        if !db::is_supported_operator(operator) {
-            return Err(format!("Operator '{operator}' not supported").into());
-        }
         let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
+
+        println!(
+            "search_field_transform_predicate() {field_name} {operator} {}",
+            value_def.dump()
+        );
 
         let value_obj = &value_def["value"];
 
-        let mut sql = String::new();
-        if value_obj.is_null() {
-            sql += &self.compile_where_for_class(value_def, class_alias, JoinOp::And)?;
-        } else {
-        }
+        let mut extra_parens = false;
 
-        todo!();
+        let value_str = if value_obj.is_null() {
+            extra_parens = true;
+            self.compile_where_for_class(value_def, class_alias, JoinOp::And)?
+        } else if value_obj.is_array() {
+            self.compile_function_from(value_obj)?
+        } else if value_obj.is_object() {
+            extra_parens = true;
+            self.compile_where_for_class(value_obj, class_alias, JoinOp::And)?
+        } else if value_obj.is_string() || value_obj.is_number() {
+            self.scalar_param_as_string(class_alias, field_name, value_obj)?
+        } else {
+            return Err(format!(
+                "Invalid predicate for field transform for {field_name}: {}",
+                value_obj.dump()
+            )
+            .into());
+        };
+
+        let left_parens = if extra_parens { "(" } else { "" };
+        let right_parens = if extra_parens { ")" } else { "" };
+
+        Ok(format!(
+            r#"{}{} {} {} {}{}{}"#,
+            left_parens,
+            field_str,
+            self.force_valid_operator(operator)?,
+            left_parens,
+            value_str,
+            right_parens,
+            right_parens
+        ))
     }
 
     fn search_function_predicate(
@@ -941,12 +977,12 @@ impl JsonQueryCompiler {
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
-        if !db::is_supported_operator(operator) {
-            return Err(format!("Operator '{operator}' not supported").into());
-        }
-
         let func_str = self.compile_function_from(value_def)?;
-        Ok(format!(r#""{class_alias}".{field_name} {operator} {func_str}"#))
+
+        Ok(format!(
+            r#""{class_alias}".{field_name} {} {func_str}"#,
+            self.force_valid_operator(operator)?,
+        ))
     }
 
     fn search_between_predicate(
@@ -966,10 +1002,7 @@ impl JsonQueryCompiler {
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
-
-        // Field may be transformed.  Grab the "value" property.
-        // NOTE: find an example of this.
-        let value_def = if value_def.is_object() {
+        let value_def = if !value_def["value"].is_null() {
             &value_def["value"]
         } else {
             value_def
@@ -993,10 +1026,6 @@ impl JsonQueryCompiler {
         field_name: &str,
         value: &JsonValue,
     ) -> EgResult<String> {
-        if !db::is_supported_operator(operator) {
-            return Err(format!("Operator '{operator}' not supported").into());
-        }
-
         if value.is_object() || value.is_array() {
             return Err(format!("Invalid simple search predicate: {}", value.dump()).into());
         }
@@ -1023,10 +1052,12 @@ impl JsonQueryCompiler {
             return Ok(format!("{prefix} {oper_str} {val_str}"));
         }
 
+        let param_str = self.scalar_param_as_string(class_alias, field_name, value)?;
+
         // Numbers and strings from here on out.
         Ok(format!(
-            "{prefix} {operator} {}",
-            self.scalar_param_as_string(class_alias, field_name, value)?
+            "{prefix} {} {param_str}",
+            self.force_valid_operator(operator)?,
         ))
     }
 
@@ -1078,6 +1109,7 @@ impl JsonQueryCompiler {
         value_def: &JsonValue,
         is_not_in: bool,
     ) -> EgResult<String> {
+        println!("search_in_predicate() {field_name} = {}", value_def.dump());
         let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
         let in_str = self.search_in_list(class_alias, field_name, value_def)?;
 
@@ -1097,13 +1129,13 @@ impl JsonQueryCompiler {
             return Err(format!("Unexpected IN clause: {value_def}").into());
         }
 
-        // Field may be transformed.  Grab the "value" property.
-        // NOTE: find an example of this.
-        let value_def = if value_def.is_object() {
+        let value_def = if !value_def["value"].is_null() {
             &value_def["value"]
         } else {
             value_def
         };
+
+        println!("search_in_list() {field_name} = {}", value_def.dump());
 
         if value_def.is_object() {
             // Some IN queries run atop a fully formed json query
@@ -1150,9 +1182,18 @@ impl JsonQueryCompiler {
     /// Verify the provided string may act as a valid PG identifier.
     fn force_valid_ident<'a>(&'a self, s: &'a str) -> EgResult<&str> {
         if db::is_identifier(s) {
-            return Ok(s);
+            Ok(s)
         } else {
-            return Err(format!("Value is not a valid identifier: {s}").into());
+            Err(format!("Value is not a valid identifier: {s}").into())
+        }
+    }
+
+    /// Verify the provided string may act as a valid PG identifier.
+    fn force_valid_operator<'a>(&'a self, operator: &'a str) -> EgResult<&str> {
+        if db::is_supported_operator(operator) {
+            Ok(operator)
+        } else {
+            Err(format!("Invalid operator: {operator}").into())
         }
     }
 
@@ -1227,8 +1268,7 @@ impl JsonQueryCompiler {
 
         let mut func_name = match from_def[0].as_str() {
             Some(f) => self.force_valid_ident(f)?.to_string(),
-            None => return Err(
-                format!("Invalid function name: {}", from_def[0].dump()).into()),
+            None => return Err(format!("Invalid function name: {}", from_def[0].dump()).into()),
         };
 
         let mut param_str = String::new();
@@ -1237,7 +1277,8 @@ impl JsonQueryCompiler {
             let mut first = true;
 
             for value in from_def.members() {
-                if first { // Function name
+                if first {
+                    // Function name
                     first = false;
                     continue;
                 }

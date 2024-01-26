@@ -60,7 +60,13 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
                     {"deposit": false}
                 ],
                 "id": {
-                    "not in": [1, 2, 3, 4, 5]
+                    "not in": {
+                        "select": {"acp": ["id"]},
+                        "from": "acp",
+                        "where": {
+                            "editor": {"<>": 1}
+                        }
+                    }
                 }
             },
             "+acpm": {
