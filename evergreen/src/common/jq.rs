@@ -261,10 +261,9 @@ impl JsonQueryCompiler {
         }
 
         // TODO union, intersect, except
-        // TODO wholly separate the FROM/array compilation
 
         if query["from"].is_array() {
-            let func_str = self.compile_from_function(&query["from"])?;
+            let func_str = self.compile_function_query(&query["from"])?;
             self.query_string = Some(func_str);
             return Ok(());
         }
@@ -917,8 +916,21 @@ impl JsonQueryCompiler {
         operator: &str,
         class_alias: &str,
         field_name: &str,
-        value: &JsonValue,
+        value_def: &JsonValue,
     ) -> EgResult<String> {
+        if !db::is_supported_operator(operator) {
+            return Err(format!("Operator '{operator}' not supported").into());
+        }
+        let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
+
+        let value_obj = &value_def["value"];
+
+        let mut sql = String::new();
+        if value_obj.is_null() {
+            sql += &self.compile_where_for_class(value_def, class_alias, JoinOp::And)?;
+        } else {
+        }
+
         todo!();
     }
 
@@ -929,7 +941,12 @@ impl JsonQueryCompiler {
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
-        todo!();
+        if !db::is_supported_operator(operator) {
+            return Err(format!("Operator '{operator}' not supported").into());
+        }
+
+        let func_str = self.compile_function_from(value_def)?;
+        Ok(format!(r#""{class_alias}".{field_name} {operator} {func_str}"#))
     }
 
     fn search_between_predicate(
@@ -1193,7 +1210,17 @@ impl JsonQueryCompiler {
     }
 
     /// E.g. {"from": ["actor.org_unit_descendants", 2, 1]}
-    fn compile_from_function(&mut self, from_def: &JsonValue) -> EgResult<String> {
+    fn compile_function_query(&mut self, from_def: &JsonValue) -> EgResult<String> {
+        let from_str = self.compile_function_from(from_def)?;
+
+        // This is verified in compile_function_from().
+        let func_name = from_def[0].as_str().unwrap();
+
+        Ok(format!(r#"SELECT * FROM {from_str} AS "{func_name}""#))
+    }
+
+    /// Compiles the FROM component of a function call array.
+    fn compile_function_from(&mut self, from_def: &JsonValue) -> EgResult<String> {
         if from_def.len() == 0 || !from_def.is_array() {
             return Err(format!("Invalid FROM function spec: {}", from_def.dump()).into());
         }
@@ -1239,8 +1266,6 @@ impl JsonQueryCompiler {
             }
         }
 
-        Ok(format!(r#"SELECT * FROM {func_name}({param_str}) AS "{func_name}""#))
+        Ok(format!("{func_name}({param_str})"))
     }
-
-
 }
