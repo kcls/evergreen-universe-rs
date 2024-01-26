@@ -67,10 +67,6 @@ pub struct JsonQueryCompiler {
     /// to see of this instance can view selected fields.
     controllername: Option<String>,
 
-    /// If set, we're pulling values from a DB function instead of
-    /// SELECTing from a table.
-    from_function: Option<String>,
-
     /// All tables (IDL classes) included in our query.
     /// Basically FROM + JOINs.
     sources: Vec<SourceDef>,
@@ -112,7 +108,6 @@ impl JsonQueryCompiler {
             locale: None,
             controllername: None,
             sources: Vec::new(),
-            from_function: None,
             query_string: None,
             disable_i18n: false,
             params: None,
@@ -269,8 +264,8 @@ impl JsonQueryCompiler {
         // TODO wholly separate the FROM/array compilation
 
         if query["from"].is_array() {
-            // TODO compile function calls separately to avoid
-            // complicating the main code path.
+            let func_str = self.compile_from_function(&query["from"])?;
+            self.query_string = Some(func_str);
             return Ok(());
         }
 
@@ -279,7 +274,7 @@ impl JsonQueryCompiler {
         let cname = &base_source.classname;
 
         // Compile JOINs first so we can populate our sources.
-        let join_str = self.compile_joins_for_class(cname, &query["from"][cname])?;
+        let from_str = self.compile_joins_for_class(cname, &query["from"][cname])?;
 
         let sel_str = self.compile_selects(&query["select"])?;
         let where_str = self.compile_where_for_class(&query["where"], cname, JoinOp::And)?;
@@ -288,7 +283,7 @@ impl JsonQueryCompiler {
         // TODO ORDER BY
 
         self.query_string = Some(format!(
-            r#"SELECT {sel_str} FROM {} AS "{}" {join_str} WHERE {where_str}"#,
+            r#"SELECT {sel_str} FROM {} AS "{}" {from_str} WHERE {where_str}"#,
             self.force_valid_ident(&base_source.tablename)?,
             self.force_valid_ident(base_source.alias.as_deref().unwrap_or(cname))?,
         ));
@@ -304,7 +299,7 @@ impl JsonQueryCompiler {
             return self.build_default_select_list(&cn);
         } else if !select_def.is_object() {
             // The root SELECT clause is a map of classname (or alias) to field list
-            return Err(format!("Invalid SELECT clause: {}", select_def.dump()).into());
+            return Err(format!("Invalid SELECT clause: {select_def}").into());
         }
 
         let mut sql = String::new();
@@ -368,7 +363,7 @@ impl JsonQueryCompiler {
             }
 
             let column = field_struct["column"].as_str().ok_or_else(|| {
-                format!("SELECT hash requires a 'column': {}", field_struct.dump())
+                format!("SELECT hash requires a 'column': {field_struct}")
             })?;
 
             if !self.field_may_be_selected(column, &classname) {
@@ -873,7 +868,7 @@ impl JsonQueryCompiler {
                 }
             }
         } else {
-            return Err(format!("Invalid WHERE structure: {}", where_def.dump()).into());
+            return Err(format!("Invalid WHERE structure: {where_def}").into());
         }
 
         Ok(sql)
@@ -894,8 +889,7 @@ impl JsonQueryCompiler {
         } else if value_def.is_object() {
             if value_def.len() != 1 {
                 return Err(format!(
-                    "Invalid search predicate for field: {field_name} {}",
-                    value_def.dump()
+                    "Invalid search predicate for field: {field_name} {value_def}",
                 )
                 .into());
             }
@@ -911,7 +905,7 @@ impl JsonQueryCompiler {
             } else if sub_def.is_object() {
                 self.search_field_transform_predicate(key, class_alias, field_name, sub_def)
             } else {
-                self.simple_search_predicate(key, class_alias, field_name, value_def)
+                self.simple_search_predicate(key, class_alias, field_name, sub_def)
             }
         } else {
             self.simple_search_predicate("=", class_alias, field_name, value_def)
@@ -933,7 +927,7 @@ impl JsonQueryCompiler {
         operator: &str,
         class_alias: &str,
         field_name: &str,
-        value: &JsonValue,
+        value_def: &JsonValue,
     ) -> EgResult<String> {
         todo!();
     }
@@ -942,9 +936,36 @@ impl JsonQueryCompiler {
         &mut self,
         class_alias: &str,
         field_name: &str,
-        value: &JsonValue,
+        value_def: &JsonValue,
     ) -> EgResult<String> {
-        todo!();
+        let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
+        let value_str = self.search_between_range(class_alias, field_name, value_def)?;
+        Ok(format!("{field_str} BETWEEN {value_str}"))
+    }
+
+    fn search_between_range(
+        &mut self,
+        class_alias: &str,
+        field_name: &str,
+        value_def: &JsonValue,
+    ) -> EgResult<String> {
+
+        // Field may be transformed.  Grab the "value" property.
+        // NOTE: find an example of this.
+        let value_def = if value_def.is_object() {
+            &value_def["value"]
+        } else {
+            value_def
+        };
+
+        if !value_def.is_array() || value_def.len() != 2 {
+            return Err(format!("Invalid BETWEEN clause for {field_name}: {value_def}").into());
+        }
+
+        let left_val = self.scalar_param_as_string(class_alias, field_name, &value_def[0])?;
+        let right_val = self.scalar_param_as_string(class_alias, field_name, &value_def[1])?;
+
+        Ok(format!("{left_val} AND {right_val}"))
     }
 
     /// This is your class a.b = 'c' scenario.
@@ -1020,8 +1041,7 @@ impl JsonQueryCompiler {
                 Ok(format!("{num}"))
             } else {
                 return Err(format!(
-                    "Field {field_name} is numeric, but query value isn't: {}",
-                    value.dump()
+                    "Field {field_name} is numeric, but query value isn't: {value}",
                 )
                 .into());
             }
@@ -1149,7 +1169,7 @@ impl JsonQueryCompiler {
             // "from": "aou"
             class.to_string()
         } else {
-            return Err(format!("Invalid FROM clause: {}", from_blob.dump()).into());
+            return Err(format!("Invalid FROM clause: {from_blob}").into());
         };
 
         // Sanity check our results.
@@ -1171,4 +1191,56 @@ impl JsonQueryCompiler {
 
         Ok(self.sources.get(0).unwrap())
     }
+
+    /// E.g. {"from": ["actor.org_unit_descendants", 2, 1]}
+    fn compile_from_function(&mut self, from_def: &JsonValue) -> EgResult<String> {
+        if from_def.len() == 0 || !from_def.is_array() {
+            return Err(format!("Invalid FROM function spec: {}", from_def.dump()).into());
+        }
+
+        let mut func_name = match from_def[0].as_str() {
+            Some(f) => self.force_valid_ident(f)?.to_string(),
+            None => return Err(
+                format!("Invalid function name: {}", from_def[0].dump()).into()),
+        };
+
+        let mut param_str = String::new();
+
+        if from_def.len() > 1 {
+            let mut first = true;
+
+            for value in from_def.members() {
+                if first { // Function name
+                    first = false;
+                    continue;
+                }
+
+                param_str += " ";
+
+                if value.is_null() {
+                    param_str += "NULL";
+                } else if let Some(b) = value.as_bool() {
+                    param_str += if b { "TRUE" } else { "FALSE" };
+                } else if let Some(s) = value.as_str() {
+                    let index = self.add_param(&value);
+                    param_str += &format!("${index}");
+                } else if value.is_number() {
+                    param_str += &format!("{}", value.dump());
+                } else {
+                    return Err(format!("Invalid function parameter: {}", value.dump()).into());
+                };
+
+                param_str += ",";
+            }
+
+            if param_str.len() > 0 {
+                param_str.remove(0); // first space
+                param_str.pop(); // final comma
+            }
+        }
+
+        Ok(format!(r#"SELECT * FROM {func_name}({param_str}) AS "{func_name}""#))
+    }
+
+
 }

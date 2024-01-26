@@ -67,7 +67,10 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
                 "target_copy": JsonValue::Null
             },
             "+acn": {
-                "label": ["Hello", "Goodbye"]
+                "-or": [
+                   {"label": {"between": ["Hello", "Goodbye"]}},
+                   {"label": {"<>": "SUP"}}
+                ]
             }
         },
         "order_by": [{
@@ -86,14 +89,18 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     //println!("JQ = {jq_compiler:?}");
 
-    println!(
-        "\n{}\n",
-        jq_compiler.query_string().expect("SHOULD HAVE SQL")
-    );
+    println!("\n{}\n", jq_compiler.query_string().expect("CREATE SQL"));
+    println!("\n{}\n", jq_compiler.debug_params());
+    println!("\n{}\n", jq_compiler.debug_query_kludge());
 
-    println!("\nPARRAMS: {}\n", jq_compiler.debug_params());
+    let mut jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
+    let query = json::object! {"from": ["asset.record_has_holdable_copy", 32, "something"]};
 
-    println!("\nPARRAMS: {}\n", jq_compiler.debug_query_kludge());
+    jq_compiler.compile(&query)?;
+
+    println!("\n{}\n", jq_compiler.query_string().expect("CREATE SQL"));
+    println!("\n{}\n", jq_compiler.debug_params());
+    println!("\n{}\n", jq_compiler.debug_query_kludge());
 
     Ok(())
 }
