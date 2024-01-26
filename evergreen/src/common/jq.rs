@@ -126,15 +126,48 @@ impl JsonQueryCompiler {
         self.params.as_ref()
     }
 
-    /// Returns a JSON array of parameter values; primarily for debugging.
-    pub fn param_values(&self) -> JsonValue {
+    /// Stringified JSON array of parameter indexes and values.
+    pub fn debug_params(&self) -> String {
         let mut array = json::array![];
         if let Some(params) = self.params.as_ref() {
             for param in params {
-                array.push(param.value.clone());
+                let mut obj = json::object! {};
+                obj[format!("${}", param.index)] = param.value.clone();
+                array.push(obj);
             }
         }
-        array
+
+        array.dump()
+    }
+
+    /// KLUDGE: Generates the (likely) SQL that will run on the server.
+    ///
+    /// Parameter replacement for executed queries occurs in the PG
+    /// server, which this module does not have direct access to.
+    /// This is for debugging purpose only.
+    pub fn debug_query_kludge(&self) -> String {
+        let mut sql = match self.query_string.as_ref() {
+            Some(s) => s.to_string(),
+            None => return String::new(),
+        };
+
+        if let Some(params) = self.params.as_ref() {
+            // Iterate params in reverse so we're replacing larger
+            // paramters indexes first.  This way replace('$1') does not
+            // affect $10, $11, etc. values.
+            for param in params.iter().rev() {
+                let target = format!("${}", param.index);
+
+                // Parameters will always be numbers or strings.
+                let mut value = util::json_string(&param.value).unwrap();
+
+                value = value.replace("'", "''"); // pesky single quotes
+
+                sql = sql.replace(&target, &format!("'{value}'"));
+            }
+        }
+
+        sql
     }
 
     /// Set the locale for use with oils_i18n_xlate().
@@ -148,6 +181,10 @@ impl JsonQueryCompiler {
 
     pub fn query_string(&self) -> Option<&str> {
         self.query_string.as_deref()
+    }
+
+    pub fn take_query_string(&mut self) -> Option<String> {
+        self.query_string.take()
     }
 
     /// Get the IDL classname linked to a table alias.
@@ -168,8 +205,7 @@ impl JsonQueryCompiler {
     }
 
     fn get_idl_class(&self, classname: &str) -> EgResult<&idl::Class> {
-        self
-            .idl
+        self.idl
             .classes()
             .get(classname)
             .ok_or_else(|| format!("Invalid IDL class: {classname}").into())
@@ -278,12 +314,9 @@ impl JsonQueryCompiler {
         }
 
         if sql.len() > 0 {
-            // Remove first space.
-            sql.remove(0);
+            sql.remove(0); // first space
+            sql.pop(); // final comma
         }
-
-        // remove final trailing ","
-        sql.pop();
 
         Ok(sql)
     }
@@ -354,8 +387,8 @@ impl JsonQueryCompiler {
         }
 
         if sql.len() > 0 {
-            // remove opening space
-            sql.remove(0);
+            sql.remove(0); // first space
+            sql.pop(); // final comma
         }
 
         Ok(sql)
@@ -380,6 +413,11 @@ impl JsonQueryCompiler {
             sql += " ";
             sql += &self.select_one_field(alias, None, field_name, None)?;
             sql += ","
+        }
+
+        if sql.len() > 0 {
+            sql.remove(0); // first space
+            sql.pop(); // final comma
         }
 
         Ok(sql)
@@ -537,7 +575,6 @@ impl JsonQueryCompiler {
         right_alias: &str,
         join_def: &JsonValue,
     ) -> EgResult<String> {
-
         // If there's no "class" in the hash, the alias is the classname
         let right_class = join_def["class"].as_str().unwrap_or(right_alias);
         let right_idl_class = self.get_idl_class(right_class)?;
@@ -733,7 +770,9 @@ impl JsonQueryCompiler {
                 if first {
                     first = false;
                 } else {
-                    sql += &format!(" {and_or} ");
+                    sql += " ";
+                    sql += and_or;
+                    sql += " ";
                 }
                 let sub_pred = self.compile_where_for_class(part, class_alias, join_op)?;
                 sql += &format!("({sub_pred})");
@@ -750,7 +789,9 @@ impl JsonQueryCompiler {
                 if first {
                     first = false;
                 } else {
-                    sql += &format!(" {and_or} ");
+                    sql += " ";
+                    sql += and_or;
+                    sql += " ";
                 }
 
                 if key.starts_with("+") && key.len() > 1 {
@@ -790,7 +831,6 @@ impl JsonQueryCompiler {
                         let sub_pred =
                             self.compile_where_for_class(sub_blob, class_alias, JoinOp::And)?;
                         sql += &format!("NOT ({sub_pred})");
-
                     } else if key == "-exists" || key == "-not-exists" {
                         // EXIST queries run atop a fully formed json query
                         // object.  Collect the SQL via a single-use sub-compiler.
@@ -798,8 +838,9 @@ impl JsonQueryCompiler {
 
                         compiler.compile(sub_blob)?;
 
-                        let sub_sql = compiler.query_string.as_ref().ok_or_else(
-                            || format!("EXISTS clause produced no SQL: {}", sub_blob))?;
+                        let sub_sql = compiler.take_query_string().ok_or_else(|| {
+                            format!("EXISTS clause produced no SQL: {}", sub_blob)
+                        })?;
 
                         // Absorb parameter information collected by
                         // our sub-compiler.
@@ -838,26 +879,28 @@ impl JsonQueryCompiler {
         Ok(sql)
     }
 
+    /// Does the provided field match some value?
+    /// Value may be a simple thing, like a string, or a more complex
+    /// comparison (IN list, between, etc.)
     fn search_predicate(
         &mut self,
         class_alias: &str,
         field_name: &str,
-        field_def: &JsonValue,
+        value_def: &JsonValue,
     ) -> EgResult<String> {
-
-        if field_def.is_array() {
+        if value_def.is_array() {
             // Equality IN search
-            self.search_in_predicate(class_alias, field_name, field_def, false)
-
-        } else if field_def.is_object() {
-            if field_def.len() != 1 {
+            self.search_in_predicate(class_alias, field_name, value_def, false)
+        } else if value_def.is_object() {
+            if value_def.len() != 1 {
                 return Err(format!(
-                    "Multiple predicates for field: {field_name} {}",
-                    field_def.dump()
-                ).into());
+                    "Invalid search predicate for field: {field_name} {}",
+                    value_def.dump()
+                )
+                .into());
             }
 
-            let (key, sub_def) = field_def.entries().next().unwrap(); // above
+            let (key, sub_def) = value_def.entries().next().unwrap(); // above
 
             if key == "between" {
                 self.search_between_predicate(class_alias, field_name, sub_def)
@@ -868,11 +911,10 @@ impl JsonQueryCompiler {
             } else if sub_def.is_object() {
                 self.search_field_transform_predicate(key, class_alias, field_name, sub_def)
             } else {
-                self.simple_search_predicate(key, class_alias, field_name, field_def)
+                self.simple_search_predicate(key, class_alias, field_name, value_def)
             }
-
         } else {
-            self.simple_search_predicate("=", class_alias, field_name, field_def)
+            self.simple_search_predicate("=", class_alias, field_name, value_def)
         }
     }
 
@@ -880,7 +922,7 @@ impl JsonQueryCompiler {
         &mut self,
         operator: &str,
         class_alias: &str,
-        field: &str,
+        field_name: &str,
         value: &JsonValue,
     ) -> EgResult<String> {
         todo!();
@@ -890,17 +932,16 @@ impl JsonQueryCompiler {
         &mut self,
         operator: &str,
         class_alias: &str,
-        field: &str,
+        field_name: &str,
         value: &JsonValue,
     ) -> EgResult<String> {
         todo!();
     }
 
-
     fn search_between_predicate(
         &mut self,
         class_alias: &str,
-        field: &str,
+        field_name: &str,
         value: &JsonValue,
     ) -> EgResult<String> {
         todo!();
@@ -911,7 +952,7 @@ impl JsonQueryCompiler {
         &mut self,
         mut operator: &str,
         class_alias: &str,
-        field: &str,
+        field_name: &str,
         value: &JsonValue,
     ) -> EgResult<String> {
         if !db::is_supported_operator(operator) {
@@ -922,7 +963,7 @@ impl JsonQueryCompiler {
             return Err(format!("Invalid simple search predicate: {}", value.dump()).into());
         }
 
-        let prefix = format!(r#""{class_alias}".{field}"#);
+        let prefix = format!(r#""{class_alias}".{field_name}"#);
 
         if value.is_null() {
             let val_str = if operator == "=" || operator.to_uppercase() == "IS" {
@@ -935,29 +976,51 @@ impl JsonQueryCompiler {
         } else if let Some(b) = value.as_bool() {
             let val_str = if b { "TRUE" } else { "FALSE" };
 
-            return Ok(format!("{prefix} {operator} {val_str}"));
+            let oper_str = if operator == "=" || operator.to_uppercase() == "IS" {
+                "IS"
+            } else {
+                "IS NOT"
+            };
+
+            return Ok(format!("{prefix} {oper_str} {val_str}"));
         }
 
         // Numbers and strings from here on out.
+        Ok(format!(
+            "{prefix} {operator} {}",
+            self.scalar_param_as_string(class_alias, field_name, value)?
+        ))
+    }
+
+    /// String and Number params only here.
+    /// If the value requires quoting, add it as a parameter and return
+    /// the $-prefixed parameter index as a String.
+    fn scalar_param_as_string(
+        &mut self,
+        class_alias: &str,
+        field_name: &str,
+        value: &JsonValue,
+    ) -> EgResult<String> {
+        if !value.is_string() && !value.is_number() {
+            return Err(format!("Invalid scalar value for field {field_name}: {value}").into());
+        }
 
         // If the field in question is non-numeric, then we need
         // to treat it as a replaceable parameter.
-
         let classname = self.get_alias_classname(class_alias)?;
-
         let idl_class = self.get_idl_class(classname)?;
 
         let idl_field = idl_class
-            .get_field(field)
-            .ok_or_else(|| format!("IDL class {classname} has no field named {field}"))?;
+            .get_field(field_name)
+            .ok_or_else(|| format!("IDL class {classname} has no field named {field_name}"))?;
 
         if idl_field.datatype().is_numeric() {
             if let Some(num) = value.as_number() {
                 // No need to quote numeric parameters for numeric columns.
-                Ok(format!("{prefix} {operator} {num}"))
+                Ok(format!("{num}"))
             } else {
                 return Err(format!(
-                    "Field {field} is numeric, but query value isn't: {}",
+                    "Field {field_name} is numeric, but query value isn't: {}",
                     value.dump()
                 )
                 .into());
@@ -967,7 +1030,7 @@ impl JsonQueryCompiler {
             // values.  Quote 'em.
 
             let idx = self.add_param(value);
-            Ok(format!("{prefix} {operator} ${idx}"))
+            Ok(format!("${idx}"))
         }
     }
 
@@ -975,12 +1038,75 @@ impl JsonQueryCompiler {
         &mut self,
         class_alias: &str,
         field_name: &str,
-        field_def: &JsonValue,
-        is_negative: bool,
+        value_def: &JsonValue,
+        is_not_in: bool,
     ) -> EgResult<String> {
+        let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
+        let in_str = self.search_in_list(class_alias, field_name, value_def)?;
+
+        Ok(format!(
+            "{field_str} {} ({in_str})",
+            if is_not_in { "NOT IN" } else { "IN" }
+        ))
+    }
+
+    fn search_in_list(
+        &mut self,
+        class_alias: &str,
+        field_name: &str,
+        value_def: &JsonValue,
+    ) -> EgResult<String> {
+        if !value_def.is_object() && !value_def.is_array() {
+            return Err(format!("Unexpected IN clause: {value_def}").into());
+        }
+
+        // Field may be transformed.  Grab the "value" property.
+        // NOTE: find an example of this.
+        let value_def = if value_def.is_object() {
+            &value_def["value"]
+        } else {
+            value_def
+        };
+
+        if value_def.is_object() {
+            // Some IN queries run atop a fully formed json query
+            // object.  Collect the SQL via a single-use sub-compiler.
+            let mut compiler = self.clone();
+
+            compiler.compile(value_def)?;
+
+            let sub_sql = compiler
+                .take_query_string()
+                .ok_or_else(|| format!("IN clause produced no SQL: {}", value_def))?;
+
+            // Absorb parameter information collected by
+            // our sub-compiler.
+            if let Some(params) = compiler.params.as_ref() {
+                for param in params {
+                    self.add_param(&param.value);
+                }
+            }
+
+            return Ok(sub_sql);
+        }
+
+        if value_def.len() == 0 {
+            return Err(format!("Empty IN list for field {field_name}"))?;
+        }
+
         let mut sql = String::new();
 
-        // TODO
+        for value in value_def.members() {
+            sql += " ";
+            sql += &self.scalar_param_as_string(class_alias, field_name, value)?;
+            sql += ","
+        }
+
+        if sql.len() > 0 {
+            sql.remove(0); // first space
+            sql.pop(); // final comma
+        }
+
         Ok(sql)
     }
 

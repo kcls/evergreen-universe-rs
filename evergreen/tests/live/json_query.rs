@@ -58,10 +58,16 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
                 "-or": [
                     {"mint_condition": true},
                     {"deposit": false}
-                ]
+                ],
+                "id": {
+                    "not in": [1, 2, 3, 4, 5]
+                }
             },
             "+acpm": {
                 "target_copy": JsonValue::Null
+            },
+            "+acn": {
+                "label": ["Hello", "Goodbye"]
             }
         },
         "order_by": [{
@@ -85,7 +91,9 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         jq_compiler.query_string().expect("SHOULD HAVE SQL")
     );
 
-    println!("\nPARRAMS: {}\n", jq_compiler.param_values().dump());
+    println!("\nPARRAMS: {}\n", jq_compiler.debug_params());
+
+    println!("\nPARRAMS: {}\n", jq_compiler.debug_query_kludge());
 
     Ok(())
 }
