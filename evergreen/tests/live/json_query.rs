@@ -18,7 +18,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
                 "column": "name",
                 "alias": "status_label",
                 "transform": "uppercase",
-                "params": [1, 2, 3], // TESTING
+                //"params": [1, 2, 3], // TESTING
             }]
         },
         "from": {
@@ -117,17 +117,25 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
                 {"column": "holdable", "aggregate": true, "transform": "count"}
             ]
         },
-        "from": "acp",
-        "where": {"id": {">": 1}}
+        "from": {"acp": "acn"},
+        "where": {
+            "+acn": {
+                "label": {
+                    ">=": {
+                        "transform": "oils_text_as_bytea",
+                        "value": ["oils_text_as_bytea", "ABC"]
+                    }
+                }
+            }
+        }
     };
 
     jq_compiler.compile(&query)?;
 
     println!("\n{}\n", jq_compiler.query_string().expect("CREATE SQL"));
     println!("\n{}\n", jq_compiler.debug_params());
-    println!("\n{:?}\n", jq_compiler);
+    println!("\n{:?}\n", jq_compiler.query_params());
     println!("\n{}\n", jq_compiler.debug_query_kludge());
-
 
     Ok(())
 }

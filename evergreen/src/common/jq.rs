@@ -42,8 +42,11 @@ impl SourceDef {
 #[derive(Debug)]
 pub struct ParamDef {
     /// Parameter value.
-    /// Valid options are strings, numbers, bools, and null.
-    value: JsonValue,
+    ///
+    /// Note we only need concern ourselves with Strings because
+    /// all other parameter types are included as bare values (bool,
+    /// numbers, null) or futher decomposed into number and strings.
+    value: String,
 
     /// 0-based offset of this parameter in the list of parameters.
     /// This is used when passing the query to the DB backend
@@ -111,18 +114,27 @@ impl JsonQueryCompiler {
             locale: None,
             controllername: None,
             sources: Vec::new(),
-            has_aggregate: false,
             query_string: None,
             disable_i18n: false,
             params: None,
             param_index: 1,
             group_by: Vec::new(),
+            has_aggregate: false,
             select_index: 0,
         }
     }
 
-    pub fn params(&self) -> Option<&Vec<ParamDef>> {
-        self.params.as_ref()
+    /// Returns a list of parameter values as strs.
+    ///
+    /// Note we only have to concern ourselves with Strings because
+    /// all other parameter types are included as bare values (numbers)
+    /// or futher decomposed into number and strings.
+    pub fn query_params(&self) -> Vec<&str> {
+        if let Some(params) = self.params.as_ref() {
+            params.iter().map(|p| p.value.as_str()).collect()
+        } else {
+            vec![]
+        }
     }
 
     /// Stringified JSON array of parameter indexes and values.
@@ -131,7 +143,7 @@ impl JsonQueryCompiler {
         if let Some(params) = self.params.as_ref() {
             for param in params {
                 let mut obj = json::object! {};
-                obj[format!("${}", param.index)] = param.value.clone();
+                obj[format!("${}", param.index)] = json::from(param.value.as_str());
                 array.push(obj);
             }
         }
@@ -158,7 +170,7 @@ impl JsonQueryCompiler {
                 let target = format!("${}", param.index);
 
                 // Parameters will always be numbers or strings.
-                let mut value = util::json_string(&param.value).unwrap();
+                let mut value = param.value.to_string();
 
                 value = value.replace("'", "''"); // pesky single quotes
 
@@ -258,10 +270,21 @@ impl JsonQueryCompiler {
         true
     }
 
-    /// Compile a json_query structure into its constituent parts.
+    /// Entry point for compiling JSON-query into SQL.
+    ///
+    /// The resulting SQL may be found in self.query_string() and
+    /// the resulting query parameters may be found in self.query_params();
     pub fn compile(&mut self, query: &JsonValue) -> EgResult<()> {
         if !query.is_object() {
             return Err(format!("json_query must be a JSON hash").into());
+        }
+
+        if util::json_bool(&query["no_i18n"]) {
+            self.disable_i18n = true;
+        }
+
+        if util::json_bool(&query["distinct"]) {
+            self.has_aggregate = true;
         }
 
         // TODO union, intersect, except
@@ -344,7 +367,7 @@ impl JsonQueryCompiler {
 
                 if self.field_may_be_selected(col, &classname) {
                     return Ok(format!(
-                        "{},",
+                        "{}",
                         self.select_one_field(class_alias, None, col, None)?
                     ));
                 }
@@ -457,7 +480,7 @@ impl JsonQueryCompiler {
             if let Some(xform) = fdef["transform"].as_str() {
                 let mut sql = String::new();
 
-                sql += &self.check_identifier(xform)?.to_uppercase();
+                sql += &self.check_identifier(xform)?;
                 sql += "(";
 
                 if util::json_bool(&fdef["distinct"]) {
@@ -469,7 +492,7 @@ impl JsonQueryCompiler {
                 sql += &self.format_one_select_field(class_alias, &idl_class, None, idl_field)?;
 
                 for param in fdef["params"].members() {
-                    let index = self.add_param(param);
+                    let index = self.add_param(param)?;
                     sql += &format!(", ${index}");
                 }
 
@@ -488,7 +511,7 @@ impl JsonQueryCompiler {
                     self.group_by.push(self.select_index);
                 }
 
-               return Ok(sql);
+                return Ok(sql);
             }
         }
 
@@ -872,7 +895,7 @@ impl JsonQueryCompiler {
                         // our sub-compiler.
                         if let Some(params) = compiler.params.as_ref() {
                             for param in params {
-                                self.add_param(&param.value);
+                                self.add_param_string(param.value.clone());
                             }
                         }
 
@@ -951,6 +974,10 @@ impl JsonQueryCompiler {
     }
 
     /// Compiles a variety of somefield-someoprator-somevalue scenarios.
+    ///
+    /// Examples (the inner {...}):
+    ///
+    /// {"label": {">=": {"transform": "oils_text_as_bytea", "value": ["oils_text_as_bytea", "ABC"]}}
     fn search_field_transform_predicate(
         &mut self,
         operator: &str,
@@ -991,7 +1018,7 @@ impl JsonQueryCompiler {
         let right_parens = if extra_parens { ")" } else { "" };
 
         Ok(format!(
-            r#"{}{} {} {} {}{}{}"#,
+            r#"{}{} {} {}{}{}{}"#,
             left_parens,
             field_str,
             self.check_operator(operator)?,
@@ -1136,19 +1163,16 @@ impl JsonQueryCompiler {
             .ok_or_else(|| format!("IDL class {classname} has no field named {field_name}"))?;
 
         if idl_field.datatype().is_numeric() {
-             // No need to quote numeric parameters for numeric columns.
+            // No need to quote numeric parameters for numeric columns.
 
             if let Some(num) = value.as_number() {
                 Ok(num.to_string())
-
             } else if let Ok(num) = util::json_int(&value) {
                 // Handle cases where we receive numeric values as JSON strings.
                 Ok(num.to_string())
-
             } else if let Ok(num) = util::json_float(&value) {
                 // Handle cases where we receive numeric values as JSON strings.
                 Ok(num.to_string())
-
             } else {
                 return Err(format!(
                     "Field {field_name} is numeric, but query value isn't: {value}",
@@ -1157,7 +1181,7 @@ impl JsonQueryCompiler {
             }
         } else {
             // IDL field is non-numeric.  Quote the param.
-            Ok(format!("${}", self.add_param(value)))
+            Ok(format!("${}", self.add_param(value)?))
         }
     }
 
@@ -1225,7 +1249,7 @@ impl JsonQueryCompiler {
             // our sub-compiler.
             if let Some(params) = compiler.params.as_ref() {
                 for param in params {
-                    self.add_param(&param.value);
+                    self.add_param_string(param.value.clone());
                 }
             }
 
@@ -1274,6 +1298,14 @@ impl JsonQueryCompiler {
         }
     }
 
+    /// See add_param_string()
+    ///
+    /// The value parameter Must be a String or Number.
+    fn add_param(&mut self, value: &JsonValue) -> EgResult<usize> {
+        let s = util::json_string(value)?;
+        Ok(self.add_param_string(s))
+    }
+
     /// Adds a new query parameter and increments our param index.
     ///
     /// At SQL compile time, parameter values that require escaping
@@ -1282,13 +1314,13 @@ impl JsonQueryCompiler {
     ///
     /// At query execution time, parameter values are passed to the
     /// DB for runtime compilation and string quoting.
-    fn add_param(&mut self, value: &JsonValue) -> usize {
+    fn add_param_string(&mut self, value: String) -> usize {
         let index = self.param_index;
         self.param_index += 1;
 
         let def = ParamDef {
             index,
-            value: value.clone(),
+            value: value,
         };
 
         if let Some(list) = self.params.as_mut() {
@@ -1385,7 +1417,7 @@ impl JsonQueryCompiler {
                 } else if let Some(b) = value.as_bool() {
                     param_str += if b { "TRUE" } else { "FALSE" };
                 } else if let Some(s) = value.as_str() {
-                    let index = self.add_param(&value);
+                    let index = self.add_param(&value)?;
                     param_str += &format!("${index}");
                 } else if value.is_number() {
                     param_str += &format!("{}", value.dump());
