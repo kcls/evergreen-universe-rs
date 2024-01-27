@@ -82,10 +82,13 @@ pub struct JsonQueryCompiler {
     /// unique value.
     param_index: usize,
 
-    /// TODO
+    /// True if one or more fields have the "aggregate" flag set.
+    has_aggregate: bool,
+
+    /// List of fields (by position) to add to the GROUP BY clause.
     group_by: Vec<usize>,
 
-    /// TODO
+    /// Current index into the list of SELECT'ed fields.
     select_index: usize,
 }
 
@@ -108,6 +111,7 @@ impl JsonQueryCompiler {
             locale: None,
             controllername: None,
             sources: Vec::new(),
+            has_aggregate: false,
             query_string: None,
             disable_i18n: false,
             params: None,
@@ -278,14 +282,18 @@ impl JsonQueryCompiler {
         let sel_str = self.compile_selects(&query["select"])?;
         let where_str = self.compile_where_for_class(&query["where"], cname, JoinOp::And)?;
 
-        // TODO GROUP BY (reminder: aggregates / distinct)
-        // TODO ORDER BY
-
-        self.query_string = Some(format!(
+        let mut sql = format!(
             r#"SELECT {sel_str} FROM {} AS "{}" {from_str} WHERE {where_str}"#,
-            self.force_valid_ident(&base_source.tablename)?,
-            self.force_valid_ident(base_source.alias.as_deref().unwrap_or(cname))?,
-        ));
+            self.check_identifier(&base_source.tablename)?,
+            self.check_identifier(base_source.alias.as_deref().unwrap_or(cname))?,
+        );
+
+        if self.has_aggregate {
+            let positions: Vec<String> = self.group_by.iter().map(|n| format!("{n}")).collect();
+            sql += &format!(" GROUP BY {}", positions.join(","));
+        }
+
+        self.query_string = Some(sql);
 
         Ok(())
     }
@@ -418,6 +426,8 @@ impl JsonQueryCompiler {
         Ok(sql)
     }
 
+    // TODO a way to call this function without appending to the group-by
+    // since it's also called e.g. when building predicates.
     fn select_one_field(
         &mut self,
         class_alias: &str,
@@ -425,12 +435,16 @@ impl JsonQueryCompiler {
         field_name: &str,
         field_def: Option<&JsonValue>,
     ) -> EgResult<String> {
+        self.select_index += 1; // TODO
+
         let idl_class = self.get_idl_class(self.get_alias_classname(class_alias)?)?;
+        let idl_class = idl_class.clone(); // TODO parallel mut's
 
         let idl_field = idl_class
             .fields()
             .get(field_name)
             .ok_or_else(|| format!("Invalid field {}::{field_name}", idl_class.classname()))?;
+
 
         if let Some(fdef) = field_def {
             // If we have a field_def, it may mean the field has extended
@@ -439,7 +453,7 @@ impl JsonQueryCompiler {
             if let Some(xform) = fdef["transform"].as_str() {
                 let mut sql = String::new();
 
-                sql += &format!(" {}(", &self.force_valid_ident(xform)?.to_uppercase());
+                sql += &format!(" {}(", &self.check_identifier(xform)?.to_uppercase());
 
                 if util::json_bool(&fdef["distinct"]) {
                     sql += "DISTINCT ";
@@ -447,7 +461,7 @@ impl JsonQueryCompiler {
 
                 // Avoid sending the field alias here since any alias
                 // should apply to our transform as a whole.
-                sql += &self.format_one_select_field(class_alias, idl_class, None, idl_field)?;
+                sql += &self.format_one_select_field(class_alias, &idl_class, None, idl_field)?;
 
                 for param in fdef["params"].members() {
                     let index = self.add_param(param);
@@ -458,16 +472,24 @@ impl JsonQueryCompiler {
 
                 if let Some(rfield) = fdef["result_field"].as_str() {
                     // Append (...).xform_result_field.
-                    sql = format!(r#"({sql})."{}""#, self.force_valid_ident(rfield)?);
+                    sql = format!(r#"({sql})."{}""#, self.check_identifier(rfield)?);
                 } else if let Some(alias) = field_alias {
-                    sql += &format!(r#" AS "{}""#, self.force_valid_ident(alias)?);
+                    sql += &format!(r#" AS "{}""#, self.check_identifier(alias)?);
+                }
+
+                if util::json_bool(&fdef["aggregate"]) {
+                    self.has_aggregate = true;
+                } else {
+                    self.group_by.push(self.select_index);
                 }
 
                 return Ok(sql);
             }
         }
 
-        self.format_one_select_field(class_alias, idl_class, field_alias, idl_field)
+        self.group_by.push(self.select_index);
+
+        self.format_one_select_field(class_alias, &idl_class, field_alias, idl_field)
     }
 
     /// Format the SELECT component for a single field, adding the
@@ -484,8 +506,8 @@ impl JsonQueryCompiler {
         if !idl_field.i18n() || self.disable_i18n {
             sql = format!(
                 r#""{}".{}"#,
-                self.force_valid_ident(class_alias)?,
-                self.force_valid_ident(idl_field.name())?
+                self.check_identifier(class_alias)?,
+                self.check_identifier(idl_field.name())?
             );
         } else {
             let locale = self.locale.as_deref().unwrap_or(DEFAULT_LOCALE);
@@ -502,17 +524,17 @@ impl JsonQueryCompiler {
 
             sql = format!(
                 r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{locale}')"#,
-                self.force_valid_ident(tablename)?,
-                self.force_valid_ident(class_alias)?,
-                self.force_valid_ident(idl_field.name())?,
-                self.force_valid_ident(pkey)?,
-                self.force_valid_ident(class_alias)?,
-                self.force_valid_ident(pkey)?,
+                self.check_identifier(tablename)?,
+                self.check_identifier(class_alias)?,
+                self.check_identifier(idl_field.name())?,
+                self.check_identifier(pkey)?,
+                self.check_identifier(class_alias)?,
+                self.check_identifier(pkey)?,
             );
         }
 
         if let Some(alias) = field_alias {
-            sql += &format!(r#" AS "{}""#, self.force_valid_ident(alias)?);
+            sql += &format!(r#" AS "{}""#, self.check_identifier(alias)?);
         }
 
         Ok(sql)
@@ -693,12 +715,12 @@ impl JsonQueryCompiler {
         let mut sql = format!(
             r#"{} {} AS "{}" ON ("{}".{} = "{}".{}"#,
             join_type,
-            self.force_valid_ident(&tablename)?,
-            self.force_valid_ident(right_alias)?,
-            self.force_valid_ident(right_alias)?,
-            self.force_valid_ident(right_join_field.as_deref().unwrap())?,
-            self.force_valid_ident(left_alias)?,
-            self.force_valid_ident(left_join_field.as_deref().unwrap())?,
+            self.check_identifier(&tablename)?,
+            self.check_identifier(right_alias)?,
+            self.check_identifier(right_alias)?,
+            self.check_identifier(right_join_field.as_deref().unwrap())?,
+            self.check_identifier(left_alias)?,
+            self.check_identifier(left_join_field.as_deref().unwrap())?,
         );
 
         // ----
@@ -882,7 +904,7 @@ impl JsonQueryCompiler {
     ///
     /// {"shortname": "BR1"}
     /// {"shortname": ["BR1", "BR2"]}
-    /// {"shortname": {"not in": ["BR1", "BR2"]}}
+    /// {"shortname": {"in": ["BR1", "BR2"]}}
     /// {"shortname": {"not in": {"select": ...}}}
     fn search_predicate(
         &mut self,
@@ -962,7 +984,7 @@ impl JsonQueryCompiler {
             r#"{}{} {} {} {}{}{}"#,
             left_parens,
             field_str,
-            self.force_valid_operator(operator)?,
+            self.check_operator(operator)?,
             left_parens,
             value_str,
             right_parens,
@@ -981,7 +1003,7 @@ impl JsonQueryCompiler {
 
         Ok(format!(
             r#""{class_alias}".{field_name} {} {func_str}"#,
-            self.force_valid_operator(operator)?,
+            self.check_operator(operator)?,
         ))
     }
 
@@ -1019,6 +1041,12 @@ impl JsonQueryCompiler {
     }
 
     /// This is your class a.b = 'c' scenario.
+    ///
+    /// Examples:
+    ///
+    /// {"somefield": {"is not": null}}
+    /// {"somefield": "foobar"}
+    /// {"somefield": true}
     fn simple_search_predicate(
         &mut self,
         mut operator: &str,
@@ -1057,13 +1085,21 @@ impl JsonQueryCompiler {
         // Numbers and strings from here on out.
         Ok(format!(
             "{prefix} {} {param_str}",
-            self.force_valid_operator(operator)?,
+            self.check_operator(operator)?,
         ))
     }
 
-    /// String and Number params only here.
-    /// If the value requires quoting, add it as a parameter and return
-    /// the $-prefixed parameter index as a String.
+    /// Encode a String or Number parameter value as a String suitable
+    /// for including in the main SQL string.
+    ///
+    /// Values that requires quoting are added as replaceable parameters.
+    ///
+    /// Results in an error if the value is not appropriate for the
+    /// field, e.g. a numeric field compared to a non-numeric string value.
+    ///
+    /// Examples:
+    /// 1
+    /// "1" -- will be parameterized and eventually quoted
     fn scalar_param_as_string(
         &mut self,
         class_alias: &str,
@@ -1084,9 +1120,19 @@ impl JsonQueryCompiler {
             .ok_or_else(|| format!("IDL class {classname} has no field named {field_name}"))?;
 
         if idl_field.datatype().is_numeric() {
+             // No need to quote numeric parameters for numeric columns.
+
             if let Some(num) = value.as_number() {
-                // No need to quote numeric parameters for numeric columns.
-                Ok(format!("{num}"))
+                Ok(num.to_string())
+
+            } else if let Ok(num) = util::json_int(&value) {
+                // Handle cases where we receive numeric values as JSON strings.
+                Ok(num.to_string())
+
+            } else if let Ok(num) = util::json_float(&value) {
+                // Handle cases where we receive numeric values as JSON strings.
+                Ok(num.to_string())
+
             } else {
                 return Err(format!(
                     "Field {field_name} is numeric, but query value isn't: {value}",
@@ -1094,14 +1140,18 @@ impl JsonQueryCompiler {
                 .into());
             }
         } else {
-            // IDL field is non-numeric but may still contain numeric
-            // values.  Quote 'em.
-
-            let idx = self.add_param(value);
-            Ok(format!("${idx}"))
+            // IDL field is non-numeric.  Quote the param.
+            Ok(format!("${}", self.add_param(value)))
         }
     }
 
+    /// Compiles an IN clause.
+    ///
+    /// Examples:
+    ///
+    /// {"somefield": [1, 2, 3, 4]}
+    /// {"somefield": {"not in": [1, 2, 3, 4]}}
+    /// {"somefield": {"in": {"select": {"au":["id"]}, "from", ...}}}
     fn search_in_predicate(
         &mut self,
         class_alias: &str,
@@ -1119,6 +1169,13 @@ impl JsonQueryCompiler {
         ))
     }
 
+    /// Compiles right-hand part of an IN clause.
+    ///
+    /// Examples (minus the outermost container):
+    ///
+    /// {"somefield": [1, 2, 3, 4]}
+    /// {"somefield": {"not in": [1, 2, 3, 4]}}
+    /// {"somefield": {"in": {"select": {"au":["id"]}, "from", ...}}}
     fn search_in_list(
         &mut self,
         class_alias: &str,
@@ -1180,7 +1237,9 @@ impl JsonQueryCompiler {
     }
 
     /// Verify the provided string may act as a valid PG identifier.
-    fn force_valid_ident<'a>(&'a self, s: &'a str) -> EgResult<&str> {
+    ///
+    /// Returns the source value on success for convenience.
+    fn check_identifier<'a>(&'a self, s: &'a str) -> EgResult<&str> {
         if db::is_identifier(s) {
             Ok(s)
         } else {
@@ -1188,8 +1247,10 @@ impl JsonQueryCompiler {
         }
     }
 
-    /// Verify the provided string may act as a valid PG identifier.
-    fn force_valid_operator<'a>(&'a self, operator: &'a str) -> EgResult<&str> {
+    /// Verify the provided string may act as a valid SQL operator
+    ///
+    /// Returns the source value on success for convenience.
+    fn check_operator<'a>(&'a self, operator: &'a str) -> EgResult<&str> {
         if db::is_supported_operator(operator) {
             Ok(operator)
         } else {
@@ -1197,8 +1258,14 @@ impl JsonQueryCompiler {
         }
     }
 
-    /// Adds a query parameter to the pile and increments our
-    /// param index.
+    /// Adds a new query parameter and increments our param index.
+    ///
+    /// At SQL compile time, parameter values that require escaping
+    /// (i.e. String-ish things) are encoded as numeric placeholders
+    /// ($1, $2, ...).
+    ///
+    /// At query execution time, parameter values are passed to the
+    /// DB for runtime compilation and string quoting.
     fn add_param(&mut self, value: &JsonValue) -> usize {
         let index = self.param_index;
         self.param_index += 1;
@@ -1217,7 +1284,11 @@ impl JsonQueryCompiler {
         return index;
     }
 
-    /// Determine the core IDL class from the main FROM clause.
+    /// Get the core IDL class from the main FROM clause.
+    ///
+    /// Examples:
+    ///
+    /// {"acp": {"acn": {"join": {"bre": ... }}}
     fn set_base_source(&mut self, from_blob: &JsonValue) -> EgResult<&SourceDef> {
         let classname = if from_blob.is_object() && from_blob.len() == 1 {
             // "from":{"aou": ...}
@@ -1250,7 +1321,11 @@ impl JsonQueryCompiler {
         Ok(self.sources.get(0).unwrap())
     }
 
-    /// E.g. {"from": ["actor.org_unit_descendants", 2, 1]}
+    /// Compile a (sub-)query which is simply a function call.
+    ///
+    /// Examples:
+    ///
+    /// {"from": ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]}
     fn compile_function_query(&mut self, from_def: &JsonValue) -> EgResult<String> {
         let from_str = self.compile_function_from(from_def)?;
 
@@ -1261,13 +1336,17 @@ impl JsonQueryCompiler {
     }
 
     /// Compiles the FROM component of a function call array.
+    ///
+    /// Examples:
+    ///
+    /// ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]
     fn compile_function_from(&mut self, from_def: &JsonValue) -> EgResult<String> {
         if from_def.len() == 0 || !from_def.is_array() {
             return Err(format!("Invalid FROM function spec: {}", from_def.dump()).into());
         }
 
         let mut func_name = match from_def[0].as_str() {
-            Some(f) => self.force_valid_ident(f)?.to_string(),
+            Some(f) => self.check_identifier(f)?.to_string(),
             None => return Err(format!("Invalid function name: {}", from_def[0].dump()).into()),
         };
 
