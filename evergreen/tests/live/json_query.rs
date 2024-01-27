@@ -99,7 +99,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     println!("\n{}\n", jq_compiler.debug_params());
     println!("\n{}\n", jq_compiler.debug_query_kludge());
 
-    let mut jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
+    jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
     let query = json::object! {"from": ["asset.record_has_holdable_copy", 32, "something"]};
 
     jq_compiler.compile(&query)?;
@@ -107,6 +107,27 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     println!("\n{}\n", jq_compiler.query_string().expect("CREATE SQL"));
     println!("\n{}\n", jq_compiler.debug_params());
     println!("\n{}\n", jq_compiler.debug_query_kludge());
+
+    jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
+    let query = json::object! {
+        "select": {
+            "acp": [
+                "circ_lib",
+                "call_number",
+                {"column": "holdable", "aggregate": true, "transform": "count"}
+            ]
+        },
+        "from": "acp",
+        "where": {"id": {">": 1}}
+    };
+
+    jq_compiler.compile(&query)?;
+
+    println!("\n{}\n", jq_compiler.query_string().expect("CREATE SQL"));
+    println!("\n{}\n", jq_compiler.debug_params());
+    println!("\n{:?}\n", jq_compiler);
+    println!("\n{}\n", jq_compiler.debug_query_kludge());
+
 
     Ok(())
 }

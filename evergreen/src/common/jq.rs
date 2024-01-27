@@ -290,7 +290,7 @@ impl JsonQueryCompiler {
 
         if self.has_aggregate {
             let positions: Vec<String> = self.group_by.iter().map(|n| format!("{n}")).collect();
-            sql += &format!(" GROUP BY {}", positions.join(","));
+            sql += &format!(" GROUP BY {}", positions.join(", "));
         }
 
         self.query_string = Some(sql);
@@ -445,15 +445,20 @@ impl JsonQueryCompiler {
             .get(field_name)
             .ok_or_else(|| format!("Invalid field {}::{field_name}", idl_class.classname()))?;
 
+        let mut is_aggregate = false;
 
         if let Some(fdef) = field_def {
             // If we have a field_def, it may mean the field has extended
             // properties, like a transform or other flags.
 
+            // Do we support aggregate functions?  Maybe.
+            is_aggregate = util::json_bool(&fdef["aggregate"]);
+
             if let Some(xform) = fdef["transform"].as_str() {
                 let mut sql = String::new();
 
-                sql += &format!(" {}(", &self.check_identifier(xform)?.to_uppercase());
+                sql += &self.check_identifier(xform)?.to_uppercase();
+                sql += "(";
 
                 if util::json_bool(&fdef["distinct"]) {
                     sql += "DISTINCT ";
@@ -477,17 +482,21 @@ impl JsonQueryCompiler {
                     sql += &format!(r#" AS "{}""#, self.check_identifier(alias)?);
                 }
 
-                if util::json_bool(&fdef["aggregate"]) {
+                if is_aggregate {
                     self.has_aggregate = true;
                 } else {
                     self.group_by.push(self.select_index);
                 }
 
-                return Ok(sql);
+               return Ok(sql);
             }
         }
 
-        self.group_by.push(self.select_index);
+        if is_aggregate {
+            self.has_aggregate = true;
+        } else {
+            self.group_by.push(self.select_index);
+        }
 
         self.format_one_select_field(class_alias, &idl_class, field_alias, idl_field)
     }
@@ -941,6 +950,7 @@ impl JsonQueryCompiler {
         }
     }
 
+    /// Compiles a variety of somefield-someoprator-somevalue scenarios.
     fn search_field_transform_predicate(
         &mut self,
         operator: &str,
@@ -992,6 +1002,15 @@ impl JsonQueryCompiler {
         ))
     }
 
+    /// Encode a function call as the right-hand part of a WHERE entry.
+    ///
+    /// Examples:
+    ///
+    /// ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]
+    ///
+    /// Output:
+    ///
+    /// "aou".id = some.function()
     fn search_function_predicate(
         &mut self,
         operator: &str,
@@ -1007,24 +1026,19 @@ impl JsonQueryCompiler {
         ))
     }
 
+    /// Compiles a BETWEEN search.
+    ///
+    /// Examples (but really just the array part):
+    ///
+    /// {"somefield": {"between": [123, 456]}}
     fn search_between_predicate(
         &mut self,
         class_alias: &str,
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
-        let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
-        let value_str = self.search_between_range(class_alias, field_name, value_def)?;
-        Ok(format!("{field_str} BETWEEN {value_str}"))
-    }
-
-    fn search_between_range(
-        &mut self,
-        class_alias: &str,
-        field_name: &str,
-        value_def: &JsonValue,
-    ) -> EgResult<String> {
         let value_def = if !value_def["value"].is_null() {
+            // Could be a field transformed w/ a function
             &value_def["value"]
         } else {
             value_def
@@ -1034,10 +1048,12 @@ impl JsonQueryCompiler {
             return Err(format!("Invalid BETWEEN clause for {field_name}: {value_def}").into());
         }
 
-        let left_val = self.scalar_param_as_string(class_alias, field_name, &value_def[0])?;
-        let right_val = self.scalar_param_as_string(class_alias, field_name, &value_def[1])?;
-
-        Ok(format!("{left_val} AND {right_val}"))
+        Ok(format!(
+            "{} BETWEEN {} AND {}",
+            self.select_one_field(class_alias, None, field_name, Some(value_def))?,
+            self.scalar_param_as_string(class_alias, field_name, &value_def[0])?,
+            self.scalar_param_as_string(class_alias, field_name, &value_def[1])?
+        ))
     }
 
     /// This is your class a.b = 'c' scenario.
