@@ -27,7 +27,7 @@ fn main() -> eg::EgResult<()> {
         timer: util::Timer::new(),
     };
 
-    //circ::run_live_tests(&mut tester)?;
+    circ::run_live_tests(&mut tester)?;
     json_query::run_live_tests(&mut tester)?;
 
     Ok(())

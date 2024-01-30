@@ -137,5 +137,14 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     println!("\n{:?}\n", jq_compiler.query_params());
     println!("\n{}\n", jq_compiler.debug_query_kludge());
 
+    jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
+    let query = json::object! {"union": [{"select":{"au":["id"]},"from": "au"}, {"select":{"aou":["id"]},"from":"aou"}], "all": true, "alias":"fooooo"};
+
+    jq_compiler.compile(&query)?;
+
+    println!("\n{}\n", jq_compiler.query_string().expect("CREATE SQL"));
+    println!("\n{}\n", jq_compiler.debug_params());
+    println!("\n{}\n", jq_compiler.debug_query_kludge());
+
     Ok(())
 }

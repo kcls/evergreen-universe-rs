@@ -45,13 +45,14 @@ pub struct ParamDef {
     ///
     /// Note we only need concern ourselves with Strings because
     /// all other parameter types are included as bare values (bool,
-    /// numbers, null) or futher decomposed into number and strings.
-    value: String,
+    /// numbers, null) or futher decomposed into such scalar values.
+    value: Option<String>,
+}
 
-    /// 0-based offset of this parameter in the list of parameters.
-    /// This is used when passing the query to the DB backend
-    /// for ?-based variable replacements.
-    index: usize,
+impl ParamDef {
+    fn take_value(&mut self) -> Option<String> {
+        self.value.take()
+    }
 }
 
 #[derive(Debug)]
@@ -79,11 +80,6 @@ pub struct JsonQueryCompiler {
 
     /// Query parameters whose values are replaced at query execution time.
     params: Option<Vec<ParamDef>>,
-
-    /// Global parameter index.  This value increases by one with
-    /// every WHERE/transform parameter added so that each has a
-    /// unique value.
-    param_index: usize,
 
     /// True if one or more fields have the "aggregate" flag set.
     has_aggregate: bool,
@@ -117,7 +113,6 @@ impl JsonQueryCompiler {
             query_string: None,
             disable_i18n: false,
             params: None,
-            param_index: 1,
             group_by: Vec::new(),
             has_aggregate: false,
             select_index: 0,
@@ -131,7 +126,8 @@ impl JsonQueryCompiler {
     /// or futher decomposed into number and strings.
     pub fn query_params(&self) -> Vec<&str> {
         if let Some(params) = self.params.as_ref() {
-            params.iter().map(|p| p.value.as_str()).collect()
+            // Every parameter should have a value at compile/execute time.
+            params.iter().map(|p| p.value.as_deref().unwrap()).collect()
         } else {
             vec![]
         }
@@ -141,10 +137,13 @@ impl JsonQueryCompiler {
     pub fn debug_params(&self) -> String {
         let mut array = json::array![];
         if let Some(params) = self.params.as_ref() {
-            for param in params {
+            for (idx, param) in params.iter().enumerate() {
                 let mut obj = json::object! {};
-                obj[format!("${}", param.index)] = json::from(param.value.as_str());
-                array.push(obj);
+
+                // Every parameter should have a value at compile/execute time.
+                obj[format!("${}", idx + 1)] = json::from(param.value.as_deref().unwrap());
+
+                array.push(obj).expect("Array is too big??");
             }
         }
 
@@ -165,12 +164,16 @@ impl JsonQueryCompiler {
         if let Some(params) = self.params.as_ref() {
             // Iterate params in reverse so we're replacing larger
             // paramters indexes first.  This way replace('$1') does not
-            // affect $10, $11, etc. values.
+            // affect $10, $11, etc.
+            let mut idx = params.len();
             for param in params.iter().rev() {
-                let target = format!("${}", param.index);
+                let target = format!("${idx}");
 
-                // Parameters will always be numbers or strings.
-                let mut value = param.value.to_string();
+                // Counting down from the top.
+                idx -= 1;
+
+                // Every parameter should have a value at compile/execute time.
+                let mut value = param.value.as_ref().unwrap().to_string();
 
                 value = value.replace("'", "''"); // pesky single quotes
 
@@ -220,14 +223,6 @@ impl JsonQueryCompiler {
             .classes()
             .get(classname)
             .ok_or_else(|| format!("Invalid IDL class: {classname}").into())
-    }
-
-    fn get_base_source(&self) -> EgResult<&SourceDef> {
-        self.sources
-            .iter()
-            .filter(|s| s.is_base_class)
-            .next()
-            .ok_or_else(|| format!("No bass class has been set").into())
     }
 
     /// Returns the IDL classname of the base class, i.e. the root
@@ -287,11 +282,16 @@ impl JsonQueryCompiler {
             self.has_aggregate = true;
         }
 
-        // TODO union, intersect, except
-
         if query["from"].is_array() {
             let func_str = self.compile_function_query(&query["from"])?;
             self.query_string = Some(func_str);
+            return Ok(());
+        } else if !query["union"].is_null()
+            || !query["union"].is_null()
+            || !query["union"].is_null()
+        {
+            let combo_str = self.compile_combo_query(&query)?;
+            self.query_string = Some(combo_str);
             return Ok(());
         }
 
@@ -308,7 +308,7 @@ impl JsonQueryCompiler {
         let mut sql = format!(
             r#"SELECT {sel_str} FROM {} AS "{}" {from_str} WHERE {where_str}"#,
             self.check_identifier(&base_source.tablename)?,
-            self.check_identifier(base_source.alias.as_deref().unwrap_or(cname))?,
+            self.check_identifier(base_source.prefix())?,
         );
 
         if self.has_aggregate {
@@ -319,6 +319,89 @@ impl JsonQueryCompiler {
         self.query_string = Some(sql);
 
         Ok(())
+    }
+
+    /// Compiles a UNION, INTERSECT, or EXCEPT query.
+    fn compile_combo_query(&mut self, query: &JsonValue) -> EgResult<String> {
+        let all = util::json_bool(&query["all"]);
+        let qtype;
+
+        let query_array = if query["union"].is_array() {
+            qtype = "UNION";
+            &query["union"]
+        } else if query["except"].is_array() {
+            qtype = "EXCEPT";
+            &query["except"]
+        } else if query["intersect"].is_array() {
+            qtype = "INTERSECT";
+            &query["intersect"]
+        } else {
+            return Err(format!("Invalid UNION/INTERSECT/EXCEPT query: {}", query.dump()).into());
+        };
+
+        if !query["order_by"].is_null() {
+            return Err(format!("ORDER BY not supported for query type: {}", query.dump()).into());
+        }
+
+        // At this point we're guaranteed it's an array.
+        if query_array.len() < 2 {
+            return Err(format!("Invalid query array for query type: {}", query.dump()).into());
+        }
+
+        if qtype == "EXCEPT" && query_array.len() > 2 {
+            return Err(format!(
+                "EXCEPT operator has too many query operands: {}",
+                query.dump()
+            )
+            .into());
+        }
+
+        let mut sql = String::new();
+        for (idx, hash) in query_array.members().enumerate() {
+            if !hash.is_object() {
+                return Err(format!("Invalid sub-query for query type: {}", query.dump()).into());
+            }
+
+            if idx > 0 {
+                sql += " ";
+                sql += qtype;
+                if all {
+                    sql += " ALL ";
+                }
+            }
+
+            sql += &self.compile_sub_query(hash)?;
+        }
+
+        Ok(sql)
+    }
+
+    /// Compile a wholly-formed subquery and collect its parameter values.
+    fn compile_sub_query(&mut self, query: &JsonValue) -> EgResult<String> {
+        let mut compiler = self.clone();
+
+        compiler.compile(query)?;
+
+        let sub_sql = compiler
+            .take_query_string()
+            .ok_or_else(|| format!("Sub-query produced no SQL: {}", query.dump()))?;
+
+        // Absorb parameter information collected by
+        // our sub-compiler.
+        if let Some(params) = compiler.params.as_mut() {
+            for param in params {
+                let val = param.take_value().ok_or_else(|| {
+                    format!(
+                        "Sub-query parater should always have a value: {}",
+                        query.dump()
+                    )
+                })?;
+
+                self.add_param_string(val);
+            }
+        }
+
+        Ok(sub_sql)
     }
 
     fn compile_selects(&mut self, select_def: &JsonValue) -> EgResult<String> {
@@ -368,7 +451,7 @@ impl JsonQueryCompiler {
                 if self.field_may_be_selected(col, &classname) {
                     return Ok(format!(
                         "{}",
-                        self.select_one_field(class_alias, None, col, None)?
+                        self.select_one_field(class_alias, None, col, None, true)?
                     ));
                 }
             }
@@ -386,7 +469,7 @@ impl JsonQueryCompiler {
 
                 if self.field_may_be_selected(column, &classname) {
                     sql += " ";
-                    sql += &self.select_one_field(class_alias, None, column, None)?;
+                    sql += &self.select_one_field(class_alias, None, column, None, true)?;
                     sql += ",";
                 }
 
@@ -407,6 +490,7 @@ impl JsonQueryCompiler {
                 field_struct["alias"].as_str(),
                 column,
                 Some(field_struct),
+                true,
             )?;
 
             sql += ",";
@@ -437,7 +521,7 @@ impl JsonQueryCompiler {
 
         for field_name in field_names.iter() {
             sql += " ";
-            sql += &self.select_one_field(alias, None, field_name, None)?;
+            sql += &self.select_one_field(alias, None, field_name, None, true)?;
             sql += ","
         }
 
@@ -449,16 +533,21 @@ impl JsonQueryCompiler {
         Ok(sql)
     }
 
-    // TODO a way to call this function without appending to the group-by
-    // since it's also called e.g. when building predicates.
+    /// Format a field, with transform if needed, for inclusion in a
+    /// SELECT or WHERE clause entry.
     fn select_one_field(
         &mut self,
         class_alias: &str,
         field_alias: Option<&str>,
         field_name: &str,
         field_def: Option<&JsonValue>,
+        // Fields within a query predicate (e.g. WHERE "aou".id = 1)
+        // are not part of the SELECT clause and cannot be grouped on.
+        handle_group_by: bool,
     ) -> EgResult<String> {
-        self.select_index += 1; // TODO
+        if handle_group_by {
+            self.select_index += 1;
+        }
 
         let idl_class = self.get_idl_class(self.get_alias_classname(class_alias)?)?;
         let idl_class = idl_class.clone(); // TODO parallel mut's
@@ -505,20 +594,24 @@ impl JsonQueryCompiler {
                     sql += &format!(r#" AS "{}""#, self.check_identifier(alias)?);
                 }
 
-                if is_aggregate {
-                    self.has_aggregate = true;
-                } else {
-                    self.group_by.push(self.select_index);
+                if handle_group_by {
+                    if is_aggregate {
+                        self.has_aggregate = true;
+                    } else {
+                        self.group_by.push(self.select_index);
+                    }
                 }
 
                 return Ok(sql);
             }
         }
 
-        if is_aggregate {
-            self.has_aggregate = true;
-        } else {
-            self.group_by.push(self.select_index);
+        if handle_group_by {
+            if is_aggregate {
+                self.has_aggregate = true;
+            } else {
+                self.group_by.push(self.select_index);
+            }
         }
 
         self.format_one_select_field(class_alias, &idl_class, field_alias, idl_field)
@@ -584,7 +677,7 @@ impl JsonQueryCompiler {
             hash
         };
 
-        let mut join_binding;
+        let join_binding;
 
         let join_list = if let JsonValue::Array(list) = joins {
             list.iter().collect::<Vec<&JsonValue>>()
@@ -596,7 +689,7 @@ impl JsonQueryCompiler {
         };
 
         for join_entry in join_list {
-            let mut hash_binding;
+            let hash_binding;
 
             let hash_ref = if let Some(class) = join_entry.as_str() {
                 hash_binding = class_to_hash(class);
@@ -881,23 +974,7 @@ impl JsonQueryCompiler {
                             self.compile_where_for_class(sub_blob, class_alias, JoinOp::And)?;
                         sql += &format!("NOT ({sub_pred})");
                     } else if key == "-exists" || key == "-not-exists" {
-                        // EXIST queries run atop a fully formed json query
-                        // object.  Collect the SQL via a single-use sub-compiler.
-                        let mut compiler = self.clone();
-
-                        compiler.compile(sub_blob)?;
-
-                        let sub_sql = compiler.take_query_string().ok_or_else(|| {
-                            format!("EXISTS clause produced no SQL: {}", sub_blob)
-                        })?;
-
-                        // Absorb parameter information collected by
-                        // our sub-compiler.
-                        if let Some(params) = compiler.params.as_ref() {
-                            for param in params {
-                                self.add_param_string(param.value.clone());
-                            }
-                        }
+                        let sub_sql = self.compile_sub_query(sub_blob)?;
 
                         let question = if key.contains("not") {
                             "NOT EXISTS"
@@ -921,6 +998,11 @@ impl JsonQueryCompiler {
                     sql += &self.search_predicate(class_alias, key, sub_blob)?;
                 }
             }
+        } else if where_def.is_null() {
+            // A query with no WHERE is valid, but return something to the
+            // caller so they don't have to make a special case for, say,
+            // an empty string.
+            sql = "TRUE".to_string();
         } else {
             return Err(format!("Invalid WHERE structure: {where_def}").into());
         }
@@ -985,12 +1067,8 @@ impl JsonQueryCompiler {
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
-        let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
-
-        println!(
-            "search_field_transform_predicate() {field_name} {operator} {}",
-            value_def.dump()
-        );
+        let field_str =
+            self.select_one_field(class_alias, None, field_name, Some(value_def), false)?;
 
         let value_obj = &value_def["value"];
 
@@ -1077,7 +1155,7 @@ impl JsonQueryCompiler {
 
         Ok(format!(
             "{} BETWEEN {} AND {}",
-            self.select_one_field(class_alias, None, field_name, Some(value_def))?,
+            self.select_one_field(class_alias, None, field_name, Some(value_def), false)?,
             self.scalar_param_as_string(class_alias, field_name, &value_def[0])?,
             self.scalar_param_as_string(class_alias, field_name, &value_def[1])?
         ))
@@ -1092,7 +1170,7 @@ impl JsonQueryCompiler {
     /// {"somefield": true}
     fn simple_search_predicate(
         &mut self,
-        mut operator: &str,
+        operator: &str,
         class_alias: &str,
         field_name: &str,
         value: &JsonValue,
@@ -1200,7 +1278,8 @@ impl JsonQueryCompiler {
         is_not_in: bool,
     ) -> EgResult<String> {
         println!("search_in_predicate() {field_name} = {}", value_def.dump());
-        let field_str = self.select_one_field(class_alias, None, field_name, Some(value_def))?;
+        let field_str =
+            self.select_one_field(class_alias, None, field_name, Some(value_def), false)?;
         let in_str = self.search_in_list(class_alias, field_name, value_def)?;
 
         Ok(format!(
@@ -1232,28 +1311,8 @@ impl JsonQueryCompiler {
             value_def
         };
 
-        println!("search_in_list() {field_name} = {}", value_def.dump());
-
         if value_def.is_object() {
-            // Some IN queries run atop a fully formed json query
-            // object.  Collect the SQL via a single-use sub-compiler.
-            let mut compiler = self.clone();
-
-            compiler.compile(value_def)?;
-
-            let sub_sql = compiler
-                .take_query_string()
-                .ok_or_else(|| format!("IN clause produced no SQL: {}", value_def))?;
-
-            // Absorb parameter information collected by
-            // our sub-compiler.
-            if let Some(params) = compiler.params.as_ref() {
-                for param in params {
-                    self.add_param_string(param.value.clone());
-                }
-            }
-
-            return Ok(sub_sql);
+            return self.compile_sub_query(value_def);
         }
 
         if value_def.len() == 0 {
@@ -1306,30 +1365,24 @@ impl JsonQueryCompiler {
         Ok(self.add_param_string(s))
     }
 
-    /// Adds a new query parameter and increments our param index.
+    /// Adds a new query parameter and returns the index of the new
+    /// param for SQL variable replacement.
     ///
     /// At SQL compile time, parameter values that require escaping
-    /// (i.e. String-ish things) are encoded as numeric placeholders
+    /// (i.e. Strings) are encoded as numeric placeholders
     /// ($1, $2, ...).
     ///
-    /// At query execution time, parameter values are passed to the
-    /// DB for runtime compilation and string quoting.
+    /// Query parameter indexes are 1-based.
     fn add_param_string(&mut self, value: String) -> usize {
-        let index = self.param_index;
-        self.param_index += 1;
-
-        let def = ParamDef {
-            index,
-            value: value,
-        };
+        let def = ParamDef { value: Some(value) };
 
         if let Some(list) = self.params.as_mut() {
             list.push(def);
+            list.len()
         } else {
             self.params = Some(vec![def]);
+            1
         }
-
-        return index;
     }
 
     /// Get the core IDL class from the main FROM clause.
@@ -1393,7 +1446,7 @@ impl JsonQueryCompiler {
             return Err(format!("Invalid FROM function spec: {}", from_def.dump()).into());
         }
 
-        let mut func_name = match from_def[0].as_str() {
+        let func_name = match from_def[0].as_str() {
             Some(f) => self.check_identifier(f)?.to_string(),
             None => return Err(format!("Invalid function name: {}", from_def[0].dump()).into()),
         };
@@ -1416,7 +1469,7 @@ impl JsonQueryCompiler {
                     param_str += "NULL";
                 } else if let Some(b) = value.as_bool() {
                     param_str += if b { "TRUE" } else { "FALSE" };
-                } else if let Some(s) = value.as_str() {
+                } else if value.is_string() {
                     let index = self.add_param(&value)?;
                     param_str += &format!("${index}");
                 } else if value.is_number() {
