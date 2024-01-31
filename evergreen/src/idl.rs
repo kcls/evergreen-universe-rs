@@ -227,6 +227,7 @@ pub struct Class {
     fields: HashMap<String, Field>,
     links: HashMap<String, Link>,
     tablename: Option<String>,
+    source_definition: Option<String>,
     controller: Option<String>,
     is_virtual: bool,
 }
@@ -241,6 +242,10 @@ impl Class {
         } else {
             None
         }
+    }
+
+    pub fn source_definition(&self) -> Option<&str> {
+        self.source_definition.as_deref()
     }
 
     pub fn classname(&self) -> &str {
@@ -474,7 +479,7 @@ impl Parser {
             None => false,
         };
 
-        let mut class = Class {
+       let mut class = Class {
             tablename,
             fieldmapper,
             field_safe,
@@ -483,6 +488,7 @@ impl Parser {
             classname: name.to_string(),
             label: label,
             is_virtual,
+            source_definition: None,
             fields: HashMap::new(),
             links: HashMap::new(),
             pkey: None,
@@ -516,6 +522,10 @@ impl Parser {
                 {
                     self.add_link(&mut class, &link_node);
                 }
+            }
+
+            if child.tag_name().name() == "source_definition" {
+                class.source_definition = child.text().map(|t| t.to_string());
             }
         }
 

@@ -6,6 +6,7 @@ use crate::util;
 use json::JsonValue;
 use std::sync::Arc;
 
+/// See set_locale()
 const DEFAULT_LOCALE: &str = "en-US";
 
 #[derive(Debug, Clone, Copy)]
@@ -23,11 +24,11 @@ impl From<JoinOp> for &str {
     }
 }
 
+/// Models a database table
 #[derive(Debug, Clone)]
 pub struct SourceDef {
     is_base_class: bool,
     classname: String,
-    tablename: String,
     alias: Option<String>,
 }
 
@@ -303,11 +304,14 @@ impl JsonQueryCompiler {
         let from_str = self.compile_joins_for_class(cname, &query["from"][cname])?;
 
         let sel_str = self.compile_selects(&query["select"])?;
+
+        // Table name or subquery wrapped in parens.
+        let source_str = self.class_table_or_source_def(cname)?;
+
         let where_str = self.compile_where_for_class(&query["where"], cname, JoinOp::And)?;
 
         let mut sql = format!(
-            r#"SELECT {sel_str} FROM {} AS "{}" {from_str} WHERE {where_str}"#,
-            self.check_identifier(&base_source.tablename)?,
+            r#"SELECT {sel_str} FROM {source_str} AS "{}" {from_str} WHERE {where_str}"#,
             self.check_identifier(base_source.prefix())?,
         );
 
@@ -549,14 +553,6 @@ impl JsonQueryCompiler {
             self.select_index += 1;
         }
 
-        let idl_class = self.get_idl_class(self.get_alias_classname(class_alias)?)?;
-        let idl_class = idl_class.clone(); // TODO parallel mut's
-
-        let idl_field = idl_class
-            .fields()
-            .get(field_name)
-            .ok_or_else(|| format!("Invalid field {}::{field_name}", idl_class.classname()))?;
-
         let mut is_aggregate = false;
 
         if let Some(fdef) = field_def {
@@ -578,7 +574,7 @@ impl JsonQueryCompiler {
 
                 // Avoid sending the field alias here since any alias
                 // should apply to our transform as a whole.
-                sql += &self.format_one_select_field(class_alias, &idl_class, None, idl_field)?;
+                sql += &self.format_one_select_field(class_alias, None, field_name)?;
 
                 for param in fdef["params"].members() {
                     let index = self.add_param(param)?;
@@ -614,7 +610,7 @@ impl JsonQueryCompiler {
             }
         }
 
-        self.format_one_select_field(class_alias, &idl_class, field_alias, idl_field)
+        self.format_one_select_field(class_alias, field_alias, field_name)
     }
 
     /// Format the SELECT component for a single field, adding the
@@ -622,11 +618,19 @@ impl JsonQueryCompiler {
     fn format_one_select_field(
         &self,
         class_alias: &str,
-        idl_class: &idl::Class,
         field_alias: Option<&str>,
-        idl_field: &idl::Field,
+        field_name: &str,
     ) -> EgResult<String> {
         let mut sql;
+
+        let classname = self.get_alias_classname(class_alias)?;
+        let idl_class = self.get_idl_class(classname)?;
+
+        let idl_field = idl_class
+            .fields()
+            .get(field_name)
+            .ok_or_else(|| format!("Invalid field {}::{field_name}", idl_class.classname()))?;
+
 
         if !idl_field.i18n() || self.disable_i18n {
             sql = format!(
@@ -641,15 +645,14 @@ impl JsonQueryCompiler {
                 .pkey()
                 .ok_or_else(|| format!("{} has no primary key", idl_class.classname()))?;
 
-            let tablename = idl_class
-                .tablename()
-                .ok_or_else(|| format!("{} has no table name", idl_class.classname()))?;
+            // i18n fields must come from a proper table; no source defs.
+            // TODO very has tablename
+            let source_str = self.class_table_or_source_def(idl_class.classname())?;
 
             // Our 'locale' string format is validated at set time.
 
             sql = format!(
-                r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{locale}')"#,
-                self.check_identifier(tablename)?,
+                r#"oils_i18n_xlate('{source_str}', '{}', '{}', '{}', "{}".{}::TEXT, '{locale}')"#,
                 self.check_identifier(class_alias)?,
                 self.check_identifier(idl_field.name())?,
                 self.check_identifier(pkey)?,
@@ -805,8 +808,8 @@ impl JsonQueryCompiler {
                     if maybe_left_class == left_class {
                         let reltype = cur_link.reltype();
                         if reltype != idl::RelType::HasMany {
-                            left_join_field = Some(link_key);
-                            right_join_field = Some(cur_link.key());
+                            right_join_field = Some(link_key);
+                            left_join_field = Some(cur_link.key());
                             break;
                         }
                     }
@@ -821,10 +824,6 @@ impl JsonQueryCompiler {
             }
         }
 
-        let tablename = right_idl_class
-            .tablename()
-            .ok_or_else(|| format!("JOINed class has no table name: {right_class}"))?
-            .to_string();
 
         let join_type = if let Some(jtype) = join_def["type"].as_str() {
             match jtype {
@@ -837,10 +836,13 @@ impl JsonQueryCompiler {
             "INNER JOIN"
         };
 
+        // Table name or subquery wrapped in parens.
+        let source_str = self.class_table_or_source_def(right_idl_class.classname())?;
+
         let mut sql = format!(
             r#"{} {} AS "{}" ON ("{}".{} = "{}".{}"#,
             join_type,
-            self.check_identifier(&tablename)?,
+            source_str,
             self.check_identifier(right_alias)?,
             self.check_identifier(right_alias)?,
             self.check_identifier(right_join_field.as_deref().unwrap())?,
@@ -853,7 +855,6 @@ impl JsonQueryCompiler {
         // potentially start adding recursive JOINs.
         let mut source_def = SourceDef {
             classname: right_class.to_string(),
-            tablename,
             alias: None,
             is_base_class: false,
         };
@@ -891,6 +892,19 @@ impl JsonQueryCompiler {
         }
 
         Ok(sql)
+    }
+
+    fn class_table_or_source_def(&self, classname: &str) -> EgResult<String> {
+        if let Some(idl_class) = self.idl.classes().get(classname) {
+            if let Some(tablename) = idl_class.tablename() {
+               return Ok(self.check_identifier(&tablename)?.to_string());
+            } else if let Some(source_def) = idl_class.source_definition() {
+                // Wrap the source def in params since it's sub-query.
+                return Ok(format!("({source_def})"));
+            }
+        }
+
+        Err(format!("Class {classname} has no table or source definition").into())
     }
 
     fn compile_where_for_class(
@@ -1402,19 +1416,9 @@ impl JsonQueryCompiler {
             return Err(format!("Invalid FROM clause: {from_blob}").into());
         };
 
-        // Sanity check our results.
-
-        let idl_class = self.get_idl_class(&classname)?;
-
-        let tablename = idl_class
-            .tablename()
-            .ok_or_else(|| format!("Base class requires a tablename"))?;
-
         // Add our first source
         self.sources.push(SourceDef {
             classname,
-            tablename: tablename.to_string(),
-            // Base classes cannot have aliases.  (right?)
             alias: None,
             is_base_class: true,
         });
