@@ -158,6 +158,5 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     //println!("\n{}\n", jq_compiler.debug_params());
     //println!("\n{}\n", jq_compiler.debug_query_kludge());
 
-
     Ok(())
 }

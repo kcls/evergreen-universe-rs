@@ -8,52 +8,17 @@ use std::sync::Arc;
 
 /// See set_locale()
 const DEFAULT_LOCALE: &str = "en-US";
+const JOIN_WITH_AND: &str = "AND";
+const JOIN_WITH_OR: &str = "OR";
 
-#[derive(Debug, Clone, Copy)]
-pub enum JoinOp {
-    And,
-    Or,
-}
-
-impl From<JoinOp> for &str {
-    fn from(j: JoinOp) -> &'static str {
-        match j {
-            JoinOp::And => "AND",
-            JoinOp::Or => "OR",
-        }
-    }
-}
-
-/// Models a database table
+/// Models an IDL class used as a data source.
+///
+/// Data for a class may come from its associated databsase table
+/// or from an inline SQL query.
 #[derive(Debug, Clone)]
 pub struct SourceDef {
-    is_base_class: bool,
     classname: String,
     alias: Option<String>,
-}
-
-impl SourceDef {
-    /// String used to prefix column names, parameters, etc.
-    /// E.g. SELECT "aou".id FROM ...
-    fn prefix(&self) -> &str {
-        self.alias.as_deref().unwrap_or(self.classname.as_str())
-    }
-}
-
-#[derive(Debug)]
-pub struct ParamDef {
-    /// Parameter value.
-    ///
-    /// Note we only need concern ourselves with Strings because
-    /// all other parameter types are included as bare values (bool,
-    /// numbers, null) or futher decomposed into such scalar values.
-    value: Option<String>,
-}
-
-impl ParamDef {
-    fn take_value(&mut self) -> Option<String> {
-        self.value.take()
-    }
 }
 
 #[derive(Debug)]
@@ -80,7 +45,7 @@ pub struct JsonQueryCompiler {
     query_string: Option<String>,
 
     /// Query parameters whose values are replaced at query execution time.
-    params: Option<Vec<ParamDef>>,
+    params: Option<Vec<String>>,
 
     /// True if one or more fields have the "aggregate" flag set.
     has_aggregate: bool,
@@ -104,6 +69,7 @@ impl Clone for JsonQueryCompiler {
     }
 }
 
+/// Translates JSON-Query into SQL.
 impl JsonQueryCompiler {
     pub fn new(idl: Arc<idl::Parser>) -> Self {
         Self {
@@ -128,7 +94,7 @@ impl JsonQueryCompiler {
     pub fn query_params(&self) -> Vec<&str> {
         if let Some(params) = self.params.as_ref() {
             // Every parameter should have a value at compile/execute time.
-            params.iter().map(|p| p.value.as_deref().unwrap()).collect()
+            params.iter().map(|s| s.as_str()).collect()
         } else {
             vec![]
         }
@@ -138,11 +104,11 @@ impl JsonQueryCompiler {
     pub fn debug_params(&self) -> String {
         let mut array = json::array![];
         if let Some(params) = self.params.as_ref() {
-            for (idx, param) in params.iter().enumerate() {
+            for (idx, value) in params.iter().enumerate() {
                 let mut obj = json::object! {};
 
                 // Every parameter should have a value at compile/execute time.
-                obj[format!("${}", idx + 1)] = json::from(param.value.as_deref().unwrap());
+                obj[format!("${}", idx + 1)] = json::from(value.as_str());
 
                 array.push(obj).expect("Array is too big??");
             }
@@ -167,18 +133,19 @@ impl JsonQueryCompiler {
             // paramters indexes first.  This way replace('$1') does not
             // affect $10, $11, etc.
             let mut idx = params.len();
-            for param in params.iter().rev() {
+            for value in params.iter().rev() {
                 let target = format!("${idx}");
 
                 // Counting down from the top.
                 idx -= 1;
 
-                // Every parameter should have a value at compile/execute time.
-                let mut value = param.value.as_ref().unwrap().to_string();
-
-                value = value.replace("'", "''"); // pesky single quotes
-
-                sql = sql.replace(&target, &format!("'{value}'"));
+                if value.contains("'") {
+                    // Escape single quotes
+                    let escaped = value.replace("'", "''");
+                    sql = sql.replace(&target, &format!("'{escaped}'"));
+                } else {
+                    sql = sql.replace(&target, &format!("'{value}'"));
+                }
             }
         }
 
@@ -194,6 +161,7 @@ impl JsonQueryCompiler {
         Ok(())
     }
 
+    /// The final compiled SQL string
     pub fn query_string(&self) -> Option<&str> {
         self.query_string.as_deref()
     }
@@ -219,6 +187,7 @@ impl JsonQueryCompiler {
             .ok_or_else(|| format!("No such class alias: {alias}").into())
     }
 
+    /// Get an IDL Class object from its classname.
     fn get_idl_class(&self, classname: &str) -> EgResult<&idl::Class> {
         self.idl
             .classes()
@@ -229,11 +198,10 @@ impl JsonQueryCompiler {
     /// Returns the IDL classname of the base class, i.e. the root
     /// class of the FROM clause.
     fn get_base_classname(&self) -> EgResult<&str> {
+        // The base class is the first source.
         self.sources
-            .iter()
-            .filter(|s| s.is_base_class)
+            .get(0)
             .map(|s| s.classname.as_ref())
-            .next()
             .ok_or_else(|| format!("No bass class has been set").into())
     }
 
@@ -266,7 +234,7 @@ impl JsonQueryCompiler {
         true
     }
 
-    /// Entry point for compiling JSON-query into SQL.
+    /// Entry point for compiling the JSON-Query.
     ///
     /// The resulting SQL may be found in self.query_string() and
     /// the resulting query parameters may be found in self.query_params();
@@ -284,35 +252,33 @@ impl JsonQueryCompiler {
         }
 
         if query["from"].is_array() {
+            // {"from": ["actor.org_unit_ancestors", 2, 1]
+
             let func_str = self.compile_function_query(&query["from"])?;
             self.query_string = Some(func_str);
             return Ok(());
-        } else if !query["union"].is_null()
-            || !query["union"].is_null()
-            || !query["union"].is_null()
-        {
+        }
+
+        if query.has_key("union") || query.has_key("except") || query.has_key("intersect") {
             let combo_str = self.compile_combo_query(&query)?;
             self.query_string = Some(combo_str);
             return Ok(());
         }
 
-        // Clone the source to avoid a number of parellel mut's below.
-        let base_source = self.set_base_source(&query["from"])?.clone();
-        let cname = &base_source.classname;
+        self.set_base_source(&query["from"])?;
+        let cname = self.get_base_classname()?.to_string(); // mut's
 
-        // Compile JOINs first so we can populate our sources.
-        let from_str = self.compile_joins_for_class(cname, &query["from"][cname])?;
+        // Compile JOINs first so we can populate our data sources.
+        let join_str = self.compile_joins_for_class(&cname, &query["from"][&cname])?;
 
         let sel_str = self.compile_selects(&query["select"])?;
 
-        // Table name or subquery wrapped in parens.
-        let source_str = self.class_table_or_source_def(cname)?;
+        let source_str = self.class_table_or_source_def(&cname)?;
 
-        let where_str = self.compile_where_for_class(&query["where"], cname, JoinOp::And)?;
+        let where_str = self.compile_where_for_class(&query["where"], &cname, JOIN_WITH_AND)?;
 
         let mut sql = format!(
-            r#"SELECT {sel_str} FROM {source_str} AS "{}" {from_str} WHERE {where_str}"#,
-            self.check_identifier(base_source.prefix())?,
+            r#"SELECT {sel_str} FROM {source_str} AS "{cname}" {join_str} WHERE {where_str}"#
         );
 
         if self.has_aggregate {
@@ -380,7 +346,7 @@ impl JsonQueryCompiler {
         Ok(sql)
     }
 
-    /// Compile a wholly-formed subquery and collect its parameter values.
+    /// Compile a wholly-formed subquery and absorb its parameter values.
     fn compile_sub_query(&mut self, query: &JsonValue) -> EgResult<String> {
         let mut compiler = self.clone();
 
@@ -390,18 +356,9 @@ impl JsonQueryCompiler {
             .take_query_string()
             .ok_or_else(|| format!("Sub-query produced no SQL: {}", query.dump()))?;
 
-        // Absorb parameter information collected by
-        // our sub-compiler.
         if let Some(params) = compiler.params.as_mut() {
-            for param in params {
-                let val = param.take_value().ok_or_else(|| {
-                    format!(
-                        "Sub-query parater should always have a value: {}",
-                        query.dump()
-                    )
-                })?;
-
-                self.add_param_string(val);
+            for value in params.drain(..) {
+                self.add_param_string(value);
             }
         }
 
@@ -631,7 +588,6 @@ impl JsonQueryCompiler {
             .get(field_name)
             .ok_or_else(|| format!("Invalid field {}::{field_name}", idl_class.classname()))?;
 
-
         if !idl_field.i18n() || self.disable_i18n {
             sql = format!(
                 r#""{}".{}"#,
@@ -824,7 +780,6 @@ impl JsonQueryCompiler {
             }
         }
 
-
         let join_type = if let Some(jtype) = join_def["type"].as_str() {
             match jtype {
                 "left" => "LEFT JOIN",
@@ -856,7 +811,6 @@ impl JsonQueryCompiler {
         let mut source_def = SourceDef {
             classname: right_class.to_string(),
             alias: None,
-            is_base_class: false,
         };
 
         if right_alias != right_class {
@@ -879,7 +833,7 @@ impl JsonQueryCompiler {
                 }
             }
             sql += op;
-            sql += &self.compile_where_for_class(filter, right_alias, JoinOp::And)?;
+            sql += &self.compile_where_for_class(filter, right_alias, JOIN_WITH_AND)?;
         }
 
         sql += ")";
@@ -894,10 +848,16 @@ impl JsonQueryCompiler {
         Ok(sql)
     }
 
+    /// Returns the SQL representing the data source for an IDL
+    /// class.
+    ///
+    /// Typically this will be a DB table name, but for classes with
+    /// a source definition, it will be source SQL wrappen in parens
+    /// for inclusion in a containing query.
     fn class_table_or_source_def(&self, classname: &str) -> EgResult<String> {
         if let Some(idl_class) = self.idl.classes().get(classname) {
             if let Some(tablename) = idl_class.tablename() {
-               return Ok(self.check_identifier(&tablename)?.to_string());
+                return Ok(self.check_identifier(&tablename)?.to_string());
             } else if let Some(source_def) = idl_class.source_definition() {
                 // Wrap the source def in params since it's sub-query.
                 return Ok(format!("({source_def})"));
@@ -911,10 +871,9 @@ impl JsonQueryCompiler {
         &mut self,
         where_def: &JsonValue,
         class_alias: &str,
-        join_op: JoinOp,
+        join_op: &str,
     ) -> EgResult<String> {
         let mut sql = String::new();
-        let and_or: &str = join_op.into();
 
         if where_def.is_array() {
             if where_def.len() == 0 {
@@ -927,7 +886,7 @@ impl JsonQueryCompiler {
                     first = false;
                 } else {
                     sql += " ";
-                    sql += and_or;
+                    sql += join_op;
                     sql += " ";
                 }
                 let sub_pred = self.compile_where_for_class(part, class_alias, join_op)?;
@@ -946,7 +905,7 @@ impl JsonQueryCompiler {
                     first = false;
                 } else {
                     sql += " ";
-                    sql += and_or;
+                    sql += join_op;
                     sql += " ";
                 }
 
@@ -977,15 +936,15 @@ impl JsonQueryCompiler {
                 } else if key.starts_with("-") {
                     if key == "-or" {
                         let sub_pred =
-                            self.compile_where_for_class(sub_blob, class_alias, JoinOp::Or)?;
+                            self.compile_where_for_class(sub_blob, class_alias, JOIN_WITH_OR)?;
                         sql += &format!("({sub_pred})");
                     } else if key == "-and" {
                         let sub_pred =
-                            self.compile_where_for_class(sub_blob, class_alias, JoinOp::And)?;
+                            self.compile_where_for_class(sub_blob, class_alias, JOIN_WITH_AND)?;
                         sql += &format!("({sub_pred})");
                     } else if key == "-not" {
                         let sub_pred =
-                            self.compile_where_for_class(sub_blob, class_alias, JoinOp::And)?;
+                            self.compile_where_for_class(sub_blob, class_alias, JOIN_WITH_AND)?;
                         sql += &format!("NOT ({sub_pred})");
                     } else if key == "-exists" || key == "-not-exists" {
                         let sub_sql = self.compile_sub_query(sub_blob)?;
@@ -1090,12 +1049,12 @@ impl JsonQueryCompiler {
 
         let value_str = if value_obj.is_null() {
             extra_parens = true;
-            self.compile_where_for_class(value_def, class_alias, JoinOp::And)?
+            self.compile_where_for_class(value_def, class_alias, JOIN_WITH_AND)?
         } else if value_obj.is_array() {
             self.compile_function_from(value_obj)?
         } else if value_obj.is_object() {
             extra_parens = true;
-            self.compile_where_for_class(value_obj, class_alias, JoinOp::And)?
+            self.compile_where_for_class(value_obj, class_alias, JOIN_WITH_AND)?
         } else if value_obj.is_string() || value_obj.is_number() {
             self.scalar_param_as_string(class_alias, field_name, value_obj)?
         } else {
@@ -1388,13 +1347,11 @@ impl JsonQueryCompiler {
     ///
     /// Query parameter indexes are 1-based.
     fn add_param_string(&mut self, value: String) -> usize {
-        let def = ParamDef { value: Some(value) };
-
         if let Some(list) = self.params.as_mut() {
-            list.push(def);
+            list.push(value);
             list.len()
         } else {
-            self.params = Some(vec![def]);
+            self.params = Some(vec![value]);
             1
         }
     }
@@ -1420,7 +1377,6 @@ impl JsonQueryCompiler {
         self.sources.push(SourceDef {
             classname,
             alias: None,
-            is_base_class: true,
         });
 
         Ok(self.sources.get(0).unwrap())

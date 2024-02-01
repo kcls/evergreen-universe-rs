@@ -479,7 +479,7 @@ impl Parser {
             None => false,
         };
 
-       let mut class = Class {
+        let mut class = Class {
             tablename,
             fieldmapper,
             field_safe,
