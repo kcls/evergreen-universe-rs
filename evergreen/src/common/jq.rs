@@ -166,7 +166,8 @@ impl JsonQueryCompiler {
         self.query_string.as_deref()
     }
 
-    pub fn take_query_string(&mut self) -> Option<String> {
+    /// Take ownership of the compiled SQL string.
+    fn take_query_string(&mut self) -> Option<String> {
         self.query_string.take()
     }
 
@@ -282,7 +283,7 @@ impl JsonQueryCompiler {
         );
 
         if self.has_aggregate {
-            let positions: Vec<String> = self.group_by.iter().map(|n| format!("{n}")).collect();
+            let positions: Vec<String> = self.group_by.iter().map(|n| n.to_string()).collect();
             sql += &format!(" GROUP BY {}", positions.join(", "));
         }
 
@@ -376,19 +377,12 @@ impl JsonQueryCompiler {
             return Err(format!("Invalid SELECT clause: {select_def}").into());
         }
 
-        let mut sql = String::new();
+        let mut selects = Vec::new();
         for (alias, payload) in select_def.entries() {
-            sql += " ";
-            sql += &self.compile_selects_for_class(alias, payload)?;
-            sql += ",";
+            selects.push(self.compile_selects_for_class(alias, payload)?);
         }
 
-        if sql.len() > 0 {
-            sql.remove(0); // first space
-            sql.pop(); // final comma
-        }
-
-        Ok(sql)
+        Ok(selects.join(", "))
     }
 
     fn compile_selects_for_class(
@@ -422,16 +416,14 @@ impl JsonQueryCompiler {
             return Err(format!("SELECT must be string, null, or array").into());
         }
 
-        let mut sql = String::new();
+        let mut fields = Vec::new();
 
         for field_struct in select_def.members() {
             if let Some(column) = field_struct.as_str() {
                 // Field entry is a string field name.
 
                 if self.field_may_be_selected(column, &classname) {
-                    sql += " ";
-                    sql += &self.select_one_field(class_alias, None, column, None, true)?;
-                    sql += ",";
+                    fields.push(self.select_one_field(class_alias, None, column, None, true)?);
                 }
 
                 continue;
@@ -445,24 +437,18 @@ impl JsonQueryCompiler {
                 continue;
             }
 
-            sql += " ";
-            sql += &self.select_one_field(
-                class_alias,
-                field_struct["alias"].as_str(),
-                column,
-                Some(field_struct),
-                true,
-            )?;
-
-            sql += ",";
+            fields.push(
+                self.select_one_field(
+                    class_alias,
+                    field_struct["alias"].as_str(),
+                    column,
+                    Some(field_struct),
+                    true,
+                )?
+            );
         }
 
-        if sql.len() > 0 {
-            sql.remove(0); // first space
-            sql.pop(); // final comma
-        }
-
-        Ok(sql)
+        Ok(fields.join(", "))
     }
 
     fn build_default_select_list(&mut self, alias: &str) -> EgResult<String> {
@@ -471,8 +457,6 @@ impl JsonQueryCompiler {
         // If we have an alias it's known to be valid
         let idl_class = self.get_idl_class(&classname)?;
 
-        let mut sql = String::new();
-
         let field_names: Vec<String> = idl_class
             .real_fields_sorted()
             .iter()
@@ -480,18 +464,12 @@ impl JsonQueryCompiler {
             .map(|f| f.name().to_string())
             .collect();
 
+        let mut fields = Vec::new();
         for field_name in field_names.iter() {
-            sql += " ";
-            sql += &self.select_one_field(alias, None, field_name, None, true)?;
-            sql += ","
+            fields.push(self.select_one_field(alias, None, field_name, None, true)?);
         }
 
-        if sql.len() > 0 {
-            sql.remove(0); // first space
-            sql.pop(); // final comma
-        }
-
-        Ok(sql)
+        Ok(fields.join(", "))
     }
 
     /// Format a field, with transform if needed, for inclusion in a
@@ -1292,20 +1270,14 @@ impl JsonQueryCompiler {
             return Err(format!("Empty IN list for field {field_name}"))?;
         }
 
-        let mut sql = String::new();
-
+        let mut values = Vec::new();
         for value in value_def.members() {
-            sql += " ";
-            sql += &self.scalar_param_as_string(class_alias, field_name, value)?;
-            sql += ","
+            values.push(
+                self.scalar_param_as_string(class_alias, field_name, value)?
+            );
         }
 
-        if sql.len() > 0 {
-            sql.remove(0); // first space
-            sql.pop(); // final comma
-        }
-
-        Ok(sql)
+        Ok(values.join(", "))
     }
 
     /// Verify the provided string may act as a valid PG identifier.
@@ -1411,42 +1383,35 @@ impl JsonQueryCompiler {
             None => return Err(format!("Invalid function name: {}", from_def[0].dump()).into()),
         };
 
-        let mut param_str = String::new();
+        let mut sql = func_name.to_string();
 
         if from_def.len() > 1 {
-            let mut first = true;
 
-            for value in from_def.members() {
-                if first {
+            let mut params = Vec::new();
+            for (idx, value) in from_def.members().enumerate() {
+                if idx == 0 {
                     // Function name
-                    first = false;
                     continue;
                 }
 
-                param_str += " ";
-
                 if value.is_null() {
-                    param_str += "NULL";
+                    params.push("NULL".to_string());
                 } else if let Some(b) = value.as_bool() {
-                    param_str += if b { "TRUE" } else { "FALSE" };
+                    let s = if b { "TRUE" } else { "FALSE" };
+                    params.push(s.to_string());
                 } else if value.is_string() {
                     let index = self.add_param(&value)?;
-                    param_str += &format!("${index}");
-                } else if value.is_number() {
-                    param_str += &format!("{}", value.dump());
+                    params.push(format!("${index}"));
+                } else if let Some(num) = value.as_number() {
+                    params.push(num.to_string());
                 } else {
                     return Err(format!("Invalid function parameter: {}", value.dump()).into());
                 };
-
-                param_str += ",";
             }
 
-            if param_str.len() > 0 {
-                param_str.remove(0); // first space
-                param_str.pop(); // final comma
-            }
+            sql += &format!("({})", &params.join(", "));
         }
 
-        Ok(format!("{func_name}({param_str})"))
+        Ok(sql)
     }
 }
