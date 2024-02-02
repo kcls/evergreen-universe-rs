@@ -110,7 +110,7 @@ impl JsonQueryCompiler {
                 // Every parameter should have a value at compile/execute time.
                 obj[format!("${}", idx + 1)] = json::from(value.as_str());
 
-                array.push(obj).expect("Array is too big??");
+                array.push(obj).expect("this is an array");
             }
         }
 
@@ -139,6 +139,8 @@ impl JsonQueryCompiler {
                 // Counting down from the top.
                 idx -= 1;
 
+                // Assume most values do not contain embedded single-quotes
+                // and avoid the extra string allocation.
                 if value.contains("'") {
                     // Escape single quotes
                     let escaped = value.replace("'", "''");
@@ -270,16 +272,20 @@ impl JsonQueryCompiler {
         let cname = self.get_base_classname()?.to_string(); // mut's
 
         // Compile JOINs first so we can populate our data sources.
-        let join_str = self.compile_joins_for_class(&cname, &query["from"][&cname])?;
+        let join_op = self.compile_joins_for_class(&cname, &query["from"][&cname])?;
 
-        let sel_str = self.compile_selects(&query["select"])?;
+        let join_str = if let Some(joins) = join_op {
+            format!(" {joins}")
+        } else {
+            "".to_string()
+        };
 
-        let source_str = self.class_table_or_source_def(&cname)?;
-
+        let select_str = self.compile_selects(&query["select"])?;
+        let from_str = self.class_table_or_source_def(&cname)?;
         let where_str = self.compile_where_for_class(&query["where"], &cname, JOIN_WITH_AND)?;
 
         let mut sql = format!(
-            r#"SELECT {sel_str} FROM {source_str} AS "{cname}" {join_str} WHERE {where_str}"#
+            r#"SELECT {select_str} FROM {from_str} AS "{cname}"{join_str} WHERE {where_str}"#,
         );
 
         if self.has_aggregate {
@@ -287,9 +293,73 @@ impl JsonQueryCompiler {
             sql += &format!(" GROUP BY {}", positions.join(", "));
         }
 
+        if !query["order_by"].is_null() {
+            sql += &format!(" ORDER BY {}", self.compile_order_by(&query["order_by"])?);
+        }
+
         self.query_string = Some(sql);
 
         Ok(())
+    }
+
+    fn compile_order_by(&mut self, order_by: &JsonValue) -> EgResult<String> {
+        if order_by.is_array() {
+            return self.compile_order_by_array(order_by);
+        }
+
+        Ok(String::new())
+    }
+
+    fn compile_order_by_array(&mut self, order_by: &JsonValue) -> EgResult<String> {
+        let mut order_bys = Vec::new();
+
+        for hash in order_by.members() {
+            if !hash.is_object() {
+                return Err(format!("Malformed ORDER BY: {}", order_by.dump()).into());
+            }
+
+            let class_alias = hash["class"]
+                .as_str()
+                .ok_or_else(|| format!("ORDER BY has no class: {}", order_by.dump()))?;
+
+            let field_name = hash["field"]
+                .as_str()
+                .ok_or_else(|| format!("ORDER BY has no field: {}", order_by.dump()))?;
+
+            let classname = self.get_alias_classname(class_alias)?;
+
+            if !self.field_may_be_selected(field_name, classname) {
+                return Err(format!("Field '{field_name}' is not valid in ORDER BY").into());
+            }
+
+            let order_by_str;
+            if !hash["transform"].is_null() {
+                order_by_str = self.select_one_field(
+                    class_alias,
+                    None, // field alias
+                    field_name,
+                    Some(hash),
+                    false,
+                )?;
+            } else if !hash["compare"].is_null() {
+                // "compare": {"!=" : {"+acn": "owning_lib"}}
+                order_by_str = self.search_predicate(class_alias, field_name, &hash["compare"])?;
+            } else {
+                // Simple field order-by
+                order_by_str = format!(r#""{class_alias}".{field_name}"#);
+            }
+
+            let mut direction = "ASC";
+            if let Some(dir) = hash["direction"].as_str() {
+                if dir.starts_with("d") || dir.starts_with("D") {
+                    direction = "DESC";
+                }
+            }
+
+            order_bys.push(format!("{order_by_str} {direction}"));
+        }
+
+        Ok(order_bys.join(", "))
     }
 
     /// Compiles a UNION, INTERSECT, or EXCEPT query.
@@ -437,15 +507,13 @@ impl JsonQueryCompiler {
                 continue;
             }
 
-            fields.push(
-                self.select_one_field(
-                    class_alias,
-                    field_struct["alias"].as_str(),
-                    column,
-                    Some(field_struct),
-                    true,
-                )?
-            );
+            fields.push(self.select_one_field(
+                class_alias,
+                field_struct["alias"].as_str(),
+                column,
+                Some(field_struct),
+                true,
+            )?);
         }
 
         Ok(fields.join(", "))
@@ -579,14 +647,14 @@ impl JsonQueryCompiler {
                 .pkey()
                 .ok_or_else(|| format!("{} has no primary key", idl_class.classname()))?;
 
-            // i18n fields must come from a proper table; no source defs.
-            // TODO very has tablename
-            let source_str = self.class_table_or_source_def(idl_class.classname())?;
+            let tablename = idl_class
+                .tablename()
+                .ok_or_else(|| format!("Class {classname} has no table definition"))?;
 
             // Our 'locale' string format is validated at set time.
-
             sql = format!(
-                r#"oils_i18n_xlate('{source_str}', '{}', '{}', '{}', "{}".{}::TEXT, '{locale}')"#,
+                r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{locale}')"#,
+                self.check_identifier(tablename)?,
                 self.check_identifier(class_alias)?,
                 self.check_identifier(idl_field.name())?,
                 self.check_identifier(pkey)?,
@@ -603,9 +671,11 @@ impl JsonQueryCompiler {
     }
 
     /// Unpack the JOIN clauses into their constituent parts.
-    fn compile_joins_for_class(&mut self, left_alias: &str, joins: &JsonValue) -> EgResult<String> {
-        let mut sql = String::new();
-
+    fn compile_joins_for_class(
+        &mut self,
+        left_alias: &str,
+        joins: &JsonValue,
+    ) -> EgResult<Option<String>> {
         let class_to_hash = |c| {
             // Sometimes we JOIN to a class with no additional info beyond
             // the classname.  Put that info into a json object for consistency.
@@ -625,6 +695,7 @@ impl JsonQueryCompiler {
             vec![joins]
         };
 
+        let mut joins = Vec::new();
         for join_entry in join_list {
             let hash_binding;
 
@@ -636,16 +707,15 @@ impl JsonQueryCompiler {
             };
 
             for (right_alias, join_def) in hash_ref.entries() {
-                sql += " ";
-                sql += &self.add_one_join(left_alias, right_alias, join_def)?;
+                joins.push(self.add_one_join(left_alias, right_alias, join_def)?);
             }
         }
 
-        if sql.len() > 0 {
-            sql.remove(0);
+        if joins.len() == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(joins.join(" ")))
         }
-
-        Ok(sql)
     }
 
     fn add_one_join(
@@ -819,8 +889,10 @@ impl JsonQueryCompiler {
         // Add nested JOINs if we have any
         let sub_join = &join_def["join"];
         if !sub_join.is_null() {
-            sql += " ";
-            sql += &self.compile_joins_for_class(right_alias, sub_join)?;
+            if let Some(sjoin) = self.compile_joins_for_class(right_alias, sub_join)? {
+                sql += " ";
+                sql += &sjoin;
+            }
         }
 
         Ok(sql)
@@ -851,6 +923,8 @@ impl JsonQueryCompiler {
         class_alias: &str,
         join_op: &str,
     ) -> EgResult<String> {
+        // println!("compile_where_for_class() {class_alias} {}", where_def.dump());
+
         let mut sql = String::new();
 
         if where_def.is_array() {
@@ -858,11 +932,8 @@ impl JsonQueryCompiler {
                 return Err(format!("Invalid WHERE clause / empty array").into());
             }
 
-            let mut first = true;
-            for part in where_def.members() {
-                if first {
-                    first = false;
-                } else {
+            for (idx, part) in where_def.members().enumerate() {
+                if idx > 0 {
                     sql += " ";
                     sql += join_op;
                     sql += " ";
@@ -877,11 +948,8 @@ impl JsonQueryCompiler {
                 return Err(format!("Invalid predicate structure: empty JSON object"))?;
             }
 
-            let mut first = true;
-            for (key, sub_blob) in where_def.entries() {
-                if first {
-                    first = false;
-                } else {
+            for (idx, (key, sub_blob)) in where_def.entries().enumerate() {
+                if idx > 0 {
                     sql += " ";
                     sql += join_op;
                     sql += " ";
@@ -892,11 +960,11 @@ impl JsonQueryCompiler {
                     // E.g. {"+aou": {"shortname": "BR1"}}
 
                     let alias = &key[1..];
-                    let classname = self.get_alias_classname(class_alias)?;
+                    let classname = self.get_alias_classname(alias)?;
 
                     if let Some(field) = sub_blob.as_str() {
-                        // {"+aou": "shortname"} ?
-                        // Does this really happen?  I'm missing something.
+                        // {"+aou": "shortname"}
+                        // This can happen in order-by clauses.
 
                         if !self.get_idl_class(classname)?.has_real_field(field) {
                             return Err(
@@ -977,6 +1045,8 @@ impl JsonQueryCompiler {
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
+        // println!("search_predicate {class_alias} {field_name} {}", value_def.dump());
+
         if value_def.is_array() {
             // Equality IN search
             self.search_in_predicate(class_alias, field_name, value_def, false)
@@ -1018,6 +1088,8 @@ impl JsonQueryCompiler {
         field_name: &str,
         value_def: &JsonValue,
     ) -> EgResult<String> {
+        // println!("search_field_transform_predicate() {class_alias}.{field_name} {}", value_def.dump());
+
         let field_str =
             self.select_one_field(class_alias, None, field_name, Some(value_def), false)?;
 
@@ -1228,9 +1300,9 @@ impl JsonQueryCompiler {
         value_def: &JsonValue,
         is_not_in: bool,
     ) -> EgResult<String> {
-        println!("search_in_predicate() {field_name} = {}", value_def.dump());
         let field_str =
             self.select_one_field(class_alias, None, field_name, Some(value_def), false)?;
+
         let in_str = self.search_in_list(class_alias, field_name, value_def)?;
 
         Ok(format!(
@@ -1272,9 +1344,7 @@ impl JsonQueryCompiler {
 
         let mut values = Vec::new();
         for value in value_def.members() {
-            values.push(
-                self.scalar_param_as_string(class_alias, field_name, value)?
-            );
+            values.push(self.scalar_param_as_string(class_alias, field_name, value)?);
         }
 
         Ok(values.join(", "))
@@ -1386,14 +1456,10 @@ impl JsonQueryCompiler {
         let mut sql = func_name.to_string();
 
         if from_def.len() > 1 {
-
             let mut params = Vec::new();
-            for (idx, value) in from_def.members().enumerate() {
-                if idx == 0 {
-                    // Function name
-                    continue;
-                }
 
+            // Skip the first member since that's the function name
+            for value in from_def.members().skip(1) {
                 if value.is_null() {
                     params.push("NULL".to_string());
                 } else if let Some(b) = value.as_bool() {
