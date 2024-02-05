@@ -46,10 +46,12 @@ pub struct AuthLoginArgs {
 }
 
 impl AuthLoginArgs {
-    pub fn new<T>(username: &str, password: &str, login_type: T, workstation: Option<&str>) -> Self
-    where
-        T: Into<AuthLoginType>,
-    {
+    pub fn new(
+        username: &str,
+        password: &str,
+        login_type: impl Into<AuthLoginType>,
+        workstation: Option<&str>,
+    ) -> Self {
         AuthLoginArgs {
             username: username.to_string(),
             password: password.to_string(),
@@ -103,10 +105,7 @@ pub struct AuthInternalLoginArgs {
 }
 
 impl AuthInternalLoginArgs {
-    pub fn new<T>(user_id: i64, login_type: T) -> Self
-    where
-        T: Into<AuthLoginType>,
-    {
+    pub fn new(user_id: i64, login_type: impl Into<AuthLoginType>) -> Self {
         AuthInternalLoginArgs {
             user_id,
             login_type: login_type.into(),

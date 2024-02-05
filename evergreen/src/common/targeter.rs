@@ -1014,11 +1014,11 @@ impl HoldTargeter {
     ) -> EgResult<bool> {
         let result = holds::test_copy_for_hold(
             self.editor(),
-            context.hold["usr"].clone(),
+            json_int(&context.hold["usr"])?,
             copy_id,
             context.pickup_lib,
-            context.hold["request_lib"].clone(),
-            context.hold["requestor"].clone(),
+            json_int(&context.hold["request_lib"])?,
+            json_int(&context.hold["requestor"])?,
             true, // is_retarget
             None, // overrides
             true, // check_only

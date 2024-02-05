@@ -6,10 +6,11 @@ use crate::constants as C;
 use crate::date;
 use crate::editor::Editor;
 use crate::event::{EgEvent, Overrides};
-use crate::result::EgResult;
+use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_int};
 use chrono::Duration;
 use json::JsonValue;
+use std::convert::TryFrom;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -25,34 +26,36 @@ pub enum HoldType {
 }
 
 /// let s: &str = hold_type.into();
+#[rustfmt::skip]
 impl From<HoldType> for &'static str {
     fn from(t: HoldType) -> &'static str {
         match t {
-            HoldType::Copy => "C",
-            HoldType::Recall => "R",
-            HoldType::Force => "F",
-            HoldType::Volume => "V",
-            HoldType::Issuance => "I",
-            HoldType::Part => "P",
-            HoldType::Title => "T",
+            HoldType::Copy       => "C",
+            HoldType::Recall     => "R",
+            HoldType::Force      => "F",
+            HoldType::Volume     => "V",
+            HoldType::Issuance   => "I",
+            HoldType::Part       => "P",
+            HoldType::Title      => "T",
             HoldType::Metarecord => "M",
         }
     }
 }
 
 /// let hold_type: HoldType = "T".into();
-impl From<&str> for HoldType {
-    fn from(code: &str) -> HoldType {
+impl TryFrom<&str> for HoldType {
+    type Error = EgError;
+    fn try_from(code: &str) -> EgResult<HoldType> {
         match code {
-            "C" => HoldType::Copy,
-            "R" => HoldType::Recall,
-            "F" => HoldType::Force,
-            "V" => HoldType::Volume,
-            "I" => HoldType::Issuance,
-            "P" => HoldType::Part,
-            "T" => HoldType::Title,
-            "M" => HoldType::Metarecord,
-            _ => panic!("No such hold type: {}", code),
+            "C" => Ok(HoldType::Copy),
+            "R" => Ok(HoldType::Recall),
+            "F" => Ok(HoldType::Force),
+            "V" => Ok(HoldType::Volume),
+            "I" => Ok(HoldType::Issuance),
+            "P" => Ok(HoldType::Part),
+            "T" => Ok(HoldType::Title),
+            "M" => Ok(HoldType::Metarecord),
+            _ => Err(format!("No such hold type: {}", code).into()),
         }
     }
 }
@@ -136,12 +139,9 @@ pub fn calc_hold_shelf_expire_time(
 
 /// Returns the captured, unfulfilled, uncanceled hold that
 /// targets the provided copy.
-pub fn captured_hold_for_copy<T>(editor: &mut Editor, copy_id: T) -> EgResult<Option<JsonValue>>
-where
-    T: Into<JsonValue>,
-{
+pub fn captured_hold_for_copy(editor: &mut Editor, copy_id: i64) -> EgResult<Option<JsonValue>> {
     let query = json::object! {
-        current_copy: copy_id.into(),
+        current_copy: copy_id,
         capture_time: {"!=": JsonValue::Null},
         fulfillment_time: JsonValue::Null,
         cancel_time: JsonValue::Null,
@@ -153,16 +153,13 @@ where
 /// Returns the captured hold if found and a list of hold IDs that
 /// will need to be retargeted, since they previously targeted the
 /// provided copy.
-pub fn find_nearest_permitted_hold<T>(
+pub fn find_nearest_permitted_hold(
     editor: &mut Editor,
-    copy_id: T,
+    copy_id: i64,
     check_only: bool,
-) -> EgResult<Option<(JsonValue, Vec<i64>)>>
-where
-    T: Into<JsonValue>,
-{
+) -> EgResult<Option<(JsonValue, Vec<i64>)>> {
     let mut retarget: Vec<i64> = Vec::new();
-    let copy_id = copy_id.into();
+    let copy_id = copy_id;
 
     // Fetch the appropriatly fleshed copy.
     let flesh = json::object! {
@@ -172,13 +169,13 @@ where
         }
     };
 
-    let copy = match editor.retrieve_with_ops("acp", &copy_id, flesh)? {
+    let copy = match editor.retrieve_with_ops("acp", copy_id, flesh)? {
         Some(c) => c,
         None => Err(editor.die_event())?,
     };
 
     let query = json::object! {
-       "current_copy": copy_id.clone(),
+       "current_copy": copy_id,
        "cancel_time": JsonValue::Null,
        "capture_time": JsonValue::Null,
     };
@@ -241,11 +238,11 @@ where
 
         let result = test_copy_for_hold(
             editor,
-            hold["usr"].clone(),
-            copy_id.clone(),
-            hold["pickup_lib"].clone(),
-            hold["request_lib"].clone(),
-            hold["requestor"].clone(),
+            json_int(&hold["usr"])?,
+            copy_id,
+            json_int(&hold["pickup_lib"])?,
+            json_int(&hold["request_lib"])?,
+            json_int(&hold["requestor"])?,
             true, // is_retarget
             None, // overrides
             true, // check_only
@@ -342,33 +339,20 @@ impl TestCopyForHoldResult {
 }
 
 /// Test if a hold can be used to fill a hold.
-pub fn test_copy_for_hold<T, U, V, W, X>(
+pub fn test_copy_for_hold(
     editor: &mut Editor,
-    patron_id: T,
-    copy_id: U,
-    pickup_lib: V,
-    request_lib: W,
-    requestor: X,
+    patron_id: i64,
+    copy_id: i64,
+    pickup_lib: i64,
+    request_lib: i64,
+    requestor: i64,
     is_retarget: bool,
     overrides: Option<Overrides>,
     // Exit as soon as we know if the permit was allowed or not.
     // If overrides are provided, this flag is ignored, since
     // overrides require the function process all the things.
     check_only: bool,
-) -> EgResult<TestCopyForHoldResult>
-where
-    T: Into<JsonValue>,
-    U: Into<JsonValue>,
-    V: Into<JsonValue>,
-    W: Into<JsonValue>,
-    X: Into<JsonValue>,
-{
-    let copy_id = copy_id.into();
-    let patron_id = patron_id.into();
-    let pickup_lib = pickup_lib.into();
-    let request_lib = request_lib.into();
-    let requestor = requestor.into();
-
+) -> EgResult<TestCopyForHoldResult> {
     let mut result = TestCopyForHoldResult {
         success: false,
         permit_results: Vec::new(),
@@ -508,10 +492,7 @@ where
 /// TODO: As is, this is NOT run within a transaction, since it's a
 /// call to a remote service.  If targeting is ever ported to Rust, it
 /// can run in the same transaction.
-pub fn retarget_holds<T>(editor: &mut Editor, hold_ids: &[T]) -> EgResult<()>
-where
-    T: Into<JsonValue> + Clone,
-{
+pub fn retarget_holds(editor: &mut Editor, hold_ids: &[i64]) -> EgResult<()> {
     editor.client_mut().send_recv_one(
         "open-ils.hold-targeter",
         "open-ils.hold-targeter.target",
@@ -546,11 +527,7 @@ pub fn retarget_hold_in_xact(
 /// changes must be committed before retargeting occurs, this function
 /// begins and commits its own transaction, by way of a cloned copy of
 /// the provided editor.
-pub fn reset_hold<T>(editor: &mut Editor, hold_id: T) -> EgResult<()>
-where
-    T: Into<JsonValue>,
-{
-    let hold_id = hold_id.into();
+pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
     log::info!("Resetting hold {hold_id}");
 
     // Leave the provided editor in whatever state it's already in.
@@ -559,7 +536,7 @@ where
     editor.xact_begin()?;
 
     let mut hold = editor
-        .retrieve("ahr", &hold_id)?
+        .retrieve("ahr", hold_id)?
         .ok_or_else(|| editor.die_event())?;
 
     // Resetting captured holds requires a little more care.
@@ -578,7 +555,7 @@ where
             editor.update(copy)?;
         } else if copy_status == C::COPY_STATUS_IN_TRANSIT {
             let query = json::object! {
-                "hold": hold_id.clone(),
+                "hold": hold_id,
                 "cancel_time": JsonValue::Null,
             };
 
@@ -724,11 +701,14 @@ pub fn related_to_copy(
 
     let mut list = Vec::new();
     for val in editor.json_query(query)? {
+        // We know the hold type returned from the database is valid.
+        let hold_type = HoldType::try_from(val["hold_type"].as_str().unwrap()).unwrap();
+
         let h = MinimalHold {
             id: json_int(&val["id"])?,
             target: json_int(&val["target"])?,
             pickup_lib: json_int(&val["pickup_lib"])?,
-            hold_type: val["hold_type"].as_str().unwrap().into(), // required
+            hold_type,
             active: true,
         };
 

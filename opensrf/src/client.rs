@@ -355,15 +355,12 @@ impl Client {
     /// the responses to the method.
     ///
     /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
-    pub fn send_recv_iter<T>(
+    pub fn send_recv_iter(
         &self,
         service: &str,
         method: &str,
-        params: T,
-    ) -> Result<ResponseIterator, String>
-    where
-        T: Into<ApiParams>,
-    {
+        params: impl Into<ApiParams>,
+    ) -> Result<ResponseIterator, String> {
         Ok(ResponseIterator::new(
             self.session(service).request(method, params)?,
         ))
@@ -377,15 +374,12 @@ impl Client {
         self.singleton().borrow_mut().wait(timeout)
     }
 
-    pub fn send_recv_one<T>(
+    pub fn send_recv_one(
         &self,
         service: &str,
         method: &str,
-        params: T,
-    ) -> Result<Option<JsonValue>, String>
-    where
-        T: Into<ApiParams>,
-    {
+        params: impl Into<ApiParams>,
+    ) -> Result<Option<JsonValue>, String> {
         let mut ses = self.session(service);
         let mut req = ses.request(method, params)?;
 

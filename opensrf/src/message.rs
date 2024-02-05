@@ -5,6 +5,7 @@ const DEFAULT_LOCALE: &str = "en-US";
 const DEFAULT_TIMEZONE: &str = "America/New_York";
 const DEFAULT_API_LEVEL: u8 = 1;
 const DEFAULT_INGRESS: &str = "opensrf";
+const OSRF_MESSAGE_CLASS: &str = "osrfMessage";
 const JSON_NULL: json::JsonValue = json::JsonValue::Null;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -23,13 +24,14 @@ pub enum MessageType {
 /// let mt: opensrf::message::MessageType = "REQUEST".into();
 /// assert_eq!(mt, opensrf::message::MessageType::Request);
 /// ```
+#[rustfmt::skip]
 impl From<&str> for MessageType {
     fn from(s: &str) -> Self {
         match s {
-            "CONNECT" => MessageType::Connect,
-            "REQUEST" => MessageType::Request,
-            "RESULT" => MessageType::Result,
-            "STATUS" => MessageType::Status,
+            "CONNECT"    => MessageType::Connect,
+            "REQUEST"    => MessageType::Request,
+            "RESULT"     => MessageType::Result,
+            "STATUS"     => MessageType::Status,
             "DISCONNECT" => MessageType::Disconnect,
             _ => MessageType::Unknown,
         }
@@ -43,13 +45,14 @@ impl From<&str> for MessageType {
 /// let s: &str = opensrf::message::MessageType::Request.into();
 /// assert_eq!(s, "REQUEST");
 /// ```
+#[rustfmt::skip]
 impl Into<&'static str> for MessageType {
     fn into(self) -> &'static str {
         match self {
-            MessageType::Connect => "CONNECT",
-            MessageType::Request => "REQUEST",
-            MessageType::Result => "RESULT",
-            MessageType::Status => "STATUS",
+            MessageType::Connect    => "CONNECT",
+            MessageType::Request    => "REQUEST",
+            MessageType::Result     => "RESULT",
+            MessageType::Status     => "STATUS",
             MessageType::Disconnect => "DISCONNECT",
             _ => "UNKNOWN",
         }
@@ -65,25 +68,26 @@ impl fmt::Display for MessageType {
 
 /// OpenSRF messages have HTTP-like status codes.
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[rustfmt::skip]
 pub enum MessageStatus {
-    Continue = 100,
-    Ok = 200,
-    Accepted = 202,
-    PartialComplete = 204,
-    Complete = 205,
-    Partial = 206,
-    Redirected = 307,
-    BadRequest = 400,
-    Unauthorized = 401,
-    Forbidden = 403,
-    MethodNotFound = 404,
-    NotAllowed = 405,
-    ServiceNotFound = 406,
-    Timeout = 408,
-    Expfailed = 417,
+    Continue            = 100,
+    Ok                  = 200,
+    Accepted            = 202,
+    PartialComplete     = 204,
+    Complete            = 205,
+    Partial             = 206,
+    Redirected          = 307,
+    BadRequest          = 400,
+    Unauthorized        = 401,
+    Forbidden           = 403,
+    MethodNotFound      = 404,
+    NotAllowed          = 405,
+    ServiceNotFound     = 406,
+    Timeout             = 408,
+    Expfailed           = 417,
     InternalServerError = 500,
-    NotImplemented = 501,
-    ServiceUnavailable = 503,
+    NotImplemented      = 501,
+    ServiceUnavailable  = 503,
     VersionNotSupported = 505,
     Unknown,
 }
@@ -94,6 +98,7 @@ pub enum MessageStatus {
 /// let ms: opensrf::message::MessageStatus = 205.into();
 /// assert_eq!(ms, opensrf::message::MessageStatus::Complete);
 /// ```
+#[rustfmt::skip]
 impl From<isize> for MessageStatus {
     fn from(num: isize) -> Self {
         match num {
@@ -116,7 +121,7 @@ impl From<isize> for MessageStatus {
             501 => MessageStatus::NotImplemented,
             503 => MessageStatus::ServiceUnavailable,
             505 => MessageStatus::VersionNotSupported,
-            _ => MessageStatus::Unknown,
+            _   => MessageStatus::Unknown,
         }
     }
 }
@@ -127,19 +132,20 @@ impl From<isize> for MessageStatus {
 /// let s: &str = opensrf::message::MessageStatus::Continue.into();
 /// assert_eq!(s, "Continue");
 /// ```
+#[rustfmt::skip]
 impl Into<&'static str> for MessageStatus {
     fn into(self) -> &'static str {
         match self {
-            MessageStatus::Ok => "OK",
-            MessageStatus::Continue => "Continue",
-            MessageStatus::Complete => "Request Complete",
-            MessageStatus::BadRequest => "Bad Request",
-            MessageStatus::Timeout => "Timeout",
-            MessageStatus::MethodNotFound => "Method Not Found",
-            MessageStatus::NotAllowed => "Not Allowed",
-            MessageStatus::ServiceNotFound => "Service Not Found",
+            MessageStatus::Ok                  => "OK",
+            MessageStatus::Continue            => "Continue",
+            MessageStatus::Complete            => "Request Complete",
+            MessageStatus::BadRequest          => "Bad Request",
+            MessageStatus::Timeout             => "Timeout",
+            MessageStatus::MethodNotFound      => "Method Not Found",
+            MessageStatus::NotAllowed          => "Not Allowed",
+            MessageStatus::ServiceNotFound     => "Service Not Found",
             MessageStatus::InternalServerError => "Internal Server Error",
-            _ => "See Status Code",
+            _                                  => "See Status Code",
         }
     }
 }
@@ -373,12 +379,11 @@ impl TransportMessage {
 pub struct Message {
     mtype: MessageType,
     thread_trace: usize,
-    locale: String,
-    timezone: String,
+    locale: Option<String>,
+    timezone: Option<String>,
     api_level: u8,
-    ingress: String,
+    ingress: Option<String>,
     payload: Payload,
-    msg_class: String,
 }
 
 impl Message {
@@ -388,10 +393,9 @@ impl Message {
             thread_trace,
             payload,
             api_level: DEFAULT_API_LEVEL,
-            locale: DEFAULT_LOCALE.to_string(),
-            timezone: DEFAULT_TIMEZONE.to_string(),
-            ingress: DEFAULT_INGRESS.to_string(),
-            msg_class: String::from("osrfMessage"), // Only supported value
+            locale: None,
+            timezone: None,
+            ingress: None,
         }
     }
 
@@ -419,27 +423,27 @@ impl Message {
     }
 
     pub fn locale(&self) -> &str {
-        &self.locale
+        self.locale.as_deref().unwrap_or(DEFAULT_LOCALE)
     }
 
     pub fn set_locale(&mut self, locale: &str) {
-        self.locale = locale.to_string()
+        self.locale = Some(locale.to_string());
     }
 
     pub fn timezone(&self) -> &str {
-        &self.timezone
+        self.timezone.as_deref().unwrap_or(DEFAULT_TIMEZONE)
     }
 
     pub fn set_timezone(&mut self, timezone: &str) {
-        self.timezone = timezone.to_string()
+        self.timezone = Some(timezone.to_string())
     }
 
     pub fn ingress(&self) -> &str {
-        &self.ingress
+        self.ingress.as_deref().unwrap_or(DEFAULT_INGRESS)
     }
 
     pub fn set_ingress(&mut self, ingress: &str) {
-        self.ingress = ingress.to_string()
+        self.ingress = Some(ingress.to_string())
     }
 
     /// Creates a Message from a JSON value, consuming the JSON value.
@@ -546,7 +550,7 @@ impl Message {
             _ => obj["payload"] = self.payload.to_json_value(),
         }
 
-        super::classified::ClassifiedJson::classify(obj, &self.msg_class)
+        super::classified::ClassifiedJson::classify(obj, OSRF_MESSAGE_CLASS)
     }
 }
 

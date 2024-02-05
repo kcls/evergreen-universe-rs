@@ -4,12 +4,8 @@ use crate::editor::Editor;
 use crate::event::EgEvent;
 use crate::result::EgResult;
 use crate::util::json_int;
-use json::JsonValue;
 
-pub fn cancel_transit<T>(editor: &mut Editor, transit_id: T, skip_hold_reset: bool) -> EgResult<()>
-where
-    T: Into<JsonValue>,
-{
+pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: bool) -> EgResult<()> {
     let flesh = json::object! {
         "flesh": 1,
         "flesh_fields": {
@@ -18,7 +14,7 @@ where
     };
 
     let mut transit = editor
-        .retrieve_with_ops("atc", transit_id.into(), flesh)?
+        .retrieve_with_ops("atc", transit_id, flesh)?
         .ok_or_else(|| editor.die_event())?;
 
     let mut copy = transit["target_copy"].take();

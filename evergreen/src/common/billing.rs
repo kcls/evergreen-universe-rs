@@ -71,23 +71,19 @@ pub fn void_bills(
 }
 
 /// Sets or clears xact_finish on a transaction as needed.
-pub fn check_open_xact<T>(editor: &mut Editor, xact_id: T) -> EgResult<()>
-where
-    T: Into<JsonValue>,
-{
-    let xact_id: JsonValue = xact_id.into();
-    let mut xact = match editor.retrieve("mbt", xact_id.clone())? {
+pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> EgResult<()> {
+    let mut xact = match editor.retrieve("mbt", xact_id)? {
         Some(x) => x,
         None => Err(editor.die_event())?,
     };
 
-    let mbts = match editor.retrieve("mbts", xact_id.clone())? {
+    let mbts = match editor.retrieve("mbts", xact_id)? {
         Some(m) => m,
         None => Err(editor.die_event())?,
     };
 
     // See if we have a completed circ.
-    let no_circ_or_complete = match editor.retrieve("circ", xact_id.clone())? {
+    let no_circ_or_complete = match editor.retrieve("circ", xact_id)? {
         Some(c) => c["stop_fines"].is_string(), // otherwise is_null()
         None => true,
     };

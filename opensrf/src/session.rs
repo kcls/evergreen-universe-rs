@@ -446,10 +446,7 @@ impl Session {
     }
 
     /// Issue a new API call and return the thread_trace of the sent request.
-    fn request<T>(&mut self, method: &str, params: T) -> Result<usize, String>
-    where
-        T: Into<ApiParams>,
-    {
+    fn request(&mut self, method: &str, params: impl Into<ApiParams>) -> Result<usize, String> {
         log::debug!("{self} sending request {method}");
 
         let trace = self.incr_thread_trace();
@@ -591,10 +588,11 @@ impl SessionHandle {
     /// Issue a new API call and return the Request
     ///
     /// params is a JSON-able thing.  E.g. vec![1,2,3], json::object!{"a": "b"}, etc.
-    pub fn request<T>(&mut self, method: &str, params: T) -> Result<Request, String>
-    where
-        T: Into<ApiParams>,
-    {
+    pub fn request(
+        &mut self,
+        method: &str,
+        params: impl Into<ApiParams>,
+    ) -> Result<Request, String> {
         let thread = self.session.borrow().thread().to_string();
 
         Ok(Request::new(
@@ -608,10 +606,11 @@ impl SessionHandle {
     /// the responses to the method.
     ///
     /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
-    pub fn send_recv<T>(&mut self, method: &str, params: T) -> Result<ResponseIterator, String>
-    where
-        T: Into<ApiParams>,
-    {
+    pub fn send_recv(
+        &mut self,
+        method: &str,
+        params: impl Into<ApiParams>,
+    ) -> Result<ResponseIterator, String> {
         Ok(ResponseIterator::new(self.request(method, params)?))
     }
 
@@ -677,10 +676,11 @@ impl MultiSession {
     ///
     /// Returns the session thead so the caller can link specific
     /// request to their responses (see recv()) if needed.
-    pub fn request<T>(&mut self, method: &str, params: T) -> Result<String, String>
-    where
-        T: Into<ApiParams>,
-    {
+    pub fn request(
+        &mut self,
+        method: &str,
+        params: impl Into<ApiParams>,
+    ) -> Result<String, String> {
         let mut ses = self.client.session(&self.service);
         let req = ses.request(method, params)?;
         let thread = req.thread().to_string();
@@ -946,17 +946,11 @@ impl ServerSession {
         self.respond_with_parts(None, true)
     }
 
-    pub fn respond<T>(&mut self, value: T) -> Result<(), String>
-    where
-        T: Into<JsonValue>,
-    {
+    pub fn respond(&mut self, value: impl Into<JsonValue>) -> Result<(), String> {
         self.respond_with_parts(Some(value.into()), false)
     }
 
-    pub fn respond_complete<T>(&mut self, value: T) -> Result<(), String>
-    where
-        T: Into<JsonValue>,
-    {
+    pub fn respond_complete(&mut self, value: impl Into<JsonValue>) -> Result<(), String> {
         self.respond_with_parts(Some(value.into()), true)
     }
 }

@@ -363,7 +363,7 @@ impl Circulator {
         }
 
         if let Some(transit) = self.transit.as_ref() {
-            let transit_id = transit["id"].clone();
+            let transit_id = json_int(&transit["id"])?;
             log::info!(
                 "{self} copy is both checked out and in transit.  Canceling transit {transit_id}"
             );
@@ -647,7 +647,7 @@ impl Circulator {
         let req_ws_id = self.editor().requestor_ws_id();
 
         let circ = self.circ.as_mut().unwrap();
-        let circ_id: i64 = json_int(&circ["id"])?;
+        let circ_id = json_int(&circ["id"])?;
 
         circ["checkin_time"] = self
             .options

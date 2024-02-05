@@ -459,10 +459,11 @@ impl Editor {
     /// Send an API request to our service/worker with parameters.
     ///
     /// All requests return at most a single response.
-    fn request<T>(&mut self, method: &str, params: T) -> EgResult<Option<json::JsonValue>>
-    where
-        T: Into<ApiParams>,
-    {
+    fn request(
+        &mut self,
+        method: &str,
+        params: impl Into<ApiParams>,
+    ) -> EgResult<Option<json::JsonValue>> {
         let params: ApiParams = params.into();
 
         log::info!(
@@ -557,22 +558,20 @@ impl Editor {
         Err(format!("Unexpected response to method {method}").into())
     }
 
-    pub fn retrieve<T>(&mut self, idlclass: &str, id: T) -> EgResult<Option<json::JsonValue>>
-    where
-        T: Into<ApiParams>,
-    {
+    pub fn retrieve(
+        &mut self,
+        idlclass: &str,
+        id: impl Into<ApiParams>,
+    ) -> EgResult<Option<json::JsonValue>> {
         self.retrieve_with_ops(idlclass, id, json::JsonValue::Null)
     }
 
-    pub fn retrieve_with_ops<T>(
+    pub fn retrieve_with_ops(
         &mut self,
         idlclass: &str,
-        id: T,
+        id: impl Into<ApiParams>,
         ops: json::JsonValue, // flesh, etc.
-    ) -> EgResult<Option<json::JsonValue>>
-    where
-        T: Into<ApiParams>,
-    {
+    ) -> EgResult<Option<json::JsonValue>> {
         let fmapper = self.get_fieldmapper(idlclass)?;
 
         let method = self.app_method(&format!("direct.{fmapper}.retrieve"));
