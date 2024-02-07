@@ -39,6 +39,9 @@ impl LogOptions {
         self.log_level = Some(LogOptions::log_level_from_str(level));
     }
 
+    /// Maps log levels as defined in the OpenSRF core configuration
+    /// file to syslog levels.
+    ///
     /// Defaults to Info
     pub fn log_level_from_str(level: &str) -> log::LevelFilter {
         match level {

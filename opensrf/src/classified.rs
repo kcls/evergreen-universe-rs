@@ -9,6 +9,7 @@ pub struct ClassifiedJson {
 }
 
 impl ClassifiedJson {
+    /// The core JSON value with class information removed
     pub fn json(&self) -> &json::JsonValue {
         &self.json
     }
@@ -43,6 +44,19 @@ impl ClassifiedJson {
         hash
     }
 
+    /// True if the provided JSON value is one we recognized as having
+    /// been classified, i.e. wrapped in a classed container.
+    ///
+    /// The opposite will always be true, any object can be classified.
+    ///
+    /// ```
+    /// // shorthand
+    /// type Dec = opensrf::classified::ClassifiedJson;
+    ///
+    /// let obj = Dec::classify(json::array![1,2,3], "abc");
+    /// assert!(Dec::can_declassify(&obj));
+    /// assert!(!Dec::can_declassify(&json::object! {"howdy":"neighbor"}));
+    /// ```
     pub fn can_declassify(obj: &json::JsonValue) -> bool {
         obj.is_object()
             && obj.has_key(JSON_CLASS_KEY)

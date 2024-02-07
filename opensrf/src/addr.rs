@@ -81,6 +81,16 @@ impl BusAddress {
         })
     }
 
+    /// Router address
+    ///
+    /// Send messages here to talk to a Router.
+    ///
+    /// ```
+    /// let addr = opensrf::addr::BusAddress::for_router("router", "private.localhost");
+    ///
+    /// assert!(addr.is_router());
+    /// assert_eq!(addr.as_str(), "opensrf:router:router:private.localhost");
+    /// ```
     pub fn for_router(username: &str, domain: &str) -> Self {
         let full = format!("{}:router:{}:{}", BUS_ADDR_NAMESPACE, username, domain);
 

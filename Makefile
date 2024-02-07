@@ -7,13 +7,14 @@ SYSTEMD_DIR = /lib/systemd/system
 # Inline doc tests are compiler-heavy so having a limit here
 # helps ensure things don't get out of hand ram/cpu/disk-wise.
 TEST_THREADS = 4
+BUILD_THREADS = 4
 
 build: build-opensrf build-evergreen build-sip2server
 
 build-release: build-opensrf-release build-evergreen-release build-sip2server-release
 
 test:
-	cargo test --all -- --test-threads=${TEST_THREADS}
+	cargo test -j ${BUILD_THREADS} --all -- --test-threads=${TEST_THREADS}
 
 install: install-opensrf install-evergreen install-sip2server
 
@@ -22,10 +23,10 @@ install-release: install-opensrf-release install-evergreen-release install-sip2s
 # --- OpenSRF ---
 
 build-opensrf:
-	cargo build --package opensrf
+	cargo build -j ${BUILD_THREADS} --package opensrf
 
 build-opensrf-release:
-	cargo build --release --package opensrf
+	cargo build -j ${BUILD_THREADS} --release --package opensrf
 
 install-opensrf: install-opensrf-config
 	#cp ./target/debug/opensrf-router ${TARGET}/bin
@@ -40,10 +41,10 @@ install-opensrf-config:
 # --- Evergreen ---
 
 build-evergreen:
-	cargo build --package evergreen
+	cargo build -j ${BUILD_THREADS} --package evergreen
 
 build-evergreen-release:
-	cargo build --package evergreen --release
+	cargo build -j ${BUILD_THREADS} --package evergreen --release
 
 install-evergreen: install-evergreen-config
 	cp ./target/debug/egsh ${TARGET}/bin
@@ -69,10 +70,10 @@ install-evergreen-config:
 # --- SIP2 Server ---
 
 build-sip2server:
-	cargo build --package sip2server
+	cargo build -j ${BUILD_THREADS} --package sip2server
 
 build-sip2server-release:
-	cargo build --package sip2server --release
+	cargo build -j ${BUILD_THREADS} --package sip2server --release
 
 install-sip2server: install-sip2server-config
 	cp ./target/debug/eg-sip2-server ${TARGET}/bin

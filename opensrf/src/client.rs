@@ -34,6 +34,7 @@ pub struct ClientSingleton {
     /// Connections to remote domains
     remote_bus_map: HashMap<String, bus::Bus>,
 
+    /// Our OpenSRF config.
     config: Arc<conf::Config>,
 
     /// Queue of receieved transport messages that have yet to be
@@ -69,11 +70,13 @@ impl ClientSingleton {
         &self.serializer
     }
 
+    /// Delete all messages that have been received but not yet pulled
+    /// for processing by any higher-up modules.
     fn clear_backlog(&mut self) {
         self.backlog.clear();
     }
 
-    /// Full bus address as a string
+    /// Our full bus address as a string
     fn address(&self) -> &str {
         self.bus().address().as_str()
     }
@@ -165,7 +168,9 @@ impl ClientSingleton {
     }
 
     /// Returns true if any data exists in the backlog within the
-    /// timeout provided.  This is useful for checking network activity
+    /// timeout provided.
+    ///
+    /// This is useful for checking network activity
     /// across multiple active sessions in lieu of polling each
     /// session for responses.
     pub fn wait(&mut self, timeout: i32) -> Result<bool, String> {
@@ -185,6 +190,7 @@ impl ClientSingleton {
         Ok(!self.backlog.is_empty())
     }
 
+    /// Receive up to one message destined for the specified session.
     pub fn recv_session(
         &mut self,
         timer: &mut util::Timer,
@@ -211,6 +217,8 @@ impl ClientSingleton {
         }
     }
 
+    /// Send a command to the router specified by username/domain, like
+    /// "register" and "unregister".
     fn send_router_command(
         &mut self,
         username: &str,
@@ -261,6 +269,12 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a new Client and connect to the bus.
+    ///
+    /// NOTE: In most cases, cloning an existing client is the
+    /// preferred approach, since that guarantees you are
+    /// using an existing Bus connection, instead of creating
+    /// a new one, which is generally unnecessary.
     pub fn connect(config: Arc<conf::Config>) -> Result<Client, String> {
         // This performs the actual bus-level connection.
         let singleton = ClientSingleton::new(config)?;
@@ -275,6 +289,9 @@ impl Client {
         })
     }
 
+    /// Create a new Client from an existing Bus connection.
+    ///
+    /// This can be handy because a Bus is Send-able, but a Client is not.
     pub fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> Client {
         // This performs the actual bus-level connection.
         let singleton = ClientSingleton::from_bus(bus, config);
@@ -307,6 +324,10 @@ impl Client {
         &self.singleton
     }
 
+    /// Clone an existing Client.
+    ///
+    /// Clones live atop a shared Bus connection and do not need
+    /// to be re-connected.
     pub fn clone(&self) -> Self {
         Client {
             address: self.address().clone(),
@@ -339,6 +360,7 @@ impl Client {
         self.singleton().borrow_mut().bus_mut().clear_bus()
     }
 
+    /// Wrapper for ClientSingleton::send_router_command()
     pub fn send_router_command(
         &self,
         username: &str,
@@ -370,10 +392,16 @@ impl Client {
         self.singleton().borrow().config.clone()
     }
 
+    /// Wrapper for ClientSingleton::wait()
     pub fn wait(&self, timeout: i32) -> Result<bool, String> {
         self.singleton().borrow_mut().wait(timeout)
     }
 
+    /// Sends an API request and returns the first response, or None if
+    /// the API call times out.
+    ///
+    /// This still waits for all responses to arrive before returning the
+    /// first, so the request can be marked as complete and cleaned up.
     pub fn send_recv_one(
         &self,
         service: &str,

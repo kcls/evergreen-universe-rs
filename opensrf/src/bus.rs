@@ -6,10 +6,11 @@ use super::util;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::fmt;
 
-/// Manages the Redis connection.
+/// Manages a Redis connection.
 pub struct Bus {
     connection: redis::Connection,
-    // Every bus connection has a unique client address.
+
+    /// Every bus connection has a unique client address.
     address: BusAddress,
 
     /// Name of the router running on our primary domain.
@@ -43,10 +44,10 @@ impl Bus {
     }
 
     /// Generates the Redis connection Info
+    ///
+    /// Builds the connection info by hand because it gives us more
+    /// flexibility/control than compiling a URL string.
     fn connection_info(config: &conf::BusClient) -> Result<ConnectionInfo, String> {
-        // Build the connection info by hand because it gives us more
-        // flexibility/control than compiling a URL string.
-
         let redis_con = RedisConnectionInfo {
             db: 0,
             username: Some(config.username().to_string()),
@@ -62,10 +63,12 @@ impl Bus {
         })
     }
 
+    /// The unique bus address for this bus connection.
     pub fn address(&self) -> &BusAddress {
         &self.address
     }
 
+    /// Apply a new bus address
     pub fn set_address(&mut self, addr: &BusAddress) {
         self.address = addr.clone();
     }
@@ -75,12 +78,16 @@ impl Bus {
         self.address = BusAddress::for_client(self.username(), self.domain());
     }
 
+    /// The name of the router running on our primary domain.
     pub fn router_name(&self) -> &str {
         &self.router_name
     }
+
+    /// Our primary domain
     pub fn domain(&self) -> &str {
         self.address().domain()
     }
+
     pub fn username(&self) -> &str {
         self.address().username()
     }
@@ -336,6 +343,7 @@ impl Bus {
     }
 }
 
+/// Good for debugging / logging
 impl fmt::Display for Bus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Bus {}", self.address().as_str())
