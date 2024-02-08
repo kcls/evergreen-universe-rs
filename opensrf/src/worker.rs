@@ -55,28 +55,30 @@ pub struct Worker {
 
     config: Arc<conf::Config>,
 
+    /// Has our server asked us to clean up and exit?
     stopping: Arc<AtomicBool>,
 
-    // Settings from opensrf.settings
+    /// Settings from opensrf.settings
     host_settings: Arc<HostSettings>,
 
     client: Client,
 
-    // True if the caller has requested a stateful conversation.
+    /// True if the caller has requested a stateful conversation.
     connected: bool,
 
     methods: Arc<HashMap<String, method::MethodDef>>,
 
-    // Currently active session.
-    // A worker can only have one active session at a time.
-    // For stateless requests, each new thread results in a new session.
-    // Starting a new thread/session in a stateful conversation
-    // results in an error.
+    /// Currently active session.
+    /// A worker can only have one active session at a time.
+    /// For stateless requests, each new thread results in a new session.
+    /// Starting a new thread/session in a stateful conversation
+    /// results in an error.
     session: Option<ServerSession>,
 
+    /// Unique ID for tracking/logging each working.
     worker_id: u64,
 
-    // Channel for sending worker state info to our parent.
+    /// Channel for sending worker state info to our parent.
     to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
 }
 
@@ -132,6 +134,8 @@ impl Worker {
         self.worker_id
     }
 
+    /// Create and new ApplicationWorker instance and initialize
+    /// its environment.
     pub fn create_app_worker(
         &mut self,
         factory: app::ApplicationWorkerFactory,
@@ -148,6 +152,7 @@ impl Worker {
         Ok(app_worker)
     }
 
+    /// Wait for and process inbound API calls.
     pub fn listen(&mut self, mut appworker: Box<dyn app::ApplicationWorker>) {
         let selfstr = format!("{self}");
 
@@ -343,6 +348,7 @@ impl Worker {
         Ok((true, true)) // work occurred, message handled
     }
 
+    /// Tell our parent we're about to perform some work.
     fn set_active(&mut self) -> Result<(), String> {
         if let Err(e) = self.notify_state(WorkerState::Active) {
             Err(format!(
@@ -353,6 +359,7 @@ impl Worker {
         Ok(())
     }
 
+    /// Tell our parent we're available to perform work.
     fn set_idle(&mut self) -> Result<(), String> {
         if let Err(e) = self.notify_state(WorkerState::Idle) {
             Err(format!(
