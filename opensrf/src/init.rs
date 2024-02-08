@@ -27,12 +27,13 @@ pub fn init() -> Result<conf::Config, String> {
 }
 
 pub fn init_with_options(options: &InitOptions) -> Result<conf::Config, String> {
-    let filename = match env::var("OSRF_CONFIG") {
-        Ok(v) => v,
-        Err(_) => DEFAULT_OSRF_CONFIG.to_string(),
+    let builder = if let Ok(fname) = env::var("OSRF_CONFIG") {
+        conf::ConfigBuilder::from_file(&fname)?
+    } else {
+        conf::ConfigBuilder::from_file(DEFAULT_OSRF_CONFIG)?
     };
 
-    let mut config = conf::ConfigBuilder::from_file(&filename)?.build()?;
+    let mut config = builder.build()?;
 
     if let Ok(_) = env::var("OSRF_LOCALHOST") {
         config.set_hostname("localhost");

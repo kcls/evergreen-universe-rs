@@ -3,7 +3,7 @@ use rand::Rng;
 use std::thread;
 use std::time::{Instant, SystemTime};
 
-const REDACTED_PARAMS_STR: &str = "**PARAMS REDACTED**";
+pub const REDACTED_PARAMS_STR: &str = "**PARAMS REDACTED**";
 
 /// Current thread ID as u64.
 ///
@@ -25,6 +25,14 @@ pub fn thread_id() -> u64 {
 }
 
 /// Returns a string of random numbers of the requested length
+///
+/// ```
+/// use opensrf::util;
+/// let n = util::random_number(12);
+/// assert_eq!(n.len(), 12);
+/// let n = util::random_number(100);
+/// assert_eq!(n.len(), 100);
+/// ```
 pub fn random_number(size: usize) -> String {
     let mut rng = rand::thread_rng();
     let num: u64 = rng.gen_range(100_000_000_000..1_000_000_000_000);
@@ -32,6 +40,15 @@ pub fn random_number(size: usize) -> String {
 }
 
 /// Converts a JSON number or string to an isize if possible
+///
+/// ```
+/// use opensrf::util;
+/// use json;
+/// let v = json::from(-123);
+/// assert_eq!(util::json_isize(&v), Some(-123));
+/// let v = json::from("hello");
+/// assert_eq!(util::json_isize(&v), None);
+/// ```
 pub fn json_isize(value: &json::JsonValue) -> Option<isize> {
     if let Some(i) = value.as_isize() {
         return Some(i);
@@ -45,6 +62,16 @@ pub fn json_isize(value: &json::JsonValue) -> Option<isize> {
 }
 
 /// Converts a JSON number or string to an usize if possible
+/// ```
+/// use opensrf::util;
+/// use json;
+/// let v = json::from(-123);
+/// assert_eq!(util::json_usize(&v), None);
+/// let v = json::from("hello");
+/// assert_eq!(util::json_usize(&v), None);
+/// let v = json::from(12321);
+/// assert_eq!(util::json_usize(&v), Some(12321));
+/// ```
 pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
     if let Some(i) = value.as_usize() {
         return Some(i);
@@ -57,6 +84,21 @@ pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
     None
 }
 
+/// Simple seconds-based countdown timer.
+/// ```
+/// use opensrf::util;
+///
+/// let t = util::Timer::new(60);
+/// assert!(!t.done());
+/// assert!(t.remaining() > 0);
+/// assert_eq!(t.duration(), 60);
+///
+/// let t = util::Timer::new(0);
+/// assert!(t.done());
+/// assert!(t.remaining() == 0);
+/// assert_eq!(t.duration(), 0);
+///
+/// ```
 pub struct Timer {
     /// Duration of this timer in seconds.
     /// Timer is "done" once this many seconds have passed
@@ -74,15 +116,15 @@ impl Timer {
             start_time: Instant::now(),
         }
     }
-
     pub fn reset(&mut self) {
         self.start_time = Instant::now();
     }
-
     pub fn remaining(&self) -> i32 {
         self.duration - self.start_time.elapsed().as_secs() as i32
     }
-
+    pub fn duration(&self) -> i32 {
+        self.duration
+    }
     pub fn done(&self) -> bool {
         self.remaining() <= 0
     }
@@ -104,6 +146,16 @@ pub fn epoch_secs_str() -> String {
 /// Creates a (JSON) String verion of a list of method parameters,
 /// replacing params with a generic REDACTED message for log-protected
 /// methods.
+///
+/// ```
+/// use opensrf::util;
+/// let method = "opensrf.system.private.stuff";
+/// let log_protect = vec!["opensrf.system.private".to_string()];
+/// let params = vec![];
+///
+/// let s = util::stringify_params(method, &params, &log_protect);
+/// assert_eq!(s.as_str(), util::REDACTED_PARAMS_STR);
+/// ```
 pub fn stringify_params(
     method: &str,
     params: &Vec<json::JsonValue>,
