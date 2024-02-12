@@ -226,10 +226,16 @@ impl Session {
                 break;
             }
 
-            let sip_req_op = self
+            let sip_req_op = match self
                 .sip_connection
-                .recv_with_timeout(conf::SIP_SHUTDOWN_POLL_INTERVAL)
-                .or_else(|e| Err(format!("{self} SIP recv() failed: {e}")))?;
+                .recv_with_timeout(conf::SIP_SHUTDOWN_POLL_INTERVAL) 
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    log::info!("{self} client disconnected: {e}. Session exiting");
+                    break;
+                }
+            };
 
             log::trace!("{self} waking from SIP message receive poll");
 

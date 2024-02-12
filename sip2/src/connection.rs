@@ -155,7 +155,7 @@ impl Connection {
         if text.len() == 0 {
             // Receiving none with no timeout indicates either an error
             // or the client simply disconnected.
-            log::info!("Reading TCP stream returned 0 bytes");
+            log::debug!("Reading TCP stream returned 0 bytes");
             return Err(Error::NoResponseError);
         }
 

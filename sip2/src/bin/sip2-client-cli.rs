@@ -2,19 +2,26 @@ use getopts;
 use sip2::*;
 use std::env;
 
+const DEFAULT_HOST: &str = "localhost:6001";
+
 const HELP_TEXT: &str = r#"
 
 Required:
 
     --sip-host <host:port>
-    --sip-user
-    --sip-pass
+    --sip-user <username>
+    --sip-pass <password>
 
-Optional:
+Params for Sending SIP Requests
 
-    --patron-barcode
-    --patron-pass
-    --item-barcode
+    --message-type <mtype>
+
+        Repeatable.  Options include:
+            "item-information"
+
+    --patron-barcode <barcode>
+    --patron-pass <password>
+    --item-barcode <barcode>
 
 "#;
 
@@ -32,7 +39,7 @@ fn main() {
 
     // Optional
     opts.optopt("b", "patron-barcode", "Patron Barcode", "PATRON-BARCODE");
-    opts.optopt("p", "patron-pass", "Patron Password", "PATRON-PASSWORD");
+    opts.optopt("p", "patron-password", "Patron Password", "PATRON-PASSWORD");
     opts.optopt("i", "item-barcode", "Item Barcode", "ITEM-BARCODE");
     opts.optopt("l", "location-code", "Location Code", "LOCATION-CODE");
     opts.optmulti("", "message-type", "Message Type", "");
@@ -40,9 +47,9 @@ fn main() {
     let options = opts
         .parse(&args[1..])
         .expect("Error parsing command line options");
-    let host = options
-        .opt_str("sip-host")
-        .expect(&print_err("--sip-host required"));
+
+    let host = options.opt_str("sip-host").unwrap_or(DEFAULT_HOST.to_string());
+
     let user = options
         .opt_str("sip-user")
         .expect(&print_err("--sip-user required"));
@@ -77,62 +84,39 @@ fn main() {
         false => eprintln!("SC Status Says Offline"),
     }
 
-    // Send the requested message types.
-
-    for message in messages {
-        match message.as_str() {
-            "item-information" => handle_item_information(&mut client, &options, &mut params),
-            _ => panic!("Unsupported message type: {}", message),
-        }
+    // Collect some params up front for ease of use.
+    if let Some(item_id) = options.opt_str("item-barcode") {
+        params.set_item_id(&item_id);
     }
 
-    // --- PATRON STUFF ---
-
-    /*
     if let Some(patron_id) = options.opt_str("patron-barcode") {
         params.set_patron_id(&patron_id);
-        if let Some(pass) = options.opt_str("patron-pass") {
-            params.set_patron_pwd(&pass);
-        }
-
-        // Check patron status
-        let resp = client.patron_status(&params).expect("Patron Status Error");
-
-        match resp.ok() {
-            true => {
-                println!("Patron Info reports valid");
-                if let Some(name) = resp.value("AE") {
-                    println!("Patron name is '{}'", name);
-                }
-            }
-            false => eprintln!("Patron Info reports not valid"),
-        }
-
-        params.set_summary(2); // Return details on "Charged Items"
-
-        // Load patron info
-        let resp = client.patron_info(&params).expect("Patron Info Error");
-
-        match resp.ok() {
-            true => {
-                println!("Patron Info reports valid");
-                if let Some(name) = resp.value("AE") {
-                    println!("Patron name is '{}'", name);
-                }
-            }
-            false => eprintln!("Patron Info reports not valid"),
-        }
     }
-    */
 
-    //std::thread::sleep(std::time::Duration::from_secs(7));
+    if let Some(patron_pwd) = options.opt_str("patron-password") {
+        params.set_patron_pwd(&patron_pwd);
+    }
+
+    // Send the requested message types.
+    for message in messages {
+        let resp = match message.as_str() {
+
+            "item-information" => {
+                client.item_info(&params).expect("Item Info Failed")
+            }
+
+            "patron-status" => {
+                client.patron_status(&params).expect("Patron Status Failed")
+            }
+
+            "patron-information" => {
+                client.patron_info(&params).expect("Patron Information Failed")
+            }
+
+            _ => panic!("Unsupported message type: {}", message),
+        };
+
+        println!("{}", resp.msg());
+    }
 }
-
-fn handle_item_information(client: &mut Client, options: &getopts::Matches, params: &mut ParamSet) {
-    let item_id = options.opt_str("item-barcode").expect("Itm Barcode Required");
-    params.set_item_id(&item_id);
-    let resp = client.item_info(&params).expect("Item Info Failed");
-    println!("{}", resp.msg());
-}
-
 
