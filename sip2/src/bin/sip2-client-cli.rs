@@ -35,11 +35,11 @@ fn main() {
     opts.optopt("p", "patron-pass", "Patron Password", "PATRON-PASSWORD");
     opts.optopt("i", "item-barcode", "Item Barcode", "ITEM-BARCODE");
     opts.optopt("l", "location-code", "Location Code", "LOCATION-CODE");
+    opts.optmulti("", "message-type", "Message Type", "");
 
     let options = opts
         .parse(&args[1..])
         .expect("Error parsing command line options");
-
     let host = options
         .opt_str("sip-host")
         .expect(&print_err("--sip-host required"));
@@ -49,6 +49,8 @@ fn main() {
     let pass = options
         .opt_str("sip-pass")
         .expect(&print_err("--sip-pass required"));
+
+    let messages = options.opt_strs("message-type");
 
     // Connect to the SIP server
     let mut client = Client::new(&host).expect("Cannot Connect");
@@ -75,8 +77,18 @@ fn main() {
         false => eprintln!("SC Status Says Offline"),
     }
 
+    // Send the requested message types.
+
+    for message in messages {
+        match message.as_str() {
+            "item-information" => handle_item_information(&mut client, &options, &mut params),
+            _ => panic!("Unsupported message type: {}", message),
+        }
+    }
+
     // --- PATRON STUFF ---
 
+    /*
     if let Some(patron_id) = options.opt_str("patron-barcode") {
         params.set_patron_id(&patron_id);
         if let Some(pass) = options.opt_str("patron-pass") {
@@ -111,26 +123,16 @@ fn main() {
             false => eprintln!("Patron Info reports not valid"),
         }
     }
+    */
 
     //std::thread::sleep(std::time::Duration::from_secs(7));
-
-    // ----- Item Stuff -----
-
-    if let Some(item_id) = options.opt_str("item-barcode") {
-        params.set_item_id(&item_id);
-
-        // Load item info
-        let resp = client.item_info(&params).expect("Item Info Failed");
-
-        match resp.ok() {
-            true => {
-                println!("Item Info reports valid");
-                println!(
-                    "Item title is '{}'",
-                    resp.value("AJ").expect("Item has no title")
-                );
-            }
-            false => eprintln!("Item Info reports not valid"),
-        }
-    }
 }
+
+fn handle_item_information(client: &mut Client, options: &getopts::Matches, params: &mut ParamSet) {
+    let item_id = options.opt_str("item-barcode").expect("Itm Barcode Required");
+    params.set_item_id(&item_id);
+    let resp = client.item_info(&params).expect("Item Info Failed");
+    println!("{}", resp.msg());
+}
+
+
