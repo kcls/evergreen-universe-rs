@@ -21,7 +21,7 @@ pub fn sip_date_now() -> String {
     Local::now().format(spec::SIP_DATE_FORMAT).to_string()
 }
 
-/// Transltate an iso8601-ish to SIP format
+/// Translate an iso8601-ish to SIP format
 ///
 /// NOTE: Evergreen/Postgres dates are not parseable here, because
 /// PG does not use colons in its timezone offsets.  You have to

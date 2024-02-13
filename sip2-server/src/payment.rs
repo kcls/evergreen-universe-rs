@@ -94,10 +94,10 @@ impl Session {
         self.apply_payments(
             &user,
             &mut result,
-            &pay_type,
-            &terminal_xact_op,
-            &check_number_op,
-            &register_login_op,
+            pay_type,
+            terminal_xact_op,
+            check_number_op,
+            register_login_op,
             payments,
         )?;
 
@@ -226,9 +226,9 @@ impl Session {
         user: &json::JsonValue,
         result: &mut PaymentResult,
         pay_type: &str,
-        terminal_xact_op: &Option<String>,
-        check_number_op: &Option<String>,
-        register_login_op: &Option<String>,
+        terminal_xact_op: Option<&str>,
+        check_number_op: Option<&str>,
+        register_login_op: Option<&str>,
         payments: Vec<(i64, f64)>,
     ) -> EgResult<()> {
         log::info!("{self} applying payments: {payments:?}");
@@ -269,7 +269,7 @@ impl Session {
                 // '01' is "VISA"; '02' is "credit card"
 
                 args["cc_args"]["terminal_xact"] = match terminal_xact_op {
-                    Some(tx) => json::from(tx.as_str()),
+                    Some(tx) => json::from(tx),
                     None => json::from("Not provided by SIP client"),
                 };
 
@@ -280,7 +280,7 @@ impl Session {
                 // Check payment
                 args["payment_type"] = json::from("check_payment");
                 args["check_number"] = match check_number_op {
-                    Some(s) => json::from(s.as_str()),
+                    Some(s) => json::from(s),
                     None => json::from("Not provided by SIP client"),
                 };
             }

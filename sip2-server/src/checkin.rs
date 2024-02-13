@@ -90,7 +90,7 @@ impl Session {
             }
             None => self.checkin(
                 &item,
-                &current_loc_op,
+                current_loc_op,
                 return_date.value(),
                 undo_hold_fulfillment,
                 self.account().settings().checkin_override_all(),
@@ -188,7 +188,7 @@ impl Session {
     fn checkin(
         &mut self,
         item: &item::Item,
-        current_loc_op: &Option<String>,
+        current_loc_op: Option<&str>,
         return_date: &str,
         cancel: bool,
         ovride: bool,
@@ -204,7 +204,7 @@ impl Session {
     fn checkin_api(
         &mut self,
         item: &item::Item,
-        current_loc_op: &Option<String>,
+        current_loc_op: Option<&str>,
         return_date: &str,
         cancel: bool,
         ovride: bool,
@@ -359,7 +359,7 @@ impl Session {
     fn checkin_native(
         &mut self,
         item: &item::Item,
-        current_loc_op: &Option<String>,
+        current_loc_op: Option<&str>,
         return_date: &str,
         cancel: bool,
         ovride: bool,

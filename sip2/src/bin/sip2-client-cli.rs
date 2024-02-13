@@ -1,6 +1,7 @@
 use getopts;
 use sip2::*;
 use std::env;
+use std::time::SystemTime;
 
 const DEFAULT_HOST: &str = "localhost:6001";
 
@@ -78,26 +79,33 @@ fn main() {
     // Send the requested messages
 
     for message in options.opt_strs("message-type") {
+        let start = SystemTime::now();
+
         let resp = match message.as_str() {
             "item-information" => 
-                client.item_info(&sip_params).expect("Item Info Failed"),
+                client.item_info(&sip_params).expect("Item Info Requested"),
 
             "patron-status" => 
-                client.patron_status(&sip_params).expect("Patron Status Failed"),
+                client.patron_status(&sip_params).expect("Patron Status Requested"),
 
             "patron-information" => 
-                client.patron_info(&sip_params).expect("Patron Information Failed"),
+                client.patron_info(&sip_params).expect("Patron Info Requested"),
 
             "checkout" => 
-                client.checkout(&sip_params).expect("Checkout Failed"),
+                client.checkout(&sip_params).expect("Checkout Requested"),
 
             "checkin" => 
-                client.checkin(&sip_params).expect("Checkin Failed"),
+                client.checkin(&sip_params).expect("Checkin Requested"),
 
             _ => panic!("Unsupported message type: {}", message),
         };
 
-        println!("{}", resp.msg());
+        let duration = start.elapsed().unwrap().as_micros();
+
+        // translate micros to millis retaining 3 decimal places.
+        let millis = (duration as f64) / 1000.0;
+
+        println!("{}[Duration: {:.3} ms]\n", resp.msg(), millis);
     }
 }
 

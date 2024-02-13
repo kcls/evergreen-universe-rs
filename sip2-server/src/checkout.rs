@@ -18,6 +18,7 @@ pub struct CheckoutResult {
     due_date: Option<String>,
     renewal_remaining: i64,
     screen_msg: Option<&'static str>,
+    was_renewal: bool,
 }
 
 impl CheckoutResult {
@@ -27,6 +28,7 @@ impl CheckoutResult {
             due_date: None,
             renewal_remaining: 0,
             screen_msg: None,
+            was_renewal: false,
         }
     }
 }
@@ -85,18 +87,13 @@ impl Session {
         patron: &Patron,
         result: &CheckoutResult,
     ) -> EgResult<sip2::Message> {
-        // Will only be true if this item is already checked out to
-        // the patron and the checkout was renewed.
-        let renew_ok = false;
-        //let renew_ok = result.renewal_remaining > 0 && !patron.renew_denied;
-
         let magnetic = item.magnetic_media;
 
         let mut resp = sip2::Message::from_values(
             &sip2::spec::M_CHECKOUT_RESP,
             &[
                 sip2::util::num_bool(result.circ_id.is_some()), // checkin ok
-                sip2::util::sip_bool(renew_ok),                 // renew ok
+                sip2::util::sip_bool(result.was_renewal),       // renew ok
                 sip2::util::sip_bool(magnetic),                 // magnetic
                 sip2::util::sip_bool(!magnetic),                // desensitize
                 &sip2::util::sip_date_now(),                    // timestamp
@@ -211,6 +208,7 @@ impl Session {
         };
 
         let mut result = CheckoutResult::new();
+        result.was_renewal = is_renewal;
 
         let evt = eg::event::EgEvent::parse(&event)
             .ok_or_else(|| format!("API call {method} failed to return an event"))?;
@@ -256,7 +254,7 @@ impl Session {
         }
 
         // TODO gettext() can be used for these string literals below, but
-        // it's a massive dependency for just a couple of sentances.
+        // it's a massive dependency for just a couple of sentences.
         // There's likely a better approach.
         if evt.textcode().eq("OPEN_CIRCULATION_EXISTS") {
             result.screen_msg = Some("This item is already checked out");
@@ -317,6 +315,7 @@ impl Session {
         );
 
         let mut result = CheckoutResult::new();
+        result.was_renewal = is_renewal;
 
         if evt.is_success() {
             let circ = &evt.payload()["circ"];

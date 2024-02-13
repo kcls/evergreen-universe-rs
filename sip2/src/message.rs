@@ -231,9 +231,9 @@ impl Message {
     }
 
     /// Return the first value with the specified field code.
-    pub fn get_field_value(&self, code: &str) -> Option<String> {
+    pub fn get_field_value(&self, code: &str) -> Option<&str> {
         if let Some(f) = self.fields().iter().filter(|f| f.code() == code).next() {
-            Some(f.value.to_string())
+            Some(f.value.as_str())
         } else {
             None
         }
@@ -382,7 +382,7 @@ impl fmt::Display for Message {
             if let Some(spec) = spec::Field::from_code(&field.code) {
                 write!(f, "{} {:.<35}{}\n", spec.code, spec.label, field.value)?;
             } else {
-                write!(f, "{} {:.<35}{}\n", field.code, "unknown", field.value)?;
+                write!(f, "{} {:.<35}{}\n", field.code, "custom", field.value)?;
             }
         }
 

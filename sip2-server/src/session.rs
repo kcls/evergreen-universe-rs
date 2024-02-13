@@ -348,7 +348,7 @@ impl Session {
                 // Caller sent enough values to attempt login
 
                 if let Some(account) = self.sip_config().get_account(&username) {
-                    if account.sip_password().eq(&password) {
+                    if account.sip_password().eq(password) {
                         login_ok = "1";
                         self.account = Some(account.clone());
                     }

@@ -348,13 +348,13 @@ fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
         resp.get_field_value("AP").unwrap(),
         tester.samples.aou_shortname
     );
-    assert_eq!(&resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
+    assert_eq!(resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
 
     if let Some(ql) = resp.get_field_value("CF") {
         assert_eq!(ql, "0"); // hold queue len
     }
 
-    assert_eq!(&resp.get_field_value("CK").unwrap(), "001"); // media type
+    assert_eq!(resp.get_field_value("CK").unwrap(), "001"); // media type
 
     Ok(())
 }

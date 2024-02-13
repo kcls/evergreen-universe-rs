@@ -1038,7 +1038,7 @@ impl Session {
             &[sip2::util::sip_bool(true), &sip2::util::sip_date_now()],
             &[
                 ("AO", self.account().settings().institution()),
-                ("AA", &msg.get_field_value("AA").unwrap_or(String::new())),
+                ("AA", msg.get_field_value("AA").unwrap_or("")),
             ],
         )
         .unwrap();

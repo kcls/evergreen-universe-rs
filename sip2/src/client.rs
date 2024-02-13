@@ -310,7 +310,7 @@ impl SipResponse {
     }
 
     /// Shortcut for this.resp.msg().get_field_value(code)
-    pub fn value(&self, code: &str) -> Option<String> {
+    pub fn value(&self, code: &str) -> Option<&str> {
         self.msg().get_field_value(code)
     }
 }
