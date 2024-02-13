@@ -13,16 +13,21 @@ Client Library
 
 ### Client API
 
-* Sits atop the Connection API and provides canned requests for common tasks.  
+* Sits atop the Connection API and provides canned actions for common tasks.  
 * Client methods allow the caller to send messages using a minimal
   number of parameters without having to create the message by hand.
 
-## Running the example
+## Running the CLI
 
 ```sh
-cargo run --example sip2-client -- --sip-host sip.example.org:6001 \
-    --sip-user sip-login --sip-pass sip-password \
-    --patron-barcode 1234567890 --item-barcode 0987654321
+cargo run --bin sip2-client-cli -- --sip-user sip-user  \
+    --sip-pass sip-pass                                 \
+    --item-barcode 30000017113634                       \
+    --patron-barcode 394902                             \
+    --message-type item-information                     \
+    --message-type patron-status                        \
+    --message-type patron-information
+
 ```
 
 ## Connection API Example
