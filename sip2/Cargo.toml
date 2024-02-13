@@ -8,6 +8,7 @@ description = "SIP2 Library"
 readme = "README.md"
 keywords = ["sip", "sip2", "library"]
 categories = ["development-tools", "network-programming", "parser-implementations", "value-formatting"]
+repository = "https://github.com/kcls/evergreen-universe-rs"
 
 [dependencies]
 chrono = "0.4.19"

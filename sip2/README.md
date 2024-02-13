@@ -30,7 +30,9 @@ cargo run --bin sip2-client-cli -- --sip-user sip-user  \
 
 ```
 
-## Connection API Example
+## Connection API Examples
+
+### Connection API Spec Building
 
 ```rs
 use sip2::*;
@@ -51,7 +53,7 @@ let req = Message::new(
         Field::new(spec::F_LOGIN_UID.code, user),
         Field::new(spec::F_LOGIN_PWD.code, pass),
     ]
-);
+).expect("Message Has Valid Content");
 
 let resp = con.sendrecv(&req).unwrap();
 
@@ -68,7 +70,16 @@ if resp.spec().code == spec::M_LOGIN_RESP.code
 
     println!("Login Failed");
 }
+```
 
+### Connection API Free-Text Messages
+
+```rs
+let req = Message::from_values(
+    &spec::M_LOGIN,
+    &["0", "0"],
+    &[("CN", "sip-username"), ("CO", "sip-password")]
+).expect("Message Has Valid Content");
 ```
 
 ## Client API example
