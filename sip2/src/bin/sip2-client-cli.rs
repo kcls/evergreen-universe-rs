@@ -5,10 +5,20 @@ use std::env;
 const DEFAULT_HOST: &str = "localhost:6001";
 
 const HELP_TEXT: &str = r#"
+Synopsis:
+
+sip2-client-cli --sip-user sip-user --sip-pass sip-pass \
+    --item-barcode 30000017113634                       \
+    --patron-barcode 394902                             \
+    --message-type item-information                     \
+    --message-type patron-status                        \
+    --message-type patron-information
+
+Send messages to a SIP server and print the responses to STDOUT.
 
 Required:
 
-    --sip-host <host:port>
+    --sip-host <host:port> [default="localhost:6001"]
     --sip-user <username>
     --sip-pass <password>
 
@@ -16,102 +26,73 @@ Params for Sending SIP Requests
 
     --message-type <mtype>
 
-        Repeatable.  Options include:
-            "item-information"
+        Specify which messages to send to the SIP server.  Repeatable.  
 
+        Options include:
+            * item-information
+            * patron-status
+            * patron-information
+            * checkout
+            * checkin
+
+    --institution <institution>
     --patron-barcode <barcode>
     --patron-pass <password>
     --item-barcode <barcode>
 
 "#;
 
-fn print_err(err: &str) -> String {
-    format!("\n\nError: {}\n\n------{}", err, HELP_TEXT)
-}
-
+#[rustfmt::skip]
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut opts = getopts::Options::new();
+    let options = read_options();
 
-    opts.optopt("h", "sip-host", "SIP Host", "HOST");
-    opts.optopt("u", "sip-user", "SIP User", "USER");
-    opts.optopt("w", "sip-pass", "SIP pass", "PASSWORD");
-
-    // Optional
-    opts.optopt("b", "patron-barcode", "Patron Barcode", "PATRON-BARCODE");
-    opts.optopt("p", "patron-password", "Patron Password", "PATRON-PASSWORD");
-    opts.optopt("i", "item-barcode", "Item Barcode", "ITEM-BARCODE");
-    opts.optopt("l", "location-code", "Location Code", "LOCATION-CODE");
-    opts.optmulti("", "message-type", "Message Type", "");
-
-    let options = opts
-        .parse(&args[1..])
-        .expect("Error parsing command line options");
-
-    let host = options.opt_str("sip-host").unwrap_or(DEFAULT_HOST.to_string());
-
-    let user = options
-        .opt_str("sip-user")
-        .expect(&print_err("--sip-user required"));
-    let pass = options
-        .opt_str("sip-pass")
-        .expect(&print_err("--sip-pass required"));
-
-    let messages = options.opt_strs("message-type");
-
-    // Connect to the SIP server
-    let mut client = Client::new(&host).expect("Cannot Connect");
-
-    // ParamSet can hold params for a variety of (but not all) SIP
-    // requests.  We can keep appending values and reuse the same
-    // paramset for all request below.
-    let mut params = ParamSet::new();
-    params.set_sip_user(&user).set_sip_pass(&pass);
-
-    if let Some(location) = options.opt_str("location-code") {
-        params.set_location(&location);
+    if options.opt_present("help") {
+        println!("{HELP_TEXT}");
+        return;
     }
 
+    let sip_params = setup_params(&options);
+
+    // Connect to the SIP server
+
+    let host = options
+        .opt_str("sip-host")
+        .unwrap_or(DEFAULT_HOST.to_string());
+
+    let mut client = Client::new(&host).expect("Cannot Connect");
+
     // Login to the SIP server
-    match client.login(&params).expect("Login Error").ok() {
+
+    match client.login(&sip_params).expect("Login Error").ok() {
         true => println!("Login OK"),
         false => eprintln!("Login Failed"),
     }
 
     // Check the SIP server status
+
     match client.sc_status().expect("SC Status Error").ok() {
         true => println!("SC Status OK"),
         false => eprintln!("SC Status Says Offline"),
     }
 
-    // Collect some params up front for ease of use.
-    if let Some(item_id) = options.opt_str("item-barcode") {
-        params.set_item_id(&item_id);
-    }
+    // Send the requested messages
 
-    if let Some(patron_id) = options.opt_str("patron-barcode") {
-        params.set_patron_id(&patron_id);
-    }
-
-    if let Some(patron_pwd) = options.opt_str("patron-password") {
-        params.set_patron_pwd(&patron_pwd);
-    }
-
-    // Send the requested message types.
-    for message in messages {
+    for message in options.opt_strs("message-type") {
         let resp = match message.as_str() {
+            "item-information" => 
+                client.item_info(&sip_params).expect("Item Info Failed"),
 
-            "item-information" => {
-                client.item_info(&params).expect("Item Info Failed")
-            }
+            "patron-status" => 
+                client.patron_status(&sip_params).expect("Patron Status Failed"),
 
-            "patron-status" => {
-                client.patron_status(&params).expect("Patron Status Failed")
-            }
+            "patron-information" => 
+                client.patron_info(&sip_params).expect("Patron Information Failed"),
 
-            "patron-information" => {
-                client.patron_info(&params).expect("Patron Information Failed")
-            }
+            "checkout" => 
+                client.checkout(&sip_params).expect("Checkout Failed"),
+
+            "checkin" => 
+                client.checkin(&sip_params).expect("Checkin Failed"),
 
             _ => panic!("Unsupported message type: {}", message),
         };
@@ -120,3 +101,69 @@ fn main() {
     }
 }
 
+/// Read the command line arguments
+fn read_options() -> getopts::Matches {
+    let args: Vec<String> = env::args().collect();
+    let mut opts = getopts::Options::new();
+
+    opts.optopt("", "sip-host", "SIP Host", "");
+    opts.optopt("", "sip-user", "SIP User", "");
+    opts.optopt("", "sip-pass", "SIP pass", "");
+    opts.optopt("", "institution", "Institution", "");
+    opts.optopt("", "terminal-password", "Terminal Password", "");
+    opts.optopt("", "patron-barcode", "Patron Barcode", "");
+    opts.optopt("", "patron-password", "Patron Password", "");
+    opts.optopt("", "item-barcode", "Item Barcode", "");
+    opts.optopt("", "location-code", "Location Code", "");
+
+    opts.optflag("h", "help", "");
+
+    opts.optmulti("", "message-type", "Message Type", "");
+
+    let matches = opts
+        .parse(&args[1..]) // skip the command name
+        .expect("Error parsing command line options");
+
+    matches
+}
+
+/// Create the SIP paramater set from the command line arguments.
+///
+/// ParamSet can hold params for a variety of (but not all) SIP
+/// requests.  We can pre-load the ParamSet for our messages.
+fn setup_params(options: &getopts::Matches) -> ParamSet {
+    let mut params = ParamSet::new();
+
+    let user = options.opt_str("sip-user").expect("--sip-user required");
+
+    let pass = options.opt_str("sip-pass").expect("--sip-pass required");
+
+    params.set_sip_user(&user).set_sip_pass(&pass);
+
+    if let Some(ref terminal_pwd) = options.opt_str("terminal-password") {
+        params.set_terminal_pwd(terminal_pwd);
+    }
+
+    if let Some(ref institution) = options.opt_str("institution") {
+        params.set_institution(institution);
+    }
+
+    if let Some(ref location) = options.opt_str("location-code") {
+        params.set_location(location);
+    }
+
+    // Collect some params up front for ease of use.
+    if let Some(ref item_id) = options.opt_str("item-barcode") {
+        params.set_item_id(item_id);
+    }
+
+    if let Some(ref patron_id) = options.opt_str("patron-barcode") {
+        params.set_patron_id(patron_id);
+    }
+
+    if let Some(ref patron_pwd) = options.opt_str("patron-password") {
+        params.set_patron_pwd(patron_pwd);
+    }
+
+    params
+}

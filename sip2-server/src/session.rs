@@ -228,7 +228,7 @@ impl Session {
 
             let sip_req_op = match self
                 .sip_connection
-                .recv_with_timeout(conf::SIP_SHUTDOWN_POLL_INTERVAL) 
+                .recv_with_timeout(conf::SIP_SHUTDOWN_POLL_INTERVAL)
             {
                 Ok(r) => r,
                 Err(e) => {

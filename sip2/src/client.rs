@@ -66,7 +66,7 @@ impl Client {
             ],
         );
 
-        req.maybe_add_field(spec::F_LOCATION_CODE.code, params.location().as_deref());
+        req.maybe_add_field(spec::F_LOCATION_CODE.code, params.location());
 
         let resp = self.connection.sendrecv(&req)?;
 
@@ -121,9 +121,9 @@ impl Client {
             vec![Field::new(spec::F_PATRON_ID.code, patron_id)],
         );
 
-        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution().as_deref());
-        req.maybe_add_field(spec::F_PATRON_PWD.code, params.patron_pwd().as_deref());
-        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd().as_deref());
+        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
+        req.maybe_add_field(spec::F_PATRON_PWD.code, params.patron_pwd());
+        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
 
         let resp = self.connection.sendrecv(&req)?;
 
@@ -147,7 +147,7 @@ impl Client {
 
         let mut summary: [char; 10] = [' '; 10];
 
-        if let Some(idx) = *params.summary() {
+        if let Some(idx) = params.summary() {
             if idx < 10 {
                 summary[idx] = 'Y';
             }
@@ -165,9 +165,9 @@ impl Client {
             vec![Field::new(spec::F_PATRON_ID.code, patron_id)],
         );
 
-        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution().as_deref());
-        req.maybe_add_field(spec::F_PATRON_PWD.code, params.patron_pwd().as_deref());
-        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd().as_deref());
+        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
+        req.maybe_add_field(spec::F_PATRON_PWD.code, params.patron_pwd());
+        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
 
         if let Some(v) = params.start_item() {
             req.add_field(spec::F_START_ITEM.code, &v.to_string());
@@ -204,13 +204,77 @@ impl Client {
             vec![Field::new(spec::F_ITEM_IDENT.code, &item_id)],
         );
 
-        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution().as_deref());
-        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd().as_deref());
+        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
+        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
 
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(title_val) = resp.get_field_value(spec::F_TITLE_IDENT.code) {
             if title_val != "" {
+                return Ok(SipResponse::new(resp, true));
+            }
+        }
+
+        Ok(SipResponse::new(resp, false))
+    }
+
+    /// Send a CHECKOUT request
+    pub fn checkout(&mut self, params: &ParamSet) -> Result<SipResponse, Error> {
+        let item_id = params.item_id().ok_or_else(|| Error::MissingParamsError)?;
+        let patron_id = params
+            .patron_id()
+            .ok_or_else(|| Error::MissingParamsError)?;
+
+        let mut req = Message::from_values(
+            &spec::M_CHECKOUT,
+            &[
+                "N",                   // renewal policy
+                "N",                   // no block
+                &util::sip_date_now(), // transaction date
+                &util::sip_date_now(), // no block due date
+            ],
+            &[
+                (spec::F_ITEM_IDENT.code, &item_id),
+                (spec::F_PATRON_IDENT.code, &patron_id),
+            ],
+        )?;
+
+        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
+        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
+        req.maybe_add_field(spec::F_PATRON_PWD.code, params.patron_pwd());
+
+        let resp = self.connection.sendrecv(&req)?;
+
+        if let Some(status) = resp.fixed_fields().get(0) {
+            if status.value() == "1" {
+                return Ok(SipResponse::new(resp, true));
+            }
+        }
+
+        Ok(SipResponse::new(resp, false))
+    }
+
+    /// Send a CHECKIN request
+    pub fn checkin(&mut self, params: &ParamSet) -> Result<SipResponse, Error> {
+        let item_id = params.item_id().ok_or_else(|| Error::MissingParamsError)?;
+
+        let mut req = Message::from_values(
+            &spec::M_CHECKIN,
+            &[
+                "N",                   // no block
+                &util::sip_date_now(), // transaction date
+                &util::sip_date_now(), // no block due date
+            ],
+            &[(spec::F_ITEM_IDENT.code, &item_id)],
+        )?;
+
+        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
+        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
+
+        let resp = self.connection.sendrecv(&req)?;
+
+        if let Some(status) = resp.fixed_fields().get(0) {
+            if status.value() == "1" {
                 return Ok(SipResponse::new(resp, true));
             }
         }

@@ -39,38 +39,38 @@ impl ParamSet {
         }
     }
 
-    pub fn institution(&self) -> &Option<String> {
-        &self.institution
+    pub fn institution(&self) -> Option<&str> {
+        self.institution.as_deref()
     }
-    pub fn terminal_pwd(&self) -> &Option<String> {
-        &self.terminal_pwd
+    pub fn terminal_pwd(&self) -> Option<&str> {
+        self.terminal_pwd.as_deref()
     }
-    pub fn sip_user(&self) -> &Option<String> {
-        &self.sip_user
+    pub fn sip_user(&self) -> Option<&str> {
+        self.sip_user.as_deref()
     }
-    pub fn sip_pass(&self) -> &Option<String> {
-        &self.sip_pass
+    pub fn sip_pass(&self) -> Option<&str> {
+        self.sip_pass.as_deref()
     }
-    pub fn location(&self) -> &Option<String> {
-        &self.location
+    pub fn location(&self) -> Option<&str> {
+        self.location.as_deref()
     }
-    pub fn patron_id(&self) -> &Option<String> {
-        &self.patron_id
+    pub fn patron_id(&self) -> Option<&str> {
+        self.patron_id.as_deref()
     }
-    pub fn patron_pwd(&self) -> &Option<String> {
-        &self.patron_pwd
+    pub fn patron_pwd(&self) -> Option<&str> {
+        self.patron_pwd.as_deref()
     }
-    pub fn item_id(&self) -> &Option<String> {
-        &self.item_id
+    pub fn item_id(&self) -> Option<&str> {
+        self.item_id.as_deref()
     }
-    pub fn start_item(&self) -> &Option<usize> {
-        &self.start_item
+    pub fn start_item(&self) -> Option<usize> {
+        self.start_item
     }
-    pub fn end_item(&self) -> &Option<usize> {
-        &self.end_item
+    pub fn end_item(&self) -> Option<usize> {
+        self.end_item
     }
-    pub fn summary(&self) -> &Option<usize> {
-        &self.summary
+    pub fn summary(&self) -> Option<usize> {
+        self.summary
     }
 
     // ---
