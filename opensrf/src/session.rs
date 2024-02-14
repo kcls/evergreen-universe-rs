@@ -18,8 +18,6 @@ use std::fmt;
 use std::rc::Rc;
 
 const CONNECT_TIMEOUT: i32 = 10;
-const DEFAULT_MAX_BUNDLE_COUNT: usize = 1000;
-const DEFAULT_MAX_BUNDLE_SIZE: usize = 25600; /* 25K -- same as cstore */
 pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 
 /// Response data propagated from a session to the calling Request.
@@ -765,19 +763,6 @@ pub struct ServerSession {
 
     /// Responses collected to be packed into an "atomic" response array.
     atomic_resp_queue: Option<Vec<JsonValue>>,
-
-    /// Non-atomic responses may be bundled into a queue so that
-    /// multiple responses may be delivered within a single message.
-    bundled_resp_queue: Option<Vec<JsonValue>>, 
-
-    /// Max number of responses per bundle.
-    max_bundle_count: usize,
-
-    /// Max size of each bundle in bytes.
-    max_bundle_size: usize,
-
-    /// Current bundle size in bytes.
-    cur_bundle_size: usize,
 }
 
 impl fmt::Display for ServerSession {
@@ -802,19 +787,7 @@ impl ServerSession {
             responded_complete: false,
             thread: thread.to_string(),
             atomic_resp_queue: None,
-            bundled_resp_queue: None,
-            max_bundle_count: DEFAULT_MAX_BUNDLE_COUNT,
-            max_bundle_size: DEFAULT_MAX_BUNDLE_SIZE,
-            cur_bundle_size: 0,
         }
-    }
-
-    pub fn set_max_bundle_count(&mut self, count: usize) {
-        self.max_bundle_count = count;
-    }
-
-    pub fn set_max_bundle_size(&mut self, size: usize) {
-        self.max_bundle_size = size;
     }
 
     pub fn last_thread_trace(&self) -> usize {
@@ -858,11 +831,11 @@ impl ServerSession {
     /// Compiles a MessageType::Result Message with the provided
     /// respone value, taking into account whether a response
     /// should even be sent if this the result to an atomic request.
-    fn build_result_messages(
+    fn build_result_message(
         &mut self,
         mut result: Option<JsonValue>,
         complete: bool,
-    ) -> Result<Option<Vec<Message>>, String> {
+    ) -> Result<Option<Message>, String> {
         if let Some(s) = self.client.singleton().borrow().serializer() {
             // Serialize the data for the network
             if let Some(res) = result.take() {
@@ -870,7 +843,7 @@ impl ServerSession {
             }
         }
 
-        let mut result_values;
+        let result_value;
 
         if self.atomic_resp_queue.is_some() {
             // Add the reply to the queue.
@@ -887,118 +860,31 @@ impl ServerSession {
                 // [take() above].
 
                 let q = self.atomic_resp_queue.take().unwrap();
-                result_values = vec![json::from(q)];
+                result_value = json::from(q);
             } else {
-                // Nothing left to do since this atomic request
+                // Nothing left to do since this atmoic request
                 // is still producing results.
                 return Ok(None);
             }
         } else {
-
-            if self.max_bundle_count <= 1 || self.max_bundle_size == 0 {
-                if let Some(res) = result.take() {
-                    result_values = vec![res];
-                } else {
-                    return Ok(None);
-                }
-
+            // Non-atomic request.  Just return the value as is.
+            if let Some(res) = result.take() {
+                result_value = res;
             } else {
-                // Response Bundling.
-
-                let queue = match self.bundled_resp_queue.as_mut() {
-                    Some(q) => q,
-                    None => {
-                        self.bundled_resp_queue = Some(Vec::new());
-                        self.bundled_resp_queue.as_mut().unwrap()
-                    }
-                };
-
-                if complete {
-                    // Always return the remaining data on request complete.
-
-                    if let Some(res) = result.take() {
-                        queue.push(res);
-                    };
-
-                    result_values = self.bundled_resp_queue.take().unwrap();
-                    self.cur_bundle_size = 0;
-
-                } else if queue.len() >= self.max_bundle_count - 1 {
-                    // We're currently hitting max bundle count.
-
-                    if let Some(res) = result.take() {
-                        queue.push(res);
-                    }
-
-                    result_values = self.bundled_resp_queue.take().unwrap();
-                    self.cur_bundle_size = 0;
-
-                } else {
-                    // We have not hit max bundle count.
-                    // See if our bundle is growing too large.
-
-                    let new_bytes = match result.as_ref() {
-                        Some(r) => r.dump().bytes().count(),
-                        None => 0,
-                    };
-
-                    let total_bytes = new_bytes + self.cur_bundle_size;
-
-                    if new_bytes > 0 && total_bytes > self.max_bundle_size {
-                        // Adding this response would exceed our max
-                        // bundle size.
-
-                        // new_bytes > 0 implies result.is_some()
-
-                        if self.cur_bundle_size == 0 {
-                            // If the queue is empty,  our responses are 
-                            // just large.  No need to add it to the
-                            // bundle queue.  Just forward it on.
-                            result_values = vec![result.take().unwrap()];
-
-                        } else {
-                            // Return the previously bundled values and
-                            // start a new bundle queue with the current response.
-                            result_values = self.bundled_resp_queue.take().unwrap();
-
-                            self.bundled_resp_queue = Some(vec![result.take().unwrap()]);
-                            self.cur_bundle_size = new_bytes;
-                        }
-
-                    } else {
-                        // We still have space in the current bundle.
-                
-                        self.cur_bundle_size = total_bytes;
-                        if let Some(val) = result.take() {
-                            queue.push(val);
-                        }
-
-                        return Ok(None);
-                    }
-                }
+                return Ok(None);
             }
         }
 
-
-        let mut messages = Vec::new();
-
-        for value in result_values.drain(..) {
-            messages.push(
-                Message::new(
-                    MessageType::Result,
-                    self.last_thread_trace(),
-                    Payload::Result(message::Result::new(
-                        MessageStatus::Ok,
-                        "OK",
-                        "osrfResult",
-                        value,
-                    )),
-                
-                )
-            );
-        }
-
-        Ok(Some(messages))
+        Ok(Some(Message::new(
+            MessageType::Result,
+            self.last_thread_trace(),
+            Payload::Result(message::Result::new(
+                MessageStatus::Ok,
+                "OK",
+                "osrfResult",
+                result_value,
+            )),
+        )))
     }
 
     /// Respond with a value and/or a complete message.
@@ -1018,7 +904,7 @@ impl ServerSession {
 
         let mut complete_msg = None;
 
-        let mut result_messages = self.build_result_messages(value, complete)?;
+        let mut result_msg = self.build_result_message(value, complete)?;
 
         if complete {
             // Add a Request Complete message
@@ -1035,7 +921,7 @@ impl ServerSession {
             ));
         }
 
-        if result_messages.is_none() && complete_msg.is_none() {
+        if result_msg.is_none() && complete_msg.is_none() {
             // Nothing to send to the caller.
             return Ok(());
         }
@@ -1049,10 +935,8 @@ impl ServerSession {
             self.thread(),
         );
 
-        if let Some(list) = result_messages.as_mut() {
-            for msg in list.drain(..) {
-                tmsg.body_mut().push(msg);
-            }
+        if let Some(msg) = result_msg.take() {
+            tmsg.body_mut().push(msg);
         }
 
         if let Some(msg) = complete_msg.take() {
