@@ -286,6 +286,14 @@ impl JsonQueryCompiler {
             sql += &format!(" ORDER BY {}", self.compile_order_by(&query["order_by"])?);
         }
 
+        if let Some(count) = query["limit"].as_usize() {
+            sql += &format!(" LIMIT {count}");
+        }
+
+        if let Some(count) = query["offset"].as_usize() {
+            sql += &format!(" OFFSET {count}");
+        }
+
         self.query_string = Some(sql);
 
         Ok(())
