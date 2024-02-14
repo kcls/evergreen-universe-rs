@@ -5,9 +5,8 @@ use crate::result::EgResult;
 use crate::util;
 use json::JsonValue;
 use std::sync::Arc;
+use opensrf::message;
 
-/// See set_locale()
-const DEFAULT_LOCALE: &str = "en-US";
 const JOIN_WITH_AND: &str = "AND";
 const JOIN_WITH_OR: &str = "OR";
 
@@ -26,9 +25,8 @@ pub struct JsonQueryCompiler {
     /// So we can see how classes relate to each other.
     idl: Arc<idl::Parser>,
 
-    /// Used for oils_i18n_xlate() if set.
-    /// If unset, use the default.
-    locale: Option<String>,
+    /// Used for oils_i18n_xlate()
+    locale: String,
 
     /// Avoid calling oils_i18n_xlate()
     disable_i18n: bool,
@@ -74,7 +72,7 @@ impl JsonQueryCompiler {
     pub fn new(idl: Arc<idl::Parser>) -> Self {
         Self {
             idl,
-            locale: None,
+            locale: message::thread_locale(),
             controllername: None,
             sources: Vec::new(),
             query_string: None,
@@ -152,15 +150,6 @@ impl JsonQueryCompiler {
         }
 
         sql
-    }
-
-    /// Set the locale for use with oils_i18n_xlate().
-    pub fn set_locale(&mut self, locale: &str) -> EgResult<()> {
-        if locale.chars().any(|b| !b.is_ascii_alphabetic() && b != '-') {
-            return Err(format!("Invalid locale: '{locale}'").into());
-        }
-        self.locale = Some(locale.to_string());
-        Ok(())
     }
 
     /// The final compiled SQL string
@@ -641,8 +630,6 @@ impl JsonQueryCompiler {
                 self.check_identifier(idl_field.name())?
             );
         } else {
-            let locale = self.locale.as_deref().unwrap_or(DEFAULT_LOCALE);
-
             let pkey = idl_class
                 .pkey()
                 .ok_or_else(|| format!("{} has no primary key", idl_class.classname()))?;
@@ -651,15 +638,15 @@ impl JsonQueryCompiler {
                 .tablename()
                 .ok_or_else(|| format!("Class {classname} has no table definition"))?;
 
-            // Our 'locale' string format is validated at set time.
             sql = format!(
-                r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{locale}')"#,
+                r#"oils_i18n_xlate('{}', '{}', '{}', '{}', "{}".{}::TEXT, '{}')"#,
                 self.check_identifier(tablename)?,
                 self.check_identifier(class_alias)?,
                 self.check_identifier(idl_field.name())?,
                 self.check_identifier(pkey)?,
                 self.check_identifier(class_alias)?,
                 self.check_identifier(pkey)?,
+                self.check_identifier(self.locale.as_str())?,
             );
         }
 

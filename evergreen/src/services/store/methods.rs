@@ -1,10 +1,13 @@
-use eg::idldb::{IdlClassSearch, Translator};
 use evergreen as eg;
+use eg::idldb::{IdlClassSearch, Translator};
+use eg::common::jq::JsonQueryCompiler;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
 use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use opensrf::session::ServerSession;
 use std::sync::Arc;
+use postgres as pg;
+use pg::types::ToSql;
 
 // Import our local app module
 use crate::app;
@@ -97,6 +100,19 @@ pub static METHODS: &[StaticMethodDef] = &[
             name: "primary-key",
             datatype: ParamDataType::Scalar,
             desc: "Primary Key Value",
+        }],
+    },
+    // Stub method for *.delete calls.  Not directly published.
+    StaticMethodDef {
+        name: "json_query",
+        desc: "JSON Query",
+        param_count: ParamCount::Exactly(1),
+        handler: json_query,
+        params: &[StaticParam {
+            required: true,
+            name: "query-object",
+            datatype: ParamDataType::Object,
+            desc: "JSON Query Object/Hash",
         }],
     },
 ];
@@ -259,4 +275,50 @@ pub fn manage_xact(
     }
 
     session.respond(true)
+}
+
+// open-ils.rs-store.direct.actor.user.update
+pub fn json_query(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::MethodCall,
+) -> Result<(), String> {
+    let worker = app::RsStoreWorker::downcast(worker)?;
+    let idl = worker.env().idl().clone();
+    let query = method.param(0);
+
+    let db = worker.database().clone();
+
+    let mut jq_compiler = JsonQueryCompiler::new(idl);
+    jq_compiler.compile(&query)?;
+
+    let sql = jq_compiler.query_string().ok_or_else(|| 
+        format!("JSON query failed to produce valid SQL: {}", query.dump()))?;
+
+    // Do a little translation dance here to get the param values 
+    // into a container our DB API can accept.
+    let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
+    let qparams: Vec<String> = jq_compiler.query_params().iter().map(|s| s.to_string()).collect();
+    for p in qparams.iter() {
+        params.push(p);
+    }
+
+    let query_res = db.borrow_mut().client().query(sql, &params);
+
+    if let Err(ref e) = query_res {
+        log::error!("DB Error: {e} query={query} param={params:?}");
+        Err(format!("DB query failed. See error logs"))?;
+    }
+
+    for row in query_res.unwrap() {
+        let mut obj = json::object! {};
+
+        for (idx, col) in row.columns().iter().enumerate() {
+            obj[col.name()] = Translator::col_value_to_json_value(&row, idx)?;
+        }
+
+        session.respond(obj)?;
+    }
+
+    Ok(())
 }

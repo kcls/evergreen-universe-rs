@@ -330,7 +330,7 @@ impl Translator {
         let mut results: Vec<JsonValue> = Vec::new();
 
         for row in query_res.unwrap() {
-            let pkey_value = self.col_value_to_json_value(&row, 0)?;
+            let pkey_value = Translator::col_value_to_json_value(&row, 0)?;
 
             match self.get_idl_object_by_pkey(idl_class.classname(), &pkey_value)? {
                 Some(pkv) => results.push(pkv),
@@ -857,7 +857,7 @@ impl Translator {
         let mut index = 0;
 
         for name in class.real_field_names_sorted() {
-            obj[name] = self.col_value_to_json_value(row, index)?;
+            obj[name] = Translator::col_value_to_json_value(row, index)?;
             index += 1;
         }
 
@@ -865,7 +865,7 @@ impl Translator {
     }
 
     /// Translate a PG-typed row value into a JsonValue
-    fn col_value_to_json_value(&self, row: &pg::Row, index: usize) -> EgResult<JsonValue> {
+    pub fn col_value_to_json_value(row: &pg::Row, index: usize) -> EgResult<JsonValue> {
         let col_type = row.columns().get(index).map(|c| c.type_().name()).unwrap();
 
         match col_type {

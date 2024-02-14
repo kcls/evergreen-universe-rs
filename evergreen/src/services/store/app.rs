@@ -180,6 +180,14 @@ impl Application for RsStoreApplication {
         self.register_auto_methods(&mut methods);
         self.register_xact_methods(&mut methods);
 
+        let json_query = methods::METHODS
+            .iter()
+            .filter(|m| m.name.eq("json_query"))
+            .next()
+            .unwrap();
+
+        methods.push(json_query.into_method(APPNAME));
+
         log::info!("{APPNAME} registered {} total methods", methods.len());
 
         Ok(methods)

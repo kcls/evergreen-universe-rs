@@ -307,7 +307,7 @@ pub fn prev_renewal_chain_summary(
     }
 
     let chain = circ::circ_chain(&mut editor, circ_id)?;
-    let first_circ = &chain[0];
+    let first_circ = &chain[0]; // circ_chain errors on not-found
 
     // The previous circ chain contains the circ that occurred most recently
     // before the first circ in the latest circ chain.
