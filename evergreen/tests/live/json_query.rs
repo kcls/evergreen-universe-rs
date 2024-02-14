@@ -6,7 +6,6 @@ use json::JsonValue;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     let mut jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
-    jq_compiler.set_locale("en-US").expect("set locale");
 
     let query = json::object! {
         "select": {
