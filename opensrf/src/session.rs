@@ -833,12 +833,14 @@ impl ServerSession {
     /// should even be sent if this the result to an atomic request.
     fn build_result_message(
         &mut self,
-        mut result: JsonValue,
+        mut result: Option<JsonValue>,
         complete: bool,
     ) -> Result<Option<Message>, String> {
         if let Some(s) = self.client.singleton().borrow().serializer() {
             // Serialize the data for the network
-            result = s.pack(result);
+            if let Some(res) = result.take() {
+                result = Some(s.pack(res));
+            }
         }
 
         let result_value;
@@ -846,7 +848,10 @@ impl ServerSession {
         if self.atomic_resp_queue.is_some() {
             // Add the reply to the queue.
             let q = self.atomic_resp_queue.as_mut().unwrap();
-            q.push(result);
+
+            if let Some(res) = result.take() {
+                q.push(res);
+            }
 
             if complete {
                 // If we're completing the call and we have an atomic
@@ -863,7 +868,11 @@ impl ServerSession {
             }
         } else {
             // Non-atomic request.  Just return the value as is.
-            result_value = result;
+            if let Some(res) = result.take() {
+                result_value = res;
+            } else {
+                return Ok(None);
+            }
         }
 
         Ok(Some(Message::new(
@@ -881,7 +890,7 @@ impl ServerSession {
     /// Respond with a value and/or a complete message.
     fn respond_with_parts(
         &mut self,
-        mut value: Option<JsonValue>,
+        value: Option<JsonValue>,
         complete: bool,
     ) -> Result<(), String> {
         if self.responded_complete {
@@ -893,12 +902,9 @@ impl ServerSession {
             return Ok(());
         }
 
-        let mut result_msg = None;
         let mut complete_msg = None;
 
-        if let Some(result) = value.take() {
-            result_msg = self.build_result_message(result, complete)?;
-        }
+        let mut result_msg = self.build_result_message(value, complete)?;
 
         if complete {
             // Add a Request Complete message

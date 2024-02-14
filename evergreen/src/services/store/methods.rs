@@ -123,7 +123,8 @@ pub static METHODS: &[StaticMethodDef] = &[
 fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> Result<String, String> {
     let api_parts = apiname.split(".").collect::<Vec<&str>>();
 
-    if api_parts.len() != 6 {
+    let len = api_parts.len();
+    if len < 6 || len > 7 { // .atomic
         // Could potentially happen if an IDL class was not correctly
         // encoded in the IDL file.
         Err(format!("Invalid API call: {:?}", api_parts))?;
