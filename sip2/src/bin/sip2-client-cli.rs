@@ -1,11 +1,15 @@
 use getopts;
 use sip2::*;
 use std::env;
+use std::sync::Arc;
+use std::thread;
 use std::time::SystemTime;
 
 const DEFAULT_HOST: &str = "localhost:6001";
 
 const HELP_TEXT: &str = r#"
+Send messages to a SIP server and print info to STDOUT.
+
 Synopsis:
 
 sip2-client-cli --sip-user sip-user --sip-pass sip-pass \
@@ -15,19 +19,31 @@ sip2-client-cli --sip-user sip-user --sip-pass sip-pass \
     --message-type patron-status                        \
     --message-type patron-information
 
-Send messages to a SIP server and print the responses to STDOUT.
-
-Required:
+Parameters:
 
     --sip-host <host:port> [default="localhost:6001"]
     --sip-user <username>
     --sip-pass <password>
 
-Params for Sending SIP Requests
+    --parallel <count>
+        Number of parallel threads to run with each thread running
+        the requested messages.
 
-    --message-type <mtype>
+    --repeat <count>
+        Repeat all requested messages this many times.
 
-        Specify which messages to send to the SIP server.  Repeatable.  
+    --quiet
+        Print only summary information
+
+Message Parameters:
+    --institution <institution>
+    --patron-barcode <barcode>
+    --patron-pass <password>
+    --item-barcode <barcode>
+
+    --message-type <mtype> [Repeatable]
+
+        Specify which messages to send to the SIP server.
 
         Options include:
             * item-information
@@ -35,12 +51,6 @@ Params for Sending SIP Requests
             * patron-information
             * checkout
             * checkin
-
-    --institution <institution>
-    --patron-barcode <barcode>
-    --patron-pass <password>
-    --item-barcode <barcode>
-
 "#;
 
 #[rustfmt::skip]
@@ -54,58 +64,85 @@ fn main() {
 
     let sip_params = setup_params(&options);
 
-    // Connect to the SIP server
-
     let host = options
         .opt_str("sip-host")
         .unwrap_or(DEFAULT_HOST.to_string());
 
+    let quiet = options.opt_present("quiet");
+    let repeat = options.opt_get_default("repeat", 1).expect("Valid Repeat Option");
+    let parallel = options.opt_get_default("parallel", 1).expect("Valid Parallel Option");
+    let messages = Arc::new(options.opt_strs("message-type"));
+
+    let mut handles = Vec::new();
+
+    for _ in 0..parallel {
+        let h = host.clone();
+        let m = messages.clone();
+        let p = sip_params.clone();
+        handles.push(thread::spawn(move || run_one_thread(h, m, p, quiet, repeat)));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+}
+
+fn run_one_thread(
+    host: String,
+    messages: Arc<Vec<String>>,
+    sip_params: ParamSet,
+    quiet: bool,
+    repeat: usize,
+) {
+    // Connect to the SIP server
     let mut client = Client::new(&host).expect("Cannot Connect");
 
     // Login to the SIP server
-
     match client.login(&sip_params).expect("Login Error").ok() {
         true => println!("Login OK"),
         false => eprintln!("Login Failed"),
     }
 
     // Check the SIP server status
-
     match client.sc_status().expect("SC Status Error").ok() {
         true => println!("SC Status OK"),
         false => eprintln!("SC Status Says Offline"),
     }
 
-    // Send the requested messages
+    // Send the requested messages, the requested number of times.
+    for _ in 0..repeat {
+        for message in messages.iter() {
+            let start = SystemTime::now();
 
-    for message in options.opt_strs("message-type") {
-        let start = SystemTime::now();
+            let resp = match message.as_str() {
+                "item-information" => client.item_info(&sip_params).expect("Item Info Requested"),
 
-        let resp = match message.as_str() {
-            "item-information" => 
-                client.item_info(&sip_params).expect("Item Info Requested"),
+                "patron-status" => client
+                    .patron_status(&sip_params)
+                    .expect("Patron Status Requested"),
 
-            "patron-status" => 
-                client.patron_status(&sip_params).expect("Patron Status Requested"),
+                "patron-information" => client
+                    .patron_info(&sip_params)
+                    .expect("Patron Info Requested"),
 
-            "patron-information" => 
-                client.patron_info(&sip_params).expect("Patron Info Requested"),
+                "checkout" => client.checkout(&sip_params).expect("Checkout Requested"),
 
-            "checkout" => 
-                client.checkout(&sip_params).expect("Checkout Requested"),
+                "checkin" => client.checkin(&sip_params).expect("Checkin Requested"),
 
-            "checkin" => 
-                client.checkin(&sip_params).expect("Checkin Requested"),
+                _ => panic!("Unsupported message type: {}", message),
+            };
 
-            _ => panic!("Unsupported message type: {}", message),
-        };
+            // Translate duration micros to millis w/ 3 decimal places.
+            let duration = start.elapsed().unwrap().as_micros();
+            let millis = (duration as f64) / 1000.0;
+            let ms = format!("{:0>7}", format!("{:.3}", millis));
 
-        let duration = start.elapsed().unwrap().as_micros();
-
-        // translate micros to millis retaining 3 decimal places.
-        let millis = (duration as f64) / 1000.0;
-
-        println!("{}[Duration: {:.3} ms]\n", resp.msg(), millis);
+            if quiet {
+                println!("{:.<35} {} ms", resp.msg().spec().label, ms);
+            } else {
+                println!("{}{} ms\n", resp.msg(), ms);
+            }
+        }
     }
 }
 
@@ -123,8 +160,11 @@ fn read_options() -> getopts::Matches {
     opts.optopt("", "patron-password", "Patron Password", "");
     opts.optopt("", "item-barcode", "Item Barcode", "");
     opts.optopt("", "location-code", "Location Code", "");
+    opts.optopt("", "repeat", "Repeat Count", "");
+    opts.optopt("", "parallel", "Parallel Count", "");
 
     opts.optflag("h", "help", "");
+    opts.optflag("q", "quiet", "");
 
     opts.optmulti("", "message-type", "Message Type", "");
 
