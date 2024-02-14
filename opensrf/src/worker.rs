@@ -242,12 +242,18 @@ impl Worker {
                     break;
                 }
 
-                // Increment our message handled count if a message
-                // was handled.  Each connected session counts as 1
-                // "request".
                 if msg_handled {
+                    // Increment our message handled count.
+                    // Each connected session counts as 1 "request".
                     requests += 1;
+
+                    // An inbound message may have modified our
+                    // thread-scoped locale.  Reset our locale back
+                    // to the default so the previous locale does not
+                    // affect future messages.
+                    message::reset_thread_locale();
                 }
+
             } else {
                 // Let the worker know we woke up and nothing interesting
                 // happened.

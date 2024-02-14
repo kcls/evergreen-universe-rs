@@ -1,12 +1,63 @@
 use super::util;
 use std::fmt;
+use std::cell::RefCell;
 
-const DEFAULT_LOCALE: &str = "en-US";
 const DEFAULT_TIMEZONE: &str = "America/New_York";
 const DEFAULT_API_LEVEL: u8 = 1;
 const DEFAULT_INGRESS: &str = "opensrf";
 const OSRF_MESSAGE_CLASS: &str = "osrfMessage";
 const JSON_NULL: json::JsonValue = json::JsonValue::Null;
+const DEFAULT_LOCALE: &str = "en-US";
+/// The C code maxes this at 16 chars.
+const MAX_LOCALE_LEN: usize = 16;
+
+// Locale is tied to the current thread.
+// Initially the locale is set to the default value.
+// When parsing an opensrf message that contains a locale value,
+// adopt that value as our new thread-scoped locale.
+thread_local! {
+    static THREAD_LOCALE: RefCell<String> = RefCell::new(DEFAULT_LOCALE.to_string());
+}
+
+/// Set the locale for the current thread.
+pub fn set_thread_locale(locale: &str) {
+    THREAD_LOCALE.with(|lc| {
+
+        // Only verify and allocate if necessary.
+        if lc.borrow().as_str() != locale {
+            return;
+        }
+
+        // Make sure the requested locale is reasonable.
+
+        if locale.len() > MAX_LOCALE_LEN {
+            log::error!("Invalid locale: '{locale}'");          
+            return;
+        }
+
+        // TODO does this cover everything?
+        if locale.chars().any(|b| !b.is_ascii_alphabetic() && b != '-' && b != '.') {      
+            log::error!("Invalid locale: '{locale}'");          
+            return;
+        }
+
+        *lc.borrow_mut() = locale.to_string();
+    });
+}
+
+/// Reset the locale to our default.
+pub fn reset_thread_locale() {
+    set_thread_locale(DEFAULT_LOCALE);
+}
+
+/// Returns the locale for the current thread.
+///
+/// String clone is required here to escape the temp borrow.
+pub fn thread_locale() -> String {
+    let mut locale = None;
+    THREAD_LOCALE.with(|lc| locale = Some((*lc.borrow()).to_string()));
+    locale.unwrap()
+}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MessageType {
@@ -379,7 +430,6 @@ impl TransportMessage {
 pub struct Message {
     mtype: MessageType,
     thread_trace: usize,
-    locale: Option<String>,
     timezone: Option<String>,
     api_level: u8,
     ingress: Option<String>,
@@ -393,7 +443,6 @@ impl Message {
             thread_trace,
             payload,
             api_level: DEFAULT_API_LEVEL,
-            locale: None,
             timezone: None,
             ingress: None,
         }
@@ -420,14 +469,6 @@ impl Message {
 
     pub fn set_api_level(&mut self, level: u8) {
         self.api_level = level;
-    }
-
-    pub fn locale(&self) -> &str {
-        self.locale.as_deref().unwrap_or(DEFAULT_LOCALE)
-    }
-
-    pub fn set_locale(&mut self, locale: &str) {
-        self.locale = Some(locale.to_string());
     }
 
     pub fn timezone(&self) -> &str {
@@ -492,8 +533,10 @@ impl Message {
             msg.set_timezone(tz);
         }
 
+        // Any time we receive (parse) a message the contains a locale
+        // value, adopt that value as our new thread-scoped locale.
         if let Some(lc) = msg_hash["locale"].as_str() {
-            msg.set_locale(lc);
+            set_thread_locale(lc);
         }
 
         if let Some(ing) = msg_hash["ingress"].as_str() {
@@ -538,7 +581,7 @@ impl Message {
         let mut obj = json::object! {
             threadTrace: self.thread_trace,
             type: mtype,
-            locale: self.locale(),
+            locale: thread_locale(),
             timezone: self.timezone(),
             api_level: self.api_level(),
             ingress: self.ingress(),
