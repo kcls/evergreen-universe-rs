@@ -72,7 +72,7 @@ if resp.spec().code == spec::M_LOGIN_RESP.code
 }
 ```
 
-### Connection API Free-Text Messages
+### Connection API Free-Text Message Building
 
 ```rs
 let req = Message::from_values(
