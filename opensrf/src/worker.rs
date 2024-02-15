@@ -253,7 +253,6 @@ impl Worker {
                     // affect future messages.
                     message::reset_thread_locale();
                 }
-
             } else {
                 // Let the worker know we woke up and nothing interesting
                 // happened.

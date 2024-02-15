@@ -4,8 +4,8 @@ use crate::idl;
 use crate::result::EgResult;
 use crate::util;
 use json::JsonValue;
-use std::sync::Arc;
 use opensrf::message;
+use std::sync::Arc;
 
 const JOIN_WITH_AND: &str = "AND";
 const JOIN_WITH_OR: &str = "OR";
@@ -264,9 +264,9 @@ impl JsonQueryCompiler {
         let join_op = self.compile_joins_for_class(&cname, &query["from"][&cname])?;
 
         let join_str = if let Some(joins) = join_op {
-            format!(" {joins}")
+            Some(format!(" {joins}"))
         } else {
-            "".to_string()
+            None
         };
 
         let select_str = self.compile_selects(&query["select"])?;
@@ -274,7 +274,8 @@ impl JsonQueryCompiler {
         let where_str = self.compile_where_for_class(&query["where"], &cname, JOIN_WITH_AND)?;
 
         let mut sql = format!(
-            r#"SELECT {select_str} FROM {from_str} AS "{cname}"{join_str} WHERE {where_str}"#,
+            r#"SELECT {select_str} FROM {from_str} AS "{cname}"{} WHERE {where_str}"#,
+            join_str.as_deref().unwrap_or("")
         );
 
         if self.has_aggregate {
@@ -438,7 +439,7 @@ impl JsonQueryCompiler {
             let cn = self.get_base_classname()?.to_string(); // parallel mutes
 
             // If we have no SELECT clause at all, just select the default fields.
-            return self.build_default_select_list(&cn);
+            return self.build_default_select_list(&cn, None);
         } else if !select_def.is_object() {
             // The root SELECT clause is a map of classname (or alias) to field list
             return Err(format!("Invalid SELECT clause: {select_def}").into());
@@ -458,7 +459,7 @@ impl JsonQueryCompiler {
         select_def: &JsonValue,
     ) -> EgResult<String> {
         if select_def.is_null() {
-            return self.build_default_select_list(class_alias);
+            return self.build_default_select_list(class_alias, None);
         }
 
         let classname = self.get_alias_classname(class_alias)?.to_string(); // mut's
@@ -466,7 +467,7 @@ impl JsonQueryCompiler {
         if let Some(col) = select_def.as_str() {
             if col == "*" {
                 // Wildcard queries use the default select list.
-                return self.build_default_select_list(class_alias);
+                return self.build_default_select_list(class_alias, None);
             } else {
                 // Selecting a single column by name.
 
@@ -479,8 +480,29 @@ impl JsonQueryCompiler {
             }
         }
 
+        if select_def.is_object() {
+            // An 'exclude' SELECT is a wildcard SELECT minus certain fields.
+            // E.g., {"bre": {"exclude": ["marc"]}
+
+            let fields: Vec<&str> = select_def["exclude"]
+                .members()
+                .filter(|f| f.is_string())
+                .map(|f| f.as_str().unwrap())
+                .collect();
+
+            if fields.len() > 0 {
+                return self.build_default_select_list(class_alias, Some(fields.as_slice()));
+            }
+
+            return Err(format!(
+                "SELECT received invalid 'exclude' query: {}",
+                select_def.dump()
+            )
+            .into());
+        }
+
         if !select_def.is_array() {
-            return Err(format!("SELECT must be string, null, or array").into());
+            return Err(format!("SELECT must be string, null, excluder, or array").into());
         }
 
         let mut fields = Vec::new();
@@ -516,7 +538,11 @@ impl JsonQueryCompiler {
         Ok(fields.join(", "))
     }
 
-    fn build_default_select_list(&mut self, alias: &str) -> EgResult<String> {
+    fn build_default_select_list(
+        &mut self,
+        alias: &str,
+        exclude: Option<&[&str]>,
+    ) -> EgResult<String> {
         let classname = self.get_alias_classname(alias)?.to_string(); // mut's
 
         // If we have an alias it's known to be valid
@@ -531,6 +557,11 @@ impl JsonQueryCompiler {
 
         let mut fields = Vec::new();
         for field_name in field_names.iter() {
+            if let Some(list) = exclude {
+                if list.contains(&field_name.as_str()) {
+                    continue;
+                }
+            }
             fields.push(self.select_one_field(alias, None, field_name, None, true)?);
         }
 
@@ -654,7 +685,7 @@ impl JsonQueryCompiler {
                 self.check_identifier(pkey)?,
                 self.check_identifier(class_alias)?,
                 self.check_identifier(pkey)?,
-                self.check_identifier(self.locale.as_str())?,
+                self.locale.as_str(), // format verified by opensrf
             );
         }
 

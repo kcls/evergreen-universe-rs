@@ -1,13 +1,13 @@
-use evergreen as eg;
-use eg::idldb::{IdlClassSearch, Translator};
 use eg::common::jq::JsonQueryCompiler;
+use eg::idldb::{IdlClassSearch, Translator};
+use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
 use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use opensrf::session::ServerSession;
-use std::sync::Arc;
-use postgres as pg;
 use pg::types::ToSql;
+use postgres as pg;
+use std::sync::Arc;
 
 // Import our local app module
 use crate::app;
@@ -124,7 +124,8 @@ fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> Result<String, St
     let api_parts = apiname.split(".").collect::<Vec<&str>>();
 
     let len = api_parts.len();
-    if len < 6 || len > 7 { // .atomic
+    if len < 6 || len > 7 {
+        // .atomic
         // Could potentially happen if an IDL class was not correctly
         // encoded in the IDL file.
         Err(format!("Invalid API call: {:?}", api_parts))?;
@@ -293,13 +294,18 @@ pub fn json_query(
     let mut jq_compiler = JsonQueryCompiler::new(idl);
     jq_compiler.compile(&query)?;
 
-    let sql = jq_compiler.query_string().ok_or_else(|| 
-        format!("JSON query failed to produce valid SQL: {}", query.dump()))?;
+    let sql = jq_compiler
+        .query_string()
+        .ok_or_else(|| format!("JSON query failed to produce valid SQL: {}", query.dump()))?;
 
-    // Do a little translation dance here to get the param values 
+    // Do a little translation dance here to get the param values
     // into a container our DB API can accept.
     let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
-    let qparams: Vec<String> = jq_compiler.query_params().iter().map(|s| s.to_string()).collect();
+    let qparams: Vec<String> = jq_compiler
+        .query_params()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     for p in qparams.iter() {
         params.push(p);
     }

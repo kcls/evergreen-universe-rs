@@ -228,7 +228,7 @@ impl ClientSingleton {
     ) -> Result<(), String> {
         let addr = BusAddress::for_router(username, domain);
 
-        // Always use the address of our primary Bus
+        // Always use the from address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
             addr.as_str(),
             self.bus().address().as_str(),

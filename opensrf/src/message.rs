@@ -1,6 +1,6 @@
 use super::util;
-use std::fmt;
 use std::cell::RefCell;
+use std::fmt;
 
 const DEFAULT_TIMEZONE: &str = "America/New_York";
 const DEFAULT_API_LEVEL: u8 = 1;
@@ -22,7 +22,6 @@ thread_local! {
 /// Set the locale for the current thread.
 pub fn set_thread_locale(locale: &str) {
     THREAD_LOCALE.with(|lc| {
-
         // Only verify and allocate if necessary.
         if lc.borrow().as_str() != locale {
             return;
@@ -31,13 +30,16 @@ pub fn set_thread_locale(locale: &str) {
         // Make sure the requested locale is reasonable.
 
         if locale.len() > MAX_LOCALE_LEN {
-            log::error!("Invalid locale: '{locale}'");          
+            log::error!("Invalid locale: '{locale}'");
             return;
         }
 
         // TODO does this cover everything?
-        if locale.chars().any(|b| !b.is_ascii_alphabetic() && b != '-' && b != '.') {      
-            log::error!("Invalid locale: '{locale}'");          
+        if locale
+            .chars()
+            .any(|b| !b.is_ascii_alphabetic() && b != '-' && b != '.')
+        {
+            log::error!("Invalid locale: '{locale}'");
             return;
         }
 

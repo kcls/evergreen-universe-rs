@@ -107,5 +107,16 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         r#"SELECT count("ahr".id) AS "count" FROM action.hold_request AS "ahr" WHERE (((("ahr".target IN (SELECT "acp".id FROM asset.copy AS "acp" INNER JOIN asset.call_number AS "acn" ON ("acn".id = "acp".call_number) INNER JOIN biblio.record_entry AS "bre" ON ("bre".id = "acn".record AND "bre".id = 32) WHERE TRUE) AND "ahr".hold_type IN ('C', 'F', 'R'))) OR (("ahr".target IN (SELECT "acn".id FROM asset.call_number AS "acn" INNER JOIN biblio.record_entry AS "bre" ON ("bre".id = "acn".record AND "bre".id = 32) WHERE TRUE) AND "ahr".hold_type = 'V')) OR (("ahr".target IN (SELECT "bmp".id FROM biblio.monograph_part AS "bmp" INNER JOIN biblio.record_entry AS "bre" ON ("bre".id = "bmp".record AND "bre".id = 32) WHERE TRUE) AND "ahr".hold_type = 'P')) OR (("ahr".target = '32' AND "ahr".hold_type = 'T'))) AND "ahr".cancel_time IS NULL AND "ahr".fulfillment_time IS NULL)"#
     );
 
+    let query = json::object! {
+        "select": {"bre": {"exclude": ["marc", "vis_attr_vector"]}},
+        "from": "bre",
+        "where": {"+bre":{"id": {"between": [1, 10]}}}
+    };
+
+    jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
+    jq_compiler.compile(&query)?;
+
+    println!("EXCLUDE\n{}", jq_compiler.debug_query_kludge());
+
     Ok(())
 }
