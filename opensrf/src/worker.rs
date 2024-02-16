@@ -491,16 +491,16 @@ impl Worker {
 
         // Clone the method since we have mutable borrows below.  Note
         // this is the method definition, not the param-laden request.
-        let mut method = self.methods.get(api_name).map(|m| m.clone());
+        let mut method_def = self.methods.get(api_name).map(|m| m.clone());
 
-        if method.is_none() {
+        if method_def.is_none() {
             // Atomic methods are not registered/published in advance
             // since every method has an atomic variant.
             // Find the root method and use it.
             if api_name.ends_with(".atomic") {
                 let meth = api_name.replace(".atomic", "");
                 if let Some(m) = self.methods.get(&meth) {
-                    method = Some(m.clone());
+                    method_def = Some(m.clone());
 
                     // Creating a new queue tells our session to treat
                     // this as an atomic request.
@@ -509,7 +509,7 @@ impl Worker {
             }
         }
 
-        if method.is_none() {
+        if method_def.is_none() {
             log::warn!("Method not found: {}", api_name);
 
             return self.reply_with_status(
@@ -518,9 +518,8 @@ impl Worker {
             );
         }
 
-        let method = method.unwrap();
-
-        let pcount = method.param_count();
+        let method_def = method_def.unwrap();
+        let pcount = method_def.param_count();
 
         // Make sure the number of params sent by the caller matches the
         // parameter count for the method.
@@ -541,7 +540,29 @@ impl Worker {
         }
         method_call.set_params(unpacked_params);
 
-        if let Err(ref err) = (method.handler())(appworker, self.session_mut(), &method_call) {
+        // Verify paramter types are correct, at least superficially.
+        // Do this after deserialization.
+        if let Some(param_defs) = method_def.params() {
+            for (idx, param_def) in param_defs.iter().enumerate() {
+                // There may be more param defs than parameters if
+                // some param are optional.
+                if let Some(param_val) = method_call.params().get(idx) {
+                    if !param_def.datatype.matches(param_val) {
+                        return self.reply_bad_request(&format!(
+                            "Invalid paramter type: wanted={} got={}",
+                            param_def.datatype,
+                            param_val.dump()
+                        ));
+                    }
+                } else {
+                    // More defs than actual params. Verification complete.
+                    break;
+                }
+            }
+        }
+
+        // Call the API
+        if let Err(ref err) = (method_def.handler())(appworker, self.session_mut(), &method_call) {
             let msg = format!("{self} method {} failed with {err}", method_call.method());
             log::error!("{msg}");
             appworker.api_call_error(&method_call, err);

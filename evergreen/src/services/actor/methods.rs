@@ -24,25 +24,21 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: get_barcodes,
         params: &[
             StaticParam {
-                required: true,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "",
             },
             StaticParam {
-                required: true,
                 name: "Org Unit ID",
                 datatype: ParamDataType::Number,
                 desc: "",
             },
             StaticParam {
-                required: true,
                 name: "Context",
                 datatype: ParamDataType::String,
                 desc: "Options: actor, asset, serial, or booking",
             },
             StaticParam {
-                required: true,
                 name: "Barcode",
                 datatype: ParamDataType::String,
                 desc: "Whole barcode or a partial 'completable' barcode",
@@ -56,19 +52,16 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: user_has_work_perm_at_batch,
         params: &[
             StaticParam {
-                required: true,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authtoken",
             },
             StaticParam {
-                required: true,
                 name: "Permissions",
                 datatype: ParamDataType::Array,
                 desc: "List of permission codes",
             },
             StaticParam {
-                required: false,
                 name: "User ID",
                 datatype: ParamDataType::Number,
                 desc: "User ID to check permissions for; defaults to the API requestor",
@@ -82,19 +75,16 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: ou_setting_ancestor_default_batch,
         params: &[
             StaticParam {
-                required: true,
                 name: "Org Unit ID",
                 datatype: ParamDataType::Number,
                 desc: "",
             },
             StaticParam {
-                required: true,
                 name: "Settings",
                 datatype: ParamDataType::Array,
                 desc: "List of setting names",
             },
             StaticParam {
-                required: false,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authtoken.  Required for perm-protected settings",
@@ -108,19 +98,16 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: retrieve_cascade_settigs,
         params: &[
             StaticParam {
-                required: true,
                 name: "Settings",
                 datatype: ParamDataType::Array,
                 desc: "List of setting names",
             },
             StaticParam {
-                required: false,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authtoken.  Required for workstation, user, and perm-protected settings",
             },
             StaticParam {
-                required: true,
                 name: "Org Unit ID",
                 datatype: ParamDataType::Number,
                 desc: "",
@@ -134,13 +121,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: user_opac_vital_stats,
         params: &[
             StaticParam {
-                required: true,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "",
             },
             StaticParam {
-                required: false,
                 name: "User ID",
                 datatype: ParamDataType::Number,
                 desc: "User ID whose stats to load; defaults to requestor",
@@ -154,19 +139,16 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: update_penalties,
         params: &[
             StaticParam {
-                required: true,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "",
             },
             StaticParam {
-                required: true,
                 name: "User ID",
                 datatype: ParamDataType::Number,
                 desc: "User ID to Update",
             },
             StaticParam {
-                required: false,
                 name: "Only Penalties",
                 datatype: ParamDataType::Array,
                 desc: "Optionally limit to this list of penalties.
@@ -181,19 +163,16 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: update_penalties,
         params: &[
             StaticParam {
-                required: true,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "",
             },
             StaticParam {
-                required: true,
                 name: "User ID",
                 datatype: ParamDataType::Number,
                 desc: "User ID to Update",
             },
             StaticParam {
-                required: false,
                 name: "Only Penalties",
                 datatype: ParamDataType::Array,
                 desc: "Optionally limit to this list of penalties.

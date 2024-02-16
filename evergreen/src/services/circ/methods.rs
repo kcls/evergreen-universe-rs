@@ -24,13 +24,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: checkout_renew_checkin,
         params: &[
             StaticParam {
-                required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authentication Token",
             },
             StaticParam {
-                required: true,
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.", // TODO expand
@@ -44,13 +42,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: checkout_renew_checkin,
         params: &[
             StaticParam {
-                required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authentication Token",
             },
             StaticParam {
-                required: true,
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.", // TODO expand
@@ -64,13 +60,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: checkout_renew_checkin,
         params: &[
             StaticParam {
-                required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authentication Token",
             },
             StaticParam {
-                required: true,
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.",
@@ -84,13 +78,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: checkout_renew_checkin,
         params: &[
             StaticParam {
-                required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authentication Token",
             },
             StaticParam {
-                required: true,
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.",
@@ -104,13 +96,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: checkout_renew_checkin,
         params: &[
             StaticParam {
-                required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authentication Token",
             },
             StaticParam {
-                required: true,
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.",
@@ -124,13 +114,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: checkout_renew_checkin,
         params: &[
             StaticParam {
-                required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authentication Token",
             },
             StaticParam {
-                required: true,
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.",
@@ -144,13 +132,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: checkout_renew_checkin,
         params: &[
             StaticParam {
-                required: true,
                 name: "authtoken",
                 datatype: ParamDataType::String,
                 desc: "Authentication Token",
             },
             StaticParam {
-                required: true,
                 name: "options",
                 datatype: ParamDataType::Object,
                 desc: "Options including copy_barcode, etc.",
@@ -164,13 +150,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: renewal_chain_summary,
         params: &[
             StaticParam {
-                required: true,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "",
             },
             StaticParam {
-                required: true,
                 name: "Circ ID",
                 datatype: ParamDataType::Number,
                 desc: "Circulation ID to lookup",
@@ -184,13 +168,11 @@ pub static METHODS: &[StaticMethodDef] = &[
         handler: prev_renewal_chain_summary,
         params: &[
             StaticParam {
-                required: true,
                 name: "Authtoken",
                 datatype: ParamDataType::String,
                 desc: "",
             },
             StaticParam {
-                required: true,
                 name: "Circ ID",
                 datatype: ParamDataType::Number,
                 desc: "Circulation ID to lookup",

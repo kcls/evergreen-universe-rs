@@ -39,6 +39,18 @@ impl ParamCount {
             ParamCount::Range(s, e) => s <= count && e >= count,
         }
     }
+
+    /// Minimum number of parameters required to satisfy this
+    /// ParamCount definition.
+    pub fn minimum(&self) -> u8 {
+        match *self {
+            ParamCount::Any => 0,
+            ParamCount::Zero => 0,
+            ParamCount::Exactly(c) => c,
+            ParamCount::AtLeast(c) => c,
+            ParamCount::Range(s, _) => s,
+        }
+    }
 }
 
 impl fmt::Display for ParamCount {
@@ -80,10 +92,31 @@ impl fmt::Display for ParamDataType {
     }
 }
 
+impl ParamDataType {
+    /// True if the provided parameter value matches our type.
+    ///
+    /// This is a superficial inspection of the parameter type.  E.g.,
+    /// we don't care about the contents of an array.
+    pub fn matches(&self, param: &json::JsonValue) -> bool {
+        match *self {
+            ParamDataType::String => param.is_string(),
+            ParamDataType::Number => param.is_number(),
+            ParamDataType::Array => param.is_array(),
+            ParamDataType::Object => param.is_object(),
+            ParamDataType::Boolish => {
+                param.is_boolean() || param.is_number() || param.is_string() || param.is_null()
+            }
+            ParamDataType::Scalar => {
+                param.is_boolean() || param.is_number() || param.is_string() || param.is_null()
+            }
+            ParamDataType::Any => true,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StaticParam {
     pub name: &'static str,
-    pub required: bool,
     pub datatype: ParamDataType,
     pub desc: &'static str,
 }
@@ -91,7 +124,6 @@ pub struct StaticParam {
 #[derive(Clone, Debug)]
 pub struct Param {
     pub name: String,
-    pub required: bool,
     pub datatype: ParamDataType,
     pub desc: Option<String>,
 }
@@ -100,7 +132,6 @@ impl Param {
     pub fn to_json_value(&self) -> json::JsonValue {
         json::object! {
             "name": self.name.as_str(),
-            "required": self.required,
             "datatype": self.datatype.to_string(),
             "desc": match self.desc.as_ref() {
                 Some(d) => d.as_str().into(),
@@ -138,7 +169,6 @@ impl StaticMethodDef {
         for p in self.params {
             let mut param = Param {
                 name: p.name.to_string(),
-                required: p.required,
                 datatype: p.datatype,
                 desc: None,
             };
@@ -257,15 +287,15 @@ impl MethodDef {
         }
 
         if let Some(params) = self.params() {
-            for param in params {
-                s += &format!(
-                    "{}'{}',",
-                    match param.required {
-                        true => "*",
-                        _ => "",
-                    },
-                    param.name
-                );
+            let minimum = self.param_count.minimum();
+            for (idx, param) in params.iter().enumerate() {
+                let required = if idx <= minimum as usize {
+                    "*" // required
+                } else {
+                    ""
+                };
+
+                s += &format!("{required}'{}',", param.name);
             }
             s.pop(); // remove trailing ","
         } else if self.param_count == ParamCount::Any {

@@ -364,7 +364,6 @@ impl Server {
         method.set_desc("List published API definitions");
 
         method.add_param(method::Param {
-            required: false,
             name: String::from("prefix"),
             datatype: method::ParamDataType::String,
             desc: Some(String::from("API name prefix filter")),
@@ -381,7 +380,6 @@ impl Server {
         method.set_desc("Summary list published API definitions");
 
         method.add_param(method::Param {
-            required: false,
             name: String::from("prefix"),
             datatype: method::ParamDataType::String,
             desc: Some(String::from("API name prefix filter")),

@@ -19,7 +19,6 @@ pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
     param_count: ParamCount::Range(0, 1),
     handler: target,
     params: &[StaticParam {
-        required: false,
         name: "options",
         datatype: ParamDataType::Object,
         desc: "Targeting Options",

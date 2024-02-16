@@ -44,7 +44,6 @@ pub static METHODS: &[StaticMethodDef] = &[
         param_count: ParamCount::Exactly(1),
         handler: create,
         params: &[StaticParam {
-            required: true,
             name: "IDL Object",
             datatype: ParamDataType::Object,
             desc: "Object to update",
@@ -54,27 +53,39 @@ pub static METHODS: &[StaticMethodDef] = &[
     StaticMethodDef {
         name: "retrieve-stub",
         desc: "Retrieve an IDL object by its primary key",
-        param_count: ParamCount::Exactly(1),
+        param_count: ParamCount::Range(1, 2),
         handler: retrieve,
-        params: &[StaticParam {
-            required: true,
-            name: "primary-key",
-            datatype: ParamDataType::Scalar,
-            desc: "Primary Key Value",
-        }],
+        params: &[
+            StaticParam {
+                name: "primary-key",
+                datatype: ParamDataType::Scalar,
+                desc: "Primary Key Value",
+            },
+            StaticParam {
+                name: "flesh",
+                datatype: ParamDataType::Object,
+                desc: "Flesh Fields Object",
+            },
+        ],
     },
     // Stub method for *.search calls. Not directly published.
     StaticMethodDef {
         name: "search-stub",
         desc: "search an IDL object by its primary key",
-        param_count: ParamCount::Exactly(1),
+        param_count: ParamCount::Range(1, 2),
         handler: search,
-        params: &[StaticParam {
-            required: true,
-            name: "query",
-            datatype: ParamDataType::Object,
-            desc: "Query Object",
-        }],
+        params: &[
+            StaticParam {
+                name: "query",
+                datatype: ParamDataType::Object,
+                desc: "Query Object",
+            },
+            StaticParam {
+                name: "flesh",
+                datatype: ParamDataType::Object,
+                desc: "Flesh Fields Object",
+            },
+        ],
     },
     // Stub method for *.update calls. Not directly published.
     StaticMethodDef {
@@ -83,7 +94,6 @@ pub static METHODS: &[StaticMethodDef] = &[
         param_count: ParamCount::Exactly(1),
         handler: update,
         params: &[StaticParam {
-            required: true,
             name: "IDL Object",
             datatype: ParamDataType::Object,
             desc: "Object to update",
@@ -96,7 +106,6 @@ pub static METHODS: &[StaticMethodDef] = &[
         param_count: ParamCount::Exactly(1),
         handler: delete,
         params: &[StaticParam {
-            required: true,
             name: "primary-key",
             datatype: ParamDataType::Scalar,
             desc: "Primary Key Value",
@@ -109,7 +118,6 @@ pub static METHODS: &[StaticMethodDef] = &[
         param_count: ParamCount::Exactly(1),
         handler: json_query,
         params: &[StaticParam {
-            required: true,
             name: "query-object",
             datatype: ParamDataType::Object,
             desc: "JSON Query Object/Hash",
@@ -154,7 +162,7 @@ pub fn retrieve(
     let idl = worker.env().idl().clone();
     let classname = get_idl_class(&idl, method.method())?;
 
-    let pkey = method.param(0);
+    let pkey = method.param(0); // at least 1 param is guaranteed
 
     let db = worker.database().clone();
     let translator = Translator::new(idl, db);
