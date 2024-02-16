@@ -199,7 +199,9 @@ impl Translator {
         };
 
         let mut filter = JsonValue::new_object();
-        filter.insert(pkey_field.name(), pkey.clone()).unwrap();
+        filter
+            .insert(pkey_field.name(), pkey.clone())
+            .expect("Is Object");
 
         let mut search = IdlClassSearch::new(classname);
         search.set_filter(filter);
@@ -215,6 +217,119 @@ impl Translator {
                 )
             }
         }
+    }
+
+    /// Fleshes an IDL object in place based on the flesh_fields definitions.
+    pub fn flesh_idl_object(
+        &self,
+        object: &mut JsonValue,
+        mut flesh_fields: JsonValue,
+        flesh_depth: usize,
+    ) -> EgResult<()> {
+        if flesh_depth == 0 {
+            log::warn!("Attempt to flesh beyond flesh depth");
+            return Ok(());
+        }
+
+        let idl_class = self.get_idl_class_from_object(object)?;
+        let classname = idl_class.classname();
+
+        // Clone these out since flesh_fields is mutable.
+        let fieldnames: Vec<String> = flesh_fields[classname]
+            .members()
+            .filter(|f| f.is_string())
+            .map(|f| f.as_str().unwrap().to_string())
+            .collect();
+
+        // What fields are we fleshing on this class?
+        for fieldname in fieldnames.iter() {
+            self.flesh_idl_object_field(object, &flesh_fields, flesh_depth, fieldname, idl_class)?;
+        }
+
+        Ok(())
+    }
+
+    /// Flesh a single field on an object.
+    fn flesh_idl_object_field(
+        &self,
+        object: &mut JsonValue,
+        flesh_fields: &JsonValue,
+        // Do we have any flesh space left?
+        flesh_depth: usize,
+        // Field we're fleshing.
+        fieldname: &str,
+        idl_class: &idl::Class,
+    ) -> EgResult<()> {
+        let classname = idl_class.classname();
+
+        log::debug!("Fleshing field {fieldname} on {classname}");
+
+        let idl_field = idl_class
+            .fields()
+            .get(fieldname)
+            .ok_or_else(|| format!("Field {fieldname} on class {classname} does not exist"))?;
+
+        let idl_link = idl_class
+            .links()
+            .get(fieldname)
+            .ok_or_else(|| format!("Field {fieldname} on class {classname} cannot be fleshed"))?;
+
+        /* may need this later
+        let idl_link_class = self.idl().classes().get(idl_link.class())
+            .ok_or_else(|| format!("No such IDL class: {}", idl_link.class()))?;
+            */
+
+        let search_value;
+        let rtype = idl_link.reltype();
+
+        if rtype == idl::RelType::HasMany || rtype == idl::RelType::MightHave {
+            // When the foreign key relationship points from the
+            // fleshed object back to us, the search value will be
+            // this object's primary key.
+
+            search_value = self
+                .idl()
+                .get_pkey_value(object)
+                .ok_or_else(|| format!("Class {classname} has no primary key"))?;
+        } else {
+            search_value = object[fieldname].clone();
+        }
+
+        if !search_value.is_string() && !search_value.is_number() {
+            return Err(format!(
+                "Class {classname} cannot flesh field {fieldname} on value: {}",
+                search_value.dump()
+            )
+            .into());
+        }
+
+        // TODO verify the linked class may be accessed by this
+        // controller, e.g. pcrud
+
+        // Avoid cloning the flesh_fields object unless needed.
+        let mut flesh_fields_modified = None;
+
+        if let Some(map_field) = idl_link.map() {
+            // When an intermediate mapping object is defined,
+            // add it to our pile of fleshed fields.
+            let mut ff: JsonValue = flesh_fields.clone();
+            ff[idl_link.class()] = json::from(map_field);
+            flesh_fields_modified = Some(ff);
+        }
+
+        log::debug!(
+            "Link field: {}, remote class: {} , fkey: {}, reltype: {}",
+            idl_link.field(),
+            idl_link.class(),
+            idl_link.key(),
+            idl_link.reltype()
+        );
+
+        let mut class_search = IdlClassSearch::new(classname);
+        let mut filter = json::object! {};
+        filter[idl_link.key()] = search_value;
+
+        Ok(())
     }
 
     /// Get the IDL Class representing to the provided object.
