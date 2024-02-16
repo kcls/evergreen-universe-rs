@@ -31,7 +31,7 @@ const IDLE_WAKE_TIME: i32 = 5;
 pub enum WorkerState {
     Idle,
     Active,
-    Done,
+    Exiting,
 }
 
 #[derive(Debug)]
@@ -277,7 +277,7 @@ impl Worker {
             log::error!("{selfstr} worker_end failed {e}");
         }
 
-        self.notify_state(WorkerState::Done).ok(); // ignore errors
+        self.notify_state(WorkerState::Exiting).ok(); // ignore errors
 
         // Clear our worker-specific bus address of any lingering data.
         self.reset().ok();

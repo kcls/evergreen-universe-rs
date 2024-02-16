@@ -26,6 +26,7 @@ const IDLE_WAKE_TIME: u64 = 3;
 const SHUTDOWN_MAX_WAIT: i32 = 30;
 const DEFAULT_MIN_WORKERS: usize = 3;
 const DEFAULT_MAX_WORKERS: usize = 30;
+const DEFAULT_MIN_IDLE_WORKERS: usize = 1;
 
 #[derive(Debug)]
 pub struct WorkerThread {
@@ -48,6 +49,14 @@ pub struct Server {
     host_settings: Arc<HostSettings>,
     min_workers: usize,
     max_workers: usize,
+
+    /// Minimum number of idle workers.  Note we don't support
+    /// max_idle_workers at this time -- it would require adding an
+    /// additional mpsc channel for every thread to deliver the shutdown
+    /// request to individual threads.  Hardly seems worth it -- maybe.
+    /// For comparision, the OSRF C code has no min/max idle support
+    /// either.
+    min_idle_workers: usize,
 }
 
 impl Server {
@@ -80,6 +89,11 @@ impl Server {
             .as_usize()
             .unwrap_or(DEFAULT_MIN_WORKERS);
 
+        let min_idle_workers = host_settings
+            .value(&format!("apps/{service}/unix_config/min_spare_children"))
+            .as_usize()
+            .unwrap_or(DEFAULT_MIN_IDLE_WORKERS);
+
         let max_workers = host_settings
             .value(&format!("apps/{service}/unix_config/max_children"))
             .as_usize()
@@ -102,6 +116,7 @@ impl Server {
             application,
             min_workers,
             max_workers,
+            min_idle_workers,
             methods: None,
             worker_id_gen: 0,
             to_parent_tx: tx,
@@ -387,6 +402,8 @@ impl Server {
         loop {
             // Wait for worker thread state updates
 
+            let mut work_performed = false;
+
             // Wait up to 'duration' seconds before looping around and
             // trying again.  This leaves room for other potential
             // housekeeping between recv calls.
@@ -395,14 +412,22 @@ impl Server {
             // failed/disconnected thread.
             if let Ok(evt) = self.to_parent_rx.recv_timeout(duration) {
                 self.handle_worker_event(&evt);
+                work_performed = true;
             }
 
-            self.check_failed_threads();
+            // Always check for failed threads.
+            work_performed = self.check_failed_threads() || work_performed;
 
             // Did a signal set our "stopping" flag?
             if self.stopping.load(Ordering::Relaxed) {
                 log::info!("We received a stop signal, exiting");
                 break;
+            }
+
+            if !work_performed {
+                // Only perform idle worker maintenance if no other
+                // tasks were performed during this loop iter.
+                self.perform_idle_worker_maint();
             }
         }
 
@@ -410,6 +435,21 @@ impl Server {
         self.shutdown();
 
         Ok(())
+    }
+
+    /// Add additional idle workers if needed.
+    ///
+    /// Spawn at most one worker per maintenance cycle.
+    fn perform_idle_worker_maint(&mut self) {
+        let idle_workers = self.idle_thread_count();
+
+        if self.min_idle_workers > 0
+            && self.workers.len() < self.max_workers
+            && idle_workers < self.min_idle_workers
+        {
+            self.spawn_one_thread();
+            log::debug!("Sawned idle worker; idle={idle_workers}");
+        }
     }
 
     fn shutdown(&mut self) {
@@ -442,9 +482,11 @@ impl Server {
         std::process::exit(0);
     }
 
-    // Check for threads that panic!ed and were unable to send any
-    // worker state info to us.
-    fn check_failed_threads(&mut self) {
+    /// Check for threads that panic!ed and were unable to send any
+    /// worker state info to us.
+    ///
+    /// Returns true if work was done.
+    fn check_failed_threads(&mut self) -> bool {
         let failed: Vec<u64> = self
             .workers
             .iter()
@@ -452,10 +494,14 @@ impl Server {
             .map(|(k, _)| *k) // k is a &u64
             .collect();
 
+        let mut handled = false;
         for worker_id in failed {
+            handled = true;
             log::info!("Found a thread that exited ungracefully: {worker_id}");
             self.remove_thread(&worker_id);
         }
+
+        handled
     }
 
     fn remove_thread(&mut self, worker_id: &u64) {
@@ -479,7 +525,7 @@ impl Server {
             }
         };
 
-        if evt.state() == WorkerState::Done {
+        if evt.state() == WorkerState::Exiting {
             // Worker is done -- remove it and fire up new ones as needed.
             self.remove_thread(&worker_id);
         } else {
