@@ -75,6 +75,8 @@ fn main() {
 
     let mut handles = Vec::new();
 
+    let start = SystemTime::now();
+
     for _ in 0..parallel {
         let h = host.clone();
         let m = messages.clone();
@@ -85,6 +87,13 @@ fn main() {
     for h in handles {
         h.join().unwrap();
     }
+
+    let duration = start.elapsed().unwrap().as_millis();
+    let seconds = (duration as f64) / 1000.0;
+    let count = parallel * repeat;
+    let thput = count as f64 / seconds;
+
+    println!("{count} requests processed in {seconds:.3} seconds; ~{thput:.3} reqs / second");
 }
 
 fn run_one_thread(
