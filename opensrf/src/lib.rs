@@ -7,6 +7,7 @@ pub use session::SessionHandle;
 pub mod addr;
 pub mod app;
 pub mod bus;
+pub mod cache;
 pub mod classified;
 pub mod client;
 pub mod conf;
