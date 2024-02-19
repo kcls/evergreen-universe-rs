@@ -273,10 +273,8 @@ impl Translator {
     pub fn flesh_idl_object(
         &self,
         object: &mut JsonValue,
-        mut flesh_def: FleshDef,
+        flesh_def: FleshDef,
     ) -> EgResult<()> {
-        log::debug!("Fleshing {} with {:?}", object["_classname"], flesh_def);
-
         if flesh_def.depth == 0 {
             log::warn!("Attempt to flesh beyond flesh depth");
             return Ok(());
@@ -318,23 +316,10 @@ impl Translator {
         // given to another search.
         let mut flesh_def = flesh_def.clone();
 
-        log::debug!("Fleshing field {fieldname} on {classname}");
-
-        let idl_field = idl_class
-            .fields()
-            .get(fieldname)
-            .ok_or_else(|| format!("Field '{fieldname}' on class '{classname}' does not exist"))?;
-
         let idl_link = idl_class
             .links()
             .get(fieldname)
             .ok_or_else(|| format!("Field {fieldname} on class {classname} cannot be fleshed"))?;
-
-        let idl_link_class = self
-            .idl()
-            .classes()
-            .get(idl_link.class())
-            .ok_or_else(|| format!("No such IDL class: {}", idl_link.class()))?;
 
         let search_value;
         let reltype = idl_link.reltype();
@@ -375,20 +360,20 @@ impl Translator {
             } else {
                 flesh_def.fields.insert(cname.to_string(), vec![fname]);
             }
-        }
-        {
+        } else {
             // When adding an implicit mapped field, avoid decrementing
             // the flesh depth so the caller is not penalized.
             flesh_def.depth -= 1;
         }
 
         log::debug!(
-            "Link field: {}, remote class: {} , fkey: {}, reltype: {} flesh={:?}",
+            "Fleshing {}.{}; Link field: {}, remote class: {} , fkey: {}, reltype: {}",
+            classname,
+            fieldname,
             idl_link.field(),
             idl_link.class(),
             idl_link.key(),
             idl_link.reltype(),
-            flesh_def,
         );
 
         let mut class_search = IdlClassSearch::new(idl_link.class());

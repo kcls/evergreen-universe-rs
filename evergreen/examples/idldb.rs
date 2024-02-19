@@ -27,37 +27,37 @@ fn main() -> Result<(), String> {
     let mut search = IdlClassSearch::new("aou");
 
     for org in translator.idl_class_search(&search)? {
-        println!("org: {} {}\n", org["id"], org["shortname"]);
+        println!("org: {} {}", org["id"], org["shortname"]);
     }
 
     search.set_filter(json::object! {id: 1, name: "CONS", opac_visible: false});
 
     for org in translator.idl_class_search(&search)? {
-        println!("org: {} {}\n", org["id"], org["shortname"]);
+        println!("org: {} {}", org["id"], org["shortname"]);
     }
 
     search.set_filter(json::object! {id: json::object! {">": 1}, ou_type: [1, 2, 3]});
 
     for org in translator.idl_class_search(&search)? {
-        println!("org: {} {}\n", org["id"], org["shortname"]);
+        println!("org: {} {}", org["id"], org["shortname"]);
     }
 
     search.set_filter(json::object! {"id": {"not in": [1, 2]}});
 
     for org in translator.idl_class_search(&search)? {
-        println!("org: ID NOT IN: {} {}\n", org["id"], org["shortname"]);
+        println!("org: ID NOT IN: {} {}", org["id"], org["shortname"]);
     }
 
     search.set_order_by(vec![OrderBy::new("name", OrderByDir::Asc)]);
 
     for org in translator.idl_class_search(&search)? {
-        println!("org: {} {}\n", org["id"], org["shortname"]);
+        println!("org: {} {}", org["id"], org["shortname"]);
     }
 
     search.set_pager(Pager::new(10, 0));
 
     for org in translator.idl_class_search(&search)? {
-        println!("org: {} {}\n", org["id"], org["shortname"]);
+        println!("org: {} {}", org["id"], org["shortname"]);
     }
 
     // Grab an org unit to update.
@@ -128,11 +128,12 @@ fn main() -> Result<(), String> {
     // Give me all rows
     let mut search = IdlClassSearch::new("au");
     search.set_filter(json::object! {id: [1, 2, 3, 4, 5, 6, 7, 8, 9]});
-    search.set_flesh(
-        FleshDef::from_json_value(
-            &json::object! {"flesh": 2, "flesh_fields":{"au": ["home_ou", "profile"], "aou": ["ou_type"]}}
-        )?
-    );
+    let flesh = json::object! {
+        "flesh": 2, 
+        "flesh_fields":{"au": ["addresses", "home_ou", "profile"], "aou": ["ou_type"]}
+    };
+
+    search.set_flesh(FleshDef::from_json_value(&flesh)?);
 
     for user in translator.idl_class_search(&search)? {
         println!(
@@ -142,7 +143,10 @@ fn main() -> Result<(), String> {
             user["home_ou"]["ou_type"]["depth"],
             user["profile"]["name"],
         );
-        //println!("{}", user.dump());
+
+        for addr in user["addresses"].members() {
+            println!("street = {}", addr["street1"]);
+        }
     }
 
     Ok(())
