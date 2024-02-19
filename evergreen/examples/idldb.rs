@@ -1,5 +1,5 @@
 use eg::db::DatabaseConnection;
-use eg::idldb::{IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
+use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
 use evergreen as eg;
 use getopts;
@@ -124,6 +124,26 @@ fn main() -> Result<(), String> {
     cbt["owner"] = json::from(1);
     translator.create_idl_object(&cbt)?;
     translator.xact_rollback()?;
+
+    // Give me all rows
+    let mut search = IdlClassSearch::new("au");
+    search.set_filter(json::object! {id: [1, 2, 3, 4, 5, 6, 7, 8, 9]});
+    search.set_flesh(
+        FleshDef::from_json_value(
+            &json::object! {"flesh": 2, "flesh_fields":{"au": ["home_ou", "profile"], "aou": ["ou_type"]}}
+        )?
+    );
+
+    for user in translator.idl_class_search(&search)? {
+        println!(
+            "user: {} {} depth={} {}",
+            user["usrname"],
+            user["home_ou"]["shortname"],
+            user["home_ou"]["ou_type"]["depth"],
+            user["profile"]["name"],
+        );
+        //println!("{}", user.dump());
+    }
 
     Ok(())
 }

@@ -10,9 +10,12 @@ use pg::types::ToSql;
 use postgres as pg;
 use rust_decimal::Decimal;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
+
+const MAX_FLESH_DEPTH: i16 = 100;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OrderByDir {
@@ -102,12 +105,54 @@ impl IdlClassUpdate {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct FleshDef {
+    pub fields: HashMap<String, Vec<String>>,
+    /// Depth of <0 means flesh to maximum.
+    pub depth: i16,
+}
+
+impl FleshDef {
+    /// Creates a FleshDef from a JSON options hash/object.
+    /// {flesh: 1, flesh_fields: {au: ["id"]}, ...}
+    /// TODO unit test
+    pub fn from_json_value(obj: &JsonValue) -> EgResult<Self> {
+        let mut fields = HashMap::new();
+
+        for (classname, field_names) in obj["flesh_fields"].entries() {
+            let mut list = Vec::new();
+            for name in field_names.members() {
+                let n = name
+                    .as_str()
+                    .ok_or_else(|| format!("Invalid flesh definition: {}", obj.dump()))?;
+                list.push(n.to_string());
+            }
+
+            fields.insert(classname.to_string(), list);
+        }
+
+        let depth = if let Some(num) = obj["flesh"].as_i16() {
+            if num > MAX_FLESH_DEPTH {
+                MAX_FLESH_DEPTH
+            } else {
+                num
+            }
+        } else {
+            0
+        };
+
+        Ok(FleshDef { depth, fields })
+    }
+}
+
 /// Models a request to search for a set of IDL objects of a given class.
+#[derive(Debug)]
 pub struct IdlClassSearch {
     pub classname: String,
     pub filter: Option<JsonValue>,
     pub order_by: Option<Vec<OrderBy>>,
     pub pager: Option<Pager>,
+    pub flesh: Option<FleshDef>,
 }
 
 impl IdlClassSearch {
@@ -117,7 +162,12 @@ impl IdlClassSearch {
             filter: None,
             order_by: None,
             pager: None,
+            flesh: None,
         }
+    }
+
+    pub fn set_flesh(&mut self, flesh_def: FleshDef) {
+        self.flesh = Some(flesh_def);
     }
 
     pub fn classname(&self) -> &str {
@@ -223,10 +273,11 @@ impl Translator {
     pub fn flesh_idl_object(
         &self,
         object: &mut JsonValue,
-        mut flesh_fields: JsonValue,
-        flesh_depth: usize,
+        mut flesh_def: FleshDef,
     ) -> EgResult<()> {
-        if flesh_depth == 0 {
+        log::debug!("Fleshing {} with {:?}", object["_classname"], flesh_def);
+
+        if flesh_def.depth == 0 {
             log::warn!("Attempt to flesh beyond flesh depth");
             return Ok(());
         }
@@ -234,16 +285,20 @@ impl Translator {
         let idl_class = self.get_idl_class_from_object(object)?;
         let classname = idl_class.classname();
 
-        // Clone these out since flesh_fields is mutable.
-        let fieldnames: Vec<String> = flesh_fields[classname]
-            .members()
-            .filter(|f| f.is_string())
-            .map(|f| f.as_str().unwrap().to_string())
-            .collect();
+        // Clone these out since flesh_def is mutable.
+        let fieldnames;
+
+        if let Some(list) = flesh_def.fields.get(classname) {
+            fieldnames = list.clone();
+        } else {
+            // Nothing to flesh on this object.  Probably shouldnt
+            // ever get here, but treating like a non-error for now.
+            return Ok(());
+        }
 
         // What fields are we fleshing on this class?
         for fieldname in fieldnames.iter() {
-            self.flesh_idl_object_field(object, &flesh_fields, flesh_depth, fieldname, idl_class)?;
+            self.flesh_idl_object_field(object, &flesh_def, fieldname, idl_class)?;
         }
 
         Ok(())
@@ -253,36 +308,38 @@ impl Translator {
     fn flesh_idl_object_field(
         &self,
         object: &mut JsonValue,
-        flesh_fields: &JsonValue,
-        // Do we have any flesh space left?
-        flesh_depth: usize,
-        // Field we're fleshing.
+        flesh_def: &FleshDef,
         fieldname: &str,
         idl_class: &idl::Class,
     ) -> EgResult<()> {
         let classname = idl_class.classname();
+
+        // Def has to be cloned so it can be locally modified and
+        // given to another search.
+        let mut flesh_def = flesh_def.clone();
 
         log::debug!("Fleshing field {fieldname} on {classname}");
 
         let idl_field = idl_class
             .fields()
             .get(fieldname)
-            .ok_or_else(|| format!("Field {fieldname} on class {classname} does not exist"))?;
+            .ok_or_else(|| format!("Field '{fieldname}' on class '{classname}' does not exist"))?;
 
         let idl_link = idl_class
             .links()
             .get(fieldname)
             .ok_or_else(|| format!("Field {fieldname} on class {classname} cannot be fleshed"))?;
 
-        /* may need this later
-        let idl_link_class = self.idl().classes().get(idl_link.class())
+        let idl_link_class = self
+            .idl()
+            .classes()
+            .get(idl_link.class())
             .ok_or_else(|| format!("No such IDL class: {}", idl_link.class()))?;
-            */
 
         let search_value;
-        let rtype = idl_link.reltype();
+        let reltype = idl_link.reltype();
 
-        if rtype == idl::RelType::HasMany || rtype == idl::RelType::MightHave {
+        if reltype == idl::RelType::HasMany || reltype == idl::RelType::MightHave {
             // When the foreign key relationship points from the
             // fleshed object back to us, the search value will be
             // this object's primary key.
@@ -305,29 +362,68 @@ impl Translator {
 
         // TODO verify the linked class may be accessed by this
         // controller, e.g. pcrud
-
-        // Avoid cloning the flesh_fields object unless needed.
-        let mut flesh_fields_modified = None;
+        // Set the value to an array if needed for reltype.
 
         if let Some(map_field) = idl_link.map() {
             // When an intermediate mapping object is defined,
             // add it to our pile of fleshed fields.
-            let mut ff: JsonValue = flesh_fields.clone();
-            ff[idl_link.class()] = json::from(map_field);
-            flesh_fields_modified = Some(ff);
+            let cname = idl_link.class();
+            let fname = map_field.to_string();
+
+            if let Some(list) = flesh_def.fields.get_mut(cname) {
+                list.push(fname);
+            } else {
+                flesh_def.fields.insert(cname.to_string(), vec![fname]);
+            }
+        }
+        {
+            // When adding an implicit mapped field, avoid decrementing
+            // the flesh depth so the caller is not penalized.
+            flesh_def.depth -= 1;
         }
 
         log::debug!(
-            "Link field: {}, remote class: {} , fkey: {}, reltype: {}",
+            "Link field: {}, remote class: {} , fkey: {}, reltype: {} flesh={:?}",
             idl_link.field(),
             idl_link.class(),
             idl_link.key(),
-            idl_link.reltype()
+            idl_link.reltype(),
+            flesh_def,
         );
 
-        let mut class_search = IdlClassSearch::new(classname);
+        let mut class_search = IdlClassSearch::new(idl_link.class());
+        class_search.flesh = Some(flesh_def);
+
         let mut filter = json::object! {};
         filter[idl_link.key()] = search_value;
+        class_search.set_filter(filter);
+
+        let mut children = self.idl_class_search(&class_search)?;
+
+        log::debug!("Fleshed search returned {} results", children.len());
+
+        if children.len() > 0 {
+            // Get the values of the mapped fields on the found children
+            if let Some(map_field) = idl_link.map() {
+                let mut mapped_values = Vec::new();
+                for mut child in children.drain(..) {
+                    mapped_values.push(child[map_field].take());
+                }
+                children = mapped_values;
+            }
+        }
+
+        // Attach the child data to the fleshed object.
+
+        if children.len() > 0 {
+            if reltype == idl::RelType::HasA || reltype == idl::RelType::MightHave {
+                object[fieldname] = children.remove(0); // len() above
+            }
+        }
+
+        if reltype == idl::RelType::HasMany {
+            object[fieldname] = json::from(children);
+        }
 
         Ok(())
     }
@@ -595,6 +691,8 @@ impl Translator {
         let mut results: Vec<JsonValue> = Vec::new();
         let classname = &search.classname;
 
+        log::debug!("idl_class_search() {search:?}");
+
         let class = self
             .idl()
             .classes()
@@ -642,7 +740,13 @@ impl Translator {
         }
 
         for row in query_res.unwrap() {
-            results.push(self.row_to_idl(&class, &row)?);
+            let mut obj = self.row_to_idl(&class, &row)?;
+            // TODO see about making search mutable so we can avoid
+            // this clone.
+            if let Some(flesh_def) = search.flesh.as_ref() {
+                self.flesh_idl_object(&mut obj, flesh_def.clone())?;
+            }
+            results.push(obj);
         }
 
         Ok(results)

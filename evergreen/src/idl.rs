@@ -182,7 +182,8 @@ impl From<&str> for RelType {
 
 impl fmt::Display for RelType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        let s: &str = self.into();
+        write!(f, "{s}")
     }
 }
 
@@ -206,7 +207,15 @@ impl Link {
         &self.key
     }
     pub fn map(&self) -> Option<&str> {
-        self.map.as_deref()
+        if let Some(map) = self.map.as_ref() {
+            if map == "" || map == " " {
+                None
+            } else {
+                self.map.as_deref()
+            }
+        } else {
+            None
+        }
     }
     pub fn class(&self) -> &str {
         &self.class
