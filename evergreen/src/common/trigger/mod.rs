@@ -1,4 +1,4 @@
-//! action_trigger bits
+//! Action/Trigger main entry point.
 use crate::common::org;
 use crate::date;
 use crate::editor::Editor;
@@ -6,6 +6,11 @@ use crate::result::EgResult;
 use crate::util;
 use chrono::Duration;
 use json::JsonValue;
+
+pub mod event;
+
+// So we can refer to events as trigger::Event
+pub use event::Event;
 
 /// Create A/T events for an object and A/T hook.
 pub fn create_events_for_object(
