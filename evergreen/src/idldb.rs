@@ -15,7 +15,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const MAX_FLESH_DEPTH: i16 = 100;
+pub const MAX_FLESH_DEPTH: i16 = 100;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OrderByDir {
@@ -114,8 +114,20 @@ pub struct FleshDef {
 
 impl FleshDef {
     /// Creates a FleshDef from a JSON options hash/object.
-    /// {flesh: 1, flesh_fields: {au: ["id"]}, ...}
-    /// TODO unit test
+    ///
+    /// ```
+    /// use evergreen::idldb::FleshDef;
+    /// use json;
+    ///
+    /// let obj = json::object! {
+    ///   "flesh": -1, "flesh_fields": {"au": ["home_ou", "profile"]} 
+    /// };
+    ///
+    /// let flesh_def = FleshDef::from_json_value(&obj).expect("Parsed Flesh");
+    /// assert_eq!(flesh_def.depth, evergreen::idldb::MAX_FLESH_DEPTH);
+    /// assert_eq!(flesh_def.fields.len(), 1);
+    /// assert_eq!(flesh_def.fields.get("au").expect("Has an au").len(), 2);
+    /// ```
     pub fn from_json_value(obj: &JsonValue) -> EgResult<Self> {
         let mut fields = HashMap::new();
 
@@ -132,7 +144,7 @@ impl FleshDef {
         }
 
         let depth = if let Some(num) = obj["flesh"].as_i16() {
-            if num > MAX_FLESH_DEPTH {
+            if num > MAX_FLESH_DEPTH || num < 0 {
                 MAX_FLESH_DEPTH
             } else {
                 num
@@ -237,6 +249,7 @@ impl Translator {
         &self,
         classname: &str,
         pkey: &JsonValue,
+        flesh_def: Option<FleshDef>,
     ) -> EgResult<Option<JsonValue>> {
         let idl_class = match self.idl().classes().get(classname) {
             Some(c) => c,
@@ -255,6 +268,7 @@ impl Translator {
 
         let mut search = IdlClassSearch::new(classname);
         search.set_filter(filter);
+        search.flesh = flesh_def;
 
         let mut list = self.idl_class_search(&search)?;
 
@@ -273,7 +287,7 @@ impl Translator {
     pub fn flesh_idl_object(
         &self,
         object: &mut JsonValue,
-        flesh_def: FleshDef,
+        flesh_def: &FleshDef,
     ) -> EgResult<()> {
         if flesh_def.depth == 0 {
             log::warn!("Attempt to flesh beyond flesh depth");
@@ -296,7 +310,7 @@ impl Translator {
 
         // What fields are we fleshing on this class?
         for fieldname in fieldnames.iter() {
-            self.flesh_idl_object_field(object, &flesh_def, fieldname, idl_class)?;
+            self.flesh_idl_object_field(object, flesh_def, fieldname, idl_class)?;
         }
 
         Ok(())
@@ -528,7 +542,7 @@ impl Translator {
         for row in query_res.unwrap() {
             let pkey_value = Translator::col_value_to_json_value(&row, 0)?;
 
-            match self.get_idl_object_by_pkey(idl_class.classname(), &pkey_value)? {
+            match self.get_idl_object_by_pkey(idl_class.classname(), &pkey_value, None)? {
                 Some(pkv) => results.push(pkv),
                 None => Err(format!("Could not recover newly created value from the DB"))?,
             };
@@ -726,10 +740,8 @@ impl Translator {
 
         for row in query_res.unwrap() {
             let mut obj = self.row_to_idl(&class, &row)?;
-            // TODO see about making search mutable so we can avoid
-            // this clone.
             if let Some(flesh_def) = search.flesh.as_ref() {
-                self.flesh_idl_object(&mut obj, flesh_def.clone())?;
+                self.flesh_idl_object(&mut obj, &flesh_def)?;
             }
             results.push(obj);
         }

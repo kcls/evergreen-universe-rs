@@ -16,6 +16,9 @@ build-release: build-opensrf-release build-evergreen-release build-sip2server-re
 test:
 	cargo test -j ${BUILD_THREADS} --all -- --test-threads=${TEST_THREADS}
 
+test-evergreen:
+	cargo test -j ${BUILD_THREADS} --package evergreen -- --test-threads=${TEST_THREADS}
+
 install: install-opensrf install-evergreen install-sip2server
 
 install-release: install-opensrf-release install-evergreen-release install-sip2server-release

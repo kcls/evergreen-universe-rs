@@ -683,7 +683,7 @@ impl Shell {
 
         let translator = self.db_translator_mut()?;
 
-        let obj = match translator.get_idl_object_by_pkey(classname, &json::from(pkey))? {
+        let obj = match translator.get_idl_object_by_pkey(classname, &json::from(pkey), None)? {
             Some(o) => o,
             None => return Ok(()),
         };

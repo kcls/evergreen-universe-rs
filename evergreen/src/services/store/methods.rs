@@ -1,5 +1,5 @@
 use eg::common::jq::JsonQueryCompiler;
-use eg::idldb::{IdlClassSearch, Translator};
+use eg::idldb::{IdlClassSearch, Translator, FleshDef};
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;
@@ -167,7 +167,12 @@ pub fn retrieve(
     let db = worker.database().clone();
     let translator = Translator::new(idl, db);
 
-    if let Some(obj) = translator.get_idl_object_by_pkey(&classname, pkey)? {
+    let mut flesh_def = None;
+    if let Some(j) = method.params().get(1) {
+        flesh_def = Some(FleshDef::from_json_value(&j)?);
+    }
+
+    if let Some(obj) = translator.get_idl_object_by_pkey(&classname, pkey, flesh_def)? {
         session.respond(obj)
     } else {
         Ok(())
@@ -190,6 +195,10 @@ pub fn search(
     let query = method.param(0);
     let mut search = IdlClassSearch::new(&classname);
     search.set_filter(query.clone());
+
+    if let Some(j) = method.params().get(1) {
+        search.flesh = Some(FleshDef::from_json_value(&j)?);
+    }
 
     for value in translator.idl_class_search(&search)? {
         session.respond(value)?;
