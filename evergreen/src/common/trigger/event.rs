@@ -1,3 +1,4 @@
+use crate::common::trigger::validator;
 use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
 use crate::util;
@@ -11,6 +12,7 @@ pub enum EventState {
     Pending,
     Collecting,
     Collected,
+    Validating,
     Valid,
     Invalid,
     Reacting,
@@ -27,6 +29,7 @@ impl TryFrom<&str> for EventState {
             "pending"    => Ok(Self::Pending),
             "collecting" => Ok(Self::Collecting),
             "collected"  => Ok(Self::Collected),
+            "validating" => Ok(Self::Validating),
             "valid"      => Ok(Self::Valid),
             "invalid"    => Ok(Self::Invalid),
             "reacting"   => Ok(Self::Reacting),
@@ -45,6 +48,7 @@ impl From<EventState> for &'static str {
             EventState::Pending    => "pending",
             EventState::Collecting => "collecting",
             EventState::Collected  => "collected",
+            EventState::Validating => "validating",
             EventState::Valid      => "valid",
             EventState::Invalid    => "invalid",
             EventState::Reacting   => "reacting",
@@ -64,12 +68,17 @@ pub struct Event {
     target_pkey: JsonValue,
     core_class: String,
     user_data: Option<JsonValue>,
-    environment: HashMap<String, JsonValue>,
 }
 
 impl Event {
     pub fn core_class(&self) -> &str {
         self.core_class.as_str()
+    }
+    pub fn event_def(&self) -> &JsonValue {
+        &self.event_def
+    }
+    pub fn target(&self) -> &JsonValue {
+        &self.target
     }
 
     pub fn from_id(editor: &mut Editor, id: i64) -> EgResult<Event> {
@@ -115,7 +124,6 @@ impl Event {
             group_value: None,
             target: JsonValue::Null,
             core_class: classname,
-            environment: HashMap::new(),
         })
     }
 
@@ -223,12 +231,14 @@ impl Event {
 
     /// Returns true if the event is considered valid.
     pub fn validate(&mut self, editor: &mut Editor) -> EgResult<bool> {
-        self.update_state(editor, EventState::Validating);
+        self.update_state(editor, EventState::Validating)?;
 
-        // TODO stacked validators
-        // Add a validator mapping table, but have it default to
-        // the single validator value if no table maps exist?
-
-        self.update_state(editor, EventState::Valid)
+        if validator::validate(editor, &self)? {
+            self.update_state(editor, EventState::Valid)?;
+            Ok(true)
+        } else {
+            self.update_state(editor, EventState::Invalid)?;
+            Ok(false)
+        }
     }
 }

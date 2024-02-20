@@ -8,6 +8,7 @@ use chrono::Duration;
 use json::JsonValue;
 
 pub mod event;
+pub mod validator;
 
 // So we can refer to events as trigger::Event
 pub use event::Event;
