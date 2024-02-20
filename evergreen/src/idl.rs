@@ -942,6 +942,55 @@ impl Parser {
 
         obj
     }
+
+    /// Translates a set of path-based flesh definition into a flesh
+    /// object that can be used by cstore, etc.
+    ///
+    /// E.g. 'jub', ['lineitems.lineitem_details.owning_lib', 'lineitems.lineitem_details.fund']
+    ///
+    pub fn field_paths_to_flesh(&self, base_class: &str, paths: &[&str]) -> EgResult<JsonValue> {
+        // Map the environment path strings into a cstore flesh object.
+        let mut flesh = json::object! {"flesh_fields": {}};
+        let mut flesh_depth = 1;
+
+        let base_idl_class = self.classes().get(base_class)
+            .ok_or_else(|| format!("No such IDL class: {base_class}"))?;
+
+        for path in paths {
+            let mut idl_class = base_idl_class;
+
+            for (idx, fieldname) in path.split(".").enumerate() {
+                let cname = idl_class.classname();
+
+                let idl_field = idl_class.fields().get(fieldname)
+                    .ok_or_else(|| format!("Class '{cname}' has no field '{fieldname}'"))?;
+
+                let link_field = idl_class.links().get(fieldname)
+                    .ok_or_else(|| format!("Class '{cname}' cannot flesh '{fieldname}'"))?;
+
+                let mut flesh_fields = &mut flesh["flesh_fields"];
+
+                if flesh_fields[cname].is_null() {
+                    flesh_fields[cname] = json::array![];
+                }
+
+                if !flesh_fields[cname].contains(fieldname) {
+                    flesh_fields[cname].push(fieldname).expect("Is Array");
+                }
+                
+                if flesh_depth < idx + 1 {
+                    flesh_depth = idx + 1;
+                }
+
+                idl_class = self.classes().get(link_field.class())
+                    .ok_or_else(|| format!("No such IDL class: {}", link_field.class()))?;
+            }
+        }
+
+        flesh["flesh"] = json::from(flesh_depth);
+
+        Ok(flesh)
+    }
 }
 
 impl DataSerializer for Parser {
