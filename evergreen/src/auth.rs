@@ -114,6 +114,9 @@ impl AuthInternalLoginArgs {
             workstation: None,
         }
     }
+    pub fn set_org_unit(&mut self, org_unit: i64) {
+        self.org_unit = Some(org_unit);
+    }
 
     pub fn to_json_value(&self) -> json::JsonValue {
         let lt: &str = (&self.login_type).into();

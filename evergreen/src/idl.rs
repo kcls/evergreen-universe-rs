@@ -774,19 +774,11 @@ impl Parser {
         Ok((classname, self.get_pkey_value(obj)))
     }
 
-    /// Get the value from the primary key field.  If the value is
-    /// JSON NULL, return None.
+    /// Get the value from the primary key field.
+    ///
+    /// Returns None if the object has no primary key field.
     pub fn get_pkey_value(&self, obj: &JsonValue) -> Option<JsonValue> {
-        match self.get_pkey_info(obj).map(|(_, v)| v) {
-            Some(v) => {
-                if v.is_null() {
-                    None
-                } else {
-                    Some(v)
-                }
-            }
-            None => None,
-        }
+        self.get_pkey_info(obj).map(|(_, v)| v)
     }
 
     pub fn get_classname(&self, obj: &JsonValue) -> EgResult<String> {
@@ -857,7 +849,7 @@ impl Parser {
     /// Verify a JSON object is a properly-formatted IDL object with no
     /// misspelled field names.
     ///
-    /// Field names begging with "_" will not be checked.
+    /// Field names beginning with "_" will not be checked.
     pub fn verify_object(&self, obj: &JsonValue) -> EgResult<()> {
         if !obj.is_object() {
             return Err(format!("IDL value is not an object: {}", obj.dump()).into());
@@ -971,21 +963,55 @@ impl Parser {
         obj
     }
 
-    /// Translates a JsonValue into an EgValue.
-    pub fn to_eg_value(&self, v: JsonValue) -> EgResult<EgValue> {
-        let classname = v[CLASSNAME_KEY]
-            .as_str()
-            .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
+    /// Translates a set of path-based flesh definition into a flesh
+    /// object that can be used by cstore, etc.
+    ///
+    /// E.g. 'jub', ['lineitems.lineitem_details.owning_lib', 'lineitems.lineitem_details.fund']
+    ///
+    pub fn field_paths_to_flesh(&self, base_class: &str, paths: &[&str]) -> EgResult<JsonValue> {
+        let mut flesh = json::object! {"flesh_fields": {}};
+        let mut flesh_depth = 1;
 
-        let idl_class = self
+        let base_idl_class = self
             .classes()
-            .get(classname)
-            .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
+            .get(base_class)
+            .ok_or_else(|| format!("No such IDL class: {base_class}"))?;
 
-        Ok(EgValue {
-            value: v,
-            idl_class: idl_class.clone(), // Arc clone
-        })
+        for path in paths {
+            let mut idl_class = base_idl_class;
+
+            for (idx, fieldname) in path.split(".").enumerate() {
+                let cname = idl_class.classname();
+
+                let link_field = idl_class
+                    .links()
+                    .get(fieldname)
+                    .ok_or_else(|| format!("Class '{cname}' cannot flesh '{fieldname}'"))?;
+
+                let flesh_fields = &mut flesh["flesh_fields"];
+
+                if flesh_fields[cname].is_null() {
+                    flesh_fields[cname] = json::array![];
+                }
+
+                if !flesh_fields[cname].contains(fieldname) {
+                    flesh_fields[cname].push(fieldname).expect("Is Array");
+                }
+
+                if flesh_depth < idx + 1 {
+                    flesh_depth = idx + 1;
+                }
+
+                idl_class = self
+                    .classes()
+                    .get(link_field.class())
+                    .ok_or_else(|| format!("No such IDL class: {}", link_field.class()))?;
+            }
+        }
+
+        flesh["flesh"] = json::from(flesh_depth);
+
+        Ok(flesh)
     }
 }
 

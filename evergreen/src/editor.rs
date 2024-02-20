@@ -97,6 +97,16 @@ impl Editor {
         }
     }
 
+    /// Apply a new request timeout value in seconds.
+    pub fn set_timeout(&mut self, timeout: i32) {
+        self.timeout = timeout;
+    }
+
+    /// Reset to the default timeout
+    pub fn reset_timeout(&mut self) {
+        self.timeout = DEFAULT_TIMEOUT;
+    }
+
     pub fn client_mut(&mut self) -> &mut osrf::Client {
         &mut self.client
     }
@@ -442,7 +452,11 @@ impl Editor {
         for p in params.params().iter() {
             if self.idl.is_idl_object(p) {
                 if let Some(pkv) = self.idl.get_pkey_value(p) {
-                    buf.push_str(&pkv.dump());
+                    if pkv.is_null() {
+                        buf.push_str("<new object>");
+                    } else {
+                        buf.push_str(&pkv.dump());
+                    }
                 } else {
                     buf.push_str("<new object>");
                 }
