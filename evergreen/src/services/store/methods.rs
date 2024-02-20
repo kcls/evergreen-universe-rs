@@ -1,5 +1,5 @@
 use eg::common::jq::JsonQueryCompiler;
-use eg::idldb::{IdlClassSearch, Translator, FleshDef};
+use eg::idldb::{FleshDef, IdlClassSearch, Translator};
 use evergreen as eg;
 use opensrf::app::ApplicationWorker;
 use opensrf::message;

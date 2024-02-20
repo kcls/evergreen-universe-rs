@@ -129,7 +129,7 @@ fn main() -> Result<(), String> {
     let mut search = IdlClassSearch::new("au");
     search.set_filter(json::object! {id: [1, 2, 3, 4, 5, 6, 7, 8, 9]});
     let flesh = json::object! {
-        "flesh": 2, 
+        "flesh": 2,
         "flesh_fields":{"au": ["addresses", "home_ou", "profile"], "aou": ["ou_type"]}
     };
 

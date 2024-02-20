@@ -120,7 +120,7 @@ impl FleshDef {
     /// use json;
     ///
     /// let obj = json::object! {
-    ///   "flesh": -1, "flesh_fields": {"au": ["home_ou", "profile"]} 
+    ///   "flesh": -1, "flesh_fields": {"au": ["home_ou", "profile"]}
     /// };
     ///
     /// let flesh_def = FleshDef::from_json_value(&obj).expect("Parsed Flesh");
@@ -284,11 +284,7 @@ impl Translator {
     }
 
     /// Fleshes an IDL object in place based on the flesh_fields definitions.
-    pub fn flesh_idl_object(
-        &self,
-        object: &mut JsonValue,
-        flesh_def: &FleshDef,
-    ) -> EgResult<()> {
+    pub fn flesh_idl_object(&self, object: &mut JsonValue, flesh_def: &FleshDef) -> EgResult<()> {
         if flesh_def.depth == 0 {
             log::warn!("Attempt to flesh beyond flesh depth");
             return Ok(());
