@@ -1,4 +1,5 @@
 use crate::event;
+use crate::result::EgResult;
 use json;
 use opensrf::client::Client;
 
@@ -142,7 +143,7 @@ pub struct AuthSession {
 
 impl AuthSession {
     /// Logout and remove the cached auth session.
-    pub fn logout(client: &Client, token: &str) -> Result<(), String> {
+    pub fn logout(client: &Client, token: &str) -> EgResult<()> {
         let mut ses = client.session("open-ils.auth");
         let mut req = ses.request("open-ils.auth.session.delete", token)?;
         // We don't care so much about the response from logout,
@@ -154,7 +155,7 @@ impl AuthSession {
     /// Login and acquire an authtoken.
     ///
     /// Returns None on login failure, Err on error.
-    pub fn login(client: &Client, args: &AuthLoginArgs) -> Result<Option<AuthSession>, String> {
+    pub fn login(client: &Client, args: &AuthLoginArgs) -> EgResult<Option<AuthSession>> {
         let params = vec![args.to_json_value()];
         let mut ses = client.session("open-ils.auth");
         let mut req = ses.request("open-ils.auth.login", params)?;
@@ -173,7 +174,7 @@ impl AuthSession {
     pub fn internal_session(
         client: &Client,
         args: &AuthInternalLoginArgs,
-    ) -> Result<Option<AuthSession>, String> {
+    ) -> EgResult<Option<AuthSession>> {
         let params = vec![args.to_json_value()];
         let mut ses = client.session("open-ils.auth_internal");
         let mut req = ses.request("open-ils.auth_internal.session.create", params)?;
@@ -189,11 +190,11 @@ impl AuthSession {
     fn handle_auth_response(
         workstation: &Option<String>,
         response: &json::JsonValue,
-    ) -> Result<Option<AuthSession>, String> {
+    ) -> EgResult<Option<AuthSession>> {
         let evt = match event::EgEvent::parse(&response) {
             Some(e) => e,
             None => {
-                return Err(format!("Unexpected response: {:?}", response));
+                return Err(format!("Unexpected response: {:?}", response).into());
             }
         };
 
@@ -203,20 +204,20 @@ impl AuthSession {
         }
 
         if !evt.payload().is_object() {
-            return Err(format!("Unexpected response: {}", evt));
+            return Err(format!("Unexpected response: {}", evt).into());
         }
 
         let token = match evt.payload()["authtoken"].as_str() {
             Some(t) => String::from(t),
             None => {
-                return Err(format!("Unexpected response: {}", evt));
+                return Err(format!("Unexpected response: {}", evt).into());
             }
         };
 
         let authtime = match evt.payload()["authtime"].as_usize() {
             Some(t) => t,
             None => {
-                return Err(format!("Unexpected response: {}", evt));
+                return Err(format!("Unexpected response: {}", evt).into());
             }
         };
 
