@@ -746,19 +746,11 @@ impl Parser {
         Ok((classname, self.get_pkey_value(obj)))
     }
 
-    /// Get the value from the primary key field.  If the value is
-    /// JSON NULL, return None.
+    /// Get the value from the primary key field.
+    ///
+    /// Returns None if the object has no primary key field.
     pub fn get_pkey_value(&self, obj: &JsonValue) -> Option<JsonValue> {
-        match self.get_pkey_info(obj).map(|(_, v)| v) {
-            Some(v) => {
-                if v.is_null() {
-                    None
-                } else {
-                    Some(v)
-                }
-            }
-            None => None,
-        }
+        self.get_pkey_info(obj).map(|(_, v)| v)
     }
 
     pub fn get_classname(&self, obj: &JsonValue) -> EgResult<String> {
@@ -953,7 +945,9 @@ impl Parser {
         let mut flesh = json::object! {"flesh_fields": {}};
         let mut flesh_depth = 1;
 
-        let base_idl_class = self.classes().get(base_class)
+        let base_idl_class = self
+            .classes()
+            .get(base_class)
             .ok_or_else(|| format!("No such IDL class: {base_class}"))?;
 
         for path in paths {
@@ -962,10 +956,14 @@ impl Parser {
             for (idx, fieldname) in path.split(".").enumerate() {
                 let cname = idl_class.classname();
 
-                let idl_field = idl_class.fields().get(fieldname)
+                let idl_field = idl_class
+                    .fields()
+                    .get(fieldname)
                     .ok_or_else(|| format!("Class '{cname}' has no field '{fieldname}'"))?;
 
-                let link_field = idl_class.links().get(fieldname)
+                let link_field = idl_class
+                    .links()
+                    .get(fieldname)
                     .ok_or_else(|| format!("Class '{cname}' cannot flesh '{fieldname}'"))?;
 
                 let mut flesh_fields = &mut flesh["flesh_fields"];
@@ -977,12 +975,14 @@ impl Parser {
                 if !flesh_fields[cname].contains(fieldname) {
                     flesh_fields[cname].push(fieldname).expect("Is Array");
                 }
-                
+
                 if flesh_depth < idx + 1 {
                     flesh_depth = idx + 1;
                 }
 
-                idl_class = self.classes().get(link_field.class())
+                idl_class = self
+                    .classes()
+                    .get(link_field.class())
                     .ok_or_else(|| format!("No such IDL class: {}", link_field.class()))?;
             }
         }

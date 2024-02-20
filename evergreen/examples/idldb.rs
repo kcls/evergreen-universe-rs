@@ -149,8 +149,13 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let flesh = ctx.idl().field_paths_to_flesh("acqpo", 
-        &["lineitems.lineitem_details.owning_lib", "lineitems.lineitem_details.fund"])?;
+    let flesh = ctx.idl().field_paths_to_flesh(
+        "acqpo",
+        &[
+            "lineitems.lineitem_details.owning_lib",
+            "lineitems.lineitem_details.fund",
+        ],
+    )?;
 
     println!("FLESH is {}", flesh.dump());
 
