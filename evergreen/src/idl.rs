@@ -956,17 +956,12 @@ impl Parser {
             for (idx, fieldname) in path.split(".").enumerate() {
                 let cname = idl_class.classname();
 
-                let idl_field = idl_class
-                    .fields()
-                    .get(fieldname)
-                    .ok_or_else(|| format!("Class '{cname}' has no field '{fieldname}'"))?;
-
                 let link_field = idl_class
                     .links()
                     .get(fieldname)
                     .ok_or_else(|| format!("Class '{cname}' cannot flesh '{fieldname}'"))?;
 
-                let mut flesh_fields = &mut flesh["flesh_fields"];
+                let flesh_fields = &mut flesh["flesh_fields"];
 
                 if flesh_fields[cname].is_null() {
                     flesh_fields[cname] = json::array![];

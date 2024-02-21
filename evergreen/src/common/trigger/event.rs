@@ -1,10 +1,8 @@
 use crate::common::trigger::validator;
 use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
-use crate::util;
 use json::JsonValue;
 use opensrf::util::thread_id;
-use std::collections::HashMap;
 use std::process;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -79,6 +77,12 @@ impl Event {
     }
     pub fn target(&self) -> &JsonValue {
         &self.target
+    }
+    pub fn state(&self) -> &EventState {
+        &self.state
+    }
+    pub fn user_date(&self) -> Option<&JsonValue> {
+        self.user_data.as_ref()
     }
 
     pub fn from_id(editor: &mut Editor, id: i64) -> EgResult<Event> {
@@ -157,10 +161,6 @@ impl Event {
     pub fn build_environment(&mut self, editor: &mut Editor) -> EgResult<()> {
         self.update_state(editor, EventState::Collecting)?;
 
-        // Map the environment path strings into a cstore flesh object.
-        let mut flesh = json::object! {"flesh_fields": {}};
-        let mut flesh_depth = 1;
-
         let mut paths: Vec<&str> = self.event_def["env"]
             .members()
             .map(|e| e["path"].as_str().unwrap()) // required string field
@@ -169,10 +169,12 @@ impl Event {
         let group_field: String;
         if let Some(gfield) = self.event_def["group_field"].as_str() {
             // If there is a group field path, flesh it as well.
-            // The last component in the dotpath is field name that
-            // represents the group value.  It does not require fleshing.
             let mut gfield: Vec<&str> = gfield.split(".").collect();
+
+            // Drop the final part which is a field name and does
+            // not need to be fleshed.
             gfield.pop();
+
             if gfield.len() > 0 {
                 group_field = gfield.join(".");
                 paths.push(&group_field);
@@ -185,7 +187,7 @@ impl Event {
 
         // Fetch our target object with the needed fleshing.
         self.target = editor
-            .retrieve(self.core_class(), &self.target_pkey)?
+            .retrieve_with_ops(self.core_class(), &self.target_pkey, flesh)?
             .ok_or_else(|| editor.die_event())?;
 
         self.set_group_value(editor)?;

@@ -8,10 +8,9 @@ use chrono::Duration;
 use json::JsonValue;
 
 pub mod event;
+pub use event::Event;
 pub mod validator;
 
-// So we can refer to events as trigger::Event
-pub use event::Event;
 
 /// Create A/T events for an object and A/T hook.
 pub fn create_events_for_object(
