@@ -10,8 +10,8 @@ pub struct Item {
     pub circ_lib: i64,
     pub due_date: Option<String>,
     pub copy_status: i64,
-    pub circ_status: String,
-    pub fee_type: String,
+    pub circ_status: &'static str,
+    pub fee_type: &'static str,
     pub title: String,
     pub current_loc: String,
     pub permanent_loc: String,
@@ -133,11 +133,11 @@ impl Session {
             deposit_amount,
             hold_queue_length,
             magnetic_media,
-            fee_type: fee_type.to_string(),
-            circ_status: circ_status.to_string(),
+            fee_type: fee_type,
+            circ_status: circ_status,
             current_loc: circ_lib.to_string(),
             permanent_loc: circ_lib.to_string(),
-            destination_loc: dest_location.to_string(),
+            destination_loc: dest_location,
             owning_loc: owning_lib.to_string(),
             media_type: media_type.to_string(),
             hold_pickup_date: hold_pickup_date_op,
@@ -164,7 +164,7 @@ impl Session {
         let mut resp = sip2::Message::from_values(
             &sip2::spec::M_ITEM_INFO_RESP,
             &[
-                &item.circ_status,
+                item.circ_status,
                 "02", // security marker
                 &item.fee_type,
                 &sip2::util::sip_date_now(),
@@ -260,7 +260,7 @@ impl Session {
         Ok(transits.pop())
     }
 
-    fn circ_status(&self, copy_status: i64) -> &str {
+    fn circ_status(&self, copy_status: i64) -> &'static str {
         match copy_status {
             C::COPY_STATUS_ON_ORDER => "02",
             C::COPY_STATUS_AVAILABLE => "03",
