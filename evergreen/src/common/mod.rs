@@ -5,6 +5,7 @@ pub mod checkin;
 pub mod checkout;
 pub mod circ;
 pub mod circulator;
+pub mod holdings;
 pub mod holds;
 pub mod jq;
 pub mod noncat;

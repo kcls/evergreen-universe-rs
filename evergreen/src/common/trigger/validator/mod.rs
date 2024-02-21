@@ -1,11 +1,14 @@
 use crate::common::trigger::Event;
 use crate::editor::Editor;
 use crate::result::EgResult;
+use crate::common::holdings;
 use crate::date;
+use crate::util;
+use crate::constants as C;
 use json::JsonValue;
 use chrono::Duration;
 
-/// Validat an event.
+/// Validate an event.
 ///
 /// TODO stacked validators.
 pub fn validate(editor: &mut Editor, event: &Event) -> EgResult<bool> {
@@ -20,6 +23,9 @@ pub fn validate(editor: &mut Editor, event: &Event) -> EgResult<bool> {
         "NOOP_True" => Ok(true),
         "NOOP_False" => Ok(false),
         "CircIsOpen" => circ_is_open(editor, event),
+        "CircIsOverdue" => circ_is_overdue(editor, event),
+        "HoldIsAvailable" => hold_is_available(editor, event),
+        "MinPassiveTargetAge" => min_passive_target_age(editor, event),
         _ => Err(format!("No such validator: {validator}").into()),
     }
 }
@@ -27,7 +33,7 @@ pub fn validate(editor: &mut Editor, event: &Event) -> EgResult<bool> {
 
 /// Returns the parameter value with the provided name or None if no 
 /// such parameter exists.
-fn get_param_value<'a>(event: &'a Event, param_name: &str) -> Option<&'a JsonValue> {
+fn param_value<'a>(event: &'a Event, param_name: &str) -> Option<&'a JsonValue> {
     for param in event.event_def()["params"].members() {
         if param["param"].as_str() == Some(param_name) {
             return Some(&param["value"]);
@@ -38,11 +44,19 @@ fn get_param_value<'a>(event: &'a Event, param_name: &str) -> Option<&'a JsonVal
 
 /// Returns the parameter value with the provided name as a &str or None 
 /// if no such parameter exists OR the parameter is not a JSON string.
-fn get_param_value_as_str<'a>(event: &'a Event, param_name: &str) -> Option<&'a str> {
-    if let Some(pval) = get_param_value(event, param_name) {
+fn param_value_as_str<'a>(event: &'a Event, param_name: &str) -> Option<&'a str> {
+    if let Some(pval) = param_value(event, param_name) {
         pval["value"].as_str()
     } else {
         None
+    }
+}
+
+fn param_value_as_bool<'a>(event: &'a Event, param_name: &str) -> bool {
+    if let Some(pval) = param_value(event, param_name) {
+        util::json_bool(&pval["value"])
+    } else {
+        false
     }
 }
 
@@ -56,10 +70,8 @@ fn circ_is_open(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
         return Ok(false);
     }
 
-    let min_target_age = get_param_value(event, "min_target_age");
-
-    if min_target_age.is_some() {
-        if let Some(fname) = get_param_value_as_str(event, "target_age_field") {
+    if param_value(event, "min_target_age").is_some() {
+        if let Some(fname) = param_value_as_str(event, "target_age_field") {
             if fname == "xact_start" {
                 return min_passive_target_age(_editor, event);
             }
@@ -70,12 +82,12 @@ fn circ_is_open(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
 }
 
 fn min_passive_target_age(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
-    let min_target_age = get_param_value_as_str(event, "min_target_age")
+    let min_target_age = param_value_as_str(event, "min_target_age")
         .ok_or_else(|| format!(
             "'min_target_age' parameter required for MinPassiveTargetAge"
         ))?;
 
-    let age_field = get_param_value_as_str(event, "target_age_field")
+    let age_field = param_value_as_str(event, "target_age_field")
         .ok_or_else(|| format!(
             "'target_age_field' parameter or delay_field required for MinPassiveTargetAge"
         ))?;
@@ -92,4 +104,96 @@ fn min_passive_target_age(_editor: &mut Editor, event: &Event) -> EgResult<bool>
     let age_field_ts = age_field_ts + Duration::seconds(interval);
 
     Ok(age_field_ts <= date::now())
+}
+
+fn circ_is_overdue(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
+    if event.target()["checkin_time"].is_string() {
+        return Ok(false);
+    }
+
+    if let Some(stop_fines) = event.target()["stop_fines"].as_str() {
+        if stop_fines == "MAXFINES" || stop_fines == "LONGOVERDUE" {
+            return Ok(false);
+        }
+    }
+
+    if param_value(event, "min_target_age").is_some() {
+        if let Some(fname) = param_value_as_str(event, "target_age_field") {
+            if fname == "xact_start" {
+                return min_passive_target_age(_editor, event);
+            }
+        }
+    }
+    
+    // due_date is a required string field.
+    let due_date = event.target()["due_date"].as_str().unwrap();
+    let due_date_ts = date::parse_datetime(due_date)?;
+
+    Ok(due_date_ts < date::now())
+}
+
+/// True if the hold is ready for pickup.
+fn hold_is_available(editor: &mut Editor, event: &Event) -> EgResult<bool> {
+    let hold = event.target();
+
+    if param_value_as_bool(event, "check_email_notify") {
+        if !util::json_bool(&hold["email_notify"]) {
+            return Ok(false);
+        }
+    }
+
+    if param_value_as_bool(event, "check_sms_notify") {
+        if !util::json_bool(&hold["sms_notify"]) {
+            return Ok(false);
+        }
+    }
+
+    if param_value_as_bool(event, "check_phone_notify") {
+        if !util::json_bool(&hold["phone_notify"]) {
+            return Ok(false);
+        }
+    }
+
+    // Start with some simple tests.
+    let canceled = hold["cancel_time"].is_string();
+    let fulfilled = hold["fulfillment_time"].is_string();
+    let captured = hold["capture_time"].is_string();
+    let shelved = hold["shelf_time"].is_string();
+
+    if canceled || fulfilled || !captured || !shelved {
+        return Ok(false);
+    }
+
+    // Verify shelf lib matches pickup lib -- it's not sitting on
+    // the wrong shelf somewhere.
+    //
+    // Accommodate fleshing
+    let shelf_lib = match hold["current_shelf_lib"].as_i64() {
+        Some(id) => id,
+        None => match hold["current_shelf_lib"]["id"].as_i64() {
+            Some(id) => id,
+            None => return Ok(false),
+        }
+    };
+
+    let pickup_lib = match hold["pickup_lib"].as_i64() {
+        Some(id) => id,
+        // pickup_lib is a required numeric value.
+        None => util::json_int(&hold["pickup_lib"]["id"])?,
+    };
+
+    if shelf_lib != pickup_lib {
+        return Ok(false);
+    }
+
+    // Verify we have a targted copy and it has the expected status.
+    let copy_status = if let Some(copy_id) = hold["current_copy"].as_i64() {
+        holdings::copy_status(editor, Some(copy_id), None)?
+    } else if hold["current_copy"].is_object() {
+        holdings::copy_status(editor, None, Some(&hold["current_copy"]))?
+    } else {
+        -1
+    };
+
+    Ok(copy_status == C::COPY_STATUS_ON_HOLDS_SHELF)
 }
