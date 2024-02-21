@@ -212,7 +212,7 @@ impl Session {
         }
 
         if let Some(expire) = user["expire_date"].as_str() {
-            if let Ok(date) = date::parse_pg_date(expire) {
+            if let Ok(date) = date::parse_datetime(expire) {
                 patron.expire_date = Some(date.format("%Y%m%d").to_string());
             }
         }
@@ -700,7 +700,7 @@ impl Session {
 
     fn set_patron_privileges(&mut self, user: &JsonValue, patron: &mut Patron) -> EgResult<()> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
-        let expire_date = date::parse_pg_date(&expire_date_str)?;
+        let expire_date = date::parse_datetime(&expire_date_str)?;
 
         if expire_date < eg::date::now() {
             // Patron is expired.  Don't bother checking other penalties, etc.

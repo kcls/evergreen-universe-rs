@@ -26,6 +26,15 @@ impl LogOptions {
     pub fn syslog_facility(&self) -> Option<syslog::Facility> {
         self.syslog_facility
     }
+    pub fn set_syslog_facility(&mut self, facility: &str) -> Result<(), String> {
+        if let Ok(ff) = syslog::Facility::from_str(facility) {
+            self.syslog_facility = Some(ff);
+            Ok(())
+        } else {
+            Err(format!("Invalid syslog facility string: {facility}"))
+        }
+    }
+
     pub fn activity_log_facility(&self) -> Option<syslog::Facility> {
         self.activity_log_facility
     }

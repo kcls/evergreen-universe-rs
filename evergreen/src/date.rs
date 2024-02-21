@@ -110,6 +110,14 @@ pub fn now() -> EgDate {
 /// let dt = date::parse_datetime("2023-07-11 HOWDY");
 /// assert!(dt.is_err());
 ///
+/// let res = evergreen::date::parse_pg_date("2023-02-03T12:23:19-0400");
+/// assert!(res.is_ok());
+///
+/// let d = res.unwrap().to_rfc3339();
+/// assert_eq!(d, "2023-02-03T12:23:19-04:00");
+///
+/// let res = evergreen::date::parse_pg_date("2023-02-03T123");
+/// assert!(res.is_err());
 /// ```
 pub fn parse_datetime(dt: &str) -> EgResult<EgDate> {
     if dt.len() > 10 {
@@ -245,21 +253,3 @@ pub fn set_hms(date: &EgDate, hours: u32, minutes: u32, seconds: u32) -> EgResul
     Ok(new_date)
 }
 
-/// Create a DateTime from a Postgres date string.
-///
-/// chrono has a parse_from_rfc3339() function, but it does
-/// not like time zones without colons.  Dates, amiright?
-/// ```
-/// let res = evergreen::date::parse_pg_date("2023-02-03T12:23:19-0400");
-/// assert!(res.is_ok());
-///
-/// let d = res.unwrap().to_rfc3339();
-/// assert_eq!(d, "2023-02-03T12:23:19-04:00");
-///
-/// let res = evergreen::date::parse_pg_date("2023-02-03T123");
-/// assert!(res.is_err());
-/// ```
-pub fn parse_pg_date(pg_iso_date: &str) -> EgResult<EgDate> {
-    DateTime::parse_from_str(pg_iso_date, "%Y-%m-%dT%H:%M:%S%z")
-        .or_else(|e| Err(format!("Invalid expire date: {e} {pg_iso_date}").into()))
-}
