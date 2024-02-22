@@ -13,7 +13,7 @@ use chrono::Duration;
 /// TODO stacked validators.
 pub fn validate(editor: &mut Editor, event: &Event) -> EgResult<bool> {
     // Loading modules dynamically is not as simple in Rust as in Perl.
-    // Hard-code a module-mapping instead. (*shrug* They all requires
+    // Hard-code a module-mapping instead. (*shrug* They all require
     // code changes).
 
     // required string field.
@@ -25,7 +25,12 @@ pub fn validate(editor: &mut Editor, event: &Event) -> EgResult<bool> {
         "CircIsOpen" => circ_is_open(editor, event),
         "CircIsOverdue" => circ_is_overdue(editor, event),
         "HoldIsAvailable" => hold_is_available(editor, event),
+        "HoldIsCancelled" => hold_is_canceled(editor, event),
+        "HoldNotifyCheck" => hold_notify_check(editor, event),
         "MinPassiveTargetAge" => min_passive_target_age(editor, event),
+        "PatronBarred" => patron_is_barred(editor, event),
+        "PatronNotBarred" => patron_is_barred(editor, event).map(|val| !val),
+        "ReservationIsAvailable" => reservation_is_available(editor, event),
         _ => Err(format!("No such validator: {validator}").into()),
     }
 }
@@ -59,6 +64,7 @@ fn param_value_as_bool<'a>(event: &'a Event, param_name: &str) -> bool {
         false
     }
 }
+
 
 /// True if the target circulation is still open.
 fn circ_is_open(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
@@ -134,25 +140,11 @@ fn circ_is_overdue(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
 
 /// True if the hold is ready for pickup.
 fn hold_is_available(editor: &mut Editor, event: &Event) -> EgResult<bool> {
+    if !hold_notify_check(editor, event)? {
+        return Ok(false);
+    }
+
     let hold = event.target();
-
-    if param_value_as_bool(event, "check_email_notify") {
-        if !util::json_bool(&hold["email_notify"]) {
-            return Ok(false);
-        }
-    }
-
-    if param_value_as_bool(event, "check_sms_notify") {
-        if !util::json_bool(&hold["sms_notify"]) {
-            return Ok(false);
-        }
-    }
-
-    if param_value_as_bool(event, "check_phone_notify") {
-        if !util::json_bool(&hold["phone_notify"]) {
-            return Ok(false);
-        }
-    }
 
     // Start with some simple tests.
     let canceled = hold["cancel_time"].is_string();
@@ -197,3 +189,64 @@ fn hold_is_available(editor: &mut Editor, event: &Event) -> EgResult<bool> {
 
     Ok(copy_status == C::COPY_STATUS_ON_HOLDS_SHELF)
 }
+
+fn hold_is_canceled(editor: &mut Editor, event: &Event) -> EgResult<bool> {
+    if hold_notify_check(editor, event)? {
+        Ok(event.target()["cancel_time"].is_string())
+    } else {
+        Ok(false)
+    }
+}
+
+/// Returns false if a notification parameter is present and the
+/// hold in question is inconsistent with the parameter.
+///
+/// In general, if this test fails, the event should not proceed
+/// to reacting.
+///
+/// Assumes the hold in question == the event.target().
+fn hold_notify_check(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
+    let hold = event.target();
+
+    if param_value_as_bool(event, "check_email_notify") {
+        if !util::json_bool(&hold["email_notify"]) {
+            return Ok(false);
+        }
+    }
+
+    if param_value_as_bool(event, "check_sms_notify") {
+        if !util::json_bool(&hold["sms_notify"]) {
+            return Ok(false);
+        }
+    }
+
+    if param_value_as_bool(event, "check_phone_notify") {
+        if !util::json_bool(&hold["phone_notify"]) {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn reservation_is_available(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
+    let res = event.target();
+    Ok(
+        res["cancel_time"].is_null() 
+            && !res["capture_time"].is_null()
+            && !res["current_resource"].is_null()
+    )
+}
+
+fn patron_is_barred(_editor: &mut Editor, event: &Event) -> EgResult<bool> {
+    Ok(util::json_bool(&event.target()["barred"]))
+}
+
+
+// Perl has CircIsAutoRenewable but it oddly creates the same
+// events (hook 'autorenewal') that the autorenewal reactor creates,
+// and it's not used in the default A/T definitions.  Guessing that 
+// validator should be removed from the Perl.
+
+// TODO PatronNotInCollections
+
