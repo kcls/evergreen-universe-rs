@@ -16,12 +16,12 @@ impl Processor {
     /// Loading modules dynamically is not as simple in Rust as in Perl.
     /// Hard-code a module-mapping instead. (*shrug* They all require
     /// code changes).
-    pub fn validate(&mut self, event: &mut Event) -> EgResult<()> {
+    pub fn validate(&mut self, event: &mut Event) -> EgResult<bool> {
         self.set_event_state(event, EventState::Validating)?;
 
         let validator = self.validator();
 
-        let valid_result = match validator {
+        let validate_result = match validator {
             "NOOP_True" => Ok(true),
             "NOOP_False" => Ok(false),
             "CircIsOpen" => self.circ_is_open(event),
@@ -36,11 +36,15 @@ impl Processor {
             _ => Err(format!("No such validator: {validator}").into()),
         };
 
-        if valid_result? {
-            self.set_event_state(event, EventState::Validating)
-        } else {
-            self.set_event_state(event, EventState::Invalid)
+        if let Ok(valid) = validate_result {
+            if valid {
+                self.set_event_state(event, EventState::Validating)?;
+            } else {
+                self.set_event_state(event, EventState::Invalid)?;
+            }
         }
+
+        validate_result
     }
 
     /// True if the target circulation is still open.

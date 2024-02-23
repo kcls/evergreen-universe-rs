@@ -1,6 +1,6 @@
-use crate::common::trigger::{Event, EventState};
 /// Main entry point for processing A/T events related to a
 /// given event definition.
+use crate::common::trigger::{Event, EventState};
 use crate::editor::Editor;
 use crate::idl;
 use crate::result::EgResult;
@@ -8,12 +8,33 @@ use crate::util;
 use json::JsonValue;
 use opensrf::util::thread_id;
 use std::process;
+use std::fmt;
+
+// TODO
+// set state to 'found' once an event is loaded.
+//
+// Add feature to roll-back failures and reset event states.
+// Add a retry state that's only processed intentionally?
+//
+// Set Error state / text on failed validator, etc. in the calling
+// code instead of within the handling module.
 
 pub struct Processor {
     pub editor: Editor,
     event_def_id: i64,
     event_def: JsonValue,
     target_flesh: JsonValue,
+}
+
+impl fmt::Display for Processor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Processor A/T Definition [id={}] '{}'",
+            self.event_def_id,
+            self.event_def["name"]
+        )
+    }
 }
 
 impl Processor {
@@ -135,13 +156,30 @@ impl Processor {
         }
     }
 
-    /// Update the event state and related state-tracking values.
     pub fn set_event_state(&mut self, event: &mut Event, state: EventState) -> EgResult<()> {
+        self.set_event_state_impl(event, state, None)
+    }
+
+    pub fn set_event_state_error(&mut self, event: &mut Event, error_text: &str) -> EgResult<()> {
+        self.set_event_state_impl(event, EventState::Error, Some(error_text))
+    }
+
+    /// Update the event state and related state-tracking values.
+    fn set_event_state_impl(
+        &mut self, 
+        event: &mut Event, 
+        state: EventState,
+        error_text: Option<&str>,
+    ) -> EgResult<()> {
         event.set_state(state);
 
         let state_str: &str = state.into();
 
         self.editor.xact_begin()?;
+
+        if let Some(err) = error_text {
+            // TODO create action_trigger.event_output and link it
+        }
 
         let mut atev = self
             .editor

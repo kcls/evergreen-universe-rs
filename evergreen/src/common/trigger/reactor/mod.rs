@@ -1,31 +1,46 @@
+//! Base module for A/T Reactors
 use crate::common::trigger::{Event, EventState, Processor};
 use crate::editor::Editor;
-/// Base module for A/T Reactors
 use crate::result::EgResult;
 
 mod circ;
 
 /// Add reactor routines to the Processor.
 impl Processor {
-    /// React or more events.
+
+    /// React to one or more events.
     ///
-    /// Assumes all events use the same event-def / reactor.
-    pub fn react(&mut self, events: &[&Event]) -> EgResult<()> {
+    /// Multiple Events implies a linked event group.
+    ///
+    /// Reactors in Perl return true/false to indicate success,
+    /// but the return value doesn't appear to be used, just the
+    /// event state.
+    pub fn react(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
         if events.len() == 0 {
             return Ok(());
         }
 
-        // required string field.
-        /*
-        let reactor = events[0].event_def()["reactor"].as_str().unwrap();
-
-        match reactor {
-            "NOOP_True" || "NOOP_False" => Ok(()),
-            "Circ::AutoRenew" => circ::autorenew(editor, events),
-            _ => Err(format!("No such reactor: {reactor}").into()),
+        for event in events.iter_mut() {
+            self.set_event_state(*event, EventState::Reacting)?;
         }
-        */
 
-        Ok(())
+        let reactor = self.reactor();
+
+        log::debug!("{self} reacting with '{reactor}' on {} event(s)", events.len());
+
+        let react_result = match reactor {
+            "NOOP_True" => Ok(()),
+            "NOOP_False" => Err(format!("NOOP_False").into()),
+            "Circ::AutoRenew" => self.autorenew(events),
+            _ => Err(format!("No such reactor: {reactor}").into()),
+        };
+
+        if react_result.is_ok() {
+            for event in events.iter_mut() {
+                self.set_event_state(*event, EventState::Reacted)?;
+            }
+        }
+
+        react_result
     }
 }
