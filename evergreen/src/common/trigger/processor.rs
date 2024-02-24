@@ -7,8 +7,8 @@ use crate::result::EgResult;
 use crate::util;
 use json::JsonValue;
 use opensrf::util::thread_id;
-use std::process;
 use std::fmt;
+use std::process;
 
 // TODO
 // set state to 'found' once an event is loaded.
@@ -31,8 +31,7 @@ impl fmt::Display for Processor {
         write!(
             f,
             "Processor A/T Definition [id={}] '{}'",
-            self.event_def_id,
-            self.event_def["name"]
+            self.event_def_id, self.event_def["name"]
         )
     }
 }
@@ -166,8 +165,8 @@ impl Processor {
 
     /// Update the event state and related state-tracking values.
     fn set_event_state_impl(
-        &mut self, 
-        event: &mut Event, 
+        &mut self,
+        event: &mut Event,
         state: EventState,
         error_text: Option<&str>,
     ) -> EgResult<()> {

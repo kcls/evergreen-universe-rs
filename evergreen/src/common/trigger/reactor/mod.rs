@@ -7,7 +7,6 @@ mod circ;
 
 /// Add reactor routines to the Processor.
 impl Processor {
-
     /// React to one or more events.
     ///
     /// Multiple Events implies a linked event group.
@@ -26,7 +25,10 @@ impl Processor {
 
         let reactor = self.reactor();
 
-        log::debug!("{self} reacting with '{reactor}' on {} event(s)", events.len());
+        log::debug!(
+            "{self} reacting with '{reactor}' on {} event(s)",
+            events.len()
+        );
 
         let react_result = match reactor {
             "NOOP_True" => Ok(()),
