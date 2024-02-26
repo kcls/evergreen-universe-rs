@@ -32,7 +32,8 @@ pub fn target(
 ) -> Result<(), String> {
     let worker = app::HoldTargeterWorker::downcast(worker)?;
 
-    let mut tgtr = targeter::HoldTargeter::new(Editor::new(worker.client(), worker.env().idl()));
+    let mut editor = Editor::new(worker.client(), worker.env().idl());
+    let mut tgtr = targeter::HoldTargeter::new(&mut editor);
 
     let mut return_throttle = 1;
     let mut return_count = false;

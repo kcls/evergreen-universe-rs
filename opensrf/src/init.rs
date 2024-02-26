@@ -56,12 +56,18 @@ pub fn init_with_options(options: &InitOptions) -> Result<conf::Config, String> 
     }
 
     if let Ok(facility) = env::var("OSRF_LOG_FACILITY") {
-        config.client_mut().logging_mut().set_syslog_facility(&facility)?;
+        config
+            .client_mut()
+            .logging_mut()
+            .set_syslog_facility(&facility)?;
         if let Some(gateway) = config.gateway_mut() {
             gateway.logging_mut().set_syslog_facility(&facility)?;
         }
         for router in config.routers_mut() {
-            router.client_mut().logging_mut().set_syslog_facility(&facility)?;
+            router
+                .client_mut()
+                .logging_mut()
+                .set_syslog_facility(&facility)?;
         }
     }
 

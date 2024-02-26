@@ -10,10 +10,10 @@ const FULL_RETARGET: bool = true;
 fn main() -> EgResult<()> {
     let ctx = eg::init::init()?;
     let client = ctx.client();
-    let editor = Editor::new(client, ctx.idl());
+    let mut editor = Editor::new(client, ctx.idl());
 
     let start = date::now();
-    let mut tgtr = targeter::HoldTargeter::new(editor.clone());
+    let mut tgtr = targeter::HoldTargeter::new(&mut editor);
     tgtr.set_retarget_interval("0s"); // retarget everything
     tgtr.init()?;
 

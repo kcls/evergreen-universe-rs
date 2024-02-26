@@ -234,13 +234,13 @@ impl Session {
             }
         }
 
-        if !ovride
-            && self
-                .account()
-                .settings()
-                .checkout_override()
-                .contains(&evt.textcode().to_string())
-        {
+        let can_override = self
+            .account()
+            .settings()
+            .checkout_override()
+            .contains(&evt.textcode().to_string());
+
+        if !ovride && can_override {
             return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
         }
 
@@ -280,11 +280,12 @@ impl Session {
         options.insert("copy_barcode".to_string(), item_barcode.into());
         options.insert("patron_barcode".to_string(), patron_barcode.into());
 
-        let editor = self.editor().clone();
+        // Standalone transaction; cloning is just easier here.
+        let mut editor = self.editor().clone();
 
-        let mut circulator = Circulator::new(editor, options)?;
-        circulator.is_override = ovride;
+        let mut circulator = Circulator::new(&mut editor, options)?;
         circulator.begin()?;
+        circulator.is_override = ovride;
 
         // Collect needed data then kickoff the checkin process.
         let api_result = if is_renewal {
@@ -338,13 +339,14 @@ impl Session {
             }
         }
 
-        if !ovride
-            && self
-                .account()
-                .settings()
-                .checkout_override()
-                .contains(&evt.textcode().to_string())
-        {
+        let can_override = self
+            .account()
+            .settings()
+            .checkout_override()
+            // TODO to_string()?
+            .contains(&evt.textcode().to_string());
+
+        if !ovride && can_override {
             return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
         }
 

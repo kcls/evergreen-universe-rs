@@ -16,7 +16,7 @@ use std::time::Duration;
 const JSON_NULL: JsonValue = JsonValue::Null;
 
 /// Performs item checkins
-impl Circulator {
+impl Circulator<'_> {
     /// Checkout an item.
     ///
     /// Returns Ok(()) if the active transaction completed and should
@@ -74,12 +74,7 @@ impl Circulator {
         self.apply_deposit_fee()?;
         self.handle_checkout_holds()?;
 
-        penalty::calculate_penalties(
-            self.editor.as_mut().unwrap(), // shorter mut borrow
-            self.patron_id,
-            self.circ_lib,
-            None,
-        )?;
+        penalty::calculate_penalties(self.editor, self.patron_id, self.circ_lib, None)?;
 
         self.build_checkout_response()
     }

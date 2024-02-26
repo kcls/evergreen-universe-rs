@@ -14,7 +14,7 @@ use json::JsonValue;
 use std::collections::HashSet;
 
 /// Performs item checkins
-impl Circulator {
+impl Circulator<'_> {
     /// Checkin an item.
     ///
     /// Returns Ok(()) if the active transaction should be committed and
@@ -27,12 +27,7 @@ impl Circulator {
         self.init()?;
 
         if !self.is_renewal() {
-            if !self
-                .editor
-                .as_mut()
-                .unwrap()
-                .allowed_at("COPY_CHECKIN", self.circ_lib)?
-            {
+            if !self.editor.allowed_at("COPY_CHECKIN", self.circ_lib)? {
                 return Err(self.editor().die_event());
             }
         }
@@ -125,12 +120,7 @@ impl Circulator {
         self.finish_fines_and_voiding()?;
 
         if self.patron.is_some() {
-            penalty::calculate_penalties(
-                self.editor.as_mut().unwrap(),
-                self.patron_id,
-                self.circ_lib,
-                None,
-            )?;
+            penalty::calculate_penalties(self.editor, self.patron_id, self.circ_lib, None)?;
         }
 
         self.cleanup_events();
@@ -296,6 +286,8 @@ impl Circulator {
 
         let copy_id = self.copy_id;
         let circ_lib = self.circ_lib;
+        let vol_id = json_int(&self.copy()["call_number"]["id"])?;
+
         let hold_data = holds::related_to_copy(
             self.editor(),
             copy_id,
@@ -309,7 +301,7 @@ impl Circulator {
         // let the targeter manage the transaction.  Otherwise, we could be
         // targeting a large number of holds within a single transaction
         // which is no bueno.
-        let mut hold_targeter = targeter::HoldTargeter::new(self.editor().clone());
+        let mut hold_targeter = targeter::HoldTargeter::new(self.editor());
 
         for hold in hold_data.iter() {
             let target = hold.target();
@@ -317,14 +309,14 @@ impl Circulator {
 
             // Copy-level hold that points to a different copy.
             if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
-                if target != self.copy_id {
+                if target != copy_id {
                     continue;
                 }
             }
 
             // Volume-level hold for a different volume
             if hold_type.eq("V") {
-                if target != json_int(&self.copy()["call_number"]["id"])? {
+                if target != vol_id {
                     continue;
                 }
             }
@@ -344,7 +336,7 @@ impl Circulator {
                 continue;
             }
 
-            let ctx = hold_targeter.target_hold(hold.id(), Some(self.copy_id))?;
+            let ctx = hold_targeter.target_hold(hold.id(), Some(copy_id))?;
 
             if ctx.success() && ctx.found_copy() {
                 log::info!("checkin_retarget_holds() successfully targeted a hold");

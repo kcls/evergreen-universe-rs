@@ -404,11 +404,11 @@ impl Session {
 
         log::info!("{self} checkin with params: {:?}", options);
 
-        let editor = self.editor().clone();
+        let mut editor = self.editor().clone();
 
-        let mut circulator = Circulator::new(editor, options)?;
-        circulator.is_override = ovride;
+        let mut circulator = Circulator::new(&mut editor, options)?;
         circulator.begin()?;
+        circulator.is_override = ovride;
 
         // Collect needed data then kickoff the checkin process.
         let result = circulator.checkin();

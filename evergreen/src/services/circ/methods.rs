@@ -203,9 +203,10 @@ pub fn checkout_renew_checkin(
         return session.respond(editor.event());
     }
 
-    let mut circulator = Circulator::new(editor, options)?;
+    let mut circulator = Circulator::new(&mut editor, options)?;
     circulator.is_inspect = method.method().contains(".inspect");
     circulator.is_override = method.method().contains(".override");
+
     circulator.begin()?;
 
     let result = if method.method().contains("checkout") {
@@ -231,10 +232,10 @@ pub fn checkout_renew_checkin(
         return Ok(());
     }
 
+    let events: Vec<json::JsonValue> = circulator.events().iter().map(|e| e.into()).collect();
+
     // Checkin call completed
     circulator.commit()?;
-
-    let events: Vec<json::JsonValue> = circulator.events().iter().map(|e| e.into()).collect();
 
     // Send the compiled events to the caller and let them know we're done.
     session.respond_complete(events)?;

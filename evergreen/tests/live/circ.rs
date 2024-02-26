@@ -61,8 +61,6 @@ fn delete_test_assets(tester: &mut util::Tester) -> EgResult<()> {
 }
 
 fn checkout(tester: &mut util::Tester) -> EgResult<()> {
-    let e = tester.editor.clone(); // circulator wants its own editor
-
     let mut options: HashMap<String, json::JsonValue> = HashMap::new();
     options.insert(
         "copy_barcode".to_string(),
@@ -74,8 +72,9 @@ fn checkout(tester: &mut util::Tester) -> EgResult<()> {
         json::from(tester.samples.au_barcode.as_str()),
     );
 
-    let mut circulator = Circulator::new(e, options)?;
-    circulator.begin()?;
+    tester.editor.xact_begin()?;
+
+    let mut circulator = Circulator::new(&mut tester.editor, options)?;
 
     // Collect needed data then kickoff the checkin process.
     circulator.checkout()?;
@@ -119,16 +118,15 @@ fn checkout(tester: &mut util::Tester) -> EgResult<()> {
 }
 
 fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
-    let e = tester.editor.clone(); // circulator wants its own editor
-
     let mut options: HashMap<String, json::JsonValue> = HashMap::new();
     options.insert(
         "copy_barcode".to_string(),
         json::from(tester.samples.acp_barcode.as_str()),
     );
 
-    let mut circulator = Circulator::new(e, options)?;
-    circulator.begin()?;
+    tester.editor.xact_begin()?;
+
+    let mut circulator = Circulator::new(&mut tester.editor, options)?;
 
     // Collect needed data then kickoff the checkin process.
     circulator.checkin()?;
@@ -163,8 +161,6 @@ fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
 }
 
 fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
-    let e = tester.editor.clone(); // circulator wants its own editor
-
     let mut options: HashMap<String, json::JsonValue> = HashMap::new();
     options.insert(
         "copy_barcode".to_string(),
@@ -175,8 +171,8 @@ fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
     // so our item goes into transit on checkin.
     options.insert("circ_lib".to_string(), json::from(eg::samples::AOU_BR2_ID));
 
-    let mut circulator = Circulator::new(e, options)?;
-    circulator.begin()?;
+    tester.editor.xact_begin()?;
+    let mut circulator = Circulator::new(&mut tester.editor, options)?;
 
     // Collect needed data then kickoff the checkin process.
     circulator.checkin()?;

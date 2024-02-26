@@ -16,7 +16,7 @@ use std::time::Duration;
 */
 
 /// Performs item checkins
-impl Circulator {
+impl Circulator<'_> {
     /// Renew a circulation.
     ///
     /// Returns Ok(()) if the active transaction should be committed and
@@ -32,12 +32,7 @@ impl Circulator {
 
         // Do this after self.basic_renewal_checks which may change
         // our circ lib.
-        if !self
-            .editor
-            .as_mut()
-            .unwrap()
-            .allowed_at("COPY_CHECKOUT", self.circ_lib)?
-        {
+        if !self.editor.allowed_at("COPY_CHECKOUT", self.circ_lib)? {
             return Err(self.editor().die_event());
         }
 

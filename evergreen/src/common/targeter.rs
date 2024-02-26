@@ -129,11 +129,8 @@ impl HoldTargetContext {
 }
 
 /// Targets a batch of holds.
-pub struct HoldTargeter {
-    /// Editor is required, but stored as an Option so we can give it
-    /// back to the caller when we're done in case the caller has
-    /// additional work to perform before comitting changes.
-    editor: Option<Editor>,
+pub struct HoldTargeter<'a> {
+    editor: &'a mut Editor,
 
     settings: Settings,
 
@@ -161,10 +158,13 @@ pub struct HoldTargeter {
     /// Target holds newest first by request date.
     newest_first: bool,
 
-    /// Should we NOT being/commit hold-specific transactions so
-    /// the caller (who provided the editor) can do it?
+    /// If true the targeter will NOT make any begin or commit
+    /// calls to its editor, assuming the caller will manage that.
     ///
-    /// NOTE: this should only be used when targeting a single hold
+    /// This is useful for cases where targeting a hold is part
+    /// of a larger transaction of changes.
+    ///
+    /// This should only be used when targeting a single hold
     /// since each hold requires its own transaction to avoid deadlocks.
     /// Alternatively, the caller should be prepared to begin/commit
     /// before/after each call to target_hold().
@@ -173,18 +173,18 @@ pub struct HoldTargeter {
     thread_rng: rand::rngs::ThreadRng,
 }
 
-impl fmt::Display for HoldTargeter {
+impl fmt::Display for HoldTargeter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "targeter: [hold={}]", self.hold_id)
     }
 }
 
-impl HoldTargeter {
-    pub fn new(editor: Editor) -> HoldTargeter {
+impl<'a> HoldTargeter<'a> {
+    pub fn new(editor: &'a mut Editor) -> HoldTargeter {
         let settings = Settings::new(&editor);
 
         HoldTargeter {
-            editor: Some(editor),
+            editor,
             settings,
             hold_id: 0,
             retarget_time: None,
@@ -214,23 +214,8 @@ impl HoldTargeter {
         self.transaction_manged_externally = val;
     }
 
-    /// Panics if we don't have an editor.
     pub fn editor(&mut self) -> &mut Editor {
         self.editor
-            .as_mut()
-            .unwrap_or_else(|| panic!("HoldTargeter needs an editor!"))
-    }
-
-    pub fn set_editor(&mut self, editor: Editor) {
-        self.editor = Some(editor);
-    }
-
-    /// Useful for callers that set transaction_manged_externally for
-    /// reclaiming the editor so they can commit the transaction.
-    ///
-    /// Panics if self.editor is None.
-    pub fn take_editor(&mut self) -> Editor {
-        self.editor.take().unwrap()
     }
 
     pub fn set_parallel_count(&mut self, count: u8) {

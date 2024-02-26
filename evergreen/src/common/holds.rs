@@ -507,18 +507,16 @@ pub fn retarget_holds(editor: &mut Editor, hold_ids: &[i64]) -> EgResult<()> {
 /// Assumes the provided editor is running within a transaction
 /// that will be commited (or rollback back) by the caller.
 pub fn retarget_hold_in_xact(
-    editor: Editor,
+    editor: &mut Editor,
     hold_id: i64,
-) -> EgResult<(targeter::HoldTargetContext, Editor)> {
+) -> EgResult<targeter::HoldTargetContext> {
     let mut targeter = targeter::HoldTargeter::new(editor);
 
     targeter.init()?;
 
     let ctx = targeter.target_hold(hold_id, None)?;
 
-    let editor = targeter.take_editor();
-
-    Ok((ctx, editor))
+    Ok(ctx)
 }
 
 /// Reset a hold and retarget it.

@@ -122,8 +122,8 @@ impl CircPolicy {
 /// Context and shared methods for circulation actions.
 ///
 /// Innards are 'pub' since the impl's are spread across multiple files.
-pub struct Circulator {
-    pub editor: Option<Editor>,
+pub struct Circulator<'a> {
+    pub editor: &'a mut Editor,
     pub init_run: bool,
     pub settings: Settings,
     pub circ_lib: i64,
@@ -195,7 +195,7 @@ pub struct Circulator {
     pub options: HashMap<String, JsonValue>,
 }
 
-impl fmt::Display for Circulator {
+impl fmt::Display for Circulator<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut patron_barcode = "null";
         let mut copy_status = "null";
@@ -225,19 +225,22 @@ impl fmt::Display for Circulator {
     }
 }
 
-impl Circulator {
+impl<'a> Circulator<'a> {
     /// Create a new Circulator.
     ///
-    pub fn new(e: Editor, options: HashMap<String, JsonValue>) -> EgResult<Circulator> {
-        if e.requestor().is_none() {
+    pub fn new(
+        editor: &'a mut Editor,
+        options: HashMap<String, JsonValue>,
+    ) -> EgResult<Circulator> {
+        if editor.requestor().is_none() {
             Err(format!("Circulator requires an authenticated requestor"))?;
         }
 
-        let settings = Settings::new(&e);
-        let circ_lib = e.requestor_ws_ou();
+        let settings = Settings::new(&editor);
+        let circ_lib = editor.requestor_ws_ou();
 
         Ok(Circulator {
-            editor: Some(e),
+            editor,
             init_run: false,
             settings,
             options,
@@ -296,23 +299,30 @@ impl Circulator {
 
     /// Panics if we have no editor
     pub fn editor(&mut self) -> &mut Editor {
-        self.editor.as_mut().unwrap()
+        self.editor
+    }
+
+    /// Allow the caller to xact_begin the editor transaction via the
+    /// circulator, which can help to avoid some mutable cross-borrows.
+    pub fn begin(&mut self) -> EgResult<()> {
+        self.editor.xact_begin()
+    }
+
+    /// Allow the caller to rollback the editor transaction via the
+    /// circulator, which can help to avoid some mutable cross-borrows.
+    pub fn rollback(&mut self) -> EgResult<()> {
+        self.editor.rollback()
+    }
+
+    /// Allow the caller to commit the editor transaction via the
+    /// circulator, which can help to avoid some mutable cross-borrows.
+    pub fn commit(&mut self) -> EgResult<()> {
+        self.editor.commit()
     }
 
     /// Panics unless we have an editor and a requestor.
     pub fn requestor_id(&self) -> i64 {
-        self.editor.as_ref().unwrap().requestor_id()
-    }
-
-    /// Consumes an editor so we can use it.
-    pub fn give_editor(&mut self, editor: Editor) {
-        self.editor = Some(editor);
-    }
-
-    /// Gives the caller our editor.
-    /// Panics if we have no editor.
-    pub fn take_editor(&mut self) -> Editor {
-        self.editor.take().unwrap()
+        self.editor.requestor_id()
     }
 
     pub fn is_renewal(&self) -> bool {
@@ -358,18 +368,6 @@ impl Circulator {
             .expect("{self} copy required for copy_circ_lib()");
 
         json_int(&copy["circ_lib"]).expect("{self} invlid copy circ lib")
-    }
-
-    pub fn begin(&mut self) -> EgResult<()> {
-        self.editor().xact_begin()
-    }
-
-    pub fn commit(&mut self) -> EgResult<()> {
-        self.editor().commit()
-    }
-
-    pub fn rollback(&mut self) -> EgResult<()> {
-        self.editor().rollback()
     }
 
     /// Used for events that stop processing and should result in
@@ -1188,7 +1186,7 @@ impl Circulator {
         }
 
         trigger::create_events_for_object(
-            self.editor.as_mut().unwrap(),
+            &mut self.editor,
             action,
             circ,
             self.circ_lib,

@@ -252,4 +252,3 @@ pub fn set_hms(date: &EgDate, hours: u32, minutes: u32, seconds: u32) -> EgResul
 
     Ok(new_date)
 }
-
