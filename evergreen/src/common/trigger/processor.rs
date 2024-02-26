@@ -8,18 +8,12 @@ use json::JsonValue;
 use opensrf::util::thread_id;
 use std::fmt;
 use std::process;
+use std::cell::RefCell;
 
-// TODO
-// set state to 'found' once an event is loaded.
-//
 // Add feature to roll-back failures and reset event states.
 // Add a retry state that's only processed intentionally?
-//
-// Set Error state / text on failed validator, etc. in the calling
-// code instead of within the handling module.
-
 pub struct Processor {
-    pub editor: Editor,
+    pub editor: RefCell<Editor>,
     event_def_id: i64,
     event_def: JsonValue,
     target_flesh: JsonValue,
@@ -37,7 +31,7 @@ impl fmt::Display for Processor {
 
 impl Processor {
     pub fn new(editor: &Editor, event_def_id: i64) -> EgResult<Self> {
-        let mut editor = editor.clone();
+        let mut editor = editor.clone(); // TODO
 
         let flesh = json::object! {
             "flesh": 1,
@@ -50,15 +44,21 @@ impl Processor {
 
         let mut proc = Self {
             event_def,
-            editor,
             event_def_id,
             target_flesh: JsonValue::Null,
+            editor: RefCell::new(editor),
         };
 
         proc.set_target_flesh()?;
 
         Ok(proc)
     }
+
+    /*
+    pub fn from_event(editor: &Editor, event_id: i64) -> EgResult<Self> {
+
+    }
+    */
 
     pub fn event_def_id(&self) -> i64 {
         self.event_def_id
@@ -116,6 +116,7 @@ impl Processor {
 
         self.target_flesh = self
             .editor
+            .borrow()
             .idl()
             .field_paths_to_flesh(self.core_type(), paths.as_slice())?;
 
@@ -154,17 +155,17 @@ impl Processor {
         }
     }
 
-    pub fn set_event_state(&mut self, event: &mut Event, state: EventState) -> EgResult<()> {
+    pub fn set_event_state(&self, event: &mut Event, state: EventState) -> EgResult<()> {
         self.set_event_state_impl(event, state, None)
     }
 
-    pub fn set_event_state_error(&mut self, event: &mut Event, error_text: &str) -> EgResult<()> {
+    pub fn set_event_state_error(&self, event: &mut Event, error_text: &str) -> EgResult<()> {
         self.set_event_state_impl(event, EventState::Error, Some(error_text))
     }
 
     /// Update the event state and related state-tracking values.
     fn set_event_state_impl(
-        &mut self,
+        &self,
         event: &mut Event,
         state: EventState,
         error_text: Option<&str>,
@@ -173,10 +174,11 @@ impl Processor {
 
         let state_str: &str = state.into();
 
-        self.editor.xact_begin()?;
+        self.editor.borrow_mut().xact_begin()?;
 
         let mut atev = self
             .editor
+            .borrow_mut()
             .retrieve("atev", event.id())?
             .ok_or_else(|| format!("Our event disappeared from the DB?"))?;
 
@@ -187,8 +189,8 @@ impl Processor {
                 // TODO locale
             };
 
-            let output = self.editor.idl().create_from("ateo", output)?;
-            let mut result = self.editor.create(output)?;
+            let output = self.editor.borrow().idl().create_from("ateo", output)?;
+            let mut result = self.editor.borrow_mut().create(output)?;
 
             atev["error_output"] = result["id"].take();
         }
@@ -205,25 +207,27 @@ impl Processor {
             atev["complete_time"] = json::from("now");
         }
 
-        self.editor.update(atev)?;
+        self.editor.borrow_mut().update(atev)?;
 
-        self.editor.xact_commit()
+        self.editor.borrow_mut().xact_commit()
     }
 
     /// Flesh the target linked to this event and set the event
     /// group value if necessary.
-    pub fn collect(&mut self, event: &mut Event) -> EgResult<()> {
+    pub fn collect(&self, event: &mut Event) -> EgResult<()> {
         self.set_event_state(event, EventState::Collecting)?;
 
         // Fetch our target object with the needed fleshing.
         // clone() is required for retrieve()
         let flesh = self.target_flesh.clone();
-        let core_type = self.core_type().to_string(); // parallel mut's
+        //let core_type = self.core_type().to_string(); // parallel mut's
+        let core_type = self.core_type();
 
         let target = self
             .editor
+            .borrow_mut()
             .retrieve_with_ops(&core_type, event.target_pkey(), flesh)?
-            .ok_or_else(|| self.editor.die_event())?;
+            .ok_or_else(|| self.editor.borrow_mut().die_event())?;
 
         event.set_target(target);
 
@@ -238,7 +242,7 @@ impl Processor {
     /// to the provided event.
     ///
     /// This value is used to sort events into like groups.
-    fn set_group_value(&mut self, event: &mut Event) -> EgResult<()> {
+    fn set_group_value(&self, event: &mut Event) -> EgResult<()> {
         let gfield_path = match self.group_field() {
             Some(f) => f,
             None => return Ok(()),
@@ -251,12 +255,12 @@ impl Processor {
         }
 
         let pkey_value;
-        if self.editor.idl().is_idl_object(obj) {
+        if self.editor.borrow().idl().is_idl_object(obj) {
             // The object may have been fleshed beyond where we
             // need it during target collection. If so, extract
             // the pkey value from the fleshed object.
 
-            pkey_value = self.editor.idl().get_pkey_value(obj).ok_or_else(|| {
+            pkey_value = self.editor.borrow().idl().get_pkey_value(obj).ok_or_else(|| {
                 format!("Group field object has no primary key? path={gfield_path}")
             })?;
 
@@ -271,11 +275,11 @@ impl Processor {
         }
     }
 
-    pub fn process_event(&mut self, event_id: i64) -> EgResult<()> {
+    pub fn process_event(&self, event_id: i64) -> EgResult<()> {
         log::info!("{self} processing event {event_id}");
 
-        let event = self.editor.retrieve("atev", event_id)?
-            .ok_or_else(|| self.editor.die_event())?;
+        let event = self.editor.borrow_mut().retrieve("atev", event_id)?
+            .ok_or_else(|| self.editor.borrow_mut().die_event())?;
 
         let mut event = Event::from_source(event)?;
 
@@ -288,11 +292,11 @@ impl Processor {
         Ok(())
     }
 
-    pub fn process_event_group(&mut self, event_ids: &[i64]) -> EgResult<()> {
+    pub fn process_event_group(&self, event_ids: &[i64]) -> EgResult<()> {
         log::info!("{self} processing event group {event_ids:?}");
 
         let query = json::object! {"id": event_ids};
-        let atevs = self.editor.search("atev", query)?;
+        let atevs = self.editor.borrow_mut().search("atev", query)?;
 
         if atevs.len() == 0 {
             return Err(format!("No such events: {event_ids:?}").into());

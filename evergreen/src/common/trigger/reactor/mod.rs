@@ -1,6 +1,5 @@
 //! Base module for A/T Reactors
 use crate::common::trigger::{Event, EventState, Processor};
-use crate::editor::Editor;
 use crate::result::EgResult;
 
 mod circ;
@@ -14,7 +13,7 @@ impl Processor {
     /// Reactors in Perl return true/false to indicate success,
     /// but the return value doesn't appear to be used, just the
     /// event state.
-    pub fn react(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
+    pub fn react(&self, events: &mut [&mut Event]) -> EgResult<()> {
         if events.len() == 0 {
             return Ok(());
         }

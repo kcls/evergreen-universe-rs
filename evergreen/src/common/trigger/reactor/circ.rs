@@ -8,20 +8,22 @@ use crate::util;
 use json;
 
 impl Processor {
-    pub fn autorenew(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
+    pub fn autorenew(&self, events: &mut [&mut Event]) -> EgResult<()> {
         let patron_id = util::json_int(&events[0].target()["usr"])?;
 
         let patron = self
             .editor
+            .borrow_mut()
             .retrieve("au", patron_id)?
-            .ok_or_else(|| self.editor.die_event())?;
+            .ok_or_else(|| self.editor.borrow_mut().die_event())?;
 
         let home_ou = util::json_int(&patron["home_ou"])?;
 
         let mut auth_args = AuthInternalLoginArgs::new(patron_id, "opac");
         auth_args.set_org_unit(home_ou);
 
-        let auth_ses = AuthSession::internal_session(self.editor.client_mut(), &auth_args)?
+        let auth_ses = AuthSession::internal_session(
+            self.editor.borrow_mut().client_mut(), &auth_args)?
             .ok_or_else(|| format!("Cannot create internal auth session"))?;
 
         for event in events {
@@ -31,7 +33,7 @@ impl Processor {
         Ok(())
     }
 
-    fn renew_one_circ(&mut self, authtoken: &str, patron_id: i64, event: &Event) -> EgResult<()> {
+    fn renew_one_circ(&self, authtoken: &str, patron_id: i64, event: &Event) -> EgResult<()> {
         let copy_id = &event.target()["target_copy"];
 
         log::info!(
@@ -50,6 +52,7 @@ impl Processor {
 
         let mut response = self
             .editor
+            .borrow_mut()
             .client_mut()
             .send_recv_one("open-ils.circ", "open-ils.circ.renew", params)?
             .ok_or_else(|| format!("Renewal returned no response"))?;
@@ -111,7 +114,7 @@ impl Processor {
         // circ, since the renewal may have failed.  Fire and do not
         // forget so we don't flood A/T.
         trigger::create_events_for_object(
-            &mut self.editor,
+            &mut self.editor.borrow_mut(),
             "autorenewal",
             event.target(),
             util::json_int(&event.target()["circ_lib"])?,

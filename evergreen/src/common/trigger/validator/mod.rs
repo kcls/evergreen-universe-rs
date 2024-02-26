@@ -16,7 +16,7 @@ impl Processor {
     /// Loading modules dynamically is not as simple in Rust as in Perl.
     /// Hard-code a module-mapping instead. (*shrug* They all require
     /// code changes).
-    pub fn validate(&mut self, event: &mut Event) -> EgResult<bool> {
+    pub fn validate(&self, event: &mut Event) -> EgResult<bool> {
         self.set_event_state(event, EventState::Validating)?;
 
         let validator = self.validator();
@@ -48,7 +48,7 @@ impl Processor {
     }
 
     /// True if the target circulation is still open.
-    fn circ_is_open(&mut self, event: &Event) -> EgResult<bool> {
+    fn circ_is_open(&self, event: &Event) -> EgResult<bool> {
         if event.target()["checkin_time"].is_string() {
             return Ok(false);
         }
@@ -68,7 +68,7 @@ impl Processor {
         Ok(true)
     }
 
-    fn min_passive_target_age(&mut self, event: &Event) -> EgResult<bool> {
+    fn min_passive_target_age(&self, event: &Event) -> EgResult<bool> {
         let min_target_age = self.param_value_as_str("min_target_age").ok_or_else(|| {
             format!("'min_target_age' parameter required for MinPassiveTargetAge")
         })?;
@@ -92,7 +92,7 @@ impl Processor {
         Ok(age_field_ts <= date::now())
     }
 
-    fn circ_is_overdue(&mut self, event: &Event) -> EgResult<bool> {
+    fn circ_is_overdue(&self, event: &Event) -> EgResult<bool> {
         if event.target()["checkin_time"].is_string() {
             return Ok(false);
         }
@@ -119,7 +119,7 @@ impl Processor {
     }
 
     /// True if the hold is ready for pickup.
-    fn hold_is_available(&mut self, event: &Event) -> EgResult<bool> {
+    fn hold_is_available(&self, event: &Event) -> EgResult<bool> {
         if !self.hold_notify_check(event)? {
             return Ok(false);
         }
@@ -160,9 +160,9 @@ impl Processor {
 
         // Verify we have a targted copy and it has the expected status.
         let copy_status = if let Some(copy_id) = hold["current_copy"].as_i64() {
-            holdings::copy_status(&mut self.editor, Some(copy_id), None)?
+            holdings::copy_status(&mut self.editor.borrow_mut(), Some(copy_id), None)?
         } else if hold["current_copy"].is_object() {
-            holdings::copy_status(&mut self.editor, None, Some(&hold["current_copy"]))?
+            holdings::copy_status(&mut self.editor.borrow_mut(), None, Some(&hold["current_copy"]))?
         } else {
             -1
         };
@@ -170,7 +170,7 @@ impl Processor {
         Ok(copy_status == C::COPY_STATUS_ON_HOLDS_SHELF)
     }
 
-    fn hold_is_canceled(&mut self, event: &Event) -> EgResult<bool> {
+    fn hold_is_canceled(&self, event: &Event) -> EgResult<bool> {
         if self.hold_notify_check(event)? {
             Ok(event.target()["cancel_time"].is_string())
         } else {
@@ -185,7 +185,7 @@ impl Processor {
     /// to reacting.
     ///
     /// Assumes the hold in question == the event.target().
-    fn hold_notify_check(&mut self, event: &Event) -> EgResult<bool> {
+    fn hold_notify_check(&self, event: &Event) -> EgResult<bool> {
         let hold = event.target();
 
         if self.param_value_as_bool("check_email_notify") {
@@ -209,14 +209,14 @@ impl Processor {
         Ok(true)
     }
 
-    fn reservation_is_available(&mut self, event: &Event) -> EgResult<bool> {
+    fn reservation_is_available(&self, event: &Event) -> EgResult<bool> {
         let res = event.target();
         Ok(res["cancel_time"].is_null()
             && !res["capture_time"].is_null()
             && !res["current_resource"].is_null())
     }
 
-    fn patron_is_barred(&mut self, event: &Event) -> EgResult<bool> {
+    fn patron_is_barred(&self, event: &Event) -> EgResult<bool> {
         Ok(util::json_bool(&event.target()["barred"]))
     }
 
