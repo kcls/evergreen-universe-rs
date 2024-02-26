@@ -821,7 +821,7 @@ impl Parser {
     /// Verify a JSON object is a properly-formatted IDL object with no
     /// misspelled field names.
     ///
-    /// Field names begging with "_" will not be checked.
+    /// Field names beginning with "_" will not be checked.
     pub fn verify_object(&self, obj: &JsonValue) -> EgResult<()> {
         if !obj.is_object() {
             return Err(format!("IDL value is not an object: {}", obj.dump()).into());
