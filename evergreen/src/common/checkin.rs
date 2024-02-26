@@ -301,7 +301,8 @@ impl Circulator<'_> {
         // let the targeter manage the transaction.  Otherwise, we could be
         // targeting a large number of holds within a single transaction
         // which is no bueno.
-        let mut hold_targeter = targeter::HoldTargeter::new(self.editor());
+        let mut editor = self.editor().clone();
+        let mut hold_targeter = targeter::HoldTargeter::new(&mut editor);
 
         for hold in hold_data.iter() {
             let target = hold.target();
