@@ -941,7 +941,6 @@ impl Parser {
     /// E.g. 'jub', ['lineitems.lineitem_details.owning_lib', 'lineitems.lineitem_details.fund']
     ///
     pub fn field_paths_to_flesh(&self, base_class: &str, paths: &[&str]) -> EgResult<JsonValue> {
-        // Map the environment path strings into a cstore flesh object.
         let mut flesh = json::object! {"flesh_fields": {}};
         let mut flesh_depth = 1;
 

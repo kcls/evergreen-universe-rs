@@ -119,7 +119,7 @@ impl Event {
     pub fn set_state(&mut self, state: EventState) {
         self.state = state;
     }
-    pub fn user_date(&self) -> Option<&JsonValue> {
+    pub fn user_data(&self) -> Option<&JsonValue> {
         self.user_data.as_ref()
     }
     pub fn group_value(&self) -> Option<&JsonValue> {

@@ -2,7 +2,6 @@
 /// given event definition.
 use crate::common::trigger::{Event, EventState};
 use crate::editor::Editor;
-use crate::idl;
 use crate::result::EgResult;
 use crate::util;
 use json::JsonValue;
@@ -176,14 +175,23 @@ impl Processor {
 
         self.editor.xact_begin()?;
 
-        if let Some(err) = error_text {
-            // TODO create action_trigger.event_output and link it
-        }
-
         let mut atev = self
             .editor
             .retrieve("atev", event.id())?
             .ok_or_else(|| format!("Our event disappeared from the DB?"))?;
+
+        if let Some(err) = error_text {
+            let output = json::object! {
+                "data": err,
+                "is_error": true,
+                // TODO locale
+            };
+
+            let output = self.editor.idl().create_from("ateo", output)?;
+            let mut result = self.editor.create(output)?;
+
+            atev["error_output"] = result["id"].take();
+        }
 
         atev["state"] = json::from(state_str);
         atev["update_time"] = json::from("now");
@@ -262,4 +270,52 @@ impl Processor {
             Err(format!("Invalid group field path: {gfield_path}").into())
         }
     }
+
+    pub fn process_event(&mut self, event_id: i64) -> EgResult<()> {
+        log::info!("{self} processing event {event_id}");
+
+        let event = self.editor.retrieve("atev", event_id)?
+            .ok_or_else(|| self.editor.die_event())?;
+
+        let mut event = Event::from_source(event)?;
+
+        self.collect(&mut event)?;
+
+        if self.validate(&mut event)? {
+            self.react(&mut [&mut event])?;
+        }
+
+        Ok(())
+    }
+
+    pub fn process_event_group(&mut self, event_ids: &[i64]) -> EgResult<()> {
+        log::info!("{self} processing event group {event_ids:?}");
+
+        let query = json::object! {"id": event_ids};
+        let atevs = self.editor.search("atev", query)?;
+
+        if atevs.len() == 0 {
+            return Err(format!("No such events: {event_ids:?}").into());
+        }
+
+        let mut valid_events = Vec::new();
+        for atev in atevs {
+            let mut event = Event::from_source(atev)?;
+
+            self.collect(&mut event)?;
+            if self.validate(&mut event)? {
+                valid_events.push(event);
+            }
+        }
+
+        if valid_events.len() == 0 {
+            // No valid events to react
+            return Ok(());
+        }
+
+        let mut refs: Vec<&mut Event> = valid_events.iter_mut().collect();
+        let slice = &mut refs[..];
+        self.react(slice)
+    }
 }
+
