@@ -3,6 +3,7 @@ use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
 use crate::util;
 use json::JsonValue;
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EventState {
@@ -64,6 +65,12 @@ pub struct Event {
     target: JsonValue,
     group_value: Option<JsonValue>,
     user_data: Option<JsonValue>,
+}
+
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "A/T Event id={}", self.id)
+    }
 }
 
 impl Event {

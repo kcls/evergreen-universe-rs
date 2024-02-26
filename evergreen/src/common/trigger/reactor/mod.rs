@@ -5,7 +5,7 @@ use crate::result::EgResult;
 mod circ;
 
 /// Add reactor routines to the Processor.
-impl Processor {
+impl Processor<'_> {
     /// React to one or more events.
     ///
     /// Multiple Events implies a linked event group.
@@ -13,7 +13,14 @@ impl Processor {
     /// Reactors in Perl return true/false to indicate success,
     /// but the return value doesn't appear to be used, just the
     /// event state.
-    pub fn react(&self, events: &mut [&mut Event]) -> EgResult<()> {
+    pub fn react(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
+        let event_ids: Vec<String> = events
+            .iter()
+            .map(|e| e.id().to_string())
+            .collect();
+
+        log::info!("{self} reacting to events [{}]", event_ids.join(","));
+
         if events.len() == 0 {
             return Ok(());
         }

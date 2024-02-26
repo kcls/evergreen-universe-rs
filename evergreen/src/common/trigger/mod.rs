@@ -201,9 +201,3 @@ fn user_is_opted_in(
     Ok(editor.search("aus", query)?.len() > 0)
 }
 
-
-/*
-pub fn process_event(editor: &mut Editor, event_id: i64) -> EgResult<()> {
-
-    pub fn new(editor: &Editor, event_def_id: i64) -> EgResult<Self> {
-        */

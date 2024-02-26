@@ -8,18 +8,17 @@ use json::JsonValue;
 use opensrf::util::thread_id;
 use std::fmt;
 use std::process;
-use std::cell::RefCell;
 
 // Add feature to roll-back failures and reset event states.
 // Add a retry state that's only processed intentionally?
-pub struct Processor {
-    pub editor: RefCell<Editor>,
+pub struct Processor<'a> {
+    pub editor: &'a mut Editor,
     event_def_id: i64,
     event_def: JsonValue,
     target_flesh: JsonValue,
 }
 
-impl fmt::Display for Processor {
+impl fmt::Display for Processor<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -29,10 +28,8 @@ impl fmt::Display for Processor {
     }
 }
 
-impl Processor {
-    pub fn new(editor: &Editor, event_def_id: i64) -> EgResult<Self> {
-        let mut editor = editor.clone(); // TODO
-
+impl<'a> Processor<'a> {
+    pub fn new(editor: &'a mut Editor, event_def_id: i64) -> EgResult<Processor> {
         let flesh = json::object! {
             "flesh": 1,
             "flesh_fields": {"atevdef": ["hook", "env", "params"]}
@@ -46,7 +43,7 @@ impl Processor {
             event_def,
             event_def_id,
             target_flesh: JsonValue::Null,
-            editor: RefCell::new(editor),
+            editor,
         };
 
         proc.set_target_flesh()?;
@@ -54,11 +51,74 @@ impl Processor {
         Ok(proc)
     }
 
-    /*
-    pub fn from_event(editor: &Editor, event_id: i64) -> EgResult<Self> {
+    /// One-off single event processor without requiring a standalone Processor
+    pub fn process_event_once(editor: &mut Editor, event_id: i64) -> EgResult<Event> {
+        let jevent = editor.retrieve("atev", event_id)?.ok_or_else(|| editor.die_event())?;
 
+        let mut proc = Processor::new(editor, util::json_int(&jevent["id"])?)?;
+
+        let mut event = Event::from_source(jevent)?;
+        
+        proc.process_event(&mut event)?;
+
+        Ok(event)
     }
-    */
+
+    /// Process a single event via an existing Processor
+    pub fn process_event(&mut self, event: &mut Event) -> EgResult<()> {
+        log::info!("{self} processing event {}", event.id());
+
+        self.collect(event)?;
+
+        if self.validate(event)? {
+            self.react(&mut [event])?;
+        }
+
+        Ok(())
+    }
+
+    /// One-off event group processor without requiring a standalone Processor
+    ///
+    /// Returns all processed events, even if invalid.
+    pub fn process_event_group_once(editor: &mut Editor, event_ids: &[i64]) -> EgResult<Vec<Event>> {
+        let query = json::object! {"id": event_ids};
+        let mut jevents = editor.search("atev", query)?;
+
+        if jevents.len() == 0 {
+            return Err(format!("No such events: {event_ids:?}").into());
+        }
+
+        // Here we trust that events from the database are shaped correctly.
+        let mut events: Vec<Event> = Vec::new();
+        for jevent in jevents.drain(..) {
+            events.push(Event::from_source(jevent)?);
+        }
+
+        let mut proc = Processor::new(editor, events[0].id())?;
+
+        let mut slice = events.iter_mut().collect::<Vec<&mut Event>>();
+        proc.process_event_group(&mut slice[..])?;
+
+        Ok(events)
+    }
+
+   pub fn process_event_group(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
+        let mut valid_events: Vec<&mut Event> = Vec::new();
+        for event in events.iter_mut() {
+            self.collect(event)?;
+            if self.validate(event)? {
+                valid_events.push(event);
+            }
+        }
+
+        if valid_events.len() == 0 {
+            // No valid events to react
+            return Ok(());
+        }
+
+        let slice = &mut valid_events[..];
+        self.react(slice)
+    }
 
     pub fn event_def_id(&self) -> i64 {
         self.event_def_id
@@ -116,7 +176,6 @@ impl Processor {
 
         self.target_flesh = self
             .editor
-            .borrow()
             .idl()
             .field_paths_to_flesh(self.core_type(), paths.as_slice())?;
 
@@ -125,7 +184,7 @@ impl Processor {
 
     /// Returns the parameter value with the provided name or None if no
     /// such parameter exists.
-    pub fn param_value(&self, param_name: &str) -> Option<&JsonValue> {
+    pub fn param_value(&mut self, param_name: &str) -> Option<&JsonValue> {
         for param in self.params().members() {
             if param["param"].as_str() == Some(param_name) {
                 return Some(&param["value"]);
@@ -137,7 +196,7 @@ impl Processor {
     /// Returns the parameter value with the provided name as a &str or
     /// None if no such parameter exists OR the parameter is not a JSON
     /// string.
-    pub fn param_value_as_str(&self, param_name: &str) -> Option<&str> {
+    pub fn param_value_as_str(&mut self, param_name: &str) -> Option<&str> {
         if let Some(pval) = self.param_value(param_name) {
             pval["value"].as_str()
         } else {
@@ -147,7 +206,7 @@ impl Processor {
 
     /// Returns true if a parameter value exists and has truthy,
     /// false otherwise.
-    pub fn param_value_as_bool(&self, param_name: &str) -> bool {
+    pub fn param_value_as_bool(&mut self, param_name: &str) -> bool {
         if let Some(pval) = self.param_value(param_name) {
             util::json_bool(&pval["value"])
         } else {
@@ -155,17 +214,17 @@ impl Processor {
         }
     }
 
-    pub fn set_event_state(&self, event: &mut Event, state: EventState) -> EgResult<()> {
+    pub fn set_event_state(&mut self, event: &mut Event, state: EventState) -> EgResult<()> {
         self.set_event_state_impl(event, state, None)
     }
 
-    pub fn set_event_state_error(&self, event: &mut Event, error_text: &str) -> EgResult<()> {
+    pub fn set_event_state_error(&mut self, event: &mut Event, error_text: &str) -> EgResult<()> {
         self.set_event_state_impl(event, EventState::Error, Some(error_text))
     }
 
     /// Update the event state and related state-tracking values.
     fn set_event_state_impl(
-        &self,
+        &mut self,
         event: &mut Event,
         state: EventState,
         error_text: Option<&str>,
@@ -174,11 +233,10 @@ impl Processor {
 
         let state_str: &str = state.into();
 
-        self.editor.borrow_mut().xact_begin()?;
+        self.editor.xact_begin()?;
 
         let mut atev = self
             .editor
-            .borrow_mut()
             .retrieve("atev", event.id())?
             .ok_or_else(|| format!("Our event disappeared from the DB?"))?;
 
@@ -189,8 +247,8 @@ impl Processor {
                 // TODO locale
             };
 
-            let output = self.editor.borrow().idl().create_from("ateo", output)?;
-            let mut result = self.editor.borrow_mut().create(output)?;
+            let output = self.editor.idl().create_from("ateo", output)?;
+            let mut result = self.editor.create(output)?;
 
             atev["error_output"] = result["id"].take();
         }
@@ -207,27 +265,27 @@ impl Processor {
             atev["complete_time"] = json::from("now");
         }
 
-        self.editor.borrow_mut().update(atev)?;
+        self.editor.update(atev)?;
 
-        self.editor.borrow_mut().xact_commit()
+        self.editor.xact_commit()
     }
 
     /// Flesh the target linked to this event and set the event
     /// group value if necessary.
-    pub fn collect(&self, event: &mut Event) -> EgResult<()> {
+    pub fn collect(&mut self, event: &mut Event) -> EgResult<()> {
+        log::info!("{self} collecting {event}");
+
         self.set_event_state(event, EventState::Collecting)?;
 
         // Fetch our target object with the needed fleshing.
         // clone() is required for retrieve()
         let flesh = self.target_flesh.clone();
-        //let core_type = self.core_type().to_string(); // parallel mut's
-        let core_type = self.core_type();
+        let core_type = self.core_type().to_string(); // parallel mut's
 
         let target = self
             .editor
-            .borrow_mut()
             .retrieve_with_ops(&core_type, event.target_pkey(), flesh)?
-            .ok_or_else(|| self.editor.borrow_mut().die_event())?;
+            .ok_or_else(|| self.editor.die_event())?;
 
         event.set_target(target);
 
@@ -242,7 +300,7 @@ impl Processor {
     /// to the provided event.
     ///
     /// This value is used to sort events into like groups.
-    fn set_group_value(&self, event: &mut Event) -> EgResult<()> {
+    fn set_group_value(&mut self, event: &mut Event) -> EgResult<()> {
         let gfield_path = match self.group_field() {
             Some(f) => f,
             None => return Ok(()),
@@ -255,12 +313,12 @@ impl Processor {
         }
 
         let pkey_value;
-        if self.editor.borrow().idl().is_idl_object(obj) {
+        if self.editor.idl().is_idl_object(obj) {
             // The object may have been fleshed beyond where we
             // need it during target collection. If so, extract
             // the pkey value from the fleshed object.
 
-            pkey_value = self.editor.borrow().idl().get_pkey_value(obj).ok_or_else(|| {
+            pkey_value = self.editor.idl().get_pkey_value(obj).ok_or_else(|| {
                 format!("Group field object has no primary key? path={gfield_path}")
             })?;
 
@@ -275,51 +333,5 @@ impl Processor {
         }
     }
 
-    pub fn process_event(&self, event_id: i64) -> EgResult<()> {
-        log::info!("{self} processing event {event_id}");
-
-        let event = self.editor.borrow_mut().retrieve("atev", event_id)?
-            .ok_or_else(|| self.editor.borrow_mut().die_event())?;
-
-        let mut event = Event::from_source(event)?;
-
-        self.collect(&mut event)?;
-
-        if self.validate(&mut event)? {
-            self.react(&mut [&mut event])?;
-        }
-
-        Ok(())
-    }
-
-    pub fn process_event_group(&self, event_ids: &[i64]) -> EgResult<()> {
-        log::info!("{self} processing event group {event_ids:?}");
-
-        let query = json::object! {"id": event_ids};
-        let atevs = self.editor.borrow_mut().search("atev", query)?;
-
-        if atevs.len() == 0 {
-            return Err(format!("No such events: {event_ids:?}").into());
-        }
-
-        let mut valid_events = Vec::new();
-        for atev in atevs {
-            let mut event = Event::from_source(atev)?;
-
-            self.collect(&mut event)?;
-            if self.validate(&mut event)? {
-                valid_events.push(event);
-            }
-        }
-
-        if valid_events.len() == 0 {
-            // No valid events to react
-            return Ok(());
-        }
-
-        let mut refs: Vec<&mut Event> = valid_events.iter_mut().collect();
-        let slice = &mut refs[..];
-        self.react(slice)
-    }
 }
 
