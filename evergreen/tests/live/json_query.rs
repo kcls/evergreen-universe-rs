@@ -12,6 +12,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     let mut jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
     jq_compiler.compile(&query)?;
+    // println!("{}\n", jq_compiler.debug_query_kludge());
 
     assert_eq!(
         jq_compiler.debug_query_kludge(),
@@ -22,6 +23,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
     jq_compiler.compile(&query)?;
+    // println!("{}\n", jq_compiler.debug_query_kludge());
 
     assert_eq!(
         jq_compiler.debug_query_kludge(),
@@ -36,6 +38,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     jq_compiler = JsonQueryCompiler::new(tester.ctx.idl().clone());
     jq_compiler.compile(&query)?;
+    // println!("{}\n", jq_compiler.debug_query_kludge());
 
     assert_eq!(
          jq_compiler.debug_query_kludge(),
