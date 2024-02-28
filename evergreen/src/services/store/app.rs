@@ -70,7 +70,7 @@ impl RsStoreApplication {
 
         // Filter function to find classes with the wanted controllers.
         // Find classes controlled by our service and (for now) cstore.
-        let cfilter = |c: &&idl::Class| {
+        let cfilter = |c: &&Arc<idl::Class>| {
             if let Some(ctrl) = c.controller() {
                 ctrl.contains("open-ils.cstore") || ctrl.contains("open-ils.rs-store")
             } else {

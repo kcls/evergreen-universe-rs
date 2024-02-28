@@ -325,6 +325,10 @@ impl Class {
             .is_some()
     }
 
+    pub fn has_field(&self, field: &str) -> bool {
+        self.fields().get(field).is_some()
+    }
+
     pub fn get_real_field(&self, field: &str) -> Option<&Field> {
         self.fields()
             .values()
@@ -346,58 +350,76 @@ impl fmt::Display for Class {
     }
 }
 
-/// NOTE: experiment
-/// Create an Instance wrapper around a JsonValue to enforce
+/// Create an EgValue wrapper around a JsonValue to enforce
 /// IDL field access (and maybe more, we'll see).
-pub fn wrap(idl: Arc<Parser>, v: JsonValue) -> EgResult<Instance> {
-    let classname = match v[CLASSNAME_KEY].as_str() {
-        Some(c) => c.to_string(),
-        None => Err(format!("JsonValue cannot be blessed into an idl::Instance"))?,
-    };
+pub fn to_eg_value(idl: Arc<Parser>, v: JsonValue) -> EgResult<EgValue> {
+    let classname = v[CLASSNAME_KEY].as_str()
+        .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
 
-    Ok(Instance {
-        classname,
-        idl,
+    let idl_class = idl.classes().get(classname)
+        .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
+
+    Ok(EgValue {
         value: v,
+        idl_class: idl_class.clone(), // Arc clone
     })
 }
 
-pub struct Instance {
-    classname: String,
+pub struct EgValue {
+    idl_class: Arc<Class>,
     value: JsonValue,
-    idl: Arc<Parser>,
 }
 
-impl Instance {
+impl EgValue {
+    /// The raw JsonValue we contain.
+    ///
+    /// The value will be a JSON Object with a "_classname" value.
     pub fn inner(&self) -> &JsonValue {
         &self.value
     }
+
+    /// Our IDL class name.
     pub fn classname(&self) -> &str {
-        &self.classname
+        self.idl_class.classname()
+    }
+
+    /// Returns the value from the primary key field.
+    pub fn pkey_value(&self) -> Option<&JsonValue> {
+        if let Some(pkey_field) = self.pkey_field() {
+            Some(&self.value[pkey_field.name()])
+        } else {
+            None
+        }
+    }
+
+    /// Returns the idl::Field for the primary key if present.
+    pub fn pkey_field(&self) -> Option<&Field> {
+        self.idl_class.pkey_field()
     }
 }
 
 /// Ensures field access fails on unknown IDL class fields.
-impl Index<&str> for Instance {
+impl Index<&str> for EgValue {
     type Output = JsonValue;
+
+    /// Returns the JsonValue stored in this EgValue at the
+    /// specified index (field name).
+    ///
+    /// Panics if the IDL Class for this EgValue does not
+    /// contain the named field.
     fn index(&self, key: &str) -> &Self::Output {
-        if let Some(_) = self
-            .idl
-            .classes()
-            .get(&self.classname)
-            .unwrap()
-            .fields()
-            .get(key)
-        {
+        if self.idl_class.has_field(key) {
             &self.value[key]
         } else {
-            panic!("IDL class {} has no field {key}", self.classname);
+            log::error!("IDL class {} has no field {key}", self.classname());
+            panic!("IDL class {} has no field {key}", self.classname());
         }
     }
 }
 
 pub struct Parser {
-    classes: HashMap<String, Class>,
+    //classes: HashMap<String, Class>,
+    classes: HashMap<String, Arc<Class>>,
 }
 
 impl fmt::Debug for Parser {
@@ -412,7 +434,7 @@ impl Parser {
         idlref.clone()
     }
 
-    pub fn classes(&self) -> &HashMap<String, Class> {
+    pub fn classes(&self) -> &HashMap<String, Arc<Class>> {
         &self.classes
     }
 
@@ -433,6 +455,7 @@ impl Parser {
 
         let mut parser = Parser {
             classes: HashMap::new(),
+            //classes2: HashMap::new(),
         };
 
         for root_node in doc.root().children() {
@@ -540,7 +563,8 @@ impl Parser {
 
         self.add_auto_fields(&mut class, field_array_pos);
 
-        self.classes.insert(class.classname.to_string(), class);
+        //self.classes.insert(class.classname.to_string(), class.clone());
+        self.classes.insert(class.classname.to_string(), Arc::new(class));
     }
 
     fn add_auto_fields(&self, class: &mut Class, mut pos: usize) {
@@ -740,7 +764,7 @@ impl Parser {
     pub fn get_class_and_pkey(&self, obj: &JsonValue) -> EgResult<(String, Option<JsonValue>)> {
         let classname = match obj[CLASSNAME_KEY].as_str() {
             Some(c) => c.to_string(),
-            None => Err(format!("JsonValue cannot be blessed into an idl::Instance"))?,
+            None => Err(format!("JsonValue cannot be blessed into an idl::EgValue"))?,
         };
 
         Ok((classname, self.get_pkey_value(obj)))
@@ -941,6 +965,20 @@ impl Parser {
         }
 
         obj
+    }
+
+    /// Translates a JsonValue into an EgValue.
+    pub fn to_eg_value(&self, v: JsonValue) -> EgResult<EgValue> {
+        let classname = v[CLASSNAME_KEY].as_str()
+            .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
+
+        let idl_class = self.classes().get(classname)
+            .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
+
+        Ok(EgValue {
+            value: v,
+            idl_class: idl_class.clone(), // Arc clone
+        })
     }
 }
 

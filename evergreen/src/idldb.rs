@@ -424,7 +424,7 @@ impl Translator {
     }
 
     /// Get the IDL Class representing to the provided object.
-    pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> EgResult<&idl::Class> {
+    pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> EgResult<&Arc<idl::Class>> {
         let classname = match obj[idl::CLASSNAME_KEY].as_str() {
             Some(c) => c,
             None => return Err(format!("Not an IDL object: {}", obj.dump()).into()),

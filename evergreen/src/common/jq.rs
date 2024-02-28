@@ -180,7 +180,7 @@ impl JsonQueryCompiler {
     }
 
     /// Get an IDL Class object from its classname.
-    fn get_idl_class(&self, classname: &str) -> EgResult<&idl::Class> {
+    fn get_idl_class(&self, classname: &str) -> EgResult<&Arc<idl::Class>> {
         self.idl
             .classes()
             .get(classname)
