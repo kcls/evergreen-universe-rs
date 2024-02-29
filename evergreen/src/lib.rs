@@ -1,7 +1,6 @@
 pub use editor::Editor;
 pub use result::EgError;
 pub use result::EgResult;
-pub use value::EgValue;
 
 pub mod auth;
 pub mod common;
@@ -17,4 +16,3 @@ pub mod norm;
 pub mod result;
 pub mod samples;
 pub mod util;
-pub mod value;
