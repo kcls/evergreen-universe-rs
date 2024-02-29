@@ -353,10 +353,13 @@ impl fmt::Display for Class {
 /// Create an EgValue wrapper around a JsonValue to enforce
 /// IDL field access (and maybe more, we'll see).
 pub fn to_eg_value(idl: Arc<Parser>, v: JsonValue) -> EgResult<EgValue> {
-    let classname = v[CLASSNAME_KEY].as_str()
+    let classname = v[CLASSNAME_KEY]
+        .as_str()
         .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
 
-    let idl_class = idl.classes().get(classname)
+    let idl_class = idl
+        .classes()
+        .get(classname)
         .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
 
     Ok(EgValue {
@@ -564,7 +567,8 @@ impl Parser {
         self.add_auto_fields(&mut class, field_array_pos);
 
         //self.classes.insert(class.classname.to_string(), class.clone());
-        self.classes.insert(class.classname.to_string(), Arc::new(class));
+        self.classes
+            .insert(class.classname.to_string(), Arc::new(class));
     }
 
     fn add_auto_fields(&self, class: &mut Class, mut pos: usize) {
@@ -969,10 +973,13 @@ impl Parser {
 
     /// Translates a JsonValue into an EgValue.
     pub fn to_eg_value(&self, v: JsonValue) -> EgResult<EgValue> {
-        let classname = v[CLASSNAME_KEY].as_str()
+        let classname = v[CLASSNAME_KEY]
+            .as_str()
             .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
 
-        let idl_class = self.classes().get(classname)
+        let idl_class = self
+            .classes()
+            .get(classname)
             .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
 
         Ok(EgValue {

@@ -41,7 +41,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     // println!("{}\n", jq_compiler.debug_query_kludge());
 
     assert_eq!(
-         jq_compiler.debug_query_kludge(),
+        jq_compiler.debug_query_kludge(),
         r#"SELECT "bre".active, "bre".create_date, "bre".creator, "bre".deleted, "bre".edit_date, "bre".editor, "bre".fingerprint, "bre".id, "bre".last_xact_id, "bre".merge_date, "bre".merged_to, "bre".owner, "bre".quality, "bre".share_depth, "bre".source, "bre".tcn_source, "bre".tcn_value FROM biblio.record_entry AS "bre" WHERE ("bre".id BETWEEN 1 AND 10)"#
     );
 
