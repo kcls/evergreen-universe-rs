@@ -13,7 +13,6 @@ use roxmltree;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::ops::Index;
 use std::sync::Arc;
 
 /// Various forms an IDL-classed object can take internally and on
@@ -99,9 +98,26 @@ impl From<&str> for DataType {
     }
 }
 
+impl From<&DataType> for &'static str {
+    fn from(d: &DataType) -> Self {
+        match *d {
+            DataType::Id => "id",
+            DataType::Int => "int",
+            DataType::Float => "float",
+            DataType::Text => "text",
+            DataType::Bool => "bool",
+            DataType::Timestamp => "timestamp",
+            DataType::Money => "money",
+            DataType::OrgUnit => "org_unit",
+            DataType::Link => "link",
+        }
+    }
+}
+
 impl fmt::Display for DataType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        let s: &str = self.into();
+        write!(f, "{s}")
     }
 }
 
@@ -112,7 +128,7 @@ pub struct Field {
     datatype: DataType,
     i18n: bool,
     array_pos: usize,
-    is_virtual: bool, // vim at least thinks 'virtual' is reserved
+    is_virtual: bool,
     suppress_controller: Option<String>,
 }
 
@@ -232,6 +248,9 @@ pub struct Class {
     /// Name of primary key column
     pkey: Option<String>,
 
+    /// Name of the column to use for the human label value
+    selector: Option<String>,
+
     fieldmapper: Option<String>,
     fields: HashMap<String, Field>,
     links: HashMap<String, Link>,
@@ -245,6 +264,11 @@ impl Class {
     pub fn pkey(&self) -> Option<&str> {
         self.pkey.as_deref()
     }
+
+    pub fn selector(&self) -> Option<&str> {
+        self.selector.as_deref()
+    }
+
     pub fn pkey_field(&self) -> Option<&Field> {
         if let Some(pk) = self.pkey() {
             self.fields().values().filter(|f| f.name().eq(pk)).next()
@@ -347,73 +371,6 @@ impl fmt::Display for Class {
             self.links.len(),
             self.label
         )
-    }
-}
-
-/// Create an EgValue wrapper around a JsonValue to enforce
-/// IDL field access (and maybe more, we'll see).
-pub fn to_eg_value(idl: Arc<Parser>, v: JsonValue) -> EgResult<EgValue> {
-    let classname = v[CLASSNAME_KEY].as_str()
-        .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
-
-    let idl_class = idl.classes().get(classname)
-        .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
-
-    Ok(EgValue {
-        value: v,
-        idl_class: idl_class.clone(), // Arc clone
-    })
-}
-
-pub struct EgValue {
-    idl_class: Arc<Class>,
-    value: JsonValue,
-}
-
-impl EgValue {
-    /// The raw JsonValue we contain.
-    ///
-    /// The value will be a JSON Object with a "_classname" value.
-    pub fn inner(&self) -> &JsonValue {
-        &self.value
-    }
-
-    /// Our IDL class name.
-    pub fn classname(&self) -> &str {
-        self.idl_class.classname()
-    }
-
-    /// Returns the value from the primary key field.
-    pub fn pkey_value(&self) -> Option<&JsonValue> {
-        if let Some(pkey_field) = self.pkey_field() {
-            Some(&self.value[pkey_field.name()])
-        } else {
-            None
-        }
-    }
-
-    /// Returns the idl::Field for the primary key if present.
-    pub fn pkey_field(&self) -> Option<&Field> {
-        self.idl_class.pkey_field()
-    }
-}
-
-/// Ensures field access fails on unknown IDL class fields.
-impl Index<&str> for EgValue {
-    type Output = JsonValue;
-
-    /// Returns the JsonValue stored in this EgValue at the
-    /// specified index (field name).
-    ///
-    /// Panics if the IDL Class for this EgValue does not
-    /// contain the named field.
-    fn index(&self, key: &str) -> &Self::Output {
-        if self.idl_class.has_field(key) {
-            &self.value[key]
-        } else {
-            log::error!("IDL class {} has no field {key}", self.classname());
-            panic!("IDL class {} has no field {key}", self.classname());
-        }
     }
 }
 
@@ -524,6 +481,7 @@ impl Parser {
             fields: HashMap::new(),
             links: HashMap::new(),
             pkey: None,
+            selector: None,
         };
 
         let mut field_array_pos = 0;
@@ -595,6 +553,10 @@ impl Parser {
         let datatype: DataType = match node.attribute((OILS_NS_REPORTER, "datatype")) {
             Some(dt) => dt.into(),
             None => DataType::Text,
+        };
+
+        if let Some(selector) = node.attribute((OILS_NS_REPORTER, "datatype")) {
+            class.selector = Some(selector.to_string());
         };
 
         let i18n: bool = match node.attribute((OILS_NS_PERSIST, "i18n")) {
@@ -764,7 +726,7 @@ impl Parser {
     pub fn get_class_and_pkey(&self, obj: &JsonValue) -> EgResult<(String, Option<JsonValue>)> {
         let classname = match obj[CLASSNAME_KEY].as_str() {
             Some(c) => c.to_string(),
-            None => Err(format!("JsonValue cannot be blessed into an idl::EgValue"))?,
+            None => Err(format!("Not an IDL object: {}", obj.dump()))?,
         };
 
         Ok((classname, self.get_pkey_value(obj)))
@@ -965,20 +927,6 @@ impl Parser {
         }
 
         obj
-    }
-
-    /// Translates a JsonValue into an EgValue.
-    pub fn to_eg_value(&self, v: JsonValue) -> EgResult<EgValue> {
-        let classname = v[CLASSNAME_KEY].as_str()
-            .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
-
-        let idl_class = self.classes().get(classname)
-            .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
-
-        Ok(EgValue {
-            value: v,
-            idl_class: idl_class.clone(), // Arc clone
-        })
     }
 }
 
