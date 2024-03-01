@@ -16,8 +16,17 @@ const JOIN_WITH_OR: &str = "OR";
 /// or from an inline SQL query.
 #[derive(Debug, Clone)]
 pub struct SourceDef {
-    classname: String,
+    idl_class: Arc<idl::Class>,
     alias: Option<String>,
+}
+
+impl SourceDef {
+    fn idl_class(&self) -> &Arc<idl::Class> {
+        &self.idl_class
+    }
+    fn classname(&self) -> &str {
+        self.idl_class.classname()
+    }
 }
 
 #[derive(Debug)]
@@ -165,16 +174,20 @@ impl JsonQueryCompiler {
     /// Get the IDL classname linked to a table alias.
     /// The alias may also be the classname.
     fn get_alias_classname(&self, alias: &str) -> EgResult<&str> {
+        Ok(self.get_alias_class(alias)?.classname())
+    }
+
+    fn get_alias_class(&self, alias: &str) -> EgResult<&Arc<idl::Class>> {
         self.sources
             .iter()
             .filter(|c| {
                 if let Some(als) = c.alias.as_ref() {
                     alias == als
                 } else {
-                    alias == &c.classname
+                    alias == c.classname()
                 }
             })
-            .map(|c| c.classname.as_str())
+            .map(|c| c.idl_class())
             .next()
             .ok_or_else(|| format!("No such class alias: {alias}").into())
     }
@@ -187,13 +200,12 @@ impl JsonQueryCompiler {
             .ok_or_else(|| format!("Invalid IDL class: {classname}").into())
     }
 
-    /// Returns the IDL classname of the base class, i.e. the root
-    /// class of the FROM clause.
-    fn get_base_classname(&self) -> EgResult<&str> {
+    /// Returns the base IDL class, i.e. the root class of the FROM clause.
+    fn get_base_class(&self) -> EgResult<&Arc<idl::Class>> {
         // The base class is the first source.
         self.sources
             .get(0)
-            .map(|s| s.classname.as_ref())
+            .map(|s| s.idl_class())
             .ok_or_else(|| format!("No bass class has been set").into())
     }
 
@@ -258,10 +270,11 @@ impl JsonQueryCompiler {
         }
 
         self.set_base_source(&query["from"])?;
-        let cname = self.get_base_classname()?.to_string(); // mut's
+        let base_class = self.get_base_class()?.clone();
+        let cname = base_class.classname();
 
         // Compile JOINs first so we can populate our data sources.
-        let join_op = self.compile_joins_for_class(&cname, &query["from"][&cname])?;
+        let join_op = self.compile_joins_for_class(cname, &query["from"][cname])?;
 
         let join_str = if let Some(joins) = join_op {
             Some(format!(" {joins}"))
@@ -270,8 +283,8 @@ impl JsonQueryCompiler {
         };
 
         let select_str = self.compile_selects(&query["select"])?;
-        let from_str = self.class_table_or_source_def(&cname)?;
-        let where_str = self.compile_where_for_class(&query["where"], &cname, JOIN_WITH_AND)?;
+        let from_str = self.class_table_or_source_def(cname)?;
+        let where_str = self.compile_where_for_class(&query["where"], cname, JOIN_WITH_AND)?;
 
         let mut sql = format!(
             r#"SELECT {select_str} FROM {from_str} AS "{cname}"{} WHERE {where_str}"#,
@@ -436,10 +449,11 @@ impl JsonQueryCompiler {
 
     fn compile_selects(&mut self, select_def: &JsonValue) -> EgResult<String> {
         if select_def.is_null() {
-            let cn = self.get_base_classname()?.to_string(); // parallel mutes
+            let base_class = self.get_base_class()?.clone();
+            let cn = base_class.classname(); // parallel mutes
 
             // If we have no SELECT clause at all, just select the default fields.
-            return self.build_default_select_list(&cn, None);
+            return self.build_default_select_list(cn, None);
         } else if !select_def.is_object() {
             // The root SELECT clause is a map of classname (or alias) to field list
             return Err(format!("Invalid SELECT clause: {select_def}").into());
@@ -462,7 +476,8 @@ impl JsonQueryCompiler {
             return self.build_default_select_list(class_alias, None);
         }
 
-        let classname = self.get_alias_classname(class_alias)?.to_string(); // mut's
+        let alias_class = self.get_alias_class(class_alias)?.clone();
+        let classname = alias_class.classname();
 
         if let Some(col) = select_def.as_str() {
             if col == "*" {
@@ -471,7 +486,7 @@ impl JsonQueryCompiler {
             } else {
                 // Selecting a single column by name.
 
-                if self.field_may_be_selected(col, &classname) {
+                if self.field_may_be_selected(col, classname) {
                     return Ok(format!(
                         "{}",
                         self.select_one_field(class_alias, None, col, None, true)?
@@ -511,7 +526,7 @@ impl JsonQueryCompiler {
             if let Some(column) = field_struct.as_str() {
                 // Field entry is a string field name.
 
-                if self.field_may_be_selected(column, &classname) {
+                if self.field_may_be_selected(column, classname) {
                     fields.push(self.select_one_field(class_alias, None, column, None, true)?);
                 }
 
@@ -522,7 +537,7 @@ impl JsonQueryCompiler {
                 .as_str()
                 .ok_or_else(|| format!("SELECT hash requires a 'column': {field_struct}"))?;
 
-            if !self.field_may_be_selected(column, &classname) {
+            if !self.field_may_be_selected(column, classname) {
                 continue;
             }
 
@@ -543,26 +558,22 @@ impl JsonQueryCompiler {
         alias: &str,
         exclude: Option<&[&str]>,
     ) -> EgResult<String> {
-        let classname = self.get_alias_classname(alias)?.to_string(); // mut's
+        let alias_class = self.get_alias_class(alias)?.clone();
+        let classname = alias_class.classname();
 
         // If we have an alias it's known to be valid
-        let idl_class = self.get_idl_class(&classname)?;
-
-        let field_names: Vec<String> = idl_class
-            .real_fields_sorted()
-            .iter()
-            .filter(|f| self.field_may_be_selected(f.name(), &classname))
-            .map(|f| f.name().to_string())
-            .collect();
+        let idl_class = self.get_idl_class(classname)?.clone();
 
         let mut fields = Vec::new();
-        for field_name in field_names.iter() {
-            if let Some(list) = exclude {
-                if list.contains(&field_name.as_str()) {
-                    continue;
+        for field in idl_class.real_fields_sorted().iter() {
+            if self.field_may_be_selected(field.name(), classname) {
+                if let Some(list) = exclude {
+                    if list.contains(&field.name()) {
+                        continue;
+                    }
                 }
             }
-            fields.push(self.select_one_field(alias, None, field_name, None, true)?);
+            fields.push(self.select_one_field(alias, None, field.name(), None, true)?);
         }
 
         Ok(fields.join(", "))
@@ -752,7 +763,7 @@ impl JsonQueryCompiler {
     ) -> EgResult<String> {
         // If there's no "class" in the hash, the alias is the classname
         let right_class = join_def["class"].as_str().unwrap_or(right_alias);
-        let right_idl_class = self.get_idl_class(right_class)?;
+        let right_idl_class = self.get_idl_class(right_class)?.clone(); // Arc
 
         let left_class = self.get_alias_classname(left_alias)?;
         let left_idl_class = self.get_idl_class(left_class)?;
@@ -883,13 +894,12 @@ impl JsonQueryCompiler {
         // Add this new class to our list of sources before we
         // potentially start adding recursive JOINs.
         let mut source_def = SourceDef {
-            classname: right_class.to_string(),
+            idl_class: right_idl_class,
             alias: None,
         };
 
         if right_alias != right_class {
-            // No need to allocate/track an alias if it's the same
-            // as the classname.
+            // Alias may be the same as the classname.
             source_def.alias = Some(right_alias.to_string());
         }
 
@@ -1433,17 +1443,23 @@ impl JsonQueryCompiler {
         let classname = if from_blob.is_object() && from_blob.len() == 1 {
             // "from":{"aou": ...}
             let (class, _) = from_blob.entries().next().unwrap();
-            class.to_string()
+            class
         } else if let Some(class) = from_blob.as_str() {
             // "from": "aou"
-            class.to_string()
+            class
         } else {
             return Err(format!("Invalid FROM clause: {from_blob}").into());
         };
 
+        let idl_class = self
+            .idl
+            .classes()
+            .get(classname)
+            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+
         // Add our first source
         self.sources.push(SourceDef {
-            classname,
+            idl_class: idl_class.clone(),
             alias: None,
         });
 
