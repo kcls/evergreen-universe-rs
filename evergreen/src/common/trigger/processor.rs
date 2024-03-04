@@ -53,12 +53,14 @@ impl<'a> Processor<'a> {
 
     /// One-off single event processor without requiring a standalone Processor
     pub fn process_event_once(editor: &mut Editor, event_id: i64) -> EgResult<Event> {
-        let jevent = editor.retrieve("atev", event_id)?.ok_or_else(|| editor.die_event())?;
+        let jevent = editor
+            .retrieve("atev", event_id)?
+            .ok_or_else(|| editor.die_event())?;
 
         let mut proc = Processor::new(editor, util::json_int(&jevent["id"])?)?;
 
         let mut event = Event::from_source(jevent)?;
-        
+
         proc.process_event(&mut event)?;
 
         Ok(event)
@@ -80,7 +82,10 @@ impl<'a> Processor<'a> {
     /// One-off event group processor without requiring a standalone Processor
     ///
     /// Returns all processed events, even if invalid.
-    pub fn process_event_group_once(editor: &mut Editor, event_ids: &[i64]) -> EgResult<Vec<Event>> {
+    pub fn process_event_group_once(
+        editor: &mut Editor,
+        event_ids: &[i64],
+    ) -> EgResult<Vec<Event>> {
         let query = json::object! {"id": event_ids};
         let mut jevents = editor.search("atev", query)?;
 
@@ -102,7 +107,7 @@ impl<'a> Processor<'a> {
         Ok(events)
     }
 
-   pub fn process_event_group(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
+    pub fn process_event_group(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
         let mut valid_events: Vec<&mut Event> = Vec::new();
         for event in events.iter_mut() {
             self.collect(event)?;
@@ -332,6 +337,4 @@ impl<'a> Processor<'a> {
             Err(format!("Invalid group field path: {gfield_path}").into())
         }
     }
-
 }
-

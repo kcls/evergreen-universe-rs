@@ -201,3 +201,176 @@ fn user_is_opted_in(
     Ok(editor.search("aus", query)?.len() > 0)
 }
 
+/// Create events for a passive-hook event definition.
+///
+/// Caller is responsible for beginning / committing the transaction.
+pub fn create_passive_events_for_def(
+    editor: &mut Editor,
+    event_def_id: i64,
+    location_field: &str,
+    mut filter_op: Option<JsonValue>,
+) -> EgResult<()> {
+    let flesh = json::object! {
+        "flesh": 1,
+        "flesh_fields": {
+            "atevdef": ["hook"]
+        }
+    };
+
+    let event_def = editor
+        .retrieve_with_ops("atevdef", event_def_id, flesh)?
+        .ok_or_else(|| editor.die_event())?;
+
+    let mut filters = match filter_op.take() {
+        Some(f) => f,
+        None => json::object! {},
+    };
+
+    // Limit to targets within range of our event def.
+    filters[location_field] = json::object! {
+        "in": {
+            "select": {
+                "aou": [{
+                    "column": "id",
+                    "transform": "actor.org_unit_descendants",
+                    "result_field": "id"
+                }],
+            },
+            "from": "aou",
+            "where": {"id": event_def["owner"].clone()}
+        }
+    };
+
+    // Determine the date range of the items we want to target.
+
+    let def_delay = event_def["delay"].as_str().unwrap(); // required
+    let delay_secs = date::interval_to_seconds(def_delay)?;
+    let delay_dt = date::now() - Duration::seconds(delay_secs);
+
+    let delay_filter;
+    if let Some(max_delay) = event_def["max_delay"].as_str() {
+        let max_secs = date::interval_to_seconds(max_delay)?;
+        let max_delay_dt = date::now() - Duration::seconds(max_secs);
+
+        if max_delay_dt < delay_dt {
+            delay_filter = json::object! {
+                "between": [
+                    date::to_iso(&max_delay_dt),
+                    date::to_iso(&delay_dt),
+                ]
+            };
+        } else {
+            delay_filter = json::object! {
+                "between": [
+                    date::to_iso(&delay_dt),
+                    date::to_iso(&max_delay_dt),
+                ]
+            };
+        }
+    } else {
+        delay_filter = json::object! {"<=": date::to_iso(&delay_dt)};
+    }
+
+    let delay_field = event_def["delay_field"]
+        .as_str()
+        .ok_or_else(|| format!("Passive event defs require a delay_field"))?;
+
+    filters[delay_field] = delay_filter;
+
+    // Make sure we don't create events that are already represented.
+
+    let core_type = event_def["hook"]["core_type"].as_str().unwrap(); // required
+    let idl_class = editor
+        .idl()
+        .classes()
+        .get(core_type)
+        .ok_or_else(|| format!("No such IDL class: {core_type}"))?
+        .clone(); // Arc; mut's
+
+    let pkey_field = idl_class
+        .pkey()
+        .ok_or_else(|| format!("IDL class {core_type} has no primary key"))?;
+
+    let mut join = json::object! {
+        "join": {
+            "atev": {
+                "field": "target",
+                "fkey": pkey_field,
+                "type": "left",
+                "filter": {"event_def": event_def_id}
+            }
+        }
+    };
+
+    // Some event types are repeatable depending on a repeat delay.
+    if let Some(rpt_delay) = event_def["repeat_delay"].as_str() {
+        let delay_secs = date::interval_to_seconds(rpt_delay)?;
+        let delay_dt = date::now() - Duration::seconds(delay_secs);
+
+        join["join"]["atev"]["filter"] = json::object! {
+            "start_time": {">": date::to_iso(&delay_dt)}
+        }
+    }
+
+    // Skip targets where the user is not opted in.
+    if let Some(usr_field) = event_def["usr_field"].as_str() {
+        if let Some(setting) = event_def["opt_in_setting"].as_str() {
+            // {"+circ": "usr"}
+            let mut user_matches = json::object! {};
+            user_matches[format!("+{core_type}")] = json::from(usr_field);
+
+            let opt_filter = json::object! {
+                "-exists": {
+                    "from": "aus",
+                    "where": {
+                        "name": setting,
+                        "usr": {"=": user_matches},
+                        "value": "true"
+                    }
+                }
+            };
+
+            if filters["-and"].is_array() {
+                filters["-and"].push(opt_filter).expect("Is Array");
+            } else {
+                filters["-and"] = json::array![opt_filter];
+            }
+        }
+    }
+
+    log::debug!("Event def {event_def_id} filter is: {}", filters.dump());
+
+    editor.set_timeout(10800); // 3 hours, wee
+
+    let targets = editor.search(core_type, filters)?;
+
+    editor.reset_timeout();
+
+    if targets.len() == 0 {
+        log::info!("No targets found for event def {event_def_id}");
+        return Ok(());
+    } else {
+        log::info!(
+            "Found {} targets for vent def {event_def_id}",
+            targets.len()
+        );
+    }
+
+    for target in targets {
+        let id = util::json_string(&target[pkey_field])?;
+
+        let event = json::object! {
+            "target": id,
+            "event_def": event_def_id,
+            "run_time": "now",
+        };
+
+        let event = editor.idl().create_from("atev", event)?;
+
+        editor.create(event)?;
+    }
+
+    log::info!("Done creating events for event_def {event_def_id}");
+
+    Ok(())
+}

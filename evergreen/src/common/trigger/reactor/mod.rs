@@ -14,10 +14,7 @@ impl Processor<'_> {
     /// but the return value doesn't appear to be used, just the
     /// event state.
     pub fn react(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
-        let event_ids: Vec<String> = events
-            .iter()
-            .map(|e| e.id().to_string())
-            .collect();
+        let event_ids: Vec<String> = events.iter().map(|e| e.id().to_string()).collect();
 
         log::info!("{self} reacting to events [{}]", event_ids.join(","));
 

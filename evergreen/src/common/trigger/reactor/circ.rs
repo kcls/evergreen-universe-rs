@@ -1,7 +1,6 @@
 //! Base module for A/T Reactors
 use crate::auth::{AuthInternalLoginArgs, AuthSession};
-use crate::common::{trigger, trigger::Event, trigger::EventState, trigger::Processor};
-use crate::editor::Editor;
+use crate::common::{trigger, trigger::Event, trigger::Processor};
 use crate::event::EgEvent;
 use crate::result::EgResult;
 use crate::util;
@@ -21,8 +20,7 @@ impl Processor<'_> {
         let mut auth_args = AuthInternalLoginArgs::new(patron_id, "opac");
         auth_args.set_org_unit(home_ou);
 
-        let auth_ses = AuthSession::internal_session(
-            self.editor.client_mut(), &auth_args)?
+        let auth_ses = AuthSession::internal_session(self.editor.client_mut(), &auth_args)?
             .ok_or_else(|| format!("Cannot create internal auth session"))?;
 
         for event in events {

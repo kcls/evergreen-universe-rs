@@ -1,5 +1,3 @@
-use crate::common::trigger::validator;
-use crate::editor::Editor;
 use crate::result::{EgError, EgResult};
 use crate::util;
 use json::JsonValue;

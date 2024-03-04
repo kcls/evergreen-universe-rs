@@ -97,6 +97,16 @@ impl Editor {
         }
     }
 
+    /// Apply a new request timeout value in seconds.
+    pub fn set_timeout(&mut self, timeout: i32) {
+        self.timeout = timeout;
+    }
+
+    /// Reset to the default timeout
+    pub fn reset_timeout(&mut self) {
+        self.timeout = DEFAULT_TIMEOUT;
+    }
+
     pub fn client_mut(&mut self) -> &mut osrf::Client {
         &mut self.client
     }
