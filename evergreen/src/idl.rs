@@ -1,10 +1,10 @@
-use crate::result::EgResult;
 ///! IDL Parser
 ///!
 ///! Creates an in-memory representation of the IDL file.
 ///!
 ///! Parser is wrapped in an Arc<Parser> since it's read-only and
 ///! practically all areas of EG code need a reference to it.
+use crate::EgResult;
 use json::JsonValue;
 use log::warn;
 use opensrf::classified;
@@ -13,8 +13,14 @@ use roxmltree;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::ops::Index;
 use std::sync::Arc;
+
+const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
+const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
+const OILS_NS_PERSIST: &str = "http://open-ils.org/spec/opensrf/IDL/persistence/v1";
+const OILS_NS_REPORTER: &str = "http://open-ils.org/spec/opensrf/IDL/reporter/v1";
+const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
+
 
 /// Various forms an IDL-classed object can take internally and on
 /// the wire.
@@ -47,13 +53,6 @@ impl DataFormat {
         self == &Self::Hash || self == &Self::HashFull
     }
 }
-
-const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
-const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
-const OILS_NS_PERSIST: &str = "http://open-ils.org/spec/opensrf/IDL/persistence/v1";
-const OILS_NS_REPORTER: &str = "http://open-ils.org/spec/opensrf/IDL/reporter/v1";
-
-const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
 
 /// Key where IDL class name/hint value is stored on unpacked JSON objects.
 /// OpenSRF has its own class key used for storing class names on
@@ -99,9 +98,26 @@ impl From<&str> for DataType {
     }
 }
 
+impl From<&DataType> for &'static str {
+    fn from(d: &DataType) -> Self {
+        match *d {
+            DataType::Id => "id",
+            DataType::Int => "int",
+            DataType::Float => "float",
+            DataType::Text => "text",
+            DataType::Bool => "bool",
+            DataType::Timestamp => "timestamp",
+            DataType::Money => "money",
+            DataType::OrgUnit => "org_unit",
+            DataType::Link => "link",
+        }
+    }
+}
+
 impl fmt::Display for DataType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        let s: &str = self.into();
+        write!(f, "{s}")
     }
 }
 
@@ -112,7 +128,7 @@ pub struct Field {
     datatype: DataType,
     i18n: bool,
     array_pos: usize,
-    is_virtual: bool, // vim at least thinks 'virtual' is reserved
+    is_virtual: bool,
     suppress_controller: Option<String>,
 }
 
@@ -350,78 +366,7 @@ impl fmt::Display for Class {
     }
 }
 
-/// Create an EgValue wrapper around a JsonValue to enforce
-/// IDL field access (and maybe more, we'll see).
-pub fn to_eg_value(idl: Arc<Parser>, v: JsonValue) -> EgResult<EgValue> {
-    let classname = v[CLASSNAME_KEY]
-        .as_str()
-        .ok_or_else(|| format!("Invalid IDL Object: {}", v.dump()))?;
-
-    let idl_class = idl
-        .classes()
-        .get(classname)
-        .ok_or_else(|| format!("Invalid IDL class: {classname}"))?;
-
-    Ok(EgValue {
-        value: v,
-        idl_class: idl_class.clone(), // Arc clone
-    })
-}
-
-pub struct EgValue {
-    idl_class: Arc<Class>,
-    value: JsonValue,
-}
-
-impl EgValue {
-    /// The raw JsonValue we contain.
-    ///
-    /// The value will be a JSON Object with a "_classname" value.
-    pub fn inner(&self) -> &JsonValue {
-        &self.value
-    }
-
-    /// Our IDL class name.
-    pub fn classname(&self) -> &str {
-        self.idl_class.classname()
-    }
-
-    /// Returns the value from the primary key field.
-    pub fn pkey_value(&self) -> Option<&JsonValue> {
-        if let Some(pkey_field) = self.pkey_field() {
-            Some(&self.value[pkey_field.name()])
-        } else {
-            None
-        }
-    }
-
-    /// Returns the idl::Field for the primary key if present.
-    pub fn pkey_field(&self) -> Option<&Field> {
-        self.idl_class.pkey_field()
-    }
-}
-
-/// Ensures field access fails on unknown IDL class fields.
-impl Index<&str> for EgValue {
-    type Output = JsonValue;
-
-    /// Returns the JsonValue stored in this EgValue at the
-    /// specified index (field name).
-    ///
-    /// Panics if the IDL Class for this EgValue does not
-    /// contain the named field.
-    fn index(&self, key: &str) -> &Self::Output {
-        if self.idl_class.has_field(key) {
-            &self.value[key]
-        } else {
-            log::error!("IDL class {} has no field {key}", self.classname());
-            panic!("IDL class {} has no field {key}", self.classname());
-        }
-    }
-}
-
 pub struct Parser {
-    //classes: HashMap<String, Class>,
     classes: HashMap<String, Arc<Class>>,
 }
 
