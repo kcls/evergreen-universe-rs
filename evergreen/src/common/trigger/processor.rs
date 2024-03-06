@@ -57,7 +57,7 @@ impl<'a> Processor<'a> {
             .retrieve("atev", event_id)?
             .ok_or_else(|| editor.die_event())?;
 
-        let mut proc = Processor::new(editor, util::json_int(&jevent["id"])?)?;
+        let mut proc = Processor::new(editor, util::json_int(&jevent["event_def"])?)?;
 
         let mut event = Event::from_source(jevent)?;
 
@@ -74,6 +74,7 @@ impl<'a> Processor<'a> {
 
         if self.validate(event)? {
             self.react(&mut [event])?;
+            self.set_event_state(event, EventState::Complete)?;
         }
 
         Ok(())
@@ -122,7 +123,13 @@ impl<'a> Processor<'a> {
         }
 
         let slice = &mut valid_events[..];
-        self.react(slice)
+        self.react(slice)?;
+
+        for event in valid_events {
+            self.set_event_state(event, EventState::Complete)?;
+        }
+
+        Ok(())
     }
 
     pub fn event_def_id(&self) -> i64 {
@@ -272,7 +279,15 @@ impl<'a> Processor<'a> {
 
         self.editor.update(atev)?;
 
-        self.editor.xact_commit()
+        self.editor.xact_commit()?;
+
+        if state == EventState::Complete || state == EventState::Error {
+            // If we're likely done, force a disconnect.
+            // This does not prevent additional connects/begins/etc.
+            self.editor.disconnect()
+        } else {
+            Ok(())
+        }
     }
 
     /// Flesh the target linked to this event and set the event
@@ -323,10 +338,7 @@ impl<'a> Processor<'a> {
             // need it during target collection. If so, extract
             // the pkey value from the fleshed object.
 
-            pkey_value = self.editor.idl().get_pkey_value(obj).ok_or_else(|| {
-                format!("Group field object has no primary key? path={gfield_path}")
-            })?;
-
+            pkey_value = self.editor.idl().get_pkey_value(obj)?;
             obj = &pkey_value;
         }
 

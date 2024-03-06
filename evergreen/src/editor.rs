@@ -450,17 +450,14 @@ impl Editor {
     fn args_to_string(&self, params: &ApiParams) -> String {
         let mut buf = String::new();
         for p in params.params().iter() {
-            if self.idl.is_idl_object(p) {
-                if let Some(pkv) = self.idl.get_pkey_value(p) {
-                    if pkv.is_null() {
-                        buf.push_str("<new object>");
-                    } else {
-                        buf.push_str(&pkv.dump());
-                    }
-                } else {
+            if let Ok(pkv) = self.idl.get_pkey_value(p) {
+                if pkv.is_null() {
                     buf.push_str("<new object>");
+                } else {
+                    buf.push_str(&pkv.dump());
                 }
             } else {
+                // Not an IDL object, likely a scalar value.
                 buf.push_str(&p.dump());
             }
 
@@ -673,7 +670,7 @@ impl Editor {
         let method = self.app_method(&format!("direct.{fmapper}.create"));
 
         if let Some(resp) = self.request(&method, object)? {
-            if let Some(pkey) = self.idl.get_pkey_value(&resp) {
+            if let Ok(pkey) = self.idl.get_pkey_value(&resp) {
                 log::info!("Created new {idlclass} object with pkey: {}", pkey.dump());
             } else {
                 // Don't think we can get here, but mabye.

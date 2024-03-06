@@ -339,10 +339,7 @@ impl Translator {
             // fleshed object back to us, the search value will be
             // this object's primary key.
 
-            search_value = self
-                .idl()
-                .get_pkey_value(object)
-                .ok_or_else(|| format!("Class {classname} has no primary key"))?;
+            search_value = self.idl().get_pkey_value(object)?;
         } else {
             search_value = object[fieldname].clone();
         }

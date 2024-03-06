@@ -746,7 +746,7 @@ impl Parser {
                     // Virtual fields can be fully cleared.
                     obj[name] = JsonValue::Null;
                 } else {
-                    if let Some(val) = self.get_pkey_value(value) {
+                    if let Ok(val) = self.get_pkey_value(value) {
                         // Replace fleshed real fields with their pkey.
                         obj[name] = val;
                     } else {
@@ -765,20 +765,48 @@ impl Parser {
         Ok(())
     }
 
-    pub fn get_class_and_pkey(&self, obj: &JsonValue) -> EgResult<(String, Option<JsonValue>)> {
+    /// Returns the value at the specified key OR the primary key value
+    /// of the object fleshed at the specified key.
+    ///
+    /// Return value may be JsonValue::Null;
+    pub fn de_flesh_value(&self, value: &JsonValue) -> EgResult<JsonValue> {
+        if value.is_object() {
+            self.get_pkey_value(value)
+        } else if value.is_array() {
+            Err(format!("Cannot de_flesh_value an array").into())
+        } else {
+            Ok(value.clone())
+        }
+    }
+
+    pub fn get_class_and_pkey(&self, obj: &JsonValue) -> EgResult<(String, JsonValue)> {
         let classname = match obj[CLASSNAME_KEY].as_str() {
             Some(c) => c.to_string(),
             None => Err(format!("JsonValue cannot be blessed into an idl::EgValue"))?,
         };
 
-        Ok((classname, self.get_pkey_value(obj)))
+        Ok((classname, self.get_pkey_value(obj)?))
     }
 
-    /// Get the value from the primary key field.
+    /// Returns the primary key value for an IDL object, which may
+    /// be JsonValue::Null if no value is present.
     ///
-    /// Returns None if the object has no primary key field.
-    pub fn get_pkey_value(&self, obj: &JsonValue) -> Option<JsonValue> {
-        self.get_pkey_info(obj).map(|(_, v)| v)
+    /// Returns Err of the object is not an IDL object or the IDL class
+    /// in question has no primary key field.
+    pub fn get_pkey_value(&self, obj: &JsonValue) -> EgResult<JsonValue> {
+        if !self.is_idl_object(obj) {
+            return Err(format!("Not an IDL object: {}", obj.dump()).into());
+        }
+
+        // these data known good from above is_idl_object check
+        let classname = obj[CLASSNAME_KEY].as_str().unwrap();
+        let idlclass = self.classes.get(classname).unwrap();
+
+        if let Some(pkey_field) = idlclass.pkey_field() {
+            return Ok(obj[pkey_field.name()].clone());
+        } else {
+            return Err(format!("IDL class {classname} has no primary key field").into());
+        }
     }
 
     pub fn get_classname(&self, obj: &JsonValue) -> EgResult<String> {

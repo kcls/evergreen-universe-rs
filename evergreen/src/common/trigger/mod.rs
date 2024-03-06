@@ -34,7 +34,7 @@ pub fn create_events_for_object(
 
     let class = editor.idl().get_classname(target)?;
 
-    if hook_obj["key"].as_str().unwrap() != class {
+    if hook_obj["core_type"].as_str().unwrap() != class {
         // "key" is required.
         log::warn!("A/T hook {hook} does not match object core type: {class}");
         return Ok(());
@@ -94,13 +94,7 @@ pub fn create_event_for_object_and_def(
         None => return Ok(None),
     };
 
-    let pkey = match editor.idl().get_pkey_value(target) {
-        Some(k) => k,
-        None => {
-            log::warn!("Object has no pkey value: {}", target.dump());
-            return Ok(None);
-        }
-    };
+    let pkey = editor.idl().get_pkey_value(target)?;
 
     let mut event = json::object! {
         "target": pkey,
@@ -201,7 +195,8 @@ fn user_is_opted_in(
     Ok(editor.search("aus", query)?.len() > 0)
 }
 
-/// Create events for a passive-hook event definition.
+/// Create events for a passive-hook event definition, returning the
+/// IDs of the created events on success.
 ///
 /// Caller is responsible for beginning / committing the transaction.
 pub fn create_passive_events_for_def(
@@ -209,7 +204,7 @@ pub fn create_passive_events_for_def(
     event_def_id: i64,
     location_field: &str,
     mut filter_op: Option<JsonValue>,
-) -> EgResult<()> {
+) -> EgResult<Option<Vec<i64>>> {
     let flesh = json::object! {
         "flesh": 1,
         "flesh_fields": {
@@ -348,13 +343,15 @@ pub fn create_passive_events_for_def(
 
     if targets.len() == 0 {
         log::info!("No targets found for event def {event_def_id}");
-        return Ok(());
+        return Ok(None);
     } else {
         log::info!(
             "Found {} targets for vent def {event_def_id}",
             targets.len()
         );
     }
+
+    let mut result_ids = Vec::new();
 
     for target in targets {
         let id = util::json_string(&target[pkey_field])?;
@@ -367,10 +364,12 @@ pub fn create_passive_events_for_def(
 
         let event = editor.idl().create_from("atev", event)?;
 
-        editor.create(event)?;
+        let event = editor.create(event)?;
+
+        result_ids.push(util::json_int(&event["id"])?);
     }
 
     log::info!("Done creating events for event_def {event_def_id}");
 
-    Ok(())
+    Ok(Some(result_ids))
 }

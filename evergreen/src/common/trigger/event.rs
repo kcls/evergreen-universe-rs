@@ -61,6 +61,7 @@ pub struct Event {
     event_def: i64,
     state: EventState,
     target: JsonValue,
+    target_pkey: JsonValue,
     group_value: Option<JsonValue>,
     user_data: Option<JsonValue>,
 }
@@ -97,6 +98,7 @@ impl Event {
             state,
             user_data,
             group_value: None,
+            target_pkey: source["target"].clone(),
             target: JsonValue::Null,
         })
     }
@@ -116,7 +118,7 @@ impl Event {
 
     /// Pkey value may be a number or string.
     pub fn target_pkey(&self) -> &JsonValue {
-        &self.target
+        &self.target_pkey
     }
     pub fn state(&self) -> EventState {
         self.state

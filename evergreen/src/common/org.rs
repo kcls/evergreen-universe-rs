@@ -15,16 +15,16 @@ fn org_relations_query(
     depth: Option<i64>,
 ) -> EgResult<Vec<i64>> {
     let mut query = json::object! {
-        select: {
-            aou: [{
-                transform: transform,
-                column: "id",
-                result_field: "id",
-                params: []
-            }],
-            from: "aou",
-            where: {id: org_id}
-        }
+        "select": {
+            "aou": [{
+                "transform": transform,
+                "column": "id",
+                "result_field": "id",
+                "params": []
+            }]
+        },
+        "from": "aou",
+        "where": {"id": org_id}
     };
 
     if let Some(d) = depth {
