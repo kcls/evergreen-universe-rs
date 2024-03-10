@@ -1,11 +1,12 @@
 //! Evergreen HTTP+JSON Gateway
 use eg::date;
 use eg::idl;
+use eg::osrf::logging::Logger;
+use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use httparse;
 use mptc;
-use opensrf as osrf;
-use osrf::logging::Logger;
 use std::any::Any;
 use std::env;
 use std::io::{Read, Write};
@@ -48,7 +49,7 @@ impl mptc::Request for GatewayRequest {
 #[derive(Debug)]
 struct ParsedGatewayRequest {
     service: String,
-    method: Option<osrf::message::MethodCall>,
+    method: Option<eg::osrf::message::MethodCall>,
     format: idl::DataFormat,
     http_method: String,
 }
@@ -62,8 +63,8 @@ struct ParsedHttpRequest {
 }
 
 struct GatewayHandler {
-    bus: Option<osrf::bus::Bus>,
-    osrf_conf: Arc<osrf::conf::Config>,
+    bus: Option<eg::osrf::bus::Bus>,
+    osrf_conf: Arc<eg::osrf::conf::Config>,
     idl: Arc<idl::Parser>,
     partial_buffer: Option<String>,
 }
@@ -72,19 +73,19 @@ impl GatewayHandler {
     /// Mutable OpenSRF Bus ref
     ///
     /// Panics if the bus is not yet setup, which happens in worker_start()
-    fn bus(&mut self) -> &mut osrf::bus::Bus {
+    fn bus(&mut self) -> &mut eg::osrf::bus::Bus {
         self.bus.as_mut().unwrap()
     }
 
-    fn bus_conf(&self) -> &osrf::conf::BusClient {
+    fn bus_conf(&self) -> &eg::osrf::conf::BusClient {
         self.osrf_conf.gateway().unwrap()
     }
 
-    fn handle_request(&mut self, request: &mut GatewayRequest) -> Result<(), String> {
+    fn handle_request(&mut self, request: &mut GatewayRequest) -> EgResult<()> {
         // For now we asssume any error is the result of a bad request.
         // We could make the various read/parsers return something
         // more meaningful to separate, e.g., 4XX and 5XX errors.
-        let mut response = json::object! {
+        let mut response = eg::hash! {
             status: 400,
             payload: [],
         };
@@ -102,8 +103,8 @@ impl GatewayHandler {
 
                     match self.relay_to_osrf(http_req.as_mut().unwrap()) {
                         Ok(list) => {
-                            response["payload"] = json::JsonValue::Array(list);
-                            response["status"] = json::from(200);
+                            response["payload"] = EgValue::Array(list);
+                            response["status"] = EgValue::from(200);
                         }
                         Err(e) => log::error!("relay_to_osrf() failed: {e}"),
                     }
@@ -116,7 +117,7 @@ impl GatewayHandler {
         let data = response.dump();
         let length = format!("Content-Length: {}", data.as_bytes().len());
 
-        let leader = if response["status"] == json::JsonValue::Number(200.into()) {
+        let leader = if response["status"] == EgValue::Number(200.into()) {
             "HTTP/1.1 200 OK"
         } else {
             "HTTP/1.1 400 Bad Request"
@@ -135,7 +136,7 @@ impl GatewayHandler {
         };
 
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
-            return Err(format!("Error writing to client: {e}"));
+            return Err(format!("Error writing to client: {e}").into());
         }
 
         let duration = date::now() - request.start_time;
@@ -146,14 +147,11 @@ impl GatewayHandler {
         Ok(())
     }
 
-    fn relay_to_osrf(
-        &mut self,
-        request: &mut ParsedGatewayRequest,
-    ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
-        let recipient = osrf::addr::BusAddress::for_bare_service(&request.service);
+    fn relay_to_osrf(&mut self, request: &mut ParsedGatewayRequest) -> EgResult<Vec<EgValue>> {
+        let recipient = eg::osrf::addr::BusAddress::for_bare_service(&request.service);
 
         // Send every request to the router on our gateway domain.
-        let router = osrf::addr::BusAddress::for_router(
+        let router = eg::osrf::addr::BusAddress::for_router(
             self.bus_conf().router_name(),
             self.bus_conf().domain().name(),
         );
@@ -162,20 +160,20 @@ impl GatewayHandler {
         // We know method is non-None here.
         let method = request.method.take().unwrap();
 
-        let tm = osrf::message::TransportMessage::with_body(
+        let tm = eg::osrf::message::TransportMessage::with_body(
             recipient.as_str(),
             self.bus().address().as_str(),
-            &osrf::util::random_number(16), // thread
-            osrf::message::Message::new(
-                osrf::message::MessageType::Request,
+            &eg::util::random_number(16), // thread
+            eg::osrf::message::Message::new(
+                eg::osrf::message::MessageType::Request,
                 1, // thread trace
-                osrf::message::Payload::Method(method),
+                eg::osrf::message::Payload::Method(method),
             ),
         );
 
-        self.bus().send_to(&tm, router.as_str())?;
+        self.bus().send_to(tm, router.as_str())?;
 
-        let mut replies: Vec<json::JsonValue> = Vec::new();
+        let mut replies: Vec<EgValue> = Vec::new();
 
         loop {
             // A request can result in any number of response messages.
@@ -203,15 +201,15 @@ impl GatewayHandler {
         &mut self,
         format: &idl::DataFormat,
         complete: &mut bool,
-        mut tm: osrf::message::TransportMessage,
-    ) -> Result<Vec<json::JsonValue>, json::JsonValue> {
-        let mut replies: Vec<json::JsonValue> = Vec::new();
+        mut tm: eg::osrf::message::TransportMessage,
+    ) -> EgResult<Vec<EgValue>> {
+        let mut replies: Vec<EgValue> = Vec::new();
 
         for mut resp in tm.body_mut().drain(..) {
-            if let osrf::message::Payload::Result(result) = resp.payload_mut() {
+            if let eg::osrf::message::Payload::Result(result) = resp.payload_mut() {
                 let mut content = result.take_content();
 
-                if result.status() == &osrf::message::MessageStatus::Partial {
+                if result.status() == &eg::osrf::message::MessageStatus::Partial {
                     let buf = match self.partial_buffer.as_mut() {
                         Some(b) => b,
                         None => {
@@ -232,7 +230,7 @@ impl GatewayHandler {
                     // Not enough data yet to create a reply.  Keep reading,
                     // which may involve future calls to extract_osrf_responses()
                     continue;
-                } else if result.status() == &osrf::message::MessageStatus::PartialComplete {
+                } else if result.status() == &eg::osrf::message::MessageStatus::PartialComplete {
                     // Take + clear the partial buffer.
                     let mut buf = match self.partial_buffer.take() {
                         Some(b) => b,
@@ -245,32 +243,32 @@ impl GatewayHandler {
                     }
 
                     // Parse the collected chunks as a the final JSON value.
-                    content = json::parse(&buf)
+                    content = EgValue::parse(&buf)
                         .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
                 }
 
                 if format.is_hash() {
                     // JSON replies arrive from opensrf as Fieldmapper-encoded
                     // objects.  Decode them into flat hashes for the caller.
-                    content = self.idl.decode(content);
+                    content.to_classed_hash();
 
                     if format == &idl::DataFormat::Hash {
                         // If the caller specifically requests the Hash
                         // format remove all the null hash values as well.
-                        content = idl::scrub_hash_nulls(content);
+                        content.scrub_hash_nulls();
                     }
                 }
 
                 replies.push(content);
-            } else if let osrf::message::Payload::Status(stat) = resp.payload() {
+            } else if let eg::osrf::message::Payload::Status(stat) = resp.payload() {
                 match stat.status() {
-                    osrf::message::MessageStatus::Complete => {
+                    eg::osrf::message::MessageStatus::Complete => {
                         *complete = true;
                     }
-                    osrf::message::MessageStatus::Ok | osrf::message::MessageStatus::Continue => {
+                    eg::osrf::message::MessageStatus::Ok | eg::osrf::message::MessageStatus::Continue => {
                         // Keep reading in case there's more data in the message.
                     }
-                    _ => return Err(stat.to_json_value()),
+                    _ => return Err(stat.clone().into_json_value().dump().into()),
                 }
             }
         }
@@ -280,7 +278,7 @@ impl GatewayHandler {
 
     /// Pulls the raw request content from the socket and returns it
     /// as a String.
-    fn read_request(&mut self, request: &mut GatewayRequest) -> Result<ParsedHttpRequest, String> {
+    fn read_request(&mut self, request: &mut GatewayRequest) -> EgResult<ParsedHttpRequest> {
         // It's assumed we don't need a timeout on the tcpstream for
         // any reads because we sit behind a proxy-like thing
         // (e.g. nginx) that applies reasonable read/write timeouts
@@ -391,7 +389,7 @@ impl GatewayHandler {
             }
 
             if body_byte_count > content_length {
-                return Err(format!("Content exceeds Content-Length header value"));
+                return Err(format!("Content exceeds Content-Length header value").into());
             }
 
             // Keep reading data until body_byte_count >= content_length
@@ -403,7 +401,7 @@ impl GatewayHandler {
     /// * `request` - Full HTTP request text including headers, etc.
     ///
     /// Returns Err if the request cannot be translated.
-    fn parse_request(&self, http_req: ParsedHttpRequest) -> Result<ParsedGatewayRequest, String> {
+    fn parse_request(&self, http_req: ParsedHttpRequest) -> EgResult<ParsedGatewayRequest> {
         let url_params = match http_req.body {
             // POST params are in the body
             Some(b) => format!("{}?{}", DUMMY_BASE_URL, &b),
@@ -416,7 +414,7 @@ impl GatewayHandler {
 
         let mut method: Option<String> = None;
         let mut service: Option<String> = None;
-        let mut params: Vec<json::JsonValue> = Vec::new();
+        let mut params: Vec<EgValue> = Vec::new();
         let mut format = idl::DataFormat::Fieldmapper;
 
         // First see if the caller requested a format so we can
@@ -432,14 +430,17 @@ impl GatewayHandler {
                 "method" => method = Some(v.to_string()),
                 "service" => service = Some(v.to_string()),
                 "param" => {
-                    let mut val = json::parse(&v)
+                    let jval = json::parse(&v)
                         .or_else(|e| Err(format!("Cannot parse parameter: {e} : {v}")))?;
 
+                    let val;
                     if format.is_hash() {
                         // Caller is sending flat-hash parameters.
                         // Translate them into Fieldmapper parameters
                         // before relaying them to opensrf.
-                        val = self.idl.encode(val);
+                        val = EgValue::from_classed_json_hash(jval)?;
+                    } else {
+                        val = EgValue::from_json_value(jval)?;
                     }
 
                     params.push(val);
@@ -454,7 +455,7 @@ impl GatewayHandler {
 
         let service = service.ok_or(format!("Request contains no service name"))?;
 
-        let osrf_method = osrf::message::MethodCall::new(method, params);
+        let osrf_method = eg::osrf::message::MethodCall::new(method, params);
 
         Ok(ParsedGatewayRequest {
             format,
@@ -467,7 +468,7 @@ impl GatewayHandler {
     fn log_request(&self, request: &GatewayRequest, req: &ParsedGatewayRequest) {
         let method = req.method.as_ref().unwrap();
 
-        let log_params = osrf::util::stringify_params(
+        let log_params = eg::util::stringify_params(
             method.method(),
             method.params(),
             self.osrf_conf.log_protect(),
@@ -494,8 +495,9 @@ impl GatewayHandler {
 
 impl mptc::RequestHandler for GatewayHandler {
     fn worker_start(&mut self) -> Result<(), String> {
-        let bus = osrf::bus::Bus::new(self.bus_conf())?;
+        let bus = eg::osrf::bus::Bus::new(self.bus_conf())?;
         self.bus = Some(bus);
+        idl::set_thread_idl(&self.idl);
         Ok(())
     }
 
@@ -507,7 +509,7 @@ impl mptc::RequestHandler for GatewayHandler {
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let mut request = GatewayRequest::downcast(&mut request);
 
-        log::debug!("[{}] Gateway request received", request.address,);
+        log::debug!("[{}] Gateway request received", request.address);
 
         let result = self.handle_request(&mut request);
 
@@ -518,7 +520,7 @@ impl mptc::RequestHandler for GatewayHandler {
             .shutdown(std::net::Shutdown::Both)
             .or_else(|e| Err(format!("Error shutting down worker stream socket: {e}")))?;
 
-        result
+        result.map_err(|e| format!("{e}"))
     }
 }
 
@@ -528,7 +530,7 @@ struct GatewayStream {
 }
 
 impl GatewayStream {
-    fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> Result<Self, String> {
+    fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> EgResult<Self> {
         log::info!("EG Gateway listening at {address}:{port}");
 
         let listener =
@@ -552,7 +554,7 @@ impl mptc::RequestStream for GatewayStream {
             Err(e) => match e.kind() {
                 // socket read timeout.
                 std::io::ErrorKind::WouldBlock => return Ok(None),
-                _ => return Err(format!("accept() failed: {e}")),
+                _ => return Err(format!("accept() failed: {e}").into()),
             },
         };
 
@@ -571,8 +573,8 @@ impl mptc::RequestStream for GatewayStream {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = GatewayHandler {
             bus: None,
-            idl: self.eg_ctx.idl().clone(),
             osrf_conf: self.eg_ctx.config().clone(),
+            idl: self.eg_ctx.idl().clone(),
             partial_buffer: None,
         };
 
@@ -605,10 +607,8 @@ fn main() {
 
         // Skip logging so we can use the loging config in
         // the gateway() config instead.
-        osrf_ops: osrf::init::InitOptions {
-            skip_logging: true,
-            appname: Some(String::from("http-gateway")),
-        },
+        skip_logging: true,
+        appname: Some(String::from("http-gateway")),
     };
 
     // Connect to OpenSRF, parse the IDL
@@ -623,7 +623,7 @@ fn main() {
         .gateway()
         .expect("No gateway configuration found");
 
-    osrf::logging::Logger::new(gateway_conf.logging())
+    eg::osrf::logging::Logger::new(gateway_conf.logging())
         .expect("Creating logger")
         .init()
         .expect("Logger Init");

@@ -1,14 +1,10 @@
 //! General purpose org / workstation / user setting fetcher and cache.
 //! Primarily uses the 'actor.get_cascade_setting()' DB function.
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util;
-use json::JsonValue;
+use crate as eg;
+use eg::{Editor, EgResult, EgValue};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
-
-const JSON_NULL: JsonValue = JsonValue::Null;
 
 // Setting names consist only of letters, numbers, unders, and dots.
 // This is crucial since the names are encoded as an SQL TEXT[] parameter
@@ -84,14 +80,14 @@ impl SettingContext {
     pub fn workstation_id(&self) -> &Option<i64> {
         &self.workstation_id
     }
-    pub fn org_id_json(&self) -> JsonValue {
-        self.org_id.map(json::from).unwrap_or(JSON_NULL)
+    pub fn org_id_value(&self) -> EgValue {
+        self.org_id.map(EgValue::from).unwrap_or(eg::NULL)
     }
-    pub fn user_id_json(&self) -> JsonValue {
-        self.user_id.map(json::from).unwrap_or(JSON_NULL)
+    pub fn user_id_value(&self) -> EgValue {
+        self.user_id.map(EgValue::from).unwrap_or(eg::NULL)
     }
-    pub fn workstation_id_json(&self) -> JsonValue {
-        self.workstation_id.map(json::from).unwrap_or(JSON_NULL)
+    pub fn workstation_id_value(&self) -> EgValue {
+        self.workstation_id.map(EgValue::from).unwrap_or(eg::NULL)
     }
 
     /// Returns true if this context has enough information to
@@ -110,11 +106,11 @@ impl SettingContext {
 /// it's stored in.
 #[derive(Debug)]
 pub struct SettingEntry {
-    value: JsonValue,
+    value: EgValue,
 }
 
 impl SettingEntry {
-    pub fn value(&self) -> &JsonValue {
+    pub fn value(&self) -> &EgValue {
         &self.value
     }
 }
@@ -153,15 +149,15 @@ impl Settings {
     pub fn apply_editor(&mut self, e: &Editor) {
         // See if we can pull context data from our editor.
         if let Some(reqr) = e.requestor() {
-            if let Ok(id) = util::json_int(&reqr["id"]) {
+            if let Ok(id) = reqr.id() {
                 self.default_context.user_id = Some(id);
             }
-            if let Ok(id) = util::json_int(&reqr["wsid"]) {
+            if let Some(id) = reqr["wsid"].as_int() {
                 self.default_context.workstation_id = Some(id);
             }
-            if let Ok(id) = util::json_int(&reqr["ws_ou"]) {
+            if let Some(id) = reqr["ws_ou"].as_int() {
                 self.default_context.org_id = Some(id);
-            } else if let Ok(id) = util::json_int(&reqr["home_ou"]) {
+            } else if let Some(id) = reqr["home_ou"].as_int() {
                 self.default_context.org_id = Some(id);
             }
         }
@@ -190,14 +186,14 @@ impl Settings {
     /// Returns a setting value using the default context.
     ///
     /// Returns JSON null if no setting exists.
-    pub fn get_value(&mut self, name: &str) -> EgResult<&JsonValue> {
+    pub fn get_value(&mut self, name: &str) -> EgResult<&EgValue> {
         // Clone needed here because get_context_value mutably borrows
         // self a number of times.
         self.get_context_value(&self.default_context.clone(), name)
     }
 
     /// Shortcut for get_context_value with an org unit ID set.
-    pub fn get_value_at_org(&mut self, name: &str, org_id: i64) -> EgResult<&JsonValue> {
+    pub fn get_value_at_org(&mut self, name: &str, org_id: i64) -> EgResult<&EgValue> {
         let mut ctx = SettingContext::new();
         ctx.set_org_id(org_id);
         self.get_context_value(&ctx, name)
@@ -208,7 +204,7 @@ impl Settings {
         &mut self,
         context: &SettingContext,
         name: &str,
-    ) -> EgResult<&JsonValue> {
+    ) -> EgResult<&EgValue> {
         if self.cache.get(context).is_none() {
             self.cache.insert(context.clone(), HashMap::new());
         }
@@ -224,7 +220,7 @@ impl Settings {
             .ok_or_else(|| format!("Setting value missing from cache").into())
     }
 
-    pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&JsonValue> {
+    pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&EgValue> {
         let hash = match self.cache.get_mut(context) {
             Some(h) => h,
             None => return None,
@@ -280,9 +276,9 @@ impl Settings {
             ))?;
         }
 
-        let user_id = context.user_id_json();
-        let org_id = context.org_id_json();
-        let workstation_id = context.workstation_id_json();
+        let user_id = context.user_id_value();
+        let org_id = context.org_id_value();
+        let workstation_id = context.workstation_id_value();
 
         if self.name_regex.is_none() {
             // Avoid recompiling the same regex -- it's not cheap.
@@ -301,7 +297,7 @@ impl Settings {
         // e.g. '{foo.bar,foo.baz}'
         let names = format!("{{{}}}", names.join(","));
 
-        let query = json::object! {
+        let query = eg::hash! {
             from: [
                 "actor.get_cascade_setting_batch",
                 names, org_id, user_id, workstation_id
@@ -317,17 +313,13 @@ impl Settings {
         Ok(())
     }
 
-    fn store_setting_value(
-        &mut self,
-        context: &SettingContext,
-        setting: &JsonValue,
-    ) -> EgResult<()> {
+    fn store_setting_value(&mut self, context: &SettingContext, setting: &EgValue) -> EgResult<()> {
         let value = match setting["value"].as_str() {
-            Some(v) => match json::parse(v) {
+            Some(v) => match EgValue::parse(v) {
                 Ok(vv) => vv,
                 Err(e) => Err(format!("Cannot parse setting value: {e}"))?,
             },
-            None => JsonValue::Null,
+            None => EgValue::Null,
         };
 
         let name = setting["name"]

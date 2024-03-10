@@ -1,6 +1,8 @@
 ///! Settings Client Module
 ///
-use super::client::Client;
+use crate::Client;
+use crate::EgResult;
+use crate::EgValue;
 use std::sync::Arc;
 
 const SETTINGS_TIMEOUT: i32 = 10;
@@ -12,18 +14,21 @@ impl SettingsClient {
     ///
     /// If force is set, it is passed to opensrf.settings to override
     /// any caching.
-    pub fn get_host_settings(client: &Client, force: bool) -> Result<HostSettings, String> {
+    pub fn get_host_settings(client: &Client, force: bool) -> EgResult<HostSettings> {
         let mut ses = client.session("opensrf.settings");
 
         let mut req = ses.request(
             "opensrf.settings.host_config.get",
-            vec![json::from(client.config().hostname()), json::from(force)],
+            vec![
+                EgValue::from(client.config().hostname()),
+                EgValue::from(force),
+            ],
         )?;
 
         if let Some(s) = req.recv_with_timeout(SETTINGS_TIMEOUT)? {
             Ok(HostSettings { settings: s })
         } else {
-            Err(format!("Settings server returned no response!"))
+            Err(format!("Settings server returned no response!").into())
         }
     }
 }
@@ -31,12 +36,12 @@ impl SettingsClient {
 /// Read-only wrapper around a JSON blob of server setting values, which
 /// provides accessor methods for pulling setting values.
 pub struct HostSettings {
-    settings: json::JsonValue,
+    settings: EgValue,
 }
 
 impl HostSettings {
     /// Returns the full host settings config as a JsonValue.
-    pub fn settings(&self) -> &json::JsonValue {
+    pub fn settings(&self) -> &EgValue {
         &self.settings
     }
 
@@ -45,7 +50,7 @@ impl HostSettings {
     /// Panics of the host config has not yet been retrieved.
     ///
     /// E.g. sclient.value("apps/opensrf.settings/unix_config/max_children");
-    pub fn value(&self, slashpath: &str) -> &json::JsonValue {
+    pub fn value(&self, slashpath: &str) -> &EgValue {
         let mut value = self.settings();
         for part in slashpath.split("/") {
             value = &value[part]; // -> JsonValue::Null if key is not found.

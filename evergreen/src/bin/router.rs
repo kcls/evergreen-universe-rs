@@ -11,14 +11,17 @@
 //!
 //! Once the initial request is routed, the router is no longer involved
 //! in the conversation.
-use opensrf::addr::BusAddress;
-use opensrf::bus::Bus;
-use opensrf::conf;
-use opensrf::init;
-use opensrf::logging::Logger;
-use opensrf::message;
-use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
-use opensrf::util;
+use eg::osrf::addr::BusAddress;
+use eg::osrf::bus::Bus;
+use eg::osrf::conf;
+use eg::init;
+use eg::osrf::logging::Logger;
+use eg::osrf::message;
+use eg::osrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
+use eg::date;
+use eg::EgResult;
+use eg::EgValue;
+use evergreen as eg;
 use std::env;
 use std::fmt;
 use std::sync::Arc;
@@ -52,7 +55,7 @@ struct ServiceInstance {
     route_count: usize,
 
     /// When was this instance registered with the router.
-    register_time: f64,
+    register_time: date::EgDate,
 }
 
 impl ServiceInstance {
@@ -62,8 +65,8 @@ impl ServiceInstance {
     fn listen_address(&self) -> &BusAddress {
         &self.listen_address
     }
-    fn register_time(&self) -> f64 {
-        self.register_time
+    fn register_time(&self) -> &date::EgDate {
+        &self.register_time
     }
 
     fn to_json_value(&self) -> json::JsonValue {
@@ -71,7 +74,7 @@ impl ServiceInstance {
             "route_count": self.route_count,
             "address": self.address().as_str(),
             "listen_address": self.listen_address().as_str(),
-            "register_time": self.register_time(),
+            "register_time": date::to_iso(self.register_time()),
         }
     }
 }
@@ -264,15 +267,19 @@ impl RouterDomain {
     }
 
     /// Connect to the Redis instance on our primary domain.
-    fn connect(&mut self) -> Result<(), String> {
+    fn connect(&mut self) -> EgResult<()> {
         if self.bus.is_some() {
             return Ok(());
         }
 
-        let bus = match Bus::new(&self.config) {
+        let mut bus = match Bus::new(&self.config) {
             Ok(b) => b,
-            Err(e) => return Err(format!("Cannot connect bus: {}", e)),
+            Err(e) => return Err(format!("Cannot connect bus: {}", e).into()),
         };
+
+        // We don't care about IDL-encoded information in the messages.
+        // We just extract a bit of metadata and send it on.
+        bus.set_raw_data_mode(true);
 
         self.bus = Some(bus);
 
@@ -280,7 +287,7 @@ impl RouterDomain {
     }
 
     /// Send a message to this domain via our domain connection.
-    fn send_to_domain(&mut self, tm: TransportMessage) -> Result<(), String> {
+    fn send_to_domain(&mut self, tm: TransportMessage) -> EgResult<()> {
         log::trace!(
             "send_to_domain({}) routing message to {}",
             self.domain(),
@@ -292,7 +299,7 @@ impl RouterDomain {
             None => Err(format!("We have no connection to domain {}", self.domain()))?,
         };
 
-        bus.send(&tm)
+        bus.send(tm)
     }
 }
 
@@ -355,7 +362,7 @@ impl Router {
     }
 
     /// Connect to the opensrf message bus
-    fn init(&mut self) -> Result<(), String> {
+    fn init(&mut self) -> EgResult<()> {
         self.primary_domain.connect()?;
         Ok(())
     }
@@ -381,7 +388,7 @@ impl Router {
     }
 
     /// Find or create a new RouterDomain entry.
-    fn find_or_create_domain(&mut self, domain: &str) -> Result<&mut RouterDomain, String> {
+    fn find_or_create_domain(&mut self, domain: &str) -> EgResult<&mut RouterDomain> {
         if self.primary_domain.domain.eq(domain) {
             return Ok(&mut self.primary_domain);
         }
@@ -406,7 +413,7 @@ impl Router {
 
     /// Remove the service registration from the domain entry implied by the
     /// caller's address.
-    fn handle_unregister(&mut self, address: &BusAddress, service: &str) -> Result<(), String> {
+    fn handle_unregister(&mut self, address: &BusAddress, service: &str) -> EgResult<()> {
         let domain = address.domain();
 
         log::info!(
@@ -455,7 +462,7 @@ impl Router {
     /// caller's bus address.
     ///
     /// The domain must be configured as a trusted server domain.
-    fn handle_register(&mut self, address: BusAddress, service: &str) -> Result<(), String> {
+    fn handle_register(&mut self, address: BusAddress, service: &str) -> EgResult<()> {
         let domain = address.domain(); // Known to be a client addr.
 
         let mut matches = self
@@ -469,7 +476,8 @@ impl Router {
                 domain,
                 address.as_str(),
                 self
-            ));
+            )
+            .into());
         }
 
         let r_domain = self.find_or_create_domain(domain)?;
@@ -503,7 +511,7 @@ impl Router {
                     address,
                     listen_address,
                     route_count: 0,
-                    register_time: util::epoch_secs(),
+                    register_time: date::now(),
                 });
 
                 return Ok(());
@@ -528,7 +536,7 @@ impl Router {
                 address,
                 listen_address,
                 route_count: 0,
-                register_time: util::epoch_secs(),
+                register_time: date::now(),
             }],
         });
 
@@ -579,7 +587,7 @@ impl Router {
 
     /// Route the provided transport message to the destination service
     /// or process as a router command.
-    fn route_message(&mut self, tm: TransportMessage) -> Result<(), String> {
+    fn route_message(&mut self, tm: TransportMessage) -> EgResult<()> {
         let to = tm.to();
 
         log::debug!(
@@ -594,7 +602,7 @@ impl Router {
         } else if addr.is_router() {
             return self.handle_router_command(tm);
         } else {
-            return Err(format!("Unexpected message recipient: {}", to));
+            return Err(format!("Unexpected message recipient: {}", to).into());
         }
     }
 
@@ -607,7 +615,7 @@ impl Router {
         &mut self,
         to_addr: &BusAddress,
         mut tm: TransportMessage,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let service = to_addr
             .service()
             .ok_or(format!("Invalid service address: {to_addr}"))?;
@@ -628,7 +636,8 @@ impl Router {
             return Err(format!(
                 r#"Domain {client_domain} is not a trusted client domain for this
                 router {client_addr} : {self}"#
-            ));
+            )
+            .into());
         }
 
         // The recipient address for a routed API call will not include
@@ -700,7 +709,7 @@ impl Router {
     }
 
     /// Some Router requests are packaged as method calls.  Handle those here.
-    fn handle_router_api_request(&mut self, tm: TransportMessage) -> Result<(), String> {
+    fn handle_router_api_request(&mut self, tm: TransportMessage) -> EgResult<()> {
         let from = tm.from();
 
         for msg in tm.body().iter() {
@@ -709,8 +718,9 @@ impl Router {
                 _ => {
                     return Err(format!(
                         "Router cannot process message: {}",
-                        tm.to_json_value().dump()
-                    ))
+                        tm.into_json_value().clone().dump()
+                    )
+                    .into())
                 }
             };
 
@@ -723,13 +733,13 @@ impl Router {
                     MessageStatus::Ok,
                     "OK",
                     "osrfResult",
-                    value,
+                    EgValue::from_json_value(value)?,
                 )),
             );
 
             let myaddr = match &self.primary_domain.bus {
                 Some(b) => b.address(),
-                None => return Err(format!("Primary domain has no bus!")),
+                None => return Err(format!("Primary domain has no bus!").into()),
             };
 
             let mut tmsg = TransportMessage::with_body(from, myaddr.as_str(), tm.thread(), reply);
@@ -750,10 +760,7 @@ impl Router {
         Ok(())
     }
 
-    fn process_router_api_request(
-        &mut self,
-        m: &message::MethodCall,
-    ) -> Result<json::JsonValue, String> {
+    fn process_router_api_request(&mut self, m: &message::MethodCall) -> EgResult<json::JsonValue> {
         match m.method() {
             "opensrf.router.info.class.list" => {
                 // Caller wants a list of service names
@@ -768,19 +775,18 @@ impl Router {
                 Ok(json::from(names))
             }
             "opensrf.router.info.summarize" => Ok(self.to_json_value()),
-            _ => Err(format!("Router cannot handle api {}", m.method())),
+            _ => Err(format!("Router cannot handle api {}", m.method()).into()),
         }
     }
 
     /// Register, Un-Register, etc. services
-    fn handle_router_command(&mut self, tm: TransportMessage) -> Result<(), String> {
+    fn handle_router_command(&mut self, tm: TransportMessage) -> EgResult<()> {
         let router_command = match tm.router_command() {
             Some(s) => s,
             None => {
-                return Err(format!(
-                    "No router command present: {}",
-                    tm.to_json_value().dump()
-                ));
+                return Err(
+                    format!("No router command present: {}", tm.into_json_value().dump()).into(),
+                );
             }
         };
 
@@ -794,21 +800,13 @@ impl Router {
             from
         );
 
-        // Not all router commands require a router class.
-        let router_class = || {
-            if let Some(rc) = tm.router_class() {
-                return Ok(rc);
-            } else {
-                return Err(format!(
-                    "Message has no router class: {}",
-                    tm.to_json_value().dump()
-                ));
-            }
-        };
+        let router_class = tm
+            .router_class()
+            .ok_or_else(|| format!("Message has no router class: {tm:?}"))?;
 
         match router_command {
-            "register" => self.handle_register(from_addr, router_class()?),
-            "unregister" => self.handle_unregister(&from_addr, router_class()?),
+            "register" => self.handle_register(from_addr, router_class),
+            "unregister" => self.handle_unregister(&from_addr, router_class),
             _ => {
                 log::warn!("{self} unknown router command: {router_command}");
                 return Ok(());
@@ -819,7 +817,7 @@ impl Router {
     /// Receive the next message destined for this router on this
     /// domain, breaking periodically to check for shutdown, etc.
     /// signals.
-    fn recv_one(&mut self) -> Result<TransportMessage, String> {
+    fn recv_one(&mut self) -> EgResult<TransportMessage> {
         let bus = self
             .primary_domain
             .bus_mut()
@@ -840,12 +838,13 @@ fn main() {
     // Prefer router-specific logging to the default client logging
     let init_ops = init::InitOptions {
         skip_logging: true,
+        skip_host_settings: true,
         appname: Some(String::from("router")),
     };
 
-    let config = init::init_with_options(&init_ops).unwrap();
+    let ctx = init::init_with_options(&init_ops).unwrap();
 
-    let config = config.into_shared();
+    let config = ctx.config();
 
     let mut domains = match env::var("OSRF_ROUTER_DOMAIN") {
         Ok(v) => v.split(",").map(str::to_string).collect(),

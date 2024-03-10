@@ -1,13 +1,14 @@
+use eg::osrf::app::ApplicationWorker;
 use eg::common::penalty;
 use eg::common::settings::Settings;
 use eg::common::user;
-use eg::editor::Editor;
-use eg::util;
+use eg::osrf::message;
+use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
+use eg::osrf::session::ServerSession;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
-use opensrf::app::ApplicationWorker;
-use opensrf::message;
-use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
-use opensrf::session::ServerSession;
 use std::collections::HashMap;
 
 // Import our local app module
@@ -186,17 +187,17 @@ pub fn get_barcodes(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     // Cast our worker instance into something we know how to use.
     let worker = app::RsActorWorker::downcast(worker)?;
 
     // Extract the method call parameters.
     // Incorrectly shaped parameters will result in an error
     // response to the caller.
-    let authtoken = util::json_string(method.param(0))?;
-    let org_id = util::json_int(method.param(1))?;
-    let context = util::json_string(method.param(2))?;
-    let barcode = util::json_string(method.param(3))?;
+    let authtoken = method.param(0).string()?;
+    let org_id = method.param(1).int()?;
+    let context = method.param(2).string()?;
+    let barcode = method.param(3).string()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -211,7 +212,7 @@ pub fn get_barcodes(
     }
 
     // Inline JSON object construction
-    let query = json::object! {
+    let query = eg::hash! {
         from: [
             "evergreen.get_barcodes",
             org_id, context.as_str(), barcode.as_str()
@@ -225,12 +226,12 @@ pub fn get_barcodes(
         return session.respond(result);
     }
 
-    let requestor_id = editor.requestor_id();
-    let mut response: Vec<json::JsonValue> = Vec::new();
+    let requestor_id = editor.requestor_id()?;
+    let mut response: Vec<EgValue> = Vec::new();
 
     // "actor" barcodes require additional perm checks.
     for user_row in result {
-        let user_id = util::json_int(&user_row["id"])?;
+        let user_id = user_row.id()?;
 
         if user_id == requestor_id {
             // We're allowed to know about ourselves.
@@ -240,7 +241,7 @@ pub fn get_barcodes(
 
         // Do we have permission to view info about this user?
         let u = editor.retrieve("au", user_id)?.unwrap();
-        let home_ou = util::json_int(&u["home_ou"])?;
+        let home_ou = u["home_ou"].int()?;
 
         if editor.allowed_at("VIEW_USER", home_ou)? {
             response.push(user_row);
@@ -259,11 +260,11 @@ pub fn user_has_work_perm_at_batch(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     // Cast our worker instance into something we know how to use.
     let worker = app::RsActorWorker::downcast(worker)?;
 
-    let authtoken = util::json_string(method.param(0))?;
+    let authtoken = method.param(0).string()?;
 
     let perm_names: Vec<&str> = method
         .param(1)
@@ -284,8 +285,8 @@ pub fn user_has_work_perm_at_batch(
 
     // user_id parameter is optional
     let user_id = match method.params().get(2) {
-        Some(id) => util::json_int(id)?,
-        None => editor.requestor_id(),
+        Some(id) => id.int()?,
+        None => editor.requestor_id()?,
     };
 
     let mut map: HashMap<String, Vec<i64>> = HashMap::new();
@@ -303,7 +304,7 @@ pub fn retrieve_cascade_settigs(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
 
     let setting_names: Vec<&str> = method
@@ -341,7 +342,7 @@ pub fn retrieve_cascade_settigs(
     settings.fetch_values(setting_names.as_slice())?;
 
     for name in setting_names {
-        let mut obj = json::JsonValue::new_object();
+        let mut obj = EgValue::new_object();
         obj[name] = settings.get_value(name)?.clone();
         session.respond(obj)?;
     }
@@ -353,9 +354,9 @@ pub fn ou_setting_ancestor_default_batch(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let org_id = util::json_int(method.param(0))?;
+    let org_id = method.param(0).int()?;
 
     let setting_names: Vec<&str> = method
         .param(1)
@@ -382,7 +383,7 @@ pub fn ou_setting_ancestor_default_batch(
         if !editor.apply_authtoken(token)? {
             return session.respond(editor.event());
         }
-        settings.set_user_id(editor.requestor_id());
+        settings.set_user_id(editor.requestor_id()?);
     }
 
     // Pre-cache the settings en masse, then pull each from the settings
@@ -390,7 +391,7 @@ pub fn ou_setting_ancestor_default_batch(
     settings.fetch_values(setting_names.as_slice())?;
 
     for name in setting_names {
-        let mut obj = json::JsonValue::new_object();
+        let mut obj = EgValue::new_object();
         obj[name] = settings.get_value(name)?.clone();
         session.respond(obj)?;
     }
@@ -402,9 +403,9 @@ pub fn user_opac_vital_stats(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let authtoken = util::json_string(method.param(0))?;
+    let authtoken = method.param(0).string()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -412,14 +413,14 @@ pub fn user_opac_vital_stats(
         return session.respond(editor.event());
     }
 
-    let user_id = method.param(1).as_i64().unwrap_or(editor.requestor_id());
+    let user_id = method.param(1).as_i64().unwrap_or(editor.requestor_id()?);
     let mut user = match editor.retrieve("au", user_id)? {
         Some(u) => u,
         None => return session.respond(editor.event()),
     };
 
-    if user_id != editor.requestor_id() {
-        let home_ou = util::json_int(&user["home_ou"])?;
+    if user_id != editor.requestor_id()? {
+        let home_ou = user["home_ou"].int()?;
 
         // This list of perms seems like overkill for summary data, but
         // it matches the perm checks of the existing open-ils.actor APIs.
@@ -436,7 +437,7 @@ pub fn user_opac_vital_stats(
     let fines = user::fines_summary(&mut editor, user_id)?;
     let checkouts = user::open_checkout_counts(&mut editor, user_id)?;
 
-    let unread_query = json::object! {
+    let unread_query = eg::hash! {
         select: {aum: [{
             column: "id",
             transform: "count",
@@ -446,7 +447,7 @@ pub fn user_opac_vital_stats(
         from: "aum",
         where: {
             usr: user_id,
-            read_date: json::JsonValue::Null,
+            read_date: EgValue::Null,
             deleted: "f",
             pub: "t",
         }
@@ -454,10 +455,10 @@ pub fn user_opac_vital_stats(
 
     let mut unread_count = 0;
     if let Some(unread) = editor.json_query(unread_query)?.get(0) {
-        unread_count = util::json_int(&unread["count"])?;
+        unread_count = unread["count"].int()?;
     }
 
-    let resp = json::object! {
+    let resp = eg::hash! {
         fines: fines,
         holds: holds,
         checkouts: checkouts,
@@ -478,10 +479,10 @@ pub fn update_penalties(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let authtoken = util::json_string(method.param(0))?;
-    let user_id = util::json_int(method.param(1))?;
+    let authtoken = method.param(0).string()?;
+    let user_id = method.param(1).int()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -494,19 +495,21 @@ pub fn update_penalties(
         None => return session.respond(editor.event()),
     };
 
-    let mut context_org = util::json_int(&user["home_ou"])?;
+    let mut context_org = user["home_ou"].int()?;
 
     if !editor.allowed_at("UPDATE_USER", context_org)? {
         return session.respond(editor.event());
     }
 
     if method.method().contains("_at_home") {
-        context_org = editor.requestor_ws_ou();
+        if let Some(org) = editor.requestor_ws_ou() {
+            context_org = org;
+        }
     }
 
     let only_penalties = match method.params().get(2) {
         Some(op) => match op {
-            json::JsonValue::Array(arr) => Some(arr),
+            EgValue::Array(arr) => Some(arr),
             _ => None,
         },
         None => None,

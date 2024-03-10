@@ -1,8 +1,9 @@
-use super::addr::BusAddress;
-use super::conf;
-use super::logging::Logger;
-use super::message::TransportMessage;
-use super::util;
+use crate::osrf::addr::BusAddress;
+use crate::osrf::conf;
+use crate::osrf::logging::Logger;
+use crate::osrf::message::TransportMessage;
+use crate::util;
+use crate::EgResult;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::fmt;
 
@@ -15,10 +16,16 @@ pub struct Bus {
 
     /// Name of the router running on our primary domain.
     router_name: String,
+
+    /// Some clients don't need the IDL and all its classes to function
+    /// (e.g. the router).  Using raw_data_mode allows for transport
+    /// messages to be parsed and serialized without concern for
+    /// IDL-classed information stored in the message.
+    raw_data_mode: bool,
 }
 
 impl Bus {
-    pub fn new(config: &conf::BusClient) -> Result<Self, String> {
+    pub fn new(config: &conf::BusClient) -> EgResult<Self> {
         let info = Bus::connection_info(config)?;
 
         log::trace!("Bus::new() connecting to {:?}", info);
@@ -36,6 +43,7 @@ impl Bus {
 
         let bus = Bus {
             connection,
+            raw_data_mode: false,
             address: addr,
             router_name: config.router_name().to_string(),
         };
@@ -43,11 +51,15 @@ impl Bus {
         Ok(bus)
     }
 
+    pub fn set_raw_data_mode(&mut self, on: bool) {
+        self.raw_data_mode = on;
+    }
+
     /// Generates the Redis connection Info
     ///
     /// Builds the connection info by hand because it gives us more
     /// flexibility/control than compiling a URL string.
-    fn connection_info(config: &conf::BusClient) -> Result<ConnectionInfo, String> {
+    fn connection_info(config: &conf::BusClient) -> EgResult<ConnectionInfo> {
         let redis_con = RedisConnectionInfo {
             db: 0,
             username: Some(config.username().to_string()),
@@ -104,7 +116,7 @@ impl Bus {
         &mut self,
         mut timeout: i32,
         recipient: Option<&str>,
-    ) -> Result<Option<String>, String> {
+    ) -> EgResult<Option<String>> {
         let recipient = match recipient {
             Some(s) => s.to_string(),
             None => self.address().as_str().to_string(),
@@ -123,7 +135,7 @@ impl Bus {
                         // Will read a Nil value on timeout.  That's OK.
                         return Ok(None);
                     }
-                    _ => return Err(format!("recv_one_chunk failed: {e}")),
+                    _ => return Err(format!("recv_one_chunk failed: {e}").into()),
                 },
             };
         } else {
@@ -160,7 +172,7 @@ impl Bus {
         &mut self,
         timeout: i32,
         recipient: Option<&str>,
-    ) -> Result<Option<json::JsonValue>, String> {
+    ) -> EgResult<Option<json::JsonValue>> {
         let json_string = match self.recv_one_chunk(timeout, recipient)? {
             Some(s) => s,
             None => {
@@ -172,7 +184,7 @@ impl Bus {
 
         match json::parse(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),
-            Err(err_msg) => Err(format!("Error parsing JSON: {:?}", err_msg)),
+            Err(err) => Err(format!("Error parsing JSON: {err:?}").into()),
         }
     }
 
@@ -189,7 +201,7 @@ impl Bus {
         &mut self,
         timeout: i32,
         recipient: Option<&str>,
-    ) -> Result<Option<json::JsonValue>, String> {
+    ) -> EgResult<Option<json::JsonValue>> {
         let mut option: Option<json::JsonValue>;
 
         if timeout == 0 {
@@ -235,28 +247,33 @@ impl Bus {
         &mut self,
         timeout: i32,
         recipient: Option<&str>,
-    ) -> Result<Option<TransportMessage>, String> {
+    ) -> EgResult<Option<TransportMessage>> {
         let json_op = self.recv_json_value(timeout, recipient)?;
         if let Some(jv) = json_op {
-            Ok(TransportMessage::from_json_value(jv))
+            Ok(Some(TransportMessage::from_json_value(
+                jv,
+                self.raw_data_mode,
+            )?))
         } else {
             Ok(None)
         }
     }
 
     /// Sends a TransportMessage to the "to" value in the message.
-    pub fn send(&mut self, msg: &TransportMessage) -> Result<(), String> {
-        self.send_to(msg, msg.to())
+    pub fn send(&mut self, msg: TransportMessage) -> EgResult<()> {
+        // TODO refactor so we can avoi this to_string()
+        let to = msg.to().to_string();
+        self.send_to(msg, &to)
     }
 
     /// Sends a TransportMessage to the specified BusAddress, regardless
     /// of what value is in the msg.to() field.
-    pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), String> {
-        let mut json_val = msg.to_json_value();
+    pub fn send_to(&mut self, msg: TransportMessage, recipient: &str) -> EgResult<()> {
+        let mut json_val = msg.into_json_value();
 
         // Play a little inside baseball here and tag the message
         // with our log trace.  This way the layers above don't have
-        // to worry about it or pass us mutable messages.
+        // to worry about it.
         json_val["osrf_xid"] = json::from(Logger::get_log_trace());
 
         let json_str = json_val.dump();
@@ -266,29 +283,29 @@ impl Bus {
         let res: Result<i32, _> = self.connection().rpush(recipient, json_str);
 
         if let Err(e) = res {
-            return Err(format!("Error in send() {e}"));
+            return Err(format!("Error in send() {e}").into());
         }
 
         Ok(())
     }
 
     /// Returns a list of keys that match the provided pattern.
-    pub fn keys(&mut self, pattern: &str) -> Result<Vec<String>, String> {
+    pub fn keys(&mut self, pattern: &str) -> EgResult<Vec<String>> {
         let res: Result<Vec<String>, _> = self.connection().keys(pattern);
 
         if let Err(e) = res {
-            return Err(format!("Error in keys(): {e}"));
+            return Err(format!("Error in keys(): {e}").into());
         }
 
         Ok(res.unwrap())
     }
 
     /// Returns the length of the array specified by 'key'.
-    pub fn llen(&mut self, key: &str) -> Result<i32, String> {
+    pub fn llen(&mut self, key: &str) -> EgResult<i32> {
         let res: Result<i32, _> = self.connection().llen(key);
 
         if let Err(e) = res {
-            return Err(format!("Error in llen(): {e}"));
+            return Err(format!("Error in llen(): {e}").into());
         }
 
         Ok(res.unwrap())
@@ -297,29 +314,29 @@ impl Bus {
     /// Returns the time-to-live (in seconds) of the specified key.
     ///
     /// Return -1 if no expire time is set, -2 if no such key exists.
-    pub fn ttl(&mut self, key: &str) -> Result<i32, String> {
+    pub fn ttl(&mut self, key: &str) -> EgResult<i32> {
         let res: Result<i32, _> = self.connection().ttl(key);
 
         if let Err(e) = res {
-            return Err(format!("Error in ttl(): {e}"));
+            return Err(format!("Error in ttl(): {e}").into());
         }
 
         Ok(res.unwrap())
     }
 
     /// Returns an array slice as a Vec of Strings.
-    pub fn lrange(&mut self, key: &str, start: isize, stop: isize) -> Result<Vec<String>, String> {
+    pub fn lrange(&mut self, key: &str, start: isize, stop: isize) -> EgResult<Vec<String>> {
         let res: Result<Vec<String>, _> = self.connection().lrange(key, start, stop);
 
         if let Err(e) = res {
-            return Err(format!("Error in lrange(): {e}"));
+            return Err(format!("Error in lrange(): {e}").into());
         }
 
         Ok(res.unwrap())
     }
 
     /// Set the expire time on the specified key to 'timeout' seconds from now.
-    pub fn set_key_timeout(&mut self, key: &str, timeout: u64) -> Result<i32, String> {
+    pub fn set_key_timeout(&mut self, key: &str, timeout: u64) -> EgResult<i32> {
         let res: Result<i32, _> = self.connection().expire(key, timeout as usize);
 
         if let Err(ref e) = res {
@@ -331,12 +348,12 @@ impl Bus {
     }
 
     /// Remove all pending data from the recipient queue.
-    pub fn clear_bus(&mut self) -> Result<(), String> {
+    pub fn clear_bus(&mut self) -> EgResult<()> {
         let stream = self.address().as_str().to_string(); // mut borrow
         let res: Result<i32, _> = self.connection().del(stream);
 
         if let Err(e) = res {
-            return Err(format!("Error in queue clear(): {e}"));
+            return Err(format!("Error in queue clear(): {e}").into());
         }
 
         Ok(())

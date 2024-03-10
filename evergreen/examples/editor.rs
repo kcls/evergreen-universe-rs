@@ -33,8 +33,9 @@ fn main() -> Result<(), String> {
         println!("Fetched org unit: {}", org["shortname"]);
     }
 
-    let query = json::object! {"id": json::object!{"<": 10u8}};
+    let query = eg::hash! {"id": eg::hash!{"<": 10u8}};
     for perm in editor.search("ppl", query)? {
+        println!("Search found permission: {perm}");
         println!("Search found permission: {}", perm["code"]);
     }
 

@@ -1,9 +1,5 @@
 [Unit]
 Description=Evergreen Service open-ils.rs-actor
-Requires=redis-server.service
-After=redis-server.service
-#Wants=opensrf-router.service
-#After=opensrf-router.service
 
 [Service]
 Type=simple

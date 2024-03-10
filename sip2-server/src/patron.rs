@@ -2,10 +2,10 @@ use super::conf;
 use super::session::Session;
 use eg::date;
 use eg::result::EgResult;
+use eg::EgValue;
 use evergreen as eg;
-use json::JsonValue;
 
-const JSON_NULL: JsonValue = JsonValue::Null;
+const EG_NULL: EgValue = EgValue::Null;
 const DEFAULT_LIST_ITEM_SIZE: usize = 10;
 
 /// SIP clients can request detail info for specific types of data.
@@ -163,11 +163,11 @@ impl Session {
 
         let mut patron = Patron::new(barcode, self.format_user_name(&user));
 
-        patron.id = eg::util::json_int(&user["id"])?;
+        patron.id = user.id()?;
         patron.password_verified = self.check_password(patron.id, password_op)?;
 
         if let Some(summary) = self.editor_mut().retrieve("mous", patron.id)? {
-            patron.balance_owed = eg::util::json_float(&summary["balance_owed"])?;
+            patron.balance_owed = summary["balance_owed"].float()?;
         }
 
         if user["billing_address"].is_object() {
@@ -232,7 +232,7 @@ impl Session {
     fn log_activity(&mut self, patron_id: i64) -> EgResult<()> {
         let who = self.account().activity_as().unwrap_or("sip2");
 
-        let query = json::object! {
+        let query = eg::hash! {
             from: [
                 "actor.insert_usr_activity",
                 patron_id,
@@ -293,12 +293,12 @@ impl Session {
         Ok(())
     }
 
-    fn add_fine_item(&mut self, xact: &JsonValue) -> EgResult<String> {
+    fn add_fine_item(&mut self, xact: &EgValue) -> EgResult<String> {
         let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
         let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
 
-        let xact_id = eg::util::json_int(&xact["id"])?;
-        let balance_owed = eg::util::json_float(&xact["balance_owed"])?;
+        let xact_id = xact.id()?;
+        let balance_owed = xact["balance_owed"].float()?;
 
         let mut title: Option<String> = None;
         let mut author: Option<String> = None;
@@ -357,7 +357,7 @@ impl Session {
     }
 
     fn get_circ_title_author(&mut self, id: i64) -> EgResult<(Option<String>, Option<String>)> {
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             flesh: 4,
             flesh_fields: {
                 circ: ["target_copy"],
@@ -427,7 +427,7 @@ impl Session {
         let format = self.account().settings().msg64_summary_datatype();
 
         if format == &conf::Msg64SummaryDatatype::Barcode {
-            let flesh = json::object! {
+            let flesh = eg::hash! {
                 flesh: 1,
                 flesh_fields: {circ: ["target_copy"]},
             };
@@ -498,15 +498,15 @@ impl Session {
         Ok(())
     }
 
-    fn find_title_for_hold(&mut self, hold: &JsonValue) -> EgResult<Option<String>> {
-        let hold_id = eg::util::json_int(&hold["id"])?;
+    fn find_title_for_hold(&mut self, hold: &EgValue) -> EgResult<Option<String>> {
+        let hold_id = hold.id()?;
         let bib_link = match self.editor_mut().retrieve("rhrr", hold_id)? {
             Some(l) => l,
             None => return Ok(None), // shouldn't be happen-able
         };
 
-        let bib_id = eg::util::json_int(&bib_link["bib_record"])?;
-        let search = json::object! {
+        let bib_id = bib_link["bib_record"].int()?;
+        let search = eg::hash! {
             source: bib_id,
             name: "title",
         };
@@ -522,15 +522,15 @@ impl Session {
         Ok(None)
     }
 
-    fn find_copy_for_hold(&mut self, hold: &JsonValue) -> EgResult<Option<JsonValue>> {
+    fn find_copy_for_hold(&mut self, hold: &EgValue) -> EgResult<Option<EgValue>> {
         if !hold["current_copy"].is_null() {
             // We have a captured copy.  Use it.
-            let copy_id = eg::util::json_int(&hold["current_copy"])?;
+            let copy_id = hold["current_copy"].int()?;
             return self.editor_mut().retrieve("acp", copy_id);
         }
 
         let hold_type = hold["hold_type"].as_str().unwrap(); // required
-        let hold_target = eg::util::json_int(&hold["target"])?;
+        let hold_target = hold["target"].int()?;
 
         if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
             // These are all copy-level hold types
@@ -545,16 +545,16 @@ impl Session {
         let mut bre_ids: Vec<i64> = Vec::new();
 
         if hold_type.eq("M") {
-            let search = json::object! { metarecord: hold_target };
+            let search = eg::hash! { metarecord: hold_target };
             let maps = self.editor_mut().search("mmrsm", search)?;
             for map in maps {
-                bre_ids.push(eg::util::json_int(&map["record"])?);
+                bre_ids.push(map["record"].int()?);
             }
         } else {
             bre_ids.push(hold_target);
         }
 
-        let query = json::object! {
+        let query = eg::hash! {
             select: {acp: ["id"]},
             from: {acp: "acn"},
             where: {
@@ -566,20 +566,20 @@ impl Session {
 
         let copy_id_hashes = self.editor_mut().json_query(query)?;
         if copy_id_hashes.len() > 0 {
-            let copy_id = eg::util::json_int(&copy_id_hashes[0]["id"])?;
+            let copy_id = copy_id_hashes[0].int()?;
             return self.editor_mut().retrieve("acp", copy_id);
         }
 
         Ok(None)
     }
 
-    fn get_copy_for_vol(&mut self, vol_id: i64) -> EgResult<Option<JsonValue>> {
-        let search = json::object! {
+    fn get_copy_for_vol(&mut self, vol_id: i64) -> EgResult<Option<EgValue>> {
+        let search = eg::hash! {
             call_number: vol_id,
             deleted: "f",
         };
 
-        let ops = json::object! { limit: 1usize };
+        let ops = eg::hash! { limit: 1usize };
 
         let mut copies = self.editor_mut().search_with_ops("acp", search, ops)?;
 
@@ -624,20 +624,20 @@ impl Session {
         &mut self,
         patron: &Patron,
         summary_ops: Option<&SummaryListOptions>,
-    ) -> EgResult<Vec<JsonValue>> {
-        let search = json::object! {
+    ) -> EgResult<Vec<EgValue>> {
+        let search = eg::hash! {
             usr: patron.id,
             balance_owed: {"<>": 0},
             total_owed: {">": 0},
         };
 
-        let mut ops = json::object! {
+        let mut ops = eg::hash! {
             order_by: {mbts: "xact_start"}
         };
 
         if let Some(sum_ops) = summary_ops {
-            ops["limit"] = json::from(sum_ops.limit());
-            ops["offset"] = json::from(sum_ops.offset());
+            ops["limit"] = EgValue::from(sum_ops.limit());
+            ops["offset"] = EgValue::from(sum_ops.offset());
         }
 
         self.editor_mut().search_with_ops("mbts", search, ops)
@@ -650,38 +650,38 @@ impl Session {
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> EgResult<()> {
-        let mut search = json::object! {
+        let mut search = eg::hash! {
             usr: patron.id,
-            fulfillment_time: JSON_NULL,
-            cancel_time: JSON_NULL,
+            fulfillment_time: EG_NULL,
+            cancel_time: EG_NULL,
         };
 
         if unavail {
-            search["-or"] = json::array! [
-              {current_shelf_lib: JSON_NULL},
+            search["-or"] = eg::array! [
+              {current_shelf_lib: EG_NULL},
               {current_shelf_lib: {"!=": {"+ahr": "pickup_lib"}}}
             ];
         } else if self.account().settings().msg64_hold_items_available() {
-            search["current_shelf_lib"] = json::object! {"=": {"+ahr": "pickup_lib"}};
+            search["current_shelf_lib"] = eg::hash! {"=": {"+ahr": "pickup_lib"}};
         }
 
-        let mut query = json::object! {
+        let mut query = eg::hash! {
             select: {ahr: ["id"]},
             from: "ahr",
             where: {"+ahr": search},
         };
 
         if let Some(l) = limit {
-            query["limit"] = json::from(l);
+            query["limit"] = EgValue::from(l);
         }
         if let Some(o) = offset {
-            query["offset"] = json::from(o);
+            query["offset"] = EgValue::from(o);
         }
 
         let id_hash_list = self.editor_mut().json_query(query)?;
 
         for hash in id_hash_list {
-            let hold_id = eg::util::json_int(&hash["id"])?;
+            let hold_id = hash.id()?;
             if unavail {
                 patron.unavail_hold_ids.push(hold_id);
             } else {
@@ -698,7 +698,7 @@ impl Session {
         Ok(())
     }
 
-    fn set_patron_privileges(&mut self, user: &JsonValue, patron: &mut Patron) -> EgResult<()> {
+    fn set_patron_privileges(&mut self, user: &EgValue, patron: &mut Patron) -> EgResult<()> {
         let expire_date_str = user["expire_date"].as_str().unwrap(); // required
         let expire_date = date::parse_datetime(&expire_date_str)?;
 
@@ -723,11 +723,9 @@ impl Session {
 
         patron.max_fines = self.penalties_contain(1, &penalties)?; // PATRON_EXCEEDS_FINES
         patron.max_overdue = self.penalties_contain(2, &penalties)?; // PATRON_EXCEEDS_OVERDUE_COUNT
-        patron.card_active = eg::util::json_bool(&user["card"]["active"]);
+        patron.card_active = user["card"]["active"].boolish();
 
-        let blocked = eg::util::json_bool(&user["barred"])
-            || !eg::util::json_bool(&user["active"])
-            || !patron.card_active;
+        let blocked = user["barred"].boolish() || !user["active"].boolish() || !patron.card_active;
 
         let mut block_tags = String::new();
         for pen in penalties.iter() {
@@ -760,9 +758,9 @@ impl Session {
         Ok(())
     }
 
-    fn penalties_contain(&self, penalty_id: i64, penalties: &Vec<JsonValue>) -> EgResult<bool> {
+    fn penalties_contain(&self, penalty_id: i64, penalties: &Vec<EgValue>) -> EgResult<bool> {
         for pen in penalties.iter() {
-            let pen_id = eg::util::json_int(&pen["id"])?;
+            let pen_id = pen.id()?;
             if pen_id == penalty_id {
                 return Ok(true);
             }
@@ -770,17 +768,17 @@ impl Session {
         Ok(false)
     }
 
-    fn get_patron_penalties(&mut self, user_id: i64) -> EgResult<Vec<JsonValue>> {
+    fn get_patron_penalties(&mut self, user_id: i64) -> EgResult<Vec<EgValue>> {
         let ws_org = self.get_ws_org_id()?;
 
-        let search = json::object! {
+        let search = eg::hash! {
             select: {csp: ["id", "block_list"]},
             from: {ausp: "csp"},
             where: {
                 "+ausp": {
                     usr: user_id,
                     "-or": [
-                      {stop_date: JSON_NULL},
+                      {stop_date: EG_NULL},
                       {stop_date: {">": "now"}},
                     ],
                     org_unit: {
@@ -803,10 +801,10 @@ impl Session {
         self.editor_mut().json_query(search)
     }
 
-    fn get_user(&mut self, barcode: &str) -> EgResult<Option<JsonValue>> {
-        let search = json::object! { barcode: barcode };
+    fn get_user(&mut self, barcode: &str) -> EgResult<Option<EgValue>> {
+        let search = eg::hash! { barcode: barcode };
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             flesh: 3,
             flesh_fields: {
                 ac: ["usr"],

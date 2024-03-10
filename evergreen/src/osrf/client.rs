@@ -1,23 +1,18 @@
-use super::addr::BusAddress;
-use super::bus;
-use super::conf;
-use super::message;
-use super::params::ApiParams;
-use super::session::ResponseIterator;
-use super::session::SessionHandle;
-use super::util;
-use json::JsonValue;
+use crate::osrf::addr::BusAddress;
+use crate::osrf::bus;
+use crate::osrf::conf;
+use crate::osrf::message;
+use crate::osrf::params::ApiParams;
+use crate::osrf::session::ResponseIterator;
+use crate::osrf::session::SessionHandle;
+use crate::util;
+use crate::{EgResult, EgValue};
 use log::info;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
-
-pub trait DataSerializer {
-    fn pack(&self, value: JsonValue) -> JsonValue;
-    fn unpack(&self, value: JsonValue) -> JsonValue;
-}
 
 /// Generally speaking, we only need 1 ClientSingleton per thread (hence
 /// the name).  This manages one bus connection per domain and stores
@@ -40,14 +35,10 @@ pub struct ClientSingleton {
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
     backlog: Vec<message::TransportMessage>,
-
-    /// If present, JsonValue's will be passed through its pack() and
-    /// unpack() methods before/after data hits the network.
-    serializer: Option<Arc<dyn DataSerializer>>,
 }
 
 impl ClientSingleton {
-    fn new(config: Arc<conf::Config>) -> Result<ClientSingleton, String> {
+    fn new(config: Arc<conf::Config>) -> EgResult<ClientSingleton> {
         let bus = bus::Bus::new(config.client())?;
         Ok(ClientSingleton::from_bus(bus, config))
     }
@@ -62,12 +53,7 @@ impl ClientSingleton {
             bus: Some(bus),
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
-            serializer: None,
         }
-    }
-
-    pub fn serializer(&self) -> &Option<Arc<dyn DataSerializer>> {
-        &self.serializer
     }
 
     /// Delete all messages that have been received but not yet pulled
@@ -125,7 +111,7 @@ impl ClientSingleton {
         self.bus = Some(bus);
     }
 
-    pub fn get_domain_bus(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
+    pub fn get_domain_bus(&mut self, domain: &str) -> EgResult<&mut bus::Bus> {
         log::trace!("Loading bus connection for domain: {domain}");
 
         if domain.eq(self.domain()) {
@@ -142,7 +128,7 @@ impl ClientSingleton {
     /// Add a connection to a new remote domain.
     ///
     /// Panics if our configuration has no primary domain.
-    fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
+    fn add_connection(&mut self, domain: &str) -> EgResult<&mut bus::Bus> {
         // When adding a connection to a remote domain, assume the same
         // connection type, etc. is used and just change the domain.
         let mut conf = self.config.client().clone();
@@ -173,7 +159,7 @@ impl ClientSingleton {
     /// This is useful for checking network activity
     /// across multiple active sessions in lieu of polling each
     /// session for responses.
-    pub fn wait(&mut self, timeout: i32) -> Result<bool, String> {
+    pub fn wait(&mut self, timeout: i32) -> EgResult<bool> {
         if !self.backlog.is_empty() {
             return Ok(true);
         }
@@ -195,7 +181,7 @@ impl ClientSingleton {
         &mut self,
         timer: &mut util::Timer,
         thread: &str,
-    ) -> Result<Option<message::TransportMessage>, String> {
+    ) -> EgResult<Option<message::TransportMessage>> {
         loop {
             if let Some(tm) = self.recv_session_from_backlog(thread) {
                 return Ok(Some(tm));
@@ -225,7 +211,7 @@ impl ClientSingleton {
         domain: &str,
         router_command: &str,
         router_class: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let addr = BusAddress::for_router(username, domain);
 
         // Always use the from address of our primary Bus
@@ -241,7 +227,7 @@ impl ClientSingleton {
         }
 
         let bus = self.get_domain_bus(domain)?;
-        bus.send(&tmsg)?;
+        bus.send(tmsg)?;
 
         Ok(())
     }
@@ -275,7 +261,7 @@ impl Client {
     /// preferred approach, since that guarantees you are
     /// using an existing Bus connection, instead of creating
     /// a new one, which is generally unnecessary.
-    pub fn connect(config: Arc<conf::Config>) -> Result<Client, String> {
+    pub fn connect(config: Arc<conf::Config>) -> EgResult<Client> {
         // This performs the actual bus-level connection.
         let singleton = ClientSingleton::new(config)?;
 
@@ -336,10 +322,6 @@ impl Client {
         }
     }
 
-    pub fn set_serializer(&self, serializer: Arc<dyn DataSerializer>) {
-        self.singleton.borrow_mut().serializer = Some(serializer);
-    }
-
     pub fn address(&self) -> &BusAddress {
         &self.address
     }
@@ -355,7 +337,7 @@ impl Client {
 
     /// Discard any unprocessed messages from our backlog and clear our
     /// stream of pending messages on the bus.
-    pub fn clear(&self) -> Result<(), String> {
+    pub fn clear(&self) -> EgResult<()> {
         self.singleton().borrow_mut().clear_backlog();
         self.singleton().borrow_mut().bus_mut().clear_bus()
     }
@@ -367,7 +349,7 @@ impl Client {
         domain: &str,
         command: &str,
         router_class: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         self.singleton()
             .borrow_mut()
             .send_router_command(username, domain, command, router_class)
@@ -382,7 +364,7 @@ impl Client {
         service: &str,
         method: &str,
         params: impl Into<ApiParams>,
-    ) -> Result<ResponseIterator, String> {
+    ) -> EgResult<ResponseIterator> {
         Ok(ResponseIterator::new(
             self.session(service).request(method, params)?,
         ))
@@ -393,7 +375,7 @@ impl Client {
     }
 
     /// Wrapper for ClientSingleton::wait()
-    pub fn wait(&self, timeout: i32) -> Result<bool, String> {
+    pub fn wait(&self, timeout: i32) -> EgResult<bool> {
         self.singleton().borrow_mut().wait(timeout)
     }
 
@@ -407,7 +389,7 @@ impl Client {
         service: &str,
         method: &str,
         params: impl Into<ApiParams>,
-    ) -> Result<Option<JsonValue>, String> {
+    ) -> EgResult<Option<EgValue>> {
         let mut ses = self.session(service);
         let mut req = ses.request(method, params)?;
 

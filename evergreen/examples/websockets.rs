@@ -1,6 +1,7 @@
+use eg::osrf::message;
+use eg::util;
+use eg::EgValue;
 use evergreen as eg;
-use opensrf::message;
-use opensrf::util;
 use std::io::Write;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -35,8 +36,8 @@ const REQ_PAUSE: u64 = 0;
 // Since we're testing Websockets, which is a public-facing gateway,
 // the destination service must be a public service.
 //const SERVICE: &str = "open-ils.actor";
-const SERVICE: &str = "open-ils.rs-circ";
-//const SERVICE: &str = "open-ils.auth";
+//const SERVICE: &str = "open-ils.rs-circ";
+const SERVICE: &str = "open-ils.auth";
 
 fn main() {
     let mut batches = 0;
@@ -133,14 +134,14 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     // Complete message in the same transport message as the reply.
     if let Message::Text(text) = response {
         if let Some(resp) = unpack_response(&text) {
-            assert_eq!(resp, echostr);
+            assert_eq!(resp.as_str().unwrap(), echostr);
             print!("+");
             std::io::stdout().flush().ok();
         }
     }
 }
 
-fn unpack_response(text: &str) -> Option<json::JsonValue> {
+fn unpack_response(text: &str) -> Option<EgValue> {
     let mut ws_msg = json::parse(&text).unwrap();
     let mut osrf_list = ws_msg["osrf_msg"].take();
     let osrf_msg = osrf_list[0].take();
@@ -149,7 +150,7 @@ fn unpack_response(text: &str) -> Option<json::JsonValue> {
         panic!("No response from request");
     }
 
-    let mut msg = message::Message::from_json_value(osrf_msg).unwrap();
+    let mut msg = message::Message::from_json_value(osrf_msg, true).unwrap();
 
     if let message::Payload::Result(ref mut res) = msg.payload_mut() {
         Some(res.take_content())

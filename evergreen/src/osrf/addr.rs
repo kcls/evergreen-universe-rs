@@ -1,4 +1,4 @@
-use super::util;
+use crate::util;
 use gethostname::gethostname;
 use std::fmt;
 use std::process;
@@ -44,7 +44,7 @@ impl BusAddress {
     ///
     /// ```
     /// let addr =
-    ///   opensrf::addr::BusAddress::from_str("opensrf:client:foobar:localhost:12345")
+    ///   evergreen::osrf::addr::BusAddress::from_str("opensrf:client:foobar:localhost:12345")
     ///   .expect("Error creating address from string");
     ///
     /// assert!(addr.is_client());
@@ -86,7 +86,7 @@ impl BusAddress {
     /// Send messages here to talk to a Router.
     ///
     /// ```
-    /// let addr = opensrf::addr::BusAddress::for_router("router", "private.localhost");
+    /// let addr = evergreen::osrf::addr::BusAddress::for_router("router", "private.localhost");
     ///
     /// assert!(addr.is_router());
     /// assert_eq!(addr.as_str(), "opensrf:router:router:private.localhost");
@@ -108,7 +108,7 @@ impl BusAddress {
     /// The router will fill in the gaps for username/domain.
     ///
     /// ```
-    /// let addr = opensrf::addr::BusAddress::for_bare_service("opensrf.settings");
+    /// let addr = evergreen::osrf::addr::BusAddress::for_bare_service("opensrf.settings");
     ///
     /// assert!(addr.is_service());
     /// assert_eq!(addr.service(), Some("opensrf.settings"));
@@ -138,7 +138,7 @@ impl BusAddress {
     /// ```
     /// let username = "opensrf";
     /// let domain = "private.localhost";
-    /// let addr = opensrf::addr::BusAddress::for_client(username, domain);
+    /// let addr = evergreen::osrf::addr::BusAddress::for_client(username, domain);
     /// assert_eq!(addr.domain(), domain);
     /// assert!(addr.is_client());
     /// ```
@@ -216,7 +216,7 @@ impl BusAddress {
     /// ```
     /// let username = "opensrf";
     /// let domain = "private.localhost";
-    /// let mut addr = opensrf::addr::BusAddress::for_client(username, domain);
+    /// let mut addr = evergreen::osrf::addr::BusAddress::for_client(username, domain);
     /// assert_eq!(addr.domain(), domain);
     ///
     /// let remainder = "HELLO123";

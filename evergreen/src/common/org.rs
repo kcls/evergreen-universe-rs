@@ -1,10 +1,10 @@
-use crate::date;
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util;
+use crate as eg;
 use chrono::prelude::Datelike;
 use chrono::Duration;
-use json;
+use eg::date;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 
 /// Apply a variety of DB transforms to an org unit and return
 /// the calculated org unit IDs.
@@ -14,7 +14,7 @@ fn org_relations_query(
     transform: &str,
     depth: Option<i64>,
 ) -> EgResult<Vec<i64>> {
-    let mut query = json::object! {
+    let mut query = eg::hash! {
         "select": {
             "aou": [{
                 "transform": transform,
@@ -28,20 +28,20 @@ fn org_relations_query(
     };
 
     if let Some(d) = depth {
-        query["select"][0]["params"] = json::from(vec![d]);
+        query["select"][0]["params"] = EgValue::from(vec![d]);
     }
 
     let list = editor.json_query(query)?;
 
     let mut ids = Vec::new();
     for h in list {
-        ids.push(util::json_int(&h["id"])?);
+        ids.push(h.id()?);
     }
     Ok(ids)
 }
 
-pub fn by_shortname(editor: &mut Editor, sn: &str) -> EgResult<json::JsonValue> {
-    if let Some(o) = editor.search("aou", json::object! {"shortname": sn})?.pop() {
+pub fn by_shortname(editor: &mut Editor, sn: &str) -> EgResult<EgValue> {
+    if let Some(o) = editor.search("aou", eg::hash! {"shortname": sn})?.pop() {
         Ok(o)
     } else {
         Err(editor.die_event())
@@ -116,7 +116,7 @@ pub fn next_open_date(
         if closed_days.contains(&(weekday as i64)) {
             // Closed for the current day based on hours of operation.
             // Jump ahead one day and start over.
-            date = date + Duration::days(1);
+            date = date + Duration::try_days(1).expect("In Bounds");
             continue;
         }
 
@@ -124,10 +124,10 @@ pub fn next_open_date(
         // See if any overlapping closings are configured instead.
 
         let timestamp = date::to_iso(&date);
-        let query = json::object! {
+        let query = eg::hash! {
             "org_unit": org_id,
-            "close_start": {"<=": json::from(timestamp.clone())},
-            "close_end": {">=": json::from(timestamp)},
+            "close_start": {"<=": EgValue::from(timestamp.clone())},
+            "close_end": {">=": EgValue::from(timestamp)},
         };
 
         let org_closed = editor.search("aoucd", query)?;
@@ -154,7 +154,7 @@ pub fn next_open_date(
         }
 
         date = date::parse_datetime(&range_end)?;
-        date = date + Duration::days(1);
+        date = date + Duration::try_days(1).expect("In Bounds");
     }
 
     // If we get here it means we never found an open day.
@@ -163,7 +163,7 @@ pub fn next_open_date(
 
 /// Returns the proximity from from_org to to_org.
 pub fn proximity(editor: &mut Editor, from_org: i64, to_org: i64) -> EgResult<Option<i64>> {
-    let query = json::object! {
+    let query = eg::hash! {
         "select": {"aoup": ["prox"]},
         "from": "aoup",
         "where": {
@@ -173,7 +173,7 @@ pub fn proximity(editor: &mut Editor, from_org: i64, to_org: i64) -> EgResult<Op
     };
 
     if let Some(prox) = editor.json_query(query)?.pop() {
-        Ok(Some(util::json_int(&prox["prox"])?))
+        Ok(prox["prox"].as_int())
     } else {
         Ok(None)
     }

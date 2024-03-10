@@ -1,16 +1,10 @@
-# OpenSRF Rust Bindings
+use eg::EgResult;
+use evergreen as eg;
 
-## Synopsis
+fn main() -> EgResult<()> {
+    let ctx = eg::init::init()?;
 
-```rs
-use opensrf::Client;
-
-fn main() -> Result<(), String> {
-    // Standard setup + connect routines.
-    let conf = opensrf::init::init()?;
-    let client = Client::connect(conf.into_shared())?;
-
-    let mut ses = client.session("opensrf.settings");
+    let mut ses = ctx.client().session("opensrf.settings");
 
     ses.connect()?; // Optional
 
@@ -19,7 +13,7 @@ fn main() -> Result<(), String> {
     let mut req = ses.request("opensrf.system.echo", params)?;
 
     // We anticipate multiple responses.  Collect them all!
-    while let Some(resp) = req.recv(60)? {
+    while let Some(resp) = req.recv()? {
         println!("Response: {}", resp.dump());
     }
 
@@ -29,11 +23,12 @@ fn main() -> Result<(), String> {
     // One-off request and we only care about the 1st response.
 
     let value = "Hello, World, Pamplemousse";
-    let response = client
+    let response = ctx
+        .client()
         .send_recv_one("opensrf.settings", "opensrf.system.echo", value)?
         .unwrap();
 
-    // Client responses are json::JsonValue's
+    // Client responses are EgValue's
     let resp_str = response.as_str().unwrap();
 
     assert_eq!(resp_str, value);
@@ -42,13 +37,3 @@ fn main() -> Result<(), String> {
 
     Ok(())
 }
-```
-
-## Example
-
-```sh
-cargo run --example client-demo
-
-# Or from the root of the repository
-cargo run --package opensrf --example client-demo
-```

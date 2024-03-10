@@ -1,13 +1,12 @@
+use eg::osrf::addr::BusAddress;
+use eg::osrf::bus::Bus;
+use eg::osrf::conf;
 use eg::idl;
-use eg::result::EgResult;
+use eg::osrf::logging::Logger;
+use eg::osrf::message;
+use eg::EgResult;
 use evergreen as eg;
 use mptc;
-use opensrf as osrf;
-use osrf::addr::BusAddress;
-use osrf::bus::Bus;
-use osrf::conf;
-use osrf::logging::Logger;
-use osrf::message;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::env;
@@ -147,6 +146,8 @@ impl SessionInbound {
 /// Listens for responses on the OpenSRF bus and relays each to the
 /// main thread for processing.
 struct SessionOutbound {
+    idl: Arc<idl::Parser>,
+
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
 
@@ -169,6 +170,8 @@ impl fmt::Display for SessionOutbound {
 
 impl SessionOutbound {
     fn run(&mut self) {
+        idl::set_thread_idl(&self.idl);
+
         loop {
             // Check before going back to wait for the next ws message.
             if self.shutdown_session.load(Ordering::Relaxed) {
@@ -208,8 +211,6 @@ impl SessionOutbound {
 struct Session {
     /// OpenSRF config
     conf: Arc<conf::Config>,
-
-    idl: Arc<idl::Parser>,
 
     /// All messages flow to the main thread via this channel.
     to_main_rx: mpsc::Receiver<ChannelMessage>,
@@ -268,6 +269,8 @@ impl Session {
         max_parallel: usize,
         shutdown: Arc<AtomicBool>,
     ) -> EgResult<()> {
+        idl::set_thread_idl(&idl);
+
         let client_ip = stream
             .peer_addr()
             .or_else(|e| Err(format!("Could not determine client IP address: {e}")))?;
@@ -320,6 +323,7 @@ impl Session {
             client_ip: client_ip.clone(),
             shutdown_session: shutdown_session.clone(),
             osrf_receiver,
+            idl,
         };
 
         let mut session = Session {
@@ -327,7 +331,6 @@ impl Session {
             to_main_rx,
             sender,
             conf,
-            idl,
             osrf_sender,
             max_parallel,
             reqs_in_flight: 0,
@@ -604,11 +607,10 @@ impl Session {
                 break;
             }
 
-            let mut msg = match message::Message::from_json_value(msg_json) {
-                Some(m) => m,
-                None => Err(format!("{self} could not create message from JSON"))?,
-            };
-
+            // false here means "non-raw data mode" which means we
+            // require the IDL.  The IDL is required for HASH-ifying
+            // inputs and outputs.
+            let mut msg = message::Message::from_json_value(msg_json, false)?;
             msg.set_ingress(WEBSOCKET_INGRESS);
 
             match msg.mtype() {
@@ -623,11 +625,12 @@ impl Session {
                     // turned into Fieldmapper objects before they
                     // are relayed to the API.
                     if format_hash {
-                        if let osrf::message::Payload::Method(ref mut meth) = msg.payload_mut() {
+                        if let eg::osrf::message::Payload::Method(ref mut meth) = msg.payload_mut() {
                             let mut new_params = Vec::new();
                             let mut params = meth.take_params();
-                            for p in params.drain(..) {
-                                new_params.push(self.idl.encode(p));
+                            for mut p in params.drain(..) {
+                                p.from_classed_hash()?;
+                                new_params.push(p);
                             }
                             meth.set_params(new_params);
                         }
@@ -661,9 +664,9 @@ impl Session {
         );
 
         if let Some(router) = send_to_router {
-            self.osrf_sender.send_to(&tm, &router)?;
+            self.osrf_sender.send_to(tm, &router)?;
         } else {
-            self.osrf_sender.send(&tm)?;
+            self.osrf_sender.send(tm)?;
         }
 
         Ok(())
@@ -687,8 +690,8 @@ impl Session {
         let mut body = json::JsonValue::new_array();
         let mut transport_error = false;
 
-        for msg in msg_list.iter_mut() {
-            if let osrf::message::Payload::Status(s) = msg.payload() {
+        for mut msg in msg_list.drain(..) {
+            if let eg::osrf::message::Payload::Status(s) = msg.payload() {
                 let stat = *s.status();
                 match stat {
                     message::MessageStatus::Complete => self.subtract_reqs(),
@@ -711,7 +714,7 @@ impl Session {
                         }
                     }
                 }
-            } else if let osrf::message::Payload::Result(ref mut r) = msg.payload_mut() {
+            } else if let eg::osrf::message::Payload::Result(ref mut r) = msg.payload_mut() {
                 // Decode (hashify) the result content instead of the
                 // response message as a whole, because opensrf uses
                 // the same class/payload encoding that the IDL/Fieldmapper
@@ -722,17 +725,17 @@ impl Session {
                     if format.is_hash() {
                         // The caller wants result data returned in HASH format
                         let mut content = r.take_content();
-                        content = self.idl.decode(content);
+                        content.to_classed_hash(); // Hashify
                         if format == &idl::DataFormat::Hash {
                             // Caller wants a default slim hash
-                            content = idl::scrub_hash_nulls(content);
+                            content.scrub_hash_nulls();
                         }
                         r.set_content(content);
                     }
                 }
             }
 
-            if let Err(e) = body.push(msg.to_json_value()) {
+            if let Err(e) = body.push(msg.into_json_value()) {
                 Err(format!("{self} Error building message response: {e}"))?;
             }
         }
@@ -763,15 +766,12 @@ impl Session {
     /// Log an API call, honoring the log-protect configs.
     fn log_request(&self, service: &str, msg: &message::Message) -> Result<(), String> {
         let request = match msg.payload() {
-            osrf::message::Payload::Method(m) => m,
+            eg::osrf::message::Payload::Method(m) => m,
             _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
-        let log_params = osrf::util::stringify_params(
-            request.method(),
-            request.params(),
-            self.conf.log_protect(),
-        );
+        let log_params =
+            eg::util::stringify_params(request.method(), request.params(), self.conf.log_protect());
 
         log::info!(
             "ACT:[{}] {} {} {}",
@@ -815,7 +815,7 @@ impl mptc::Request for WebsocketRequest {
 }
 
 struct WebsocketHandler {
-    osrf_conf: Arc<osrf::conf::Config>,
+    osrf_conf: Arc<eg::osrf::conf::Config>,
     idl: Arc<idl::Parser>,
     max_parallel: usize,
     shutdown: Arc<AtomicBool>,
@@ -949,12 +949,10 @@ fn main() {
         // settings, since that's typically on a private domain.
         skip_host_settings: true,
 
-        // Skip logging so we can use the loging config in
+        // Skip logging so we can use the logging config in
         // the gateway() config instead.
-        osrf_ops: osrf::init::InitOptions {
-            skip_logging: true,
-            appname: Some(String::from("http-gateway")),
-        },
+        skip_logging: true,
+        appname: Some(String::from("http-gateway")),
     };
 
     // Connect to OpenSRF, parse the IDL
@@ -969,7 +967,7 @@ fn main() {
         .gateway()
         .expect("No gateway configuration found");
 
-    osrf::logging::Logger::new(gateway_conf.logging())
+    eg::osrf::logging::Logger::new(gateway_conf.logging())
         .expect("Creating logger")
         .init()
         .expect("Logger Init");
