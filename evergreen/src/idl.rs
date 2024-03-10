@@ -14,12 +14,38 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
+use std::cell::RefCell;
+
+thread_local! {
+    static THREAD_LOCAL_IDL: RefCell<Option<Arc<Parser>>> = RefCell::new(None);
+}
 
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
 const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
 const OILS_NS_PERSIST: &str = "http://open-ils.org/spec/opensrf/IDL/persistence/v1";
 const OILS_NS_REPORTER: &str = "http://open-ils.org/spec/opensrf/IDL/reporter/v1";
 const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
+
+
+/// Every thread needs its own copy of the Arc<Parser>
+pub fn set_thread_idl(idl: &Arc<Parser>) {
+    THREAD_LOCAL_IDL.with(|p| *p.borrow_mut() = Some(idl.clone()));
+}
+
+pub fn get_class(classname: &str) -> Option<Arc<Class>> {
+    let mut idl_class: Option<Arc<Class>> = None;
+
+    THREAD_LOCAL_IDL.with(|p| idl_class = p.borrow()
+        .as_ref()
+        .expect("Thread Local IDL Required")
+        .classes()
+        .get(classname)
+        .map(|c| c.clone()) // Arc::clone()
+    );
+
+    idl_class
+}
+
 
 
 /// Various forms an IDL-classed object can take internally and on
@@ -248,6 +274,9 @@ pub struct Class {
     /// Name of primary key column
     pkey: Option<String>,
 
+    /// Name of the column to use for the human label value
+    selector: Option<String>,
+
     fieldmapper: Option<String>,
     fields: HashMap<String, Field>,
     links: HashMap<String, Link>,
@@ -267,6 +296,10 @@ impl Class {
         } else {
             None
         }
+    }
+
+    pub fn selector(&self) -> Option<&str> {
+        self.selector.as_deref()
     }
 
     pub fn source_definition(&self) -> Option<&str> {
@@ -382,10 +415,12 @@ impl Parser {
         idlref.clone()
     }
 
+    /// All of our IDL classes keyed on classname/hint (e.g. "aou")
     pub fn classes(&self) -> &HashMap<String, Arc<Class>> {
         &self.classes
     }
 
+    /// Parse the IDL from a file
     pub fn parse_file(filename: &str) -> EgResult<Arc<Parser>> {
         let xml = match fs::read_to_string(filename) {
             Ok(x) => x,
@@ -395,6 +430,7 @@ impl Parser {
         Parser::parse_string(&xml)
     }
 
+    /// Parse the IDL as a string
     pub fn parse_string(xml: &str) -> EgResult<Arc<Parser>> {
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
@@ -403,7 +439,6 @@ impl Parser {
 
         let mut parser = Parser {
             classes: HashMap::new(),
-            //classes2: HashMap::new(),
         };
 
         for root_node in doc.root().children() {
@@ -471,6 +506,7 @@ impl Parser {
             source_definition: None,
             fields: HashMap::new(),
             links: HashMap::new(),
+            selector: None,
             pkey: None,
         };
 
@@ -544,6 +580,10 @@ impl Parser {
         let datatype: DataType = match node.attribute((OILS_NS_REPORTER, "datatype")) {
             Some(dt) => dt.into(),
             None => DataType::Text,
+        };
+
+        if let Some(selector) = node.attribute((OILS_NS_REPORTER, "datatype")) {
+            class.selector = Some(selector.to_string());
         };
 
         let i18n: bool = match node.attribute((OILS_NS_PERSIST, "i18n")) {

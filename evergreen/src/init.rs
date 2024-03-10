@@ -77,15 +77,17 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
         idl_file = v;
     }
 
-    let idl = idl::Parser::parse_file(&idl_file)
+    let idl_parser = idl::Parser::parse_file(&idl_file)
         .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
 
-    client.set_serializer(idl::Parser::as_serializer(&idl));
+    idl::set_thread_idl(&idl_parser);
+
+    client.set_serializer(idl::Parser::as_serializer(&idl_parser));
 
     Ok(Context {
         client,
         config,
-        idl,
+        idl: idl_parser,
         host_settings,
     })
 }
