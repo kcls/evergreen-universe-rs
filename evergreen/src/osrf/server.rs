@@ -1,13 +1,14 @@
-use super::app;
-use super::client::Client;
-use super::conf;
-use super::init;
-use super::message;
-use super::method;
-use super::sclient::{HostSettings, SettingsClient};
-use super::session;
-use super::util;
-use super::worker::{Worker, WorkerState, WorkerStateEvent};
+use crate::osrf::app;
+use crate::osrf::client::Client;
+use crate::osrf::conf;
+use crate::init;
+use crate::osrf::message;
+use crate::osrf::method;
+use crate::osrf::sclient::{HostSettings, SettingsClient};
+use crate::osrf::session;
+use crate::util;
+use crate::osrf::worker::{Worker, WorkerState, WorkerStateEvent};
+use crate::EgResult;
 use signal_hook;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -60,19 +61,16 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn start(application: Box<dyn app::Application>) -> Result<(), String> {
+    pub fn start(application: Box<dyn app::Application>) -> EgResult<()> {
         let service = application.name();
 
         let mut options = init::InitOptions::new();
         options.appname = Some(service.to_string());
 
-        let config = match init::init_with_options(&options) {
-            Ok(c) => c,
-            Err(e) => Err(format!("Cannot start server for {service}: {e}"))?,
-        };
+        let ctx = init::init_with_options(&options)?;
 
         // We're done editing our Config. Wrap it in an Arc.
-        let config = config.into_shared();
+        let config = ctx.config();
 
         let mut client = match Client::connect(config.clone()) {
             Ok(c) => c,
@@ -111,7 +109,7 @@ impl Server {
         ) = mpsc::sync_channel(0);
 
         let mut server = Server {
-            config,
+            config: config.clone(),
             client,
             application,
             min_workers,
@@ -266,7 +264,7 @@ impl Server {
         domains
     }
 
-    fn register_routers(&mut self) -> Result<(), String> {
+    fn register_routers(&mut self) -> EgResult<()> {
         for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: registering with router at {domain}");
 
@@ -277,7 +275,7 @@ impl Server {
         Ok(())
     }
 
-    fn unregister_routers(&mut self) -> Result<(), String> {
+    fn unregister_routers(&mut self) -> EgResult<()> {
         for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: un-registering with router at {domain}");
 
@@ -291,25 +289,25 @@ impl Server {
         Ok(())
     }
 
-    fn setup_signal_handlers(&self) -> Result<(), String> {
+    fn setup_signal_handlers(&self) -> EgResult<()> {
         // If any of these signals occur, our self.stopping flag will be set to true
         for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
             if let Err(e) = signal_hook::flag::register(sig, self.stopping.clone()) {
-                return Err(format!("Cannot register signal handler: {e}"));
+                return Err(format!("Cannot register signal handler: {e}").into());
             }
         }
 
         Ok(())
     }
 
-    fn service_init(&mut self) -> Result<(), String> {
+    fn service_init(&mut self) -> EgResult<()> {
         let client = self.client.clone();
         let config = self.config().clone();
         let host_settings = self.host_settings().clone();
         self.app_mut().init(client, config, host_settings)
     }
 
-    fn register_methods(&mut self) -> Result<(), String> {
+    fn register_methods(&mut self) -> EgResult<()> {
         let client = self.client.clone();
         let config = self.config().clone();
         let host_settings = self.host_settings().clone();
@@ -388,7 +386,7 @@ impl Server {
         hash.insert(name.to_string(), method);
     }
 
-    pub fn listen(&mut self) -> Result<(), String> {
+    pub fn listen(&mut self) -> EgResult<()> {
         self.service_init()?;
         self.register_methods()?;
         self.register_routers()?;
@@ -577,7 +575,7 @@ fn system_method_echo(
     _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let count = method.params().len();
     for (idx, val) in method.params().iter().enumerate() {
         if idx == count - 1 {
@@ -596,10 +594,10 @@ fn system_method_time(
     _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
     _method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => session.respond_complete(t.as_secs()),
-        Err(e) => Err(format!("System time error: {e}")),
+        Err(e) => Err(format!("System time error: {e}").into()),
     }
 }
 
@@ -607,7 +605,7 @@ fn system_method_introspect(
     worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let prefix = match method.params().get(0) {
         Some(p) => p.as_str(),
         None => None,
@@ -633,7 +631,7 @@ fn system_method_introspect(
             if method.method().contains("summary") {
                 session.respond(meth.to_summary_string())?;
             } else {
-                session.respond(meth.to_json_value())?;
+                session.respond(meth.to_eg_value())?;
             }
         }
     }

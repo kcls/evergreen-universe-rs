@@ -1,108 +1,187 @@
-use crate::result::EgResult;
+use crate::EgResult;
+use crate::EgValue;
 use json::JsonValue;
+use rand::Rng;
 use socket2::{Domain, Socket, Type};
 use std::collections::HashSet;
 use std::fs;
 use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
+use std::thread;
 use std::time::Duration;
+use std::time::{Instant, SystemTime};
+
+pub const REDACTED_PARAMS_STR: &str = "**PARAMS REDACTED**";
 
 // Typical value for SOMAXCONN
 const CONNECT_TCP_BACKLOG: i32 = 128;
 
-/// We support a variety of true-ish values.
+/// Current thread ID as u64.
 ///
-/// True if the value is a non-zero number, a string that starts with
-/// "t/T", or a JsonValue::Bool(true).  False otherwise.
-///
-/// ```
-/// assert!(!evergreen::util::json_bool(&json::from(vec!["true"])));
-/// assert!(evergreen::util::json_bool(&json::from("trooo")));
-/// assert!(evergreen::util::json_bool(&json::from("1")));
-/// assert!(!evergreen::util::json_bool(&json::from(0i8)));
-/// assert!(!evergreen::util::json_bool(&json::from(false)));
-/// ```
-pub fn json_bool(value: &JsonValue) -> bool {
-    if let Some(n) = value.as_i64() {
-        n != 0
-    } else if let Some(n) = value.as_f64() {
-        n != 0.0
-    } else if let Some(s) = value.as_str() {
-        s.len() > 0 && (s[..1].eq("1") || s[..1].eq("t") || s[..1].eq("T"))
-    } else if let Some(b) = value.as_bool() {
-        b
-    } else {
-        false
-    }
-}
+/// Eventually this will not be needed.
+/// https://doc.rust-lang.org/stable/std/thread/struct.ThreadId.html#method.as_u64
+/// https://github.com/rust-lang/rust/pull/110738
+pub fn thread_id() -> u64 {
+    // "Thread(123)"
+    let id = format!("{:?}", thread::current().id());
+    let mut parts = id.split(&['(', ')']);
 
-/// Same as json_bool, but value is wrapped in an Option.
-pub fn json_bool_op(op: Option<&JsonValue>) -> bool {
-    if let Some(v) = op {
-        json_bool(v)
-    } else {
-        false
-    }
-}
-
-/// Translate a number-ish thing into a float.
-///
-/// Returns an error if the value cannot be numerified.
-///
-/// ```
-/// assert!(evergreen::util::json_float(&json::JsonValue::new_array()).is_err());
-///
-/// let res = evergreen::util::json_float(&json::from("1.2"));
-/// assert_eq!(res.unwrap(), 1.2);
-///
-/// let res = evergreen::util::json_float(&json::from(0));
-/// assert_eq!(res.unwrap(), 0.0);
-/// ```
-pub fn json_float(value: &JsonValue) -> EgResult<f64> {
-    if let Some(n) = value.as_f64() {
-        return Ok(n);
-    } else if let Some(s) = value.as_str() {
-        if let Ok(n) = s.parse::<f64>() {
-            return Ok(n);
+    if let Some(id) = parts.nth(1) {
+        if let Ok(idnum) = id.parse::<u64>() {
+            return idnum;
         }
     }
-    Err(format!("Invalid float value: {}", value).into())
+
+    return 0;
 }
 
-/// Translate a number-ish thing into a signed int.
+/// Returns a string of random numbers of the requested length
 ///
-/// Returns an error if the value cannot be numerified.
 /// ```
-/// let res = evergreen::util::json_int(&json::JsonValue::new_array());
-/// assert!(res.is_err());
+/// use evergreen::util;
+/// let n = util::random_number(12);
+/// assert_eq!(n.len(), 12);
+/// let n = util::random_number(100);
+/// assert_eq!(n.len(), 100);
+/// ```
+pub fn random_number(size: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let num: u64 = rng.gen_range(100_000_000_000..1_000_000_000_000);
+    format!("{:0width$}", num, width = size)[0..size].to_string()
+}
+
+/// Converts a JSON number or string to an isize if possible
 ///
-/// let res = evergreen::util::json_int(&json::from("-11"));
-/// assert_eq!(res.unwrap(), -11);
-///
-/// let res = evergreen::util::json_int(&json::from(12));
-/// assert_eq!(res.unwrap(), 12);
-pub fn json_int(value: &JsonValue) -> EgResult<i64> {
-    if let Some(n) = value.as_i64() {
-        return Ok(n);
+/// ```
+/// use evergreen::util;
+/// use json;
+/// let v = json::from(-123);
+/// assert_eq!(util::json_isize(&v), Some(-123));
+/// let v = json::from("hello");
+/// assert_eq!(util::json_isize(&v), None);
+/// ```
+pub fn json_isize(value: &JsonValue) -> Option<isize> {
+    if let Some(i) = value.as_isize() {
+        return Some(i);
     } else if let Some(s) = value.as_str() {
-        if let Ok(n) = s.parse::<i64>() {
-            return Ok(n);
+        if let Ok(i2) = s.parse::<isize>() {
+            return Some(i2);
+        }
+    };
+
+    None
+}
+
+/// Converts a JSON number or string to an usize if possible
+/// ```
+/// use evergreen::util;
+/// use json;
+/// let v = json::from(-123);
+/// assert_eq!(util::json_usize(&v), None);
+/// let v = json::from("hello");
+/// assert_eq!(util::json_usize(&v), None);
+/// let v = json::from(12321);
+/// assert_eq!(util::json_usize(&v), Some(12321));
+/// ```
+pub fn json_usize(value: &JsonValue) -> Option<usize> {
+    if let Some(i) = value.as_usize() {
+        return Some(i);
+    } else if let Some(s) = value.as_str() {
+        if let Ok(i2) = s.parse::<usize>() {
+            return Some(i2);
+        }
+    };
+
+    None
+}
+
+/// Simple seconds-based countdown timer.
+/// ```
+/// use evergreen::util;
+///
+/// let t = util::Timer::new(60);
+/// assert!(!t.done());
+/// assert!(t.remaining() > 0);
+/// assert_eq!(t.duration(), 60);
+///
+/// let t = util::Timer::new(0);
+/// assert!(t.done());
+/// assert!(t.remaining() == 0);
+/// assert_eq!(t.duration(), 0);
+///
+/// ```
+pub struct Timer {
+    /// Duration of this timer in seconds.
+    /// Timer is "done" once this many seconds have passed
+    /// since start_time.
+    duration: i32,
+
+    /// Moment this timer starts.
+    start_time: Instant,
+}
+
+impl Timer {
+    pub fn new(duration: i32) -> Timer {
+        Timer {
+            duration,
+            start_time: Instant::now(),
         }
     }
-    Err(format!("Invalid int value: {}", value).into())
+    pub fn reset(&mut self) {
+        self.start_time = Instant::now();
+    }
+    pub fn remaining(&self) -> i32 {
+        self.duration - self.start_time.elapsed().as_secs() as i32
+    }
+    pub fn duration(&self) -> i32 {
+        self.duration
+    }
+    pub fn done(&self) -> bool {
+        self.remaining() <= 0
+    }
 }
 
-/// Translate a json value into a String.
-///
-/// Will coerce numeric values into strings.  Return Err if the
-/// value is not a string or number.
-pub fn json_string(value: &JsonValue) -> EgResult<String> {
-    if let Some(s) = value.as_str() {
-        Ok(s.to_string())
-    } else if value.is_number() {
-        Ok(format!("{value}"))
+pub fn epoch_secs() -> f64 {
+    if let Ok(dur) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        let ms = dur.as_millis();
+        ms as f64 / 1000.0
     } else {
-        Err(format!("Cannot extract value as a string: {value}").into())
+        0.0
+    }
+}
+
+pub fn epoch_secs_str() -> String {
+    format!("{:0<3}", epoch_secs())
+}
+
+/// Creates a (JSON) String verion of a list of method parameters,
+/// replacing params with a generic REDACTED message for log-protected
+/// methods.
+///
+/// ```
+/// use evergreen::util;
+/// let method = "opensrf.system.private.stuff";
+/// let log_protect = vec!["opensrf.system.private".to_string()];
+/// let params = vec![];
+///
+/// let s = util::stringify_params(method, &params, &log_protect);
+/// assert_eq!(s.as_str(), util::REDACTED_PARAMS_STR);
+/// ```
+pub fn stringify_params(method: &str, params: &Vec<EgValue>, log_protect: &Vec<String>) -> String {
+    if log_protect
+        .iter()
+        .filter(|m| method.starts_with(&m[..]))
+        .next()
+        .is_none()
+    {
+        params
+            .iter()
+            // EgValue.dump() consumes the value, hence the clone.
+            .map(|p| p.clone().dump())
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        REDACTED_PARAMS_STR.to_string()
     }
 }
 
@@ -264,4 +343,15 @@ pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<Tcp
         .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
 
     Ok(socket.into())
+}
+
+#[deprecated(note = "See EgValue::as_int()")]
+pub fn json_int(v: &EgValue) -> EgResult<i64> {
+    Ok(v.as_int()
+        .ok_or_else(|| format!("Cannot coerce to int: {}", v.dump()))?)
+}
+
+#[deprecated(note = "See EgValue::as_bool() / boolish()")]
+pub fn json_bool(v: &EgValue) -> bool {
+    v.boolish()
 }

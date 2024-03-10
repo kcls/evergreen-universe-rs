@@ -1,5 +1,6 @@
-use super::sclient::HostSettings;
-use json::JsonValue;
+use crate::osrf::sclient::HostSettings;
+use crate::EgResult;
+use crate::EgValue;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -58,14 +59,14 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn init(host_settings: Arc<HostSettings>) -> Result<Self, String> {
+    pub fn init(host_settings: Arc<HostSettings>) -> EgResult<Self> {
         let config = host_settings.value("redis-cache");
 
         if config.is_null() {
-            return Err(format!("No configuration for redis"));
+            return Err(format!("No Cache configuration for redis").into());
         }
 
-        let err = || format!("Invalid cache config: {}", config.dump());
+        let err = || format!("Invalid cache config");
 
         let host = config["host"].as_str().ok_or_else(err)?;
         let port = config["port"].as_u16().ok_or_else(err)?;
@@ -101,23 +102,23 @@ impl Cache {
         Ok(cache)
     }
 
-    pub fn active_cache(&self) -> Result<&CacheType, String> {
+    pub fn active_cache(&self) -> EgResult<&CacheType> {
         let name = self.active_type.as_deref().unwrap_or(DEFAULT_CACHE_TYPE);
         self.cache_types
             .get(name)
-            .ok_or_else(|| format!("No such cache type: {name}"))
+            .ok_or_else(|| format!("No such cache type: {name}").into())
     }
 
-    pub fn set_active_type(&mut self, ctype: &str) -> Result<(), String> {
+    pub fn set_active_type(&mut self, ctype: &str) -> EgResult<()> {
         if !self.cache_types.contains_key(ctype) {
-            Err(format!("No configuration present for cache type: {ctype}"))
+            Err(format!("No configuration present for cache type: {ctype}").into())
         } else {
             self.active_type = Some(ctype.to_string());
             Ok(())
         }
     }
 
-    fn load_types(&mut self, config: &JsonValue) {
+    fn load_types(&mut self, config: &EgValue) {
         for (ctype, conf) in config["cache-types"].entries() {
             let max_cache_time = conf["max_cache_time"]
                 .as_usize()
@@ -140,7 +141,7 @@ impl Cache {
     }
 
     /// Retrieve a JSON thing from the cache.
-    pub fn get(&mut self, key: &str) -> Result<Option<JsonValue>, String> {
+    pub fn get(&mut self, key: &str) -> EgResult<Option<EgValue>> {
         let key = to_key(key);
         let value: String = match self.redis.get(&key) {
             Ok(v) => v,
@@ -150,7 +151,7 @@ impl Cache {
                     return Ok(None);
                 }
 
-                _ => return Err(format!("get({key}) failed: {e}")),
+                _ => return Err(format!("get({key}) failed: {e}").into()),
             },
         };
 
@@ -160,16 +161,13 @@ impl Cache {
             ))
         })?;
 
-        Ok(Some(obj))
+        let v = EgValue::try_from(obj)?;
+
+        Ok(Some(v))
     }
 
     /// Store a JSON thing in the cache
-    pub fn set(
-        &mut self,
-        key: &str,
-        value: &JsonValue,
-        timeout: Option<usize>,
-    ) -> Result<(), String> {
+    pub fn set(&mut self, key: &str, value: EgValue, timeout: Option<usize>) -> EgResult<()> {
         let key = to_key(key);
         let ctype = self.active_cache()?;
         let max_timeout = ctype.max_cache_time();
@@ -186,30 +184,28 @@ impl Cache {
             None => max_timeout,
         };
 
-        let valstr = value.dump();
+        let valstr = value.into_json_value().dump();
+
         if valstr.bytes().count() > max_size {
-            return Err(format!(
-                "Cache value too large: bytes={}",
-                valstr.bytes().count()
-            ));
+            return Err(format!("Cache value too large: bytes={}", valstr.bytes().count()).into());
         }
 
         let res: Result<(), _> = self.redis.set_ex(&key, valstr, time);
 
         if let Err(err) = res {
-            return Err(format!("set_ex({key}) failed: {err}"));
+            return Err(format!("set_ex({key}) failed: {err}").into());
         }
 
         Ok(())
     }
 
     /// Remove a thing from the cache.
-    pub fn del(&mut self, key: &str) -> Result<(), String> {
+    pub fn del(&mut self, key: &str) -> EgResult<()> {
         let key = to_key(key);
         let res: Result<(), _> = self.redis.del(&key);
 
         if let Err(err) = res {
-            return Err(format!("del({key}) failed: {err}"));
+            return Err(format!("del({key}) failed: {err}").into());
         }
 
         Ok(())

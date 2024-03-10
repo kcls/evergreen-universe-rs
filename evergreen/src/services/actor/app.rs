@@ -1,11 +1,13 @@
+use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
+use eg::Client;
+use eg::osrf::conf;
 use eg::idl;
+use eg::osrf::message;
+use eg::osrf::method::MethodDef;
+use eg::osrf::sclient::HostSettings;
+use eg::EgError;
+use eg::EgResult;
 use evergreen as eg;
-use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
-use opensrf::client::Client;
-use opensrf::conf;
-use opensrf::message;
-use opensrf::method::MethodDef;
-use opensrf::sclient::HostSettings;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -69,7 +71,7 @@ impl Application for RsActorApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let idl_file = host_settings
             .value("IDL")
             .as_str()
@@ -89,7 +91,7 @@ impl Application for RsActorApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
-    ) -> Result<Vec<MethodDef>, String> {
+    ) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
         // Create Method objects from our static method definitions.
@@ -136,10 +138,10 @@ impl RsActorWorker {
     ///
     /// This is necessary to access methods/fields on our RsActorWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut RsActorWorker, String> {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsActorWorker> {
         match w.as_any_mut().downcast_mut::<RsActorWorker>() {
             Some(eref) => Ok(eref),
-            None => Err(format!("Cannot downcast")),
+            None => Err(format!("Cannot downcast").into()),
         }
     }
 
@@ -177,15 +179,11 @@ impl ApplicationWorker for RsActorWorker {
         host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let worker_env = env
             .as_any()
             .downcast_ref::<RsActorEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
-
-        // Each worker gets its own client, so we have to tell our
-        // client how to pack/unpack network data.
-        client.set_serializer(idl::Parser::as_serializer(worker_env.idl()));
 
         self.env = Some(worker_env.clone());
         self.client = Some(client);
@@ -197,33 +195,33 @@ impl ApplicationWorker for RsActorWorker {
     }
 
     /// Called before the worker goes into its listen state.
-    fn worker_start(&mut self) -> Result<(), String> {
+    fn worker_start(&mut self) -> EgResult<()> {
         log::debug!("Thread starting");
         Ok(())
     }
 
-    fn worker_idle_wake(&mut self, _connected: bool) -> Result<(), String> {
+    fn worker_idle_wake(&mut self, _connected: bool) -> EgResult<()> {
         Ok(())
     }
 
     /// Called after all requests are handled and the worker is
     /// shutting down.
-    fn worker_end(&mut self) -> Result<(), String> {
+    fn worker_end(&mut self) -> EgResult<()> {
         log::debug!("Thread ending");
         Ok(())
     }
 
-    fn start_session(&mut self) -> Result<(), String> {
+    fn start_session(&mut self) -> EgResult<()> {
         Ok(())
     }
 
-    fn end_session(&mut self) -> Result<(), String> {
+    fn end_session(&mut self) -> EgResult<()> {
         Ok(())
     }
 
-    fn keepalive_timeout(&mut self) -> Result<(), String> {
+    fn keepalive_timeout(&mut self) -> EgResult<()> {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::MethodCall, _error: &str) {}
+    fn api_call_error(&mut self, _request: &message::MethodCall, _error: EgError) {}
 }

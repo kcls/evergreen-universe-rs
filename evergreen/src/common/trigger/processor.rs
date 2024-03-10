@@ -1,11 +1,11 @@
 /// Main entry point for processing A/T events related to a
 /// given event definition.
-use crate::common::trigger::{Event, EventState};
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util;
-use json::JsonValue;
-use opensrf::util::thread_id;
+use crate as eg;
+use eg::common::trigger::{Event, EventState};
+use eg::util::thread_id;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 use std::fmt;
 use std::process;
 
@@ -14,8 +14,8 @@ use std::process;
 pub struct Processor<'a> {
     pub editor: &'a mut Editor,
     event_def_id: i64,
-    event_def: JsonValue,
-    target_flesh: JsonValue,
+    event_def: EgValue,
+    target_flesh: EgValue,
 }
 
 impl fmt::Display for Processor<'_> {
@@ -30,7 +30,7 @@ impl fmt::Display for Processor<'_> {
 
 impl<'a> Processor<'a> {
     pub fn new(editor: &'a mut Editor, event_def_id: i64) -> EgResult<Processor> {
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             "flesh": 1,
             "flesh_fields": {"atevdef": ["hook", "env", "params"]}
         };
@@ -42,7 +42,7 @@ impl<'a> Processor<'a> {
         let mut proc = Self {
             event_def,
             event_def_id,
-            target_flesh: JsonValue::Null,
+            target_flesh: EgValue::Null,
             editor,
         };
 
@@ -57,7 +57,7 @@ impl<'a> Processor<'a> {
             .retrieve("atev", event_id)?
             .ok_or_else(|| editor.die_event())?;
 
-        let mut proc = Processor::new(editor, util::json_int(&jevent["event_def"])?)?;
+        let mut proc = Processor::new(editor, jevent["event_def"].int()?)?;
 
         let mut event = Event::from_source(jevent)?;
 
@@ -87,7 +87,7 @@ impl<'a> Processor<'a> {
         editor: &mut Editor,
         event_ids: &[i64],
     ) -> EgResult<Vec<Event>> {
-        let query = json::object! {"id": event_ids};
+        let query = eg::hash! {"id": event_ids};
         let mut jevents = editor.search("atev", query)?;
 
         if jevents.len() == 0 {
@@ -135,7 +135,7 @@ impl<'a> Processor<'a> {
     pub fn event_def_id(&self) -> i64 {
         self.event_def_id
     }
-    pub fn event_def(&self) -> &JsonValue {
+    pub fn event_def(&self) -> &EgValue {
         &self.event_def
     }
     pub fn core_type(&self) -> &str {
@@ -153,12 +153,12 @@ impl<'a> Processor<'a> {
     pub fn reactor(&self) -> &str {
         self.event_def["reactor"].as_str().unwrap()
     }
-    pub fn environment(&self) -> &JsonValue {
+    pub fn environment(&self) -> &EgValue {
         &self.event_def["env"]
     }
 
     /// Will be a JSON array
-    pub fn params(&self) -> &JsonValue {
+    pub fn params(&self) -> &EgValue {
         &self.event_def["params"]
     }
 
@@ -196,7 +196,7 @@ impl<'a> Processor<'a> {
 
     /// Returns the parameter value with the provided name or None if no
     /// such parameter exists.
-    pub fn param_value(&mut self, param_name: &str) -> Option<&JsonValue> {
+    pub fn param_value(&mut self, param_name: &str) -> Option<&EgValue> {
         for param in self.params().members() {
             if param["param"].as_str() == Some(param_name) {
                 return Some(&param["value"]);
@@ -220,7 +220,7 @@ impl<'a> Processor<'a> {
     /// false otherwise.
     pub fn param_value_as_bool(&mut self, param_name: &str) -> bool {
         if let Some(pval) = self.param_value(param_name) {
-            util::json_bool(&pval["value"])
+            pval["value"].boolish()
         } else {
             false
         }
@@ -253,28 +253,28 @@ impl<'a> Processor<'a> {
             .ok_or_else(|| format!("Our event disappeared from the DB?"))?;
 
         if let Some(err) = error_text {
-            let output = json::object! {
+            let mut output = eg::hash! {
                 "data": err,
                 "is_error": true,
                 // TODO locale
             };
+            output.bless("ateo")?;
 
-            let output = self.editor.idl().create_from("ateo", output)?;
             let mut result = self.editor.create(output)?;
 
             atev["error_output"] = result["id"].take();
         }
 
-        atev["state"] = json::from(state_str);
-        atev["update_time"] = json::from("now");
-        atev["update_process"] = json::from(format!("{}-{}", process::id(), thread_id()));
+        atev["state"] = EgValue::from(state_str);
+        atev["update_time"] = EgValue::from("now");
+        atev["update_process"] = EgValue::from(format!("{}-{}", process::id(), thread_id()));
 
         if atev["start_time"].is_null() && state != EventState::Pending {
-            atev["start_time"] = json::from("now");
+            atev["start_time"] = EgValue::from("now");
         }
 
         if state == EventState::Complete {
-            atev["complete_time"] = json::from("now");
+            atev["complete_time"] = EgValue::from("now");
         }
 
         self.editor.update(atev)?;
@@ -304,7 +304,7 @@ impl<'a> Processor<'a> {
 
         let target = self
             .editor
-            .retrieve_with_ops(&core_type, event.target_pkey(), flesh)?
+            .retrieve_with_ops(&core_type, event.target_pkey().clone(), flesh)?
             .ok_or_else(|| self.editor.die_event())?;
 
         event.set_target(target);
@@ -332,18 +332,18 @@ impl<'a> Processor<'a> {
             obj = &obj[part];
         }
 
-        let pkey_value;
-        if self.editor.idl().is_idl_object(obj) {
+        let obj_clone;
+        if let Some(pkey) = obj.pkey_value() {
             // The object may have been fleshed beyond where we
             // need it during target collection. If so, extract
             // the pkey value from the fleshed object.
-
-            pkey_value = self.editor.idl().get_pkey_value(obj)?;
-            obj = &pkey_value;
+            obj_clone = pkey.clone();
+        } else {
+            obj_clone = obj.clone();
         }
 
         if obj.is_string() || obj.is_number() {
-            event.set_group_value(obj.clone());
+            event.set_group_value(obj_clone);
             Ok(())
         } else {
             Err(format!("Invalid group field path: {gfield_path}").into())

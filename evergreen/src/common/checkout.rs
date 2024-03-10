@@ -1,19 +1,17 @@
-use crate::common::bib;
-use crate::common::billing;
-use crate::common::circulator::{CircOp, CircPolicy, Circulator, LEGACY_CIRC_EVENT_MAP};
-use crate::common::holds;
-use crate::common::noncat;
-use crate::common::org;
-use crate::common::penalty;
-use crate::constants as C;
-use crate::date;
-use crate::event::EgEvent;
-use crate::result::EgResult;
-use crate::util::{json_bool, json_bool_op, json_float, json_int, json_string};
-use json::JsonValue;
+use crate as eg;
+use eg::common::bib;
+use eg::common::billing;
+use eg::common::circulator::{CircOp, CircPolicy, Circulator, LEGACY_CIRC_EVENT_MAP};
+use eg::common::holds;
+use eg::common::noncat;
+use eg::common::org;
+use eg::common::penalty;
+use eg::constants as C;
+use eg::date;
+use eg::event::EgEvent;
+use eg::result::EgResult;
+use eg::EgValue;
 use std::time::Duration;
-
-const JSON_NULL: JsonValue = JsonValue::Null;
 
 /// Performs item checkins
 impl Circulator<'_> {
@@ -89,7 +87,7 @@ impl Circulator<'_> {
             }
         }
 
-        if self.patron_id != self.editor().requestor_id() {
+        if self.patron_id != self.editor().requestor_id()? {
             // Users are allowed to "inspect" their own data.
             if !self.editor().allowed_at("VIEW_PERMIT_CHECKOUT", cl)? {
                 return Err(self.editor().die_event());
@@ -106,12 +104,12 @@ impl Circulator<'_> {
         };
 
         let circ_lib = match self.options.get("noncat_circ_lib") {
-            Some(cl) => json_int(&cl)?,
+            Some(cl) => cl.int()?,
             None => self.circ_lib,
         };
 
         let count = match self.options.get("noncat_count") {
-            Some(c) => json_int(&c)?,
+            Some(c) => c.int()?,
             None => 1,
         };
 
@@ -123,7 +121,7 @@ impl Circulator<'_> {
         }
 
         let patron_id = self.patron_id;
-        let noncat_type = json_int(&noncat_type)?;
+        let noncat_type = noncat_type.int()?;
 
         let mut circs = noncat::checkout(
             self.editor(),
@@ -137,7 +135,7 @@ impl Circulator<'_> {
         let mut evt = EgEvent::success();
         if let Some(c) = circs.pop() {
             // Perl API only returns the last created circulation
-            evt.set_payload(json::object! {"noncat_circ": c});
+            evt.set_payload(eg::hash! {"noncat_circ": c});
         }
         self.add_event(evt);
 
@@ -157,7 +155,7 @@ impl Circulator<'_> {
             return self.update_existing_precat();
         }
 
-        let reqr_id = self.requestor_id();
+        let reqr_id = self.requestor_id()?;
 
         let dummy_title = self
             .options
@@ -192,7 +190,7 @@ impl Circulator<'_> {
 
         log::info!("{self} creating new pre-cat copy {copy_barcode}");
 
-        let copy = json::object! {
+        let copy = eg::hash! {
             "circ_lib": self.circ_lib,
             "creator": reqr_id,
             "editor": reqr_id,
@@ -206,7 +204,7 @@ impl Circulator<'_> {
             "fine_level": C::PRECAT_COPY_FINE_LEVEL,
         };
 
-        let mut copy = self.editor().idl().create_from("acp", copy)?;
+        let mut copy = EgValue::create("acp", copy)?;
 
         let pclib = self
             .settings
@@ -220,7 +218,7 @@ impl Circulator<'_> {
 
         let copy = self.editor().create(copy)?;
 
-        self.copy_id = json_int(&copy["id"])?;
+        self.copy_id = copy.id()?;
 
         // Reload a fleshed version of the copy we just created.
         self.load_copy()?;
@@ -260,8 +258,8 @@ impl Circulator<'_> {
             .map(|m| m.as_str())
             .unwrap_or(copy["circ_modifier"].as_str());
 
-        self.update_copy(json::object! {
-            "editor": self.requestor_id(),
+        self.update_copy(eg::hash! {
+            "editor": self.requestor_id()?,
             "edit_date": "now",
             "dummy_title": dummy_title,
             "dummy_author": dummy_author,
@@ -289,18 +287,18 @@ impl Circulator<'_> {
     }
 
     fn check_captured_hold(&mut self) -> EgResult<()> {
-        if json_int(&self.copy()["status"]["id"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
+        if self.copy()["status"].id()? != C::COPY_STATUS_ON_HOLDS_SHELF {
             return Ok(());
         }
 
-        let query = json::object! {
+        let query = eg::hash! {
             "current_copy": self.copy_id,
-            "capture_time": {"!=": JSON_NULL },
-            "cancel_time": JSON_NULL,
-            "fulfillment_time": JSON_NULL
+            "capture_time": {"!=": eg::NULL },
+            "cancel_time": eg::NULL,
+            "fulfillment_time": eg::NULL
         };
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             "limit": 1,
             "flesh": 1,
             "flesh_fields": {"ahr": ["usr"]}
@@ -311,7 +309,7 @@ impl Circulator<'_> {
             None => return Ok(()),
         };
 
-        if json_int(&hold["usr"]["id"])? == self.patron_id {
+        if hold["usr"].id()? == self.patron_id {
             self.checkout_is_for_hold = Some(hold);
             return Ok(());
         }
@@ -320,12 +318,12 @@ impl Circulator<'_> {
 
         // NOTE this is what the Perl does, but ideally patron display
         // info is collected via the patron ID, not this bit of name logic.
-        let fname = json_string(&hold["usr"]["first_given_name"])?;
-        let lname = json_string(&hold["usr"]["family_name"])?;
-        let pid = json_int(&hold["usr"]["id"])?;
-        let hid = json_int(&hold["id"])?;
+        let fname = hold["usr"]["first_given_name"].string()?;
+        let lname = hold["usr"]["family_name"].string()?;
+        let pid = hold["usr"]["id"].int()?;
+        let hid = hold["id"].int()?;
 
-        let payload = json::object! {
+        let payload = eg::hash! {
             "patron_name": format!("{fname} {lname}"),
             "patron_id": pid,
             "hold_id": hid,
@@ -355,10 +353,10 @@ impl Circulator<'_> {
     /// we are in override mode, check in the circ.  Otherwise,
     /// exit with an event.
     fn handle_claims_returned(&mut self) -> EgResult<()> {
-        let query = json::object! {
+        let query = eg::hash! {
             "target_copy": self.copy_id,
             "stop_fines": "CLAIMSRETURNED",
-            "checkin_time": JSON_NULL,
+            "checkin_time": eg::NULL,
         };
 
         let mut circ = match self.editor().search("circ", query)?.pop() {
@@ -370,13 +368,13 @@ impl Circulator<'_> {
             return self.exit_err_on_event_code("CIRC_CLAIMS_RETURNED");
         }
 
-        circ["checkin_time"] = json::from("now");
-        circ["checkin_scan_time"] = json::from("now");
-        circ["checkin_lib"] = json::from(self.circ_lib);
-        circ["checkin_staff"] = json::from(self.requestor_id());
+        circ["checkin_time"] = EgValue::from("now");
+        circ["checkin_scan_time"] = EgValue::from("now");
+        circ["checkin_lib"] = EgValue::from(self.circ_lib);
+        circ["checkin_staff"] = EgValue::from(self.requestor_id()?);
 
         if let Some(id) = self.editor().requestor_ws_id() {
-            circ["checkin_workstation"] = json::from(id);
+            circ["checkin_workstation"] = EgValue::from(id);
         }
 
         self.editor().update(circ).map(|_| ())
@@ -387,9 +385,9 @@ impl Circulator<'_> {
             return Ok(());
         }
 
-        let query = json::object! {
+        let query = eg::hash! {
             "target_copy":  self.copy_id,
-            "checkin_time": JSON_NULL,
+            "checkin_time": eg::NULL,
         };
 
         let circ = match self.editor().search("circ", query)?.pop() {
@@ -397,9 +395,9 @@ impl Circulator<'_> {
             None => return Ok(()),
         };
 
-        let mut payload = json::object! {"copy": self.copy().clone()};
+        let mut payload = eg::hash! {"copy": self.copy().clone()};
 
-        if self.patron_id == json_int(&circ["usr"])? {
+        if self.patron_id == circ["usr"].int()? {
             payload["old_circ"] = circ.clone();
 
             // If there is an open circulation on the checkout item and
@@ -418,7 +416,7 @@ impl Circulator<'_> {
                 let cutoff = xact_start + Duration::from_secs(interval as u64);
 
                 if date::now() > cutoff {
-                    payload["auto_renew"] = json::from(1);
+                    payload["auto_renew"] = EgValue::from(1);
                 }
             }
         }
@@ -446,12 +444,12 @@ impl Circulator<'_> {
             || self.is_noncat
             || (self.precat_requested() && !self.is_override && !self.is_renewal())
         {
-            JSON_NULL
+            eg::NULL
         } else {
-            json::from(self.copy_id)
+            EgValue::from(self.copy_id)
         };
 
-        let query = json::object! {
+        let query = eg::hash! {
             "from": [
                 func,
                 self.circ_lib,
@@ -473,7 +471,7 @@ impl Circulator<'_> {
 
         let policy = &results[0];
 
-        self.circ_test_success = json_bool(&policy["success"]);
+        self.circ_test_success = policy["success"].boolish();
 
         if self.circ_test_success && policy["duration_rule"].is_null() {
             // Successful lookup with no duration rule indicates
@@ -516,30 +514,30 @@ impl Circulator<'_> {
             .editor()
             .retrieve("chdd", policy["hard_due_date"].clone())?;
 
-        if let Ok(n) = json_int(&policy["renewals"]) {
-            duration_rule["max_renewals"] = json::from(n);
+        if let Ok(n) = policy["renewals"].int() {
+            duration_rule["max_renewals"] = EgValue::from(n);
         }
 
         if let Some(s) = policy["grace_period"].as_str() {
-            recurring_fine_rule["grace_period"] = json::from(s);
+            recurring_fine_rule["grace_period"] = EgValue::from(s);
         }
 
         let max_fine = self.calc_max_fine(&max_fine_rule)?;
         let copy = self.copy();
 
-        let copy_duration = json_int(&copy["loan_duration"])?;
-        let copy_fine_level = json_int(&copy["fine_level"])?;
+        let copy_duration = copy["loan_duration"].int()?;
+        let copy_fine_level = copy["fine_level"].int()?;
 
         let duration = match copy_duration {
-            C::CIRC_DURATION_SHORT => json_string(&duration_rule["shrt"])?,
-            C::CIRC_DURATION_EXTENDED => json_string(&duration_rule["extended"])?,
-            _ => json_string(&duration_rule["normal"])?,
+            C::CIRC_DURATION_SHORT => duration_rule["shrt"].string()?,
+            C::CIRC_DURATION_EXTENDED => duration_rule["extended"].string()?,
+            _ => duration_rule["normal"].string()?,
         };
 
         let recurring_fine = match copy_fine_level {
-            C::CIRC_FINE_LEVEL_LOW => json_float(&recurring_fine_rule["low"])?,
-            C::CIRC_FINE_LEVEL_HIGH => json_float(&recurring_fine_rule["high"])?,
-            _ => json_float(&recurring_fine_rule["normal"])?,
+            C::CIRC_FINE_LEVEL_LOW => recurring_fine_rule["low"].float()?,
+            C::CIRC_FINE_LEVEL_HIGH => recurring_fine_rule["high"].float()?,
+            _ => recurring_fine_rule["normal"].float()?,
         };
 
         let matchpoint = policy["matchpoint"].clone();
@@ -597,7 +595,7 @@ impl Circulator<'_> {
                 .map(|r| r.as_str().unwrap())
                 .collect();
 
-            let query = json::object! {
+            let query = eg::hash! {
                 "name": penalty_codes,
                 "block_list": {"like": "%CIRC%"}
             };
@@ -645,17 +643,21 @@ impl Circulator<'_> {
         Ok(())
     }
 
-    fn calc_max_fine(&mut self, max_fine_rule: &JsonValue) -> EgResult<f64> {
-        let rule_amount = json_float(&max_fine_rule["amount"])?;
+    fn calc_max_fine(&mut self, max_fine_rule: &EgValue) -> EgResult<f64> {
+        let rule_amount = max_fine_rule["amount"].float()?;
 
         let copy_id = self.copy_id;
 
-        if json_bool(&max_fine_rule["is_percent"]) {
+        if max_fine_rule["is_percent"].boolish() {
             let copy_price = billing::get_copy_price(self.editor(), copy_id)?;
             return Ok((copy_price * rule_amount) / 100.0);
         }
 
-        if json_bool(self.settings.get_value("circ.max_fine.cap_at_price")?) {
+        if self
+            .settings
+            .get_value("circ.max_fine.cap_at_price")?
+            .boolish()
+        {
             let copy_price = billing::get_copy_price(self.editor(), copy_id)?;
             let amount = if rule_amount > copy_price {
                 copy_price
@@ -670,15 +672,15 @@ impl Circulator<'_> {
     }
 
     fn build_checkout_circ(&mut self) -> EgResult<()> {
-        let mut circ = json::object! {
+        let mut circ = eg::hash! {
             "target_copy": self.copy_id,
             "usr": self.patron_id,
             "circ_lib": self.circ_lib,
-            "circ_staff": self.requestor_id(),
+            "circ_staff": self.requestor_id()?,
         };
 
         if let Some(ws) = self.editor().requestor_ws_id() {
-            circ["workstation"] = json::from(ws);
+            circ["workstation"] = EgValue::from(ws);
         };
 
         if let Some(ct) = self.options.get("checkout_time") {
@@ -686,42 +688,62 @@ impl Circulator<'_> {
         }
 
         if let Some(id) = self.parent_circ {
-            circ["parent_circ"] = json::from(id);
+            circ["parent_circ"] = EgValue::from(id);
         }
 
         if self.is_renewal() {
-            if json_bool_op(self.options.get("opac_renewal")) {
-                circ["opac_renewal"] = json::from("t");
+            if self
+                .options
+                .get("opac_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
+                circ["opac_renewal"] = EgValue::from("t");
             }
-            if json_bool_op(self.options.get("phone_renewal")) {
-                circ["phone_renewal"] = json::from("t");
+            if self
+                .options
+                .get("phone_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
+                circ["phone_renewal"] = EgValue::from("t");
             }
-            if json_bool_op(self.options.get("desk_renewal")) {
-                circ["desk_renewal"] = json::from("t");
+            if self
+                .options
+                .get("desk_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
+                circ["desk_renewal"] = EgValue::from("t");
             }
-            if json_bool_op(self.options.get("auto_renewal")) {
-                circ["auto_renewal"] = json::from("t");
+            if self
+                .options
+                .get("auto_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
+                circ["auto_renewal"] = EgValue::from("t");
             }
 
-            circ["renewal_remaining"] = json::from(self.renewal_remaining);
-            circ["auto_renewal_remaining"] = json::from(self.auto_renewal_remaining);
+            circ["renewal_remaining"] = EgValue::from(self.renewal_remaining);
+            circ["auto_renewal_remaining"] = EgValue::from(self.auto_renewal_remaining);
         }
 
         if self.circ_policy_unlimited {
-            circ["duration_rule"] = json::from(C::CIRC_POLICY_UNLIMITED);
-            circ["recurring_fine_rule"] = json::from(C::CIRC_POLICY_UNLIMITED);
-            circ["max_fine_rule"] = json::from(C::CIRC_POLICY_UNLIMITED);
-            circ["renewal_remaining"] = json::from(0);
-            circ["grace_period"] = json::from(0);
+            circ["duration_rule"] = EgValue::from(C::CIRC_POLICY_UNLIMITED);
+            circ["recurring_fine_rule"] = EgValue::from(C::CIRC_POLICY_UNLIMITED);
+            circ["max_fine_rule"] = EgValue::from(C::CIRC_POLICY_UNLIMITED);
+            circ["renewal_remaining"] = EgValue::from(0);
+            circ["grace_period"] = EgValue::from(0);
         } else if let Some(policy) = self.circ_policy_rules.as_ref() {
-            circ["duration"] = json::from(policy.duration.to_string());
+            circ["duration"] = EgValue::from(policy.duration.to_string());
             circ["duration_rule"] = policy.duration_rule["name"].clone();
 
-            circ["recurring_fine"] = json::from(policy.recurring_fine);
+            circ["recurring_fine"] = EgValue::from(policy.recurring_fine);
             circ["recurring_fine_rule"] = policy.recurring_fine_rule["name"].clone();
             circ["fine_interval"] = policy.recurring_fine_rule["recurrence_interval"].clone();
 
-            circ["max_fine"] = json::from(policy.max_fine);
+            circ["max_fine"] = EgValue::from(policy.max_fine);
             circ["max_fine_rule"] = policy.max_fine_rule["name"].clone();
 
             circ["renewal_remaining"] = policy.duration_rule["max_renewals"].clone();
@@ -803,7 +825,7 @@ impl Circulator<'_> {
         if let Some(hdd) = policy.hard_due_date.as_ref() {
             let cdate_str = hdd["ceiling_date"].as_str().unwrap();
             let cdate = date::parse_datetime(cdate_str)?;
-            let force = json_bool(&hdd["forceto"]);
+            let force = hdd["forceto"].boolish();
 
             if cdate > date::now() {
                 if cdate < due_date || force {
@@ -812,7 +834,7 @@ impl Circulator<'_> {
             }
         }
 
-        self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due_date));
+        self.circ.as_mut().unwrap()["due_date"] = EgValue::from(date::to_iso(&due_date));
 
         Ok(())
     }
@@ -829,26 +851,26 @@ impl Circulator<'_> {
             None => return Ok(false),
         };
 
-        let query = json::object! {"barcode": self.copy()["barcode"].clone()};
-        let flesh = json::object! {"flesh": 1, "flesh_fields": {"brsrc": ["type"]}};
+        let query = eg::hash! {"barcode": self.copy()["barcode"].clone()};
+        let flesh = eg::hash! {"flesh": 1, "flesh_fields": {"brsrc": ["type"]}};
 
         let resource = match self.editor().search_with_ops("brsrc", query, flesh)?.pop() {
             Some(r) => r,
             None => return Ok(false),
         };
 
-        let stop_circ = json_bool(
-            self.settings
-                .get_value("circ.booking_reservation.stop_circ")?,
-        );
+        let stop_circ = self
+            .settings
+            .get_value("circ.booking_reservation.stop_circ")?
+            .boolish();
 
-        let query = json::object! {
+        let query = eg::hash! {
             "resource": resource["id"].clone(),
             "search_start": "now",
             "search_end": due_date.as_str(),
             "fields": {
-                "cancel_time": JSON_NULL,
-                "return_time": JSON_NULL,
+                "cancel_time": eg::NULL,
+                "return_time": eg::NULL,
             }
         };
 
@@ -932,8 +954,8 @@ impl Circulator<'_> {
         }
 
         let circ = self.circ.as_mut().unwrap();
-        circ["duration"] = json::from(format!("{duration} seconds"));
-        circ["due_date"] = json::from(date::to_iso(&due_date_dt));
+        circ["duration"] = EgValue::from(format!("{duration} seconds"));
+        circ["due_date"] = EgValue::from(date::to_iso(&due_date_dt));
 
         // Changes were made.
         Ok(true)
@@ -969,7 +991,7 @@ impl Circulator<'_> {
         // to the first available time on or after the calculated due date.
         log::info!("{self} bumping due date to avoid closures: {}", due_date_dt);
 
-        self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due_date_dt));
+        self.circ.as_mut().unwrap()["due_date"] = EgValue::from(date::to_iso(&due_date_dt));
 
         Ok(())
     }
@@ -983,9 +1005,9 @@ impl Circulator<'_> {
         };
 
         // Intervals can in theory be numeric; coerce to string result.
-        let renew_extend_min_res = json_string(&policy.matchpoint["renew_extend_min_interval"]);
+        let renew_extend_min_res = policy.matchpoint["renew_extend_min_interval"].string();
 
-        if !json_bool(&policy.matchpoint["renew_extends_due_date"]) {
+        if !policy.matchpoint["renew_extends_due_date"].boolish() {
             // Not configured to extend on the matching policy.
             return Ok(());
         }
@@ -1001,7 +1023,7 @@ impl Circulator<'_> {
             .parent_circ
             .ok_or_else(|| format!("Renewals require a parent circ"))?;
 
-        let prev_circ = match self.editor().retrieve("circ", json::from(parent_circ))? {
+        let prev_circ = match self.editor().retrieve("circ", EgValue::from(parent_circ))? {
             Some(c) => c,
             None => return Err(self.editor().die_event()),
         };
@@ -1038,7 +1060,7 @@ impl Circulator<'_> {
                     due_date
                 };
 
-                self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due));
+                self.circ.as_mut().unwrap()["due_date"] = EgValue::from(date::to_iso(&due));
 
                 return Ok(());
             }
@@ -1066,7 +1088,7 @@ impl Circulator<'_> {
             due
         );
 
-        self.circ.as_mut().unwrap()["due_date"] = json::from(date::to_iso(&due));
+        self.circ.as_mut().unwrap()["due_date"] = EgValue::from(date::to_iso(&due));
 
         Ok(())
     }
@@ -1075,7 +1097,7 @@ impl Circulator<'_> {
         // At this point we know we have a circ.
         // Turn our circ hash into an IDL-classed object.
         let circ = self.circ.as_ref().unwrap().clone();
-        let clone = self.editor().idl().create_from("circ", circ)?;
+        let clone = EgValue::create("circ", circ)?;
 
         log::debug!("{self} creating circulation {}", clone.dump());
 
@@ -1083,7 +1105,7 @@ impl Circulator<'_> {
         self.circ = Some(self.editor().create(clone)?);
 
         // We did it. We checked out a copy.
-        self.update_copy(json::object! {"status": C::COPY_STATUS_CHECKED_OUT})?;
+        self.update_copy(eg::hash! {"status": C::COPY_STATUS_CHECKED_OUT})?;
 
         Ok(())
     }
@@ -1097,7 +1119,7 @@ impl Circulator<'_> {
             None => return Ok(()),
         };
 
-        let query = json::object! {
+        let query = eg::hash! {
             "from": [
                 "action.link_circ_limit_groups",
                 self.circ.as_ref().unwrap()["id"].clone(),
@@ -1113,7 +1135,7 @@ impl Circulator<'_> {
     fn is_deposit(&self) -> bool {
         if let Some(copy) = self.copy.as_ref() {
             if let Some(amount) = copy["deposit_amount"].as_f64() {
-                return amount > 0.0 && json_bool(&copy["deposit"]);
+                return amount > 0.0 && copy["deposit"].boolish();
             }
         }
         false
@@ -1123,7 +1145,7 @@ impl Circulator<'_> {
     fn is_rental(&self) -> bool {
         if let Some(copy) = self.copy.as_ref() {
             if let Some(amount) = copy["deposit_amount"].as_f64() {
-                return amount > 0.0 && !json_bool(&copy["deposit"]);
+                return amount > 0.0 && !copy["deposit"].boolish();
             }
         }
         false
@@ -1141,15 +1163,13 @@ impl Circulator<'_> {
         let deposit_amount = self.copy()["deposit_amount"].as_f64().unwrap();
 
         if is_deposit {
-            if json_bool(self.settings.get_value("skip_deposit_fee")?)
-                || self.is_deposit_exempt()?
-            {
+            if self.settings.get_value("skip_deposit_fee")?.boolish() || self.is_deposit_exempt()? {
                 return Ok(());
             }
         }
 
         if is_rental {
-            if json_bool(self.settings.get_value("skip_rental_fee")?) || self.is_rental_exempt()? {
+            if self.settings.get_value("skip_rental_fee")?.boolish() || self.is_rental_exempt()? {
                 return Ok(());
             }
         }
@@ -1162,7 +1182,7 @@ impl Circulator<'_> {
             btype_label = C::BTYPE_LABEL_RENTAL;
         }
 
-        let circ_id = json_int(&self.circ.as_ref().unwrap()["id"])?;
+        let circ_id = self.circ.as_ref().expect("Circ is Set").id()?;
 
         let bill = billing::create_bill(
             self.editor(),
@@ -1185,7 +1205,7 @@ impl Circulator<'_> {
     }
 
     fn is_deposit_exempt(&mut self) -> EgResult<bool> {
-        let profile = json_int(&self.patron.as_ref().unwrap()["profile"]["id"])?;
+        let profile = self.patron.as_ref().unwrap()["profile"].id()?;
 
         let groups = self.settings.get_value("circ.deposit.exempt_groups")?;
 
@@ -1195,14 +1215,14 @@ impl Circulator<'_> {
 
         let mut parent_ids = Vec::new();
         for grp in groups.members() {
-            parent_ids.push(json_int(&grp["id"])?);
+            parent_ids.push(grp.id()?);
         }
 
         self.is_group_descendant(profile, parent_ids.as_slice())
     }
 
     fn is_rental_exempt(&mut self) -> EgResult<bool> {
-        let profile = json_int(&self.patron.as_ref().unwrap()["profile"]["id"])?;
+        let profile = self.patron.as_ref().unwrap()["profile"].id()?;
 
         let groups = self.settings.get_value("circ.rental.exempt_groups")?;
 
@@ -1212,7 +1232,7 @@ impl Circulator<'_> {
 
         let mut parent_ids = Vec::new();
         for grp in groups.members() {
-            parent_ids.push(json_int(&grp["id"])?);
+            parent_ids.push(grp.id()?);
         }
 
         self.is_group_descendant(profile, parent_ids.as_slice())
@@ -1221,11 +1241,11 @@ impl Circulator<'_> {
     /// Returns true if the child is a descendant of any of the parent
     /// profile group IDs
     fn is_group_descendant(&mut self, child_id: i64, parent_ids: &[i64]) -> EgResult<bool> {
-        let query = json::object! {"from": ["permission.grp_ancestors", child_id] };
+        let query = eg::hash! {"from": ["permission.grp_ancestors", child_id] };
         let ancestors = self.editor().json_query(query)?;
         for parent_id in parent_ids {
             for grp in &ancestors {
-                if &json_int(&grp["id"])? == parent_id {
+                if grp.id()? == *parent_id {
                     return Ok(true);
                 }
             }
@@ -1260,18 +1280,18 @@ impl Circulator<'_> {
 
         self.check_hold_fulfill_blocks()?;
 
-        let hold_id = json_int(&hold["id"])?;
+        let hold_id = hold.id()?;
 
         log::info!("{self} fulfilling hold {hold_id}");
 
         hold["hopeless_date"].take();
-        hold["current_copy"] = json::from(self.copy_id);
-        hold["fulfillment_time"] = json::from("now");
-        hold["fulfillment_staff"] = json::from(self.requestor_id());
-        hold["fulfillment_lib"] = json::from(self.circ_lib);
+        hold["current_copy"] = EgValue::from(self.copy_id);
+        hold["fulfillment_time"] = EgValue::from("now");
+        hold["fulfillment_staff"] = EgValue::from(self.requestor_id()?);
+        hold["fulfillment_lib"] = EgValue::from(self.circ_lib);
 
         if hold["capture_time"].is_null() {
-            hold["capture_time"] = json::from("now");
+            hold["capture_time"] = EgValue::from("now");
         }
 
         self.editor().create(hold)?;
@@ -1284,7 +1304,7 @@ impl Circulator<'_> {
     /// If we have a hold that targets another patron -- we have already
     /// overridden that event -- then reset the hold so it can go on
     /// to target a different copy.
-    fn handle_targeted_hold(&mut self) -> EgResult<Option<JsonValue>> {
+    fn handle_targeted_hold(&mut self) -> EgResult<Option<EgValue>> {
         let mut hold = match self.hold_found_for_alt_patron.take() {
             Some(h) => h,
             None => return Ok(None),
@@ -1322,15 +1342,16 @@ impl Circulator<'_> {
     /// the item. This allows items that are non-requestable to count as
     /// capturing those hold types.
     /// ------------------------------------------------------------------------------
-    fn find_related_user_hold(&mut self) -> EgResult<Option<JsonValue>> {
+    fn find_related_user_hold(&mut self) -> EgResult<Option<EgValue>> {
         if self.is_precat_copy() {
             return Ok(None);
         }
 
-        if !json_bool(
-            self.settings
-                .get_value("circ.checkout_fills_related_hold")?,
-        ) {
+        if !self
+            .settings
+            .get_value("circ.checkout_fills_related_hold")?
+            .boolish()
+        {
             return Ok(None);
         }
 
@@ -1338,7 +1359,7 @@ impl Circulator<'_> {
         let patron_id = self.patron_id;
 
         // find the oldest unfulfilled hold that has not yet hit the holds shelf.
-        let query = json::object! {
+        let query = eg::hash! {
             "select": {"ahr": ["id"]},
             "from": {
                 "ahr": {
@@ -1356,10 +1377,10 @@ impl Circulator<'_> {
             "where": {
                 "+ahr": {
                     "usr": patron_id,
-                    "fulfillment_time": JSON_NULL,
-                    "cancel_time": JSON_NULL,
+                    "fulfillment_time": eg::NULL,
+                    "cancel_time": eg::NULL,
                    "-or": [
-                        {"expire_time": JSON_NULL},
+                        {"expire_time": eg::NULL},
                         {"expire_time": {">": "now"}}
                     ]
                 },
@@ -1368,7 +1389,7 @@ impl Circulator<'_> {
                 },
                 "+acp": {
                     "-or": [
-                        {"id": JSON_NULL}, // left-join copy may be nonexistent
+                        {"id": eg::NULL}, // left-join copy may be nonexistent
                         {"status": {"!=": C::COPY_STATUS_ON_HOLDS_SHELF}},
                     ]
                 }
@@ -1381,10 +1402,11 @@ impl Circulator<'_> {
             return self.editor().retrieve("ahr", hold["id"].clone());
         }
 
-        if json_bool(
-            self.settings
-                .get_value("circ.checkout_fills_related_hold_exact_match_only")?,
-        ) {
+        if self
+            .settings
+            .get_value("circ.checkout_fills_related_hold_exact_match_only")?
+            .boolish()
+        {
             // We only want exact matches and didn't find any.  We're done.
             return Ok(None);
         }
@@ -1413,8 +1435,8 @@ impl Circulator<'_> {
         // want filled by this copy, e.g. holds that target different
         // volumes or records.  Apply some additional filtering.
 
-        let record_id = json_int(&self.copy()["call_number"]["record"])?;
-        let volume_id = json_int(&self.copy()["call_number"]["id"])?;
+        let record_id = self.copy()["call_number"]["record"].int()?;
+        let volume_id = self.copy()["call_number"].id()?;
 
         for hold in hold_data.iter() {
             let target = hold.target();
@@ -1436,8 +1458,8 @@ impl Circulator<'_> {
     /// Exits with error if hold blocks are present and we are not
     /// overriding them.
     fn check_hold_fulfill_blocks(&mut self) -> EgResult<()> {
-        let home_ou = json_int(&self.patron.as_ref().unwrap()["home_ou"])?;
-        let copy_ou = json_int(&self.copy()["circ_lib"])?;
+        let home_ou = self.patron.as_ref().unwrap()["home_ou"].int()?;
+        let copy_ou = self.copy()["circ_lib"].int()?;
 
         let copy_prox;
         let circ_lib = self.circ_lib;
@@ -1449,7 +1471,7 @@ impl Circulator<'_> {
             copy_prox = org::proximity(self.editor(), copy_ou, circ_lib)?.unwrap_or(-1);
         }
 
-        let query = json::object! {
+        let query = eg::hash! {
             "select": {"csp": ["name", "label"]},
             "from": {"ausp": "csp"},
             "where": {
@@ -1457,14 +1479,14 @@ impl Circulator<'_> {
                     "usr": self.patron_id,
                     "org_unit": org::full_path(self.editor(), circ_lib, None)?,
                     "-or": [
-                        {"stop_date": JSON_NULL},
+                        {"stop_date": eg::NULL},
                         {"stop_date": {">": "now"}}
                     ]
                 },
                 "+csp": {
                     "block_list": {"like": "%FULFILL%"},
                     "-or": [
-                        {"ignore_proximity": JSON_NULL},
+                        {"ignore_proximity": eg::NULL},
                         {"ignore_proximity": {"<": ou_prox}},
                         {"ignore_proximity": {"<": copy_prox}}
                     ]
@@ -1487,13 +1509,13 @@ impl Circulator<'_> {
     fn build_checkout_response(&mut self) -> EgResult<()> {
         let mut record = None;
         if !self.is_precat_copy() {
-            let record_id = json_int(&self.copy()["call_number"]["record"])?;
+            let record_id = self.copy()["call_number"]["record"].int()?;
             record = Some(bib::map_to_mvr(self.editor(), record_id)?);
         }
 
         let mut copy = self.copy().clone();
         let volume = copy["call_number"].take();
-        self.editor().idl().de_flesh_object(&mut copy)?;
+        copy.deflesh()?;
 
         let circ = self.circ.as_ref().unwrap().clone();
         let patron = self.patron.as_ref().unwrap().clone();
@@ -1501,7 +1523,7 @@ impl Circulator<'_> {
 
         let patron_money = self.editor().retrieve("mus", patron_id)?;
 
-        let mut payload = json::object! {
+        let mut payload = eg::hash! {
             "copy": copy,
             "volume": volume,
             "record": record,
@@ -1511,7 +1533,7 @@ impl Circulator<'_> {
         };
 
         if let Some(list) = self.fulfilled_hold_ids.as_ref() {
-            payload["holds_fulfilled"] = json::from(list.clone());
+            payload["holds_fulfilled"] = EgValue::from(list.clone());
         }
 
         if let Some(bill) = self.deposit_billing.as_ref() {
@@ -1524,7 +1546,7 @@ impl Circulator<'_> {
 
         // Flesh the billing summary for our checked-in circ.
         if let Some(pcirc) = self.parent_circ {
-            let flesh = json::object! {
+            let flesh = eg::hash! {
                 "flesh": 1,
                 "flesh_fields": {
                     "circ": ["billable_transaction"],

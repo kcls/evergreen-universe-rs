@@ -1,6 +1,8 @@
-use opensrf::bus;
-use opensrf::conf;
-use opensrf::util;
+use eg::osrf::bus;
+use eg::osrf::conf;
+use eg::util;
+use eg::EgValue;
+use evergreen as eg;
 use std::env;
 use std::fmt;
 use std::sync::Arc;
@@ -51,7 +53,7 @@ impl BusWatch {
     /// buswatcher to recover from a potentially temporary bus
     /// connection error.  False if this is a clean shutdown.
     pub fn watch(&mut self) -> bool {
-        let mut obj = json::object! {};
+        let mut obj = eg::hash! {};
 
         loop {
             thread::sleep(Duration::from_secs(self.wait_time));
@@ -69,7 +71,7 @@ impl BusWatch {
                 continue;
             }
 
-            obj["stats"] = json::JsonValue::new_object();
+            obj["stats"] = EgValue::new_object();
 
             for key in keys.iter() {
                 match self.bus.llen(key) {
@@ -77,12 +79,12 @@ impl BusWatch {
                         // The list may have cleared in the time between the
                         // time we called keys() and llen().
                         if l > 0 {
-                            obj["stats"][key]["count"] = json::from(l);
+                            obj["stats"][key]["count"] = EgValue::from(l);
                             // Uncomment this chunk to see the next opensrf
                             // message in the queue for this key as JSON.
                             if let Ok(list) = self.bus.lrange(key, 0, 1) {
                                 if let Some(s) = list.get(0) {
-                                    obj["stats"][key]["next_value"] = json::from(s.as_str());
+                                    obj["stats"][key]["next_value"] = EgValue::from(s.as_str());
                                 }
                             }
                         }
@@ -96,7 +98,7 @@ impl BusWatch {
 
                 match self.bus.ttl(key) {
                     Ok(ttl) => {
-                        obj["stats"][key]["ttl"] = json::from(ttl);
+                        obj["stats"][key]["ttl"] = EgValue::from(ttl);
                         if ttl == -1 {
                             log::debug!("Setting TTL for stale key {key}");
                             if let Err(e) = self.bus.set_key_timeout(key, self.ttl) {
@@ -111,7 +113,7 @@ impl BusWatch {
                 }
             }
 
-            obj["time"] = json::from(util::epoch_secs_str());
+            obj["time"] = EgValue::from(util::epoch_secs_str());
 
             log::info!("{}", obj.dump());
         }
@@ -119,11 +121,11 @@ impl BusWatch {
 }
 
 fn main() {
-    let conf = opensrf::init::init().unwrap();
+    let ctx = eg::init::init().unwrap();
 
-    log::info!("Starting buswatch at {}", conf.client().domain());
+    log::info!("Starting buswatch at {}", ctx.config().client().domain());
 
-    let mut watcher = BusWatch::new(conf.into_shared());
+    let mut watcher = BusWatch::new(ctx.config().clone());
 
     if let Ok(v) = env::var("OSRF_BUSWATCH_TTL") {
         if let Ok(v2) = v.parse::<u64>() {

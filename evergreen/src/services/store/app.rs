@@ -1,12 +1,14 @@
+use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
+use eg::Client;
+use eg::osrf::conf;
 use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
 use eg::idl;
+use eg::osrf::message;
+use eg::osrf::method::MethodDef;
+use eg::osrf::sclient::HostSettings;
+use eg::EgError;
+use eg::EgResult;
 use evergreen as eg;
-use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
-use opensrf::client::Client;
-use opensrf::conf;
-use opensrf::message;
-use opensrf::method::MethodDef;
-use opensrf::sclient::HostSettings;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -154,7 +156,7 @@ impl Application for RsStoreApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let idl_file = host_settings
             .value("IDL")
             .as_str()
@@ -174,7 +176,7 @@ impl Application for RsStoreApplication {
         _client: Client,
         _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
-    ) -> Result<Vec<MethodDef>, String> {
+    ) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
         self.register_auto_methods(&mut methods);
@@ -206,14 +208,14 @@ pub struct RsStoreWorker {
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
     database: Option<Rc<RefCell<DatabaseConnection>>>,
-    last_work_timer: Option<opensrf::util::Timer>,
+    last_work_timer: Option<eg::util::Timer>,
 }
 
 impl RsStoreWorker {
     pub fn new() -> Self {
         let mut timer = None;
         if IDLE_DISCONNECT_TIME > 0 {
-            timer = Some(opensrf::util::Timer::new(IDLE_DISCONNECT_TIME));
+            timer = Some(eg::util::Timer::new(IDLE_DISCONNECT_TIME));
         }
 
         RsStoreWorker {
@@ -237,10 +239,10 @@ impl RsStoreWorker {
     ///
     /// This is necessary to access methods/fields on our RsStoreWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut RsStoreWorker, String> {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsStoreWorker> {
         match w.as_any_mut().downcast_mut::<RsStoreWorker>() {
             Some(eref) => Ok(eref),
-            None => Err(format!("Cannot downcast")),
+            None => Err(format!("Cannot downcast").into()),
         }
     }
 
@@ -253,7 +255,7 @@ impl RsStoreWorker {
             .expect("We have no database connection!")
     }
 
-    pub fn setup_database(&mut self) -> Result<(), String> {
+    pub fn setup_database(&mut self) -> EgResult<()> {
         // Our builder will apply default values where none exist in
         // settings or environment variables.
         let mut builder = DatabaseConnectionBuilder::new();
@@ -290,7 +292,7 @@ impl RsStoreWorker {
         builder.set_application(&format!(
             "{APPNAME}@{}(thread_{})",
             self.config.as_ref().unwrap().hostname(),
-            opensrf::util::thread_id()
+            eg::util::thread_id()
         ));
 
         log::debug!("{APPNAME} connecting to database");
@@ -322,15 +324,11 @@ impl ApplicationWorker for RsStoreWorker {
         host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let worker_env = env
             .as_any()
             .downcast_ref::<RsStoreEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
-
-        // Each worker gets its own client, so we have to tell our
-        // client how to pack/unpack network data.
-        client.set_serializer(idl::Parser::as_serializer(worker_env.idl()));
 
         self.env = Some(worker_env.clone());
         self.client = Some(client);
@@ -343,12 +341,12 @@ impl ApplicationWorker for RsStoreWorker {
 
     /// Called after this worker thread is spawned, but before the worker
     /// goes into its listen state.
-    fn worker_start(&mut self) -> Result<(), String> {
+    fn worker_start(&mut self) -> EgResult<()> {
         log::debug!("Thread starting");
         self.setup_database()
     }
 
-    fn worker_idle_wake(&mut self, connected: bool) -> Result<(), String> {
+    fn worker_idle_wake(&mut self, connected: bool) -> EgResult<()> {
         if connected {
             // Avoid any idle database maintenance when we're mid-session.
             return Ok(());
@@ -372,18 +370,18 @@ impl ApplicationWorker for RsStoreWorker {
 
     /// Called after all requests are handled and the worker is
     /// shutting down.
-    fn worker_end(&mut self) -> Result<(), String> {
+    fn worker_end(&mut self) -> EgResult<()> {
         log::debug!("Thread ending");
         // Our database connection will clean itself up on Drop.
         Ok(())
     }
 
-    fn keepalive_timeout(&mut self) -> Result<(), String> {
+    fn keepalive_timeout(&mut self) -> EgResult<()> {
         log::debug!("IDL worker timed out in keepalive");
         self.end_session()
     }
 
-    fn start_session(&mut self) -> Result<(), String> {
+    fn start_session(&mut self) -> EgResult<()> {
         if let Some(ref mut t) = self.last_work_timer {
             t.reset();
         }
@@ -394,7 +392,7 @@ impl ApplicationWorker for RsStoreWorker {
         Ok(())
     }
 
-    fn end_session(&mut self) -> Result<(), String> {
+    fn end_session(&mut self) -> EgResult<()> {
         // Alway rollback an active transaction if our client goes away
         // or disconnects prematurely.
         if let Some(ref mut db) = self.database {
@@ -412,7 +410,7 @@ impl ApplicationWorker for RsStoreWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::MethodCall, error: &str) {
+    fn api_call_error(&mut self, _request: &message::MethodCall, error: EgError) {
         log::debug!("API failed: {error}");
         self.end_session().ok(); // ignore additional errors
     }

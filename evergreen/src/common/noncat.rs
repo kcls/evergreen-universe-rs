@@ -1,10 +1,10 @@
-use crate::common::org;
-use crate::common::settings::Settings;
-use crate::date;
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util::{json_int, json_string};
-use json::JsonValue;
+use crate as eg;
+use eg::common::org;
+use eg::common::settings::Settings;
+use eg::date;
+use eg::editor::Editor;
+use eg::result::EgResult;
+use eg::EgValue;
 use std::time::Duration;
 
 /// Create X number of non-cat checkouts.
@@ -17,22 +17,22 @@ pub fn checkout(
     circ_lib: i64,
     count: i64,
     circ_time: Option<&str>,
-) -> EgResult<Vec<JsonValue>> {
+) -> EgResult<Vec<EgValue>> {
     let mut circs = Vec::new();
 
     for _ in 0..count {
-        let noncat = json::object! {
+        let noncat = eg::hash! {
             "patron": patron_id,
-            "staff": editor.requestor_id(),
+            "staff": editor.requestor_id()?,
             "circ_lib": circ_lib,
             "item_type": noncat_type,
             "circ_time": circ_time,
         };
 
-        let noncat = editor.idl().create_from("ancc", noncat)?;
+        let noncat = EgValue::create("ancc", noncat)?;
         let mut noncat = editor.create(noncat)?;
 
-        noncat["duedate"] = json::from(noncat_due_date(editor, &noncat)?);
+        noncat["duedate"] = EgValue::from(noncat_due_date(editor, &noncat)?);
 
         circs.push(noncat);
     }
@@ -43,18 +43,18 @@ pub fn checkout(
 /// Calculate the due date of a noncat circulation, which is a function
 /// of the checkout time, the duration of the noncat type, plus org
 /// open time checks.
-pub fn noncat_due_date(editor: &mut Editor, noncat: &JsonValue) -> EgResult<String> {
+pub fn noncat_due_date(editor: &mut Editor, noncat: &EgValue) -> EgResult<String> {
     let duration = if noncat["item_type"].is_object() {
-        json_string(&noncat["item_type"]["circ_duration"])?
+        noncat["item_type"]["circ_duration"].string()?
     } else {
         let nct = editor
-            .retrieve("cnct", json_int(&noncat["item_type"])?)?
+            .retrieve("cnct", noncat["item_type"].int()?)?
             .ok_or(format!("Invalid noncat_type: {}", noncat["item_type"]))?;
 
-        json_string(&nct["circ_duration"])?
+        nct["circ_duration"].string()?
     };
 
-    let circ_lib = json_int(&noncat["circ_lib"])?;
+    let circ_lib = noncat["circ_lib"].int()?;
     let mut settings = Settings::new(editor);
 
     let timezone = settings.get_value_at_org("lib.timezone", circ_lib)?;

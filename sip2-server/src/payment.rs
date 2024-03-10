@@ -1,6 +1,7 @@
 use super::patron::Patron;
 use super::session::Session;
 use eg::result::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 
 pub struct PaymentResult {
@@ -59,8 +60,8 @@ impl Session {
         let register_login_op = msg.get_field_value("OR");
         let check_number_op = msg.get_field_value("RN");
 
-        let search = json::object! { barcode: patron_barcode };
-        let ops = json::object! { flesh: 1u8, flesh_fields: {ac: ["usr"]} };
+        let search = eg::hash! { barcode: patron_barcode };
+        let ops = eg::hash! { flesh: 1u8, flesh_fields: {ac: ["usr"]} };
         let mut cards = self.editor_mut().search_with_ops("ac", search, ops)?;
 
         if cards.len() == 0 {
@@ -128,7 +129,7 @@ impl Session {
     /// a viable choice.
     fn compile_one_xact(
         &mut self,
-        user: &json::JsonValue,
+        user: &EgValue,
         xact_id: i64,
         pay_amount: f64,
         result: &mut PaymentResult,
@@ -141,12 +142,12 @@ impl Session {
             }
         };
 
-        if eg::util::json_int(&sum["usr"])? != eg::util::json_int(&user["id"])? {
+        if sum["usr"].int()? != user.id()? {
             log::warn!("{self} Payment transaction {xact_id} does not link to provided user");
             return Ok(Vec::new());
         }
 
-        if pay_amount > eg::util::json_float(&sum["balance_owed"])? {
+        if pay_amount > sum["balance_owed"].float()? {
             result.screen_msg = Some("Overpayment not allowed".to_string());
             return Ok(Vec::new());
         }
@@ -157,14 +158,14 @@ impl Session {
     /// Find transactions to pay
     fn compile_multi_xacts(
         &mut self,
-        user: &json::JsonValue,
+        user: &EgValue,
         pay_amount: f64,
         result: &mut PaymentResult,
     ) -> EgResult<Vec<(i64, f64)>> {
         let mut payments: Vec<(i64, f64)> = Vec::new();
         let mut patron = Patron::new(&result.patron_barcode, self.format_user_name(&user));
 
-        patron.id = eg::util::json_int(&user["id"])?;
+        patron.id = user.id()?;
 
         let xacts = self.get_patron_xacts(&patron, None)?; // see patron mod
 
@@ -175,8 +176,8 @@ impl Session {
 
         let mut amount_remaining = pay_amount;
         for xact in xacts {
-            let xact_id = eg::util::json_int(&xact["id"])?;
-            let balance_owed = eg::util::json_float(&xact["balance_owed"])?;
+            let xact_id = xact.id()?;
+            let balance_owed = xact["balance_owed"].float()?;
 
             if balance_owed < 0.0 {
                 continue;
@@ -223,7 +224,7 @@ impl Session {
     /// Send payment data to the server for processing.
     fn apply_payments(
         &mut self,
-        user: &json::JsonValue,
+        user: &EgValue,
         result: &mut PaymentResult,
         pay_type: &str,
         terminal_xact_op: Option<&str>,
@@ -252,14 +253,14 @@ impl Session {
             String::from("VIA SIP2")
         };
 
-        let mut pay_array = json::array![];
+        let mut pay_array = eg::array![];
         for p in payments {
-            let sub_array = json::array![p.0, p.1];
+            let sub_array = eg::array![p.0, p.1];
             pay_array.push(sub_array).ok();
         }
 
-        let mut args = json::object! {
-            userid: eg::util::json_int(&user["id"])?,
+        let mut args = eg::hash! {
+            userid: user.id()?,
             note: note,
             payments: pay_array,
         };
@@ -269,33 +270,33 @@ impl Session {
                 // '01' is "VISA"; '02' is "credit card"
 
                 args["cc_args"]["terminal_xact"] = match terminal_xact_op {
-                    Some(tx) => json::from(tx),
-                    None => json::from("Not provided by SIP client"),
+                    Some(tx) => EgValue::from(tx),
+                    None => EgValue::from("Not provided by SIP client"),
                 };
 
-                args["payment_type"] = json::from("credit_card_payment");
+                args["payment_type"] = EgValue::from("credit_card_payment");
             }
 
             "05" => {
                 // Check payment
-                args["payment_type"] = json::from("check_payment");
+                args["payment_type"] = EgValue::from("check_payment");
                 args["check_number"] = match check_number_op {
-                    Some(s) => json::from(s),
-                    None => json::from("Not provided by SIP client"),
+                    Some(s) => EgValue::from(s),
+                    None => EgValue::from("Not provided by SIP client"),
                 };
             }
             _ => {
-                args["payment_type"] = json::from("cash_payment");
+                args["payment_type"] = EgValue::from("cash_payment");
             }
         }
 
-        let authtoken = json::from(self.authtoken()?);
+        let authtoken = EgValue::from(self.authtoken()?);
         let last_xact_id = user["last_xact_id"].as_str().unwrap(); // required
 
         let resp = self.osrf_client_mut().send_recv_one(
             "open-ils.circ",
             "open-ils.circ.money.payment",
-            vec![authtoken, args, json::from(last_xact_id)],
+            vec![authtoken, args, EgValue::from(last_xact_id)],
         )?;
 
         let resp = resp.ok_or_else(|| format!("Payment API returned no response"))?;

@@ -1,5 +1,5 @@
 use crate::result::EgResult;
-use chrono::{DateTime, Datelike, FixedOffset, Local, NaiveDate, TimeZone};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, NaiveDate, TimeZone};
 use chrono_tz::Tz;
 use regex::{Captures, Regex};
 
@@ -251,4 +251,31 @@ pub fn set_hms(date: &EgDate, hours: u32, minutes: u32, seconds: u32) -> EgResul
     };
 
     Ok(new_date)
+}
+
+/// Add an interval (string) to a date.
+///
+/// ```
+/// use evergreen as eg;
+/// use eg::date;
+/// let dt = date::add_interval(
+///     date::parse_datetime("2023-08-18T23:59:59-0400").unwrap(),
+///     "1 day 1 hour 5 minutes 1 second"
+/// ).unwrap();
+/// assert_eq!("2023-08-20T01:05:00-0400", &date::to_iso(&dt));
+/// ```
+pub fn add_interval(date: EgDate, interval: &str) -> EgResult<EgDate> {
+    let seconds = interval_to_seconds(interval)?;
+    let duration = Duration::try_seconds(seconds)
+        .ok_or_else(|| format!("Invalid duration seconds: {seconds}"))?;
+
+    Ok(date + duration)
+}
+
+pub fn subtract_interval(date: EgDate, interval: &str) -> EgResult<EgDate> {
+    let seconds = interval_to_seconds(interval)?;
+    let duration = Duration::try_seconds(seconds)
+        .ok_or_else(|| format!("Invalid duration seconds: {seconds}"))?;
+
+    Ok(date - duration)
 }

@@ -1,19 +1,20 @@
-use super::addr::BusAddress;
-use super::app;
-use super::client::{Client, ClientSingleton};
-use super::conf;
-use super::logging::Logger;
-use super::message;
-use super::message::Message;
-use super::message::MessageStatus;
-use super::message::MessageType;
-use super::message::Payload;
-use super::message::TransportMessage;
-use super::method;
-use super::method::ParamCount;
-use super::sclient::HostSettings;
-use super::session::ServerSession;
-use super::util;
+use crate::osrf::addr::BusAddress;
+use crate::osrf::app;
+use crate::osrf::client::{Client, ClientSingleton};
+use crate::osrf::conf;
+use crate::osrf::logging::Logger;
+use crate::osrf::message;
+use crate::osrf::message::Message;
+use crate::osrf::message::MessageStatus;
+use crate::osrf::message::MessageType;
+use crate::osrf::message::Payload;
+use crate::osrf::message::TransportMessage;
+use crate::osrf::method;
+use crate::osrf::method::ParamCount;
+use crate::osrf::sclient::HostSettings;
+use crate::osrf::session::ServerSession;
+use crate::util;
+use crate::EgResult;
 use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
@@ -97,7 +98,7 @@ impl Worker {
         stopping: Arc<AtomicBool>,
         methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
-    ) -> Result<Worker, String> {
+    ) -> EgResult<Worker> {
         let client = Client::connect(config.clone())?;
 
         Ok(Worker {
@@ -140,7 +141,7 @@ impl Worker {
         &mut self,
         factory: app::ApplicationWorkerFactory,
         env: Box<dyn app::ApplicationEnv>,
-    ) -> Result<Box<dyn app::ApplicationWorker>, String> {
+    ) -> EgResult<Box<dyn app::ApplicationWorker>> {
         let mut app_worker = (factory)();
         app_worker.absorb_env(
             self.client.clone(),
@@ -161,19 +162,19 @@ impl Worker {
             return;
         }
 
-        let max_requests: u32 = self
+        let max_requests: usize = self
             .host_settings
             .value(&format!("apps/{}/unix_config/max_requests", self.service))
-            .as_u32()
+            .as_usize()
             .unwrap_or(5000);
 
-        let keepalive: i32 = self
+        let keepalive: usize = self
             .host_settings
             .value(&format!("apps/{}/unix_config/keepalive", self.service))
-            .as_i32()
+            .as_usize()
             .unwrap_or(5);
 
-        let mut requests: u32 = 0;
+        let mut requests: usize = 0;
 
         // We listen for API calls at an addressed scoped to our
         // username and domain.
@@ -195,7 +196,7 @@ impl Worker {
                 // address and only wait up to keeplive seconds for
                 // subsequent messages.
                 sent_to = &my_addr;
-                timeout = keepalive;
+                timeout = keepalive as i32;
             } else {
                 // If we are not within a stateful conversation, clear
                 // our bus data and message backlogs since any remaining
@@ -291,7 +292,7 @@ impl Worker {
         appworker: &mut Box<dyn app::ApplicationWorker>,
         timeout: i32,
         sent_to: &str,
-    ) -> Result<(bool, bool), String> {
+    ) -> EgResult<(bool, bool)> {
         let selfstr = format!("{self}");
 
         let recv_result = self
@@ -301,7 +302,7 @@ impl Worker {
 
         let msg_op = match recv_result {
             Ok(o) => o,
-            Err(ref e) => {
+            Err(e) => {
                 // There's a good chance an error in recv() means the
                 // thread/system is unusable, so let the worker exit.
                 //
@@ -354,7 +355,7 @@ impl Worker {
     }
 
     /// Tell our parent we're about to perform some work.
-    fn set_active(&mut self) -> Result<(), String> {
+    fn set_active(&mut self) -> EgResult<()> {
         if let Err(e) = self.notify_state(WorkerState::Active) {
             Err(format!(
                 "{self} failed to notify parent of Active state. Exiting. {e}"
@@ -365,7 +366,7 @@ impl Worker {
     }
 
     /// Tell our parent we're available to perform work.
-    fn set_idle(&mut self) -> Result<(), String> {
+    fn set_idle(&mut self) -> EgResult<()> {
         if let Err(e) = self.notify_state(WorkerState::Idle) {
             Err(format!(
                 "{self} failed to notify parent of Idle state. Exiting. {e}"
@@ -379,7 +380,7 @@ impl Worker {
         &mut self,
         mut tmsg: message::TransportMessage,
         appworker: &mut Box<dyn app::ApplicationWorker>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         // Always adopt the log trace of an inbound API call.
         Logger::set_log_trace(tmsg.osrf_xid());
 
@@ -403,7 +404,7 @@ impl Worker {
     }
 
     // Clear our local message bus and reset state maintenance values.
-    fn reset(&mut self) -> Result<(), String> {
+    fn reset(&mut self) -> EgResult<()> {
         self.connected = false;
         self.session = None;
         self.client.clear()
@@ -413,7 +414,7 @@ impl Worker {
         &mut self,
         msg: message::Message,
         appworker: &mut Box<dyn app::ApplicationWorker>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         self.session_mut().set_last_thread_trace(msg.thread_trace());
         self.session_mut().clear_responded_complete();
 
@@ -446,7 +447,7 @@ impl Worker {
         }
     }
 
-    fn reply_with_status(&mut self, stat: MessageStatus, stat_text: &str) -> Result<(), String> {
+    fn reply_with_status(&mut self, stat: MessageStatus, stat_text: &str) -> EgResult<()> {
         let tmsg = TransportMessage::with_body(
             self.session().sender().as_str(),
             self.client.address().as_str(),
@@ -460,24 +461,24 @@ impl Worker {
 
         self.client_internal_mut()
             .get_domain_bus(self.session().sender().domain())?
-            .send(&tmsg)
+            .send(tmsg)
     }
 
     fn handle_request(
         &mut self,
         mut msg: message::Message,
         appworker: &mut Box<dyn app::ApplicationWorker>,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         let method_call = match msg.payload_mut() {
             message::Payload::Method(m) => m,
             _ => return self.reply_bad_request("Request sent without a MethoCall payload"),
         };
 
-        let mut params = method_call.take_params();
-        let param_count = params.len();
+        let param_count = method_call.params().len();
         let api_name = method_call.method();
 
-        let log_params = util::stringify_params(api_name, &params, self.config.log_protect());
+        let log_params =
+            util::stringify_params(api_name, method_call.params(), self.config.log_protect());
 
         // Log the API call
         log::info!("CALL: {} {}", api_name, log_params);
@@ -530,16 +531,6 @@ impl Worker {
             ));
         }
 
-        // Drain the parameters, deserialize/unpack them, and stack them
-        // back into our method call.
-        let mut unpacked_params = Vec::new();
-        if let Some(s) = self.client.singleton().borrow().serializer() {
-            for p in params.drain(..) {
-                unpacked_params.push(s.unpack(p));
-            }
-        }
-        method_call.set_params(unpacked_params);
-
         // Verify paramter types are correct, at least superficially.
         // Do this after deserialization.
         if let Some(param_defs) = method_def.params() {
@@ -551,7 +542,7 @@ impl Worker {
                         return self.reply_bad_request(&format!(
                             "Invalid paramter type: wanted={} got={}",
                             param_def.datatype,
-                            param_val.dump()
+                            param_val.clone().dump()
                         ));
                     }
                 } else {
@@ -562,7 +553,7 @@ impl Worker {
         }
 
         // Call the API
-        if let Err(ref err) = (method_def.handler())(appworker, self.session_mut(), &method_call) {
+        if let Err(err) = (method_def.handler())(appworker, self.session_mut(), &method_call) {
             let msg = format!("{self} method {} failed with {err}", method_call.method());
             log::error!("{msg}");
             appworker.api_call_error(&method_call, err);
@@ -577,7 +568,7 @@ impl Worker {
         }
     }
 
-    fn reply_server_error(&mut self, text: &str) -> Result<(), String> {
+    fn reply_server_error(&mut self, text: &str) -> EgResult<()> {
         self.connected = false;
 
         let msg = Message::new(
@@ -599,10 +590,10 @@ impl Worker {
 
         self.client_internal_mut()
             .get_domain_bus(self.session().sender().domain())?
-            .send(&tmsg)
+            .send(tmsg)
     }
 
-    fn reply_bad_request(&mut self, text: &str) -> Result<(), String> {
+    fn reply_bad_request(&mut self, text: &str) -> EgResult<()> {
         self.connected = false;
 
         let msg = Message::new(
@@ -624,16 +615,18 @@ impl Worker {
 
         self.client_internal_mut()
             .get_domain_bus(self.session().sender().domain())?
-            .send(&tmsg)
+            .send(tmsg)
     }
 
     /// Notify the parent process of this worker's active state.
-    fn notify_state(&self, state: WorkerState) -> Result<(), mpsc::SendError<WorkerStateEvent>> {
+    fn notify_state(&self, state: WorkerState) -> EgResult<()> {
         log::trace!("{self} notifying parent of state change => {state:?}");
 
-        self.to_parent_tx.send(WorkerStateEvent {
-            worker_id: self.worker_id(),
-            state: state,
-        })
+        self.to_parent_tx
+            .send(WorkerStateEvent {
+                worker_id: self.worker_id(),
+                state: state,
+            })
+            .map_err(|e| format!("mpsc::SendError: {e}").into())
     }
 }

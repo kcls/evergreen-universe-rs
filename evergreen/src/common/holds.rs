@@ -1,16 +1,15 @@
-use crate::common::org;
-use crate::common::settings::Settings;
-use crate::common::targeter;
-use crate::common::transit;
-use crate::constants as C;
-use crate::date;
-use crate::editor::Editor;
-use crate::event::{EgEvent, Overrides};
-use crate::result::{EgError, EgResult};
-use crate::util::{json_bool, json_int};
-use chrono::Duration;
-use json::JsonValue;
-use std::convert::TryFrom;
+use crate as eg;
+use eg::common::org;
+use eg::common::settings::Settings;
+use eg::common::targeter;
+use eg::common::transit;
+use eg::constants as C;
+use eg::date;
+use eg::event::{EgEvent, Overrides};
+use eg::Editor;
+use eg::EgError;
+use eg::EgResult;
+use eg::EgValue;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -103,10 +102,10 @@ impl fmt::Display for MinimalHold {
 /// if holds do not expire on the shelf.
 pub fn calc_hold_shelf_expire_time(
     editor: &mut Editor,
-    hold: &JsonValue,
+    hold: &EgValue,
     start_time: Option<&str>,
 ) -> EgResult<Option<String>> {
-    let pickup_lib = json_int(&hold["pickup_lib"])?;
+    let pickup_lib = hold["pickup_lib"].int()?;
 
     let mut settings = Settings::new(&editor);
     let interval =
@@ -117,15 +116,13 @@ pub fn calc_hold_shelf_expire_time(
         None => return Ok(None), // hold never expire on-shelf.
     };
 
-    let interval = date::interval_to_seconds(interval)?;
-
     let start_time = if let Some(st) = start_time {
         date::parse_datetime(&st)?
     } else {
         date::now_local()
     };
 
-    let mut start_time = start_time + Duration::seconds(interval);
+    let mut start_time = date::add_interval(start_time, interval)?;
     let org_info = org::next_open_date(editor, pickup_lib, &start_time)?;
 
     if let org::OrgOpenState::OpensOnDate(open_on) = org_info {
@@ -139,12 +136,12 @@ pub fn calc_hold_shelf_expire_time(
 
 /// Returns the captured, unfulfilled, uncanceled hold that
 /// targets the provided copy.
-pub fn captured_hold_for_copy(editor: &mut Editor, copy_id: i64) -> EgResult<Option<JsonValue>> {
-    let query = json::object! {
+pub fn captured_hold_for_copy(editor: &mut Editor, copy_id: i64) -> EgResult<Option<EgValue>> {
+    let query = eg::hash! {
         current_copy: copy_id,
-        capture_time: {"!=": JsonValue::Null},
-        fulfillment_time: JsonValue::Null,
-        cancel_time: JsonValue::Null,
+        capture_time: {"!=": eg::NULL},
+        fulfillment_time: eg::NULL,
+        cancel_time: eg::NULL,
     };
 
     Ok(editor.search("ahr", query)?.pop())
@@ -157,12 +154,12 @@ pub fn find_nearest_permitted_hold(
     editor: &mut Editor,
     copy_id: i64,
     check_only: bool,
-) -> EgResult<Option<(JsonValue, Vec<i64>)>> {
+) -> EgResult<Option<(EgValue, Vec<i64>)>> {
     let mut retarget: Vec<i64> = Vec::new();
     let copy_id = copy_id;
 
     // Fetch the appropriatly fleshed copy.
-    let flesh = json::object! {
+    let flesh = eg::hash! {
         flesh: 1,
         flesh_fields: {
             "acp": ["call_number"],
@@ -174,10 +171,10 @@ pub fn find_nearest_permitted_hold(
         None => Err(editor.die_event())?,
     };
 
-    let query = json::object! {
+    let query = eg::hash! {
        "current_copy": copy_id,
-       "cancel_time": JsonValue::Null,
-       "capture_time": JsonValue::Null,
+       "cancel_time": eg::NULL,
+       "capture_time": eg::NULL,
     };
 
     let mut old_holds = editor.search("ahr", query)?;
@@ -186,30 +183,30 @@ pub fn find_nearest_permitted_hold(
     let hold_stall_intvl = settings.get_value("circ.hold_stalling.soft")?;
 
     let params = vec![
-        json::from(editor.requestor_ws_ou()),
-        json::from(copy.clone()),
-        json::from(100),
-        json::from(hold_stall_intvl.clone()),
+        EgValue::from(editor.requestor_ws_ou()),
+        EgValue::from(copy.clone()),
+        EgValue::from(100),
+        EgValue::from(hold_stall_intvl.clone()),
     ];
 
-    // best_holds is a JSON array of JSON hold IDs.
+    // best_holds is an array of hold IDs.
     let best_hold_results = editor.client_mut().send_recv_one(
         "open-ils.storage",
         "open-ils.storage.action.hold_request.nearest_hold.atomic",
         params,
     )?;
 
-    // Map the JSON hold IDs to numbers.
+    // Map the hold IDs to numbers.
     let mut best_holds: Vec<i64> = Vec::new();
     if let Some(bhr) = best_hold_results {
         for h in bhr.members() {
-            best_holds.push(json_int(&h)?);
+            best_holds.push(h.int()?);
         }
     }
 
     // Holds that already target this copy are still in the game.
     for old_hold in old_holds.iter() {
-        let old_id = json_int(&old_hold["id"])?;
+        let old_id = old_hold.id()?;
         if !best_holds.contains(&old_id) {
             best_holds.push(old_id);
         }
@@ -238,11 +235,11 @@ pub fn find_nearest_permitted_hold(
 
         let result = test_copy_for_hold(
             editor,
-            json_int(&hold["usr"])?,
+            hold["usr"].int()?,
             copy_id,
-            json_int(&hold["pickup_lib"])?,
-            json_int(&hold["request_lib"])?,
-            json_int(&hold["requestor"])?,
+            hold["pickup_lib"].int()?,
+            hold["request_lib"].int()?,
+            hold["requestor"].int()?,
             true, // is_retarget
             None, // overrides
             true, // check_only
@@ -273,7 +270,7 @@ pub fn find_nearest_permitted_hold(
     }
 
     // Target the copy
-    targeted_hold["current_copy"] = json::from(copy_id);
+    targeted_hold["current_copy"] = EgValue::from(copy_id);
     editor.update(targeted_hold.clone())?;
 
     // len() test required for drain()
@@ -283,7 +280,7 @@ pub fn find_nearest_permitted_hold(
             if hold["id"] == targeted_hold["id"] {
                 continue;
             }
-            let hold_id = json_int(&hold["id"])?;
+            let hold_id = hold.id()?;
 
             hold["current_copy"].take();
             hold["prev_check_time"].take();
@@ -364,7 +361,7 @@ pub fn test_copy_for_hold(
         false => "action.hold_request_permit_test",
     };
 
-    let query = json::object! {
+    let query = eg::hash! {
         "from": [
             db_func,
             pickup_lib,
@@ -379,10 +376,10 @@ pub fn test_copy_for_hold(
 
     if let Some(row) = db_results.first() {
         // If the first result is a success, we're done.
-        if json_bool(&row["success"]) {
+        if row["success"].boolish() {
             let mut res = HoldPermitResult::new();
 
-            res.matchpoint = json_int(&row["matchpoint"]).ok(); // Option
+            res.matchpoint = row["matchpoint"].as_int(); // Option
             result.permit_results.push(res);
             result.success = true;
 
@@ -403,7 +400,7 @@ pub fn test_copy_for_hold(
             None => continue, // Should not happen.
         };
 
-        let matchpoint = json_int(&db_results[0]["matchpoint"]).ok(); // Option
+        let matchpoint = db_results[0]["matchpoint"].as_int(); // Option
 
         let mut res = HoldPermitResult::new();
         res.fail_part = Some(fail_part.to_string());
@@ -423,7 +420,7 @@ pub fn test_copy_for_hold(
         };
 
         let mut evt = EgEvent::new(evtcode);
-        evt.set_payload(json::object! {
+        evt.set_payload(eg::hash! {
             "fail_part": fail_part,
             "matchpoint": matchpoint,
         });
@@ -496,7 +493,7 @@ pub fn retarget_holds(editor: &mut Editor, hold_ids: &[i64]) -> EgResult<()> {
     editor.client_mut().send_recv_one(
         "open-ils.hold-targeter",
         "open-ils.hold-targeter.target",
-        json::object! {hold: hold_ids},
+        eg::hash! {hold: hold_ids},
     )?;
 
     Ok(())
@@ -543,22 +540,22 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
             .retrieve("acp", hold["current_copy"].clone())?
             .ok_or_else(|| editor.die_event())?;
 
-        let copy_status = json_int(&copy["status"])?;
+        let copy_status = copy["status"].int()?;
 
         if copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
-            copy["status"] = json::from(C::COPY_STATUS_RESHELVING);
-            copy["editor"] = json::from(editor.requestor_id());
-            copy["edit_date"] = json::from("now");
+            copy["status"] = EgValue::from(C::COPY_STATUS_RESHELVING);
+            copy["editor"] = EgValue::from(editor.requestor_id()?);
+            copy["edit_date"] = EgValue::from("now");
 
             editor.update(copy)?;
         } else if copy_status == C::COPY_STATUS_IN_TRANSIT {
-            let query = json::object! {
+            let query = eg::hash! {
                 "hold": hold_id,
-                "cancel_time": JsonValue::Null,
+                "cancel_time": eg::NULL,
             };
 
             if let Some(ht) = editor.search("ahtc", query)?.pop() {
-                transit::cancel_transit(&mut editor, json_int(&ht["id"])?, true)?;
+                transit::cancel_transit(&mut editor, ht.id()?, true)?;
             }
         }
     }
@@ -576,8 +573,8 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
 }
 
 /// json_query order by clause for sorting holds by next to be targeted.
-pub fn json_query_order_by_targetable() -> JsonValue {
-    json::array! [
+pub fn json_query_order_by_targetable() -> EgValue {
+    eg::array! [
         {"class": "pgt", "field": "hold_priority"},
         {"class": "ahr", "field": "cut_in_line",
             "direction": "desc", "transform": "coalesce", params: vec!["f"]},
@@ -615,7 +612,7 @@ pub fn related_to_copy(
     //         => hold
     //           => user
     //             => profile group
-    let from = json::object! {
+    let from = eg::hash! {
         "acp": {
             "acn": {
                 "join": {
@@ -647,7 +644,7 @@ pub fn related_to_copy(
         }
     };
 
-    let mut query = json::object! {
+    let mut query = eg::hash! {
         "select": {
             "ahr": [
                 "id",
@@ -664,34 +661,33 @@ pub fn related_to_copy(
         "where": {
             "+acp": {"id": copy_id},
             "+ahr": {
-                "cancel_time": JsonValue::Null,
-                "fulfillment_time" => JsonValue::Null,
+                "cancel_time": eg::NULL,
+                "fulfillment_time" => eg::NULL,
             }
         },
         "order_by": json_query_order_by_targetable(),
     };
 
     if let Some(v) = pickup_lib {
-        query["where"]["+ahr"]["pickup_lib"] = json::from(v);
+        query["where"]["+ahr"]["pickup_lib"] = EgValue::from(v);
     }
 
     if let Some(v) = usr {
-        query["where"]["+ahr"]["usr"] = json::from(v);
+        query["where"]["+ahr"]["usr"] = EgValue::from(v);
     }
 
     if let Some(v) = frozen {
         let s = if v { "t" } else { "f" };
-        query["where"]["+ahr"]["frozen"] = json::from(s);
+        query["where"]["+ahr"]["frozen"] = EgValue::from(s);
     }
 
     // Limiting on wether current_shelf_lib == pickup_lib.
     if let Some(v) = on_shelf {
         if v {
-            query["where"]["+ahr"]["current_shelf_lib"] =
-                json::object! {"=": {"+ahr": "pickup_lib"}};
+            query["where"]["+ahr"]["current_shelf_lib"] = eg::hash! {"=": {"+ahr": "pickup_lib"}};
         } else {
-            query["where"]["+ahr"]["-or"] = json::array! [
-                {"current_shelf_lib": JsonValue::Null},
+            query["where"]["+ahr"]["-or"] = eg::array! [
+                {"current_shelf_lib": eg::NULL},
                 {"current_shelf_lib": {"!=": {"+ahr": "pickup_lib"}}}
             ];
         }
@@ -703,9 +699,9 @@ pub fn related_to_copy(
         let hold_type = HoldType::try_from(val["hold_type"].as_str().unwrap()).unwrap();
 
         let h = MinimalHold {
-            id: json_int(&val["id"])?,
-            target: json_int(&val["target"])?,
-            pickup_lib: json_int(&val["pickup_lib"])?,
+            id: val.id()?,
+            target: val["target"].int()?,
+            pickup_lib: val["pickup_lib"].int()?,
             hold_type,
             active: true,
         };

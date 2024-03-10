@@ -1,10 +1,8 @@
 //! Shared, user-focused utility functions
-use crate::editor::Editor;
-use crate::idl;
-use crate::result::EgResult;
-use crate::util;
-use crate::util::json_int;
-use json::JsonValue;
+use crate as eg;
+use eg::editor::Editor;
+use eg::result::EgResult;
+use eg::EgValue;
 use md5;
 
 pub const PW_TYPE_MAIN: &str = "main";
@@ -29,7 +27,7 @@ pub fn verify_migrated_password(
 
     let pass_hash = computed.as_deref().unwrap_or(password);
 
-    let query = json::object! {
+    let query = eg::hash! {
         from: [
             "actor.get_salt",
             user_id,
@@ -60,7 +58,7 @@ pub fn verify_password(
     password: &str,
     pw_type: &str,
 ) -> EgResult<bool> {
-    let query = json::object! {
+    let query = eg::hash! {
         from: [
             "actor.verify_passwd",
             user_id,
@@ -72,7 +70,7 @@ pub fn verify_password(
     let verify = e.json_query(query)?;
 
     if let Some(resp) = verify.get(0) {
-        Ok(util::json_bool(&resp["actor.verify_passwd"]))
+        Ok(resp["actor.verify_passwd"].boolish())
     } else {
         Err(format!("actor.verify_passwd failed to return a response").into())
     }
@@ -83,13 +81,13 @@ pub fn verify_password(
 pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Vec<i64>> {
     let dbfunc = "permission.usr_has_perm_at_all";
 
-    let query = json::object! { from: [dbfunc, user_id, perm] };
+    let query = eg::hash! { from: [dbfunc, user_id, perm] };
 
     let values = e.json_query(query)?;
 
     let mut orgs: Vec<i64> = Vec::new();
     for value in values.iter() {
-        let org = util::json_int(&value[dbfunc])?;
+        let org = value[dbfunc].int()?;
         orgs.push(org);
     }
 
@@ -97,16 +95,16 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Ve
 }
 
 /// Returns counts of items out, overdue, etc. for a user.
-pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
+pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     match e.retrieve("ocirccount", user_id)? {
         Some(mut c) => {
-            c["total_out"] = json::from(json_int(&c["out"])? + json_int(&c["overdue"])?);
-            idl::unbless(&mut c);
+            c["total_out"] = EgValue::from(c["out"].int()? + c["overdue"].int()?);
+            c.unbless();
             Ok(c)
         }
         None => {
             // There will be no response if the user has no open circs.
-            Ok(json::object! {
+            Ok(eg::hash! {
                 out: 0,
                 overdue: 0,
                 lost: 0,
@@ -119,15 +117,15 @@ pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<JsonValue>
 }
 
 /// Returns a summary of fines owed by a user
-pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
-    let mut fines_list = e.search("mous", json::object! {usr: user_id})?;
+pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
+    let mut fines_list = e.search("mous", eg::hash! {usr: user_id})?;
 
     if let Some(mut fines) = fines_list.pop() {
-        idl::unbless(&mut fines);
+        fines.unbless();
         Ok(fines)
     } else {
         // Not all users have a fines summary row in the database.
-        Ok(json::object! {
+        Ok(eg::hash! {
             balance_owed: 0,
             total_owed: 0,
             total_paid: 0,
@@ -137,14 +135,14 @@ pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
 }
 
 /// Returns a total/ready hold counts for a user.
-pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
-    let query = json::object! {
+pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
+    let query = eg::hash! {
         select: {ahr: ["pickup_lib", "current_shelf_lib", "behind_desk"]},
         from: "ahr",
         where: {
             usr: user_id,
-            fulfillment_time: JsonValue::Null,
-            cancel_time: JsonValue::Null,
+            fulfillment_time: EgValue::Null,
+            cancel_time: EgValue::Null,
         }
     };
 
@@ -153,8 +151,8 @@ pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
     let mut ready = 0;
 
     for hold in holds.iter().filter(|h| !h["current_shelf_lib"].is_null()) {
-        let pickup_lib = json_int(&hold["pickup_lib"])?;
-        let shelf_lib = json_int(&hold["current_shelf_lib"])?;
+        let pickup_lib = hold["pickup_lib"].int()?;
+        let shelf_lib = hold["current_shelf_lib"].int()?;
 
         // A hold is ready for pickup if its current shelf location is
         // the pickup location.
@@ -163,5 +161,5 @@ pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<JsonValue> {
         }
     }
 
-    Ok(json::object! {total: total, ready: ready})
+    Ok(eg::hash! {total: total, ready: ready})
 }

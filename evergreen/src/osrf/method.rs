@@ -1,13 +1,16 @@
-use super::app;
-use super::message;
-use super::session;
+use crate::osrf::app;
+use crate::osrf::message;
+use crate::osrf::session;
+use crate::EgResult;
+use crate::EgValue;
+use json::JsonValue;
 use std::fmt;
 
 pub type MethodHandler = fn(
     &mut Box<dyn app::ApplicationWorker>,
     &mut session::ServerSession,
     &message::MethodCall,
-) -> Result<(), String>;
+) -> EgResult<()>;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ParamCount {
@@ -23,7 +26,7 @@ impl ParamCount {
     /// number specified by the ParamCount enum.
     ///
     /// ```
-    /// use opensrf::method::ParamCount;
+    /// use evergreen::osrf::method::ParamCount;
     /// assert!(ParamCount::matches(&ParamCount::Any, 0));
     /// assert!(!ParamCount::matches(&ParamCount::Exactly(1), 10));
     /// assert!(ParamCount::matches(&ParamCount::AtLeast(10), 20));
@@ -97,7 +100,7 @@ impl ParamDataType {
     ///
     /// This is a superficial inspection of the parameter type.  E.g.,
     /// we don't care about the contents of an array.
-    pub fn matches(&self, param: &json::JsonValue) -> bool {
+    pub fn matches(&self, param: &EgValue) -> bool {
         match *self {
             ParamDataType::String => param.is_string(),
             ParamDataType::Number => param.is_number(),
@@ -129,15 +132,15 @@ pub struct Param {
 }
 
 impl Param {
-    pub fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
+    pub fn to_eg_value(&self) -> EgValue {
+        EgValue::from_json_value_plain(json::object! {
             "name": self.name.as_str(),
             "datatype": self.datatype.to_string(),
             "desc": match self.desc.as_ref() {
                 Some(d) => d.as_str().into(),
-                _ => json::JsonValue::Null,
+                _ => JsonValue::Null,
             }
-        }
+        })
     }
 }
 
@@ -256,25 +259,25 @@ impl MethodDef {
         params.push(param);
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
-        let mut pa = json::JsonValue::new_array();
+    pub fn to_eg_value(&self) -> EgValue {
+        let mut pa = EgValue::new_array();
         if let Some(params) = self.params() {
             for param in params {
-                pa.push(param.to_json_value()).unwrap();
+                pa.push(param.to_eg_value()).expect("Is Array");
             }
         }
 
-        json::object! {
+        EgValue::from_json_value_plain(json::object! {
             "api_name": self.name(),
             "argc": self.param_count().to_string(),
-            "params": pa,
+            "params": pa.into_json_value(),
             // All Rust methods are streaming.
-            "stream": json::JsonValue::Boolean(true),
+            "stream": JsonValue::Boolean(true),
             "desc": match self.desc() {
                 Some(d) => d.into(),
-                _ => json::JsonValue::Null,
+                _ => JsonValue::Null,
             }
-        }
+        })
     }
 
     /// Produces e.g. "foo.bar.baz('param1', 'param2')"

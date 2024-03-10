@@ -1,6 +1,6 @@
-use crate::result::{EgError, EgResult};
-use crate::util;
-use json::JsonValue;
+use crate as eg;
+use eg::result::{EgError, EgResult};
+use eg::EgValue;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,10 +60,10 @@ pub struct Event {
     id: i64,
     event_def: i64,
     state: EventState,
-    target: JsonValue,
-    target_pkey: JsonValue,
-    group_value: Option<JsonValue>,
-    user_data: Option<JsonValue>,
+    target: EgValue,
+    target_pkey: EgValue,
+    group_value: Option<EgValue>,
+    user_data: Option<EgValue>,
 }
 
 impl fmt::Display for Event {
@@ -74,15 +74,15 @@ impl fmt::Display for Event {
 
 impl Event {
     /// Create an Event from an un-fleshed "atev" object.
-    pub fn from_source(source: JsonValue) -> EgResult<Event> {
+    pub fn from_source(source: EgValue) -> EgResult<Event> {
         // required field w/ limited set of values
         let state: EventState = source["state"].as_str().unwrap().try_into()?;
 
-        let id = util::json_int(&source["id"])?;
-        let event_def = util::json_int(&source["event_def"])?;
+        let id = source.id()?;
+        let event_def = source["event_def"].int()?;
 
         let user_data = if let Some(data) = source["user_data"].as_str() {
-            match json::parse(data) {
+            match EgValue::parse(data) {
                 Ok(d) => Some(d),
                 Err(e) => {
                     return Err(format!("Invalid user data for event {id}: {e} {data}").into())
@@ -99,7 +99,7 @@ impl Event {
             user_data,
             group_value: None,
             target_pkey: source["target"].clone(),
-            target: JsonValue::Null,
+            target: EgValue::Null,
         })
     }
 
@@ -109,15 +109,15 @@ impl Event {
     pub fn event_def(&self) -> i64 {
         self.event_def
     }
-    pub fn target(&self) -> &JsonValue {
+    pub fn target(&self) -> &EgValue {
         &self.target
     }
-    pub fn set_target(&mut self, target: JsonValue) {
+    pub fn set_target(&mut self, target: EgValue) {
         self.target = target
     }
 
     /// Pkey value may be a number or string.
-    pub fn target_pkey(&self) -> &JsonValue {
+    pub fn target_pkey(&self) -> &EgValue {
         &self.target_pkey
     }
     pub fn state(&self) -> EventState {
@@ -126,13 +126,13 @@ impl Event {
     pub fn set_state(&mut self, state: EventState) {
         self.state = state;
     }
-    pub fn user_data(&self) -> Option<&JsonValue> {
+    pub fn user_data(&self) -> Option<&EgValue> {
         self.user_data.as_ref()
     }
-    pub fn group_value(&self) -> Option<&JsonValue> {
+    pub fn group_value(&self) -> Option<&EgValue> {
         self.group_value.as_ref()
     }
-    pub fn set_group_value(&mut self, value: JsonValue) {
+    pub fn set_group_value(&mut self, value: EgValue) {
         self.group_value = Some(value);
     }
 }

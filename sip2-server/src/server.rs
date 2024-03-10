@@ -1,9 +1,9 @@
 use super::conf;
 use super::conf::Config;
 use super::session::Session;
+use eg::EgValue;
 use evergreen as eg;
 use mptc;
-use opensrf as osrf;
 use std::any::Any;
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
@@ -40,19 +40,20 @@ pub struct SessionFactory {
 
     idl: Arc<eg::idl::Parser>,
 
-    osrf_conf: Arc<osrf::conf::Config>,
+    osrf_conf: Arc<eg::osrf::conf::Config>,
 
     /// OpenSRF bus.
-    osrf_bus: Option<osrf::bus::Bus>,
+    osrf_bus: Option<eg::osrf::bus::Bus>,
 
     /// Cache of org unit shortnames and IDs.
-    org_cache: HashMap<i64, json::JsonValue>,
+    org_cache: HashMap<i64, EgValue>,
 }
 
 impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
-        let bus = osrf::bus::Bus::new(self.osrf_conf.client())?;
+        let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
         self.osrf_bus = Some(bus);
+        eg::idl::set_thread_idl(&self.idl);
 
         log::debug!("SessionFactory connected OK to opensrf");
 
@@ -129,7 +130,7 @@ pub struct Server {
     shutdown: Arc<AtomicBool>,
 
     /// Cache of org unit shortnames and IDs.
-    org_cache: Option<HashMap<i64, json::JsonValue>>,
+    org_cache: Option<HashMap<i64, EgValue>>,
 
     tcp_error_count: usize,
 
@@ -260,8 +261,8 @@ impl Server {
     fn precache(&mut self) -> Result<(), String> {
         let mut e = eg::Editor::new(self.eg_ctx.client(), self.eg_ctx.idl());
 
-        let search = json::object! {
-            id: {"!=": json::JsonValue::Null},
+        let search = eg::hash! {
+            "id": {"!=": EgValue::Null},
         };
 
         let mut orgs = e.search("aou", search)?;
@@ -269,7 +270,7 @@ impl Server {
         let mut map = HashMap::new();
 
         for org in orgs.drain(..) {
-            map.insert(eg::util::json_int(&org["id"])?, org);
+            map.insert(org.id()?, org);
         }
 
         self.org_cache = Some(map);
