@@ -1,7 +1,5 @@
 ///! EgValue
-use crate::{EgResult, EgError};
 use crate::idl;
-use crate::util;
 use opensrf::params::ApiParams;
 use json::JsonValue;
 use std::ops::{Index, IndexMut};
