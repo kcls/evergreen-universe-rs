@@ -1,0 +1,17 @@
+[package]
+name = "eversrf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8.5"
+log = "0.4.17"
+syslog = "6.0.1"
+json = "0.12.4"
+roxmltree = "0.18"
+redis = "0.22.1"
+gethostname = "0.4"
+signal-hook = "0.3"
+
+
+

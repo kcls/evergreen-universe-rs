@@ -2,11 +2,12 @@
 resolver = "2"
 members = [
   "mptc",
-  "opensrf",
   "marc",
-  "evergreen",
-  "sip2",
-  "sip2-server",
+  "eversrf",
+#  "opensrf",
+#  "evergreen",
+#  "sip2",
+#  "sip2-server",
 ]
 default-members = [
 ]
