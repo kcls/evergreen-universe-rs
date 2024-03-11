@@ -7,11 +7,29 @@ fn main() {
 
     let v = json::object! {
         "_classname": "aou",
-        "hello": ["yes"]
+        "id":123,
+        "shortname": "AB",
     };
 
+    let mut y: EgValue = v.into();
 
-    let y: EgValue = v.into();
+    println!("{y}");
 
-    println!("y={y:?}");
+    for key in y.keys() {
+        println!("KEY IS {key}");
+    }
+
+    for (k, v) in y.entries() {
+        println!("KEY IS {k} and value = {v}");
+    }
+
+    for (k, v) in y.entries_mut() {
+        if k == "shortname" {
+            *v = EgValue::from(json::from("asdfasffds"));
+        }
+    }
+
+    for (k, v) in y.entries() {
+        println!("KEY IS {k} and value = {v}");
+    }
 }

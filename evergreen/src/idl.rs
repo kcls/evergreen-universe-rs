@@ -582,7 +582,7 @@ impl Parser {
             None => DataType::Text,
         };
 
-        if let Some(selector) = node.attribute((OILS_NS_REPORTER, "datatype")) {
+        if let Some(selector) = node.attribute((OILS_NS_REPORTER, "selector")) {
             class.selector = Some(selector.to_string());
         };
 
