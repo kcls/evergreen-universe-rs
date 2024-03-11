@@ -23,7 +23,7 @@ thread_local! {
 pub fn set_thread_locale(locale: &str) {
     THREAD_LOCALE.with(|lc| {
         // Only verify and allocate if necessary.
-        if lc.borrow().as_str() != locale {
+        if lc.borrow().as_str() == locale {
             return;
         }
 
