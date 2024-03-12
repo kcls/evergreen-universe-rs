@@ -2,7 +2,7 @@
 /// Wrapper class for JsonValue's which may also contain IDL-blessed values,
 /// i.e. those that have an IDL class and a well-defined set of fields.
 use crate::idl;
-use crate::EgResult;
+use crate::{EgResult, EgError};
 use crate::classified::ClassifiedJson;
 use json::JsonValue;
 use std::ops::{Index, IndexMut};
@@ -263,6 +263,25 @@ impl EgValue {
         }
     }
 
+    pub fn as_usize(&self) -> Option<usize> {
+        match self {
+            EgValue::Number(n) => (*n).try_into().ok(),
+            // It's not uncommon to receive numeric strings over the wire.
+            EgValue::String(ref s) => s.parse::<usize>().ok(),
+            _ => None,
+        }
+    }
+
+    pub fn as_u16(&self) -> Option<u16> {
+        match self {
+            EgValue::Number(n) => (*n).try_into().ok(),
+            // It's not uncommon to receive numeric strings over the wire.
+            EgValue::String(ref s) => s.parse::<u16>().ok(),
+            _ => None,
+        }
+    }
+
+
     pub fn as_float(&self) -> Option<f64> {
         match self {
             EgValue::Number(n) => Some((*n).into()),
@@ -474,6 +493,19 @@ impl fmt::Display for EgValue {
                 write!(f, "{s}")
             }
         }
+    }
+}
+
+impl TryFrom<JsonValue> for EgValue {
+    type Error = EgError;
+    fn try_from(v: JsonValue) -> EgResult<EgValue> {
+        EgValue::from_json_value(v)
+    }
+}
+
+impl From<bool> for EgValue {
+    fn from(v: bool) -> EgValue {
+        EgValue::Boolean(v)
     }
 }
 
