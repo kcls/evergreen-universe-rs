@@ -1,4 +1,6 @@
 use crate::util;
+use crate::{EgResult, EgValue};
+use crate::classified::ClassifiedJson;
 use std::cell::RefCell;
 use std::fmt;
 
@@ -23,7 +25,7 @@ thread_local! {
 pub fn set_thread_locale(locale: &str) {
     THREAD_LOCALE.with(|lc| {
         // Only verify and allocate if necessary.
-        if lc.borrow().as_str() != locale {
+        if lc.borrow().as_str() == locale {
             return;
         }
 
@@ -346,23 +348,14 @@ impl TransportMessage {
     /// Create a TransportMessage from a JSON object, consuming the JSON value.
     ///
     /// Returns None if the JSON value cannot be coerced into a TransportMessage.
-    pub fn from_json_value(mut json_obj: json::JsonValue) -> Option<Self> {
-        let to = match json_obj["to"].as_str() {
-            Some(i) => i,
-            None => return None,
-        };
+    pub fn from_json_value(mut json_obj: json::JsonValue) -> EgResult<Self> {
+        let err = || format!("Invalid TransportMessage: {}", json_obj.dump());
 
-        let from = match json_obj["from"].as_str() {
-            Some(i) => i,
-            None => return None,
-        };
+        let to = json_obj["to"].as_str().ok_or_else(err)?;
+        let from = json_obj["from"].as_str().ok_or_else(err)?;
+        let thread = json_obj["thread"].as_str().ok_or_else(err)?;
 
-        let thread = match json_obj["thread"].as_str() {
-            Some(i) => i,
-            None => return None,
-        };
-
-        let mut tmsg = TransportMessage::new(&to, &from, &thread);
+        let mut tmsg = TransportMessage::new(to, from, thread);
 
         if let Some(xid) = json_obj["osrf_xid"].as_str() {
             tmsg.set_osrf_xid(xid);
@@ -384,20 +377,14 @@ impl TransportMessage {
 
         if let json::JsonValue::Array(arr) = body {
             for body in arr {
-                if let Some(b) = Message::from_json_value(body) {
-                    tmsg.body_mut().push(b);
-                }
+                tmsg.body_mut().push(Message::from_json_value(body)?);
             }
         } else {
-            // Message body is typically an array, but may be a single
-            // body entry.
-
-            if let Some(b) = Message::from_json_value(body) {
-                tmsg.body_mut().push(b);
-            }
+            // Sometimes a transport message body is a single message.
+            tmsg.body_mut().push(Message::from_json_value(body)?);
         }
 
-        Some(tmsg)
+        Ok(tmsg)
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
@@ -490,43 +477,29 @@ impl Message {
 
     /// Creates a Message from a JSON value, consuming the JSON value.
     ///
-    /// Returns None if the JSON value cannot be coerced into a Message.
-    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
-        let mut msg_wrapper: super::classified::ClassifiedJson =
-            match super::classified::ClassifiedJson::declassify(json_obj) {
-                Some(sm) => sm,
-                None => return None,
-            };
+    /// Returns Err if the JSON value cannot be coerced into a Message.
+    pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
+        let err = || format!("Invalid JSON Message: {}", json_obj.dump());
+
+        let mut msg_wrapper = ClassifiedJson::declassify(json_obj)
+            .ok_or_else(|| format!("Invalid JSON Message: {}", json_obj.dump()))?;
 
         let msg_class = msg_wrapper.class();
 
         if msg_class != "osrfMessage" {
-            log::warn!("Message::from_json_value() unkonown class {}", msg_class);
-            return None;
+            return Err(format!("Unknown message class {msg_class}").into());
         }
 
         let mut msg_hash = msg_wrapper.take_json();
 
-        let thread_trace = match util::json_usize(&msg_hash["threadTrace"]) {
-            Some(tt) => tt,
-            None => {
-                log::warn!("Message contains invalid threadTrace: {}", msg_hash.dump());
-                return None;
-            }
-        };
+        let thread_trace = util::json_usize(&msg_hash["threadTrace"]).ok_or_else(err)?;
 
-        let mtype_str = match msg_hash["type"].as_str() {
-            Some(s) => s,
-            None => return None,
-        };
+        let mtype_str = msg_hash["type"].as_str().ok_or_else(err)?;
 
         let mtype: MessageType = mtype_str.into();
         let payload = msg_hash["payload"].take();
 
-        let payload = match Message::payload_from_json_value(mtype, payload) {
-            Some(p) => p,
-            None => return None,
-        };
+        let payload = Message::payload_from_json_value(mtype, payload)?;
 
         let mut msg = Message::new(mtype, thread_trace, payload);
 
@@ -548,30 +521,30 @@ impl Message {
             msg.set_api_level(al);
         }
 
-        Some(msg)
+        Ok(msg)
     }
 
     fn payload_from_json_value(
         mtype: MessageType,
         payload_obj: json::JsonValue,
-    ) -> Option<Payload> {
+    ) -> EgResult<Payload> {
         match mtype {
-            MessageType::Request => match MethodCall::from_json_value(payload_obj) {
-                Some(method) => Some(Payload::Method(method)),
-                _ => None,
+            MessageType::Request => {
+                let method = MethodCall::from_json_value(payload_obj)?;
+                Ok(Payload::Method(method))
             },
 
-            MessageType::Result => match Result::from_json_value(payload_obj) {
-                Some(res) => Some(Payload::Result(res)),
-                _ => None,
+            MessageType::Result => {
+                let result = Result::from_json_value(payload_obj)?;
+                Ok(Payload::Result(result))
             },
 
-            MessageType::Status => match Status::from_json_value(payload_obj) {
-                Some(stat) => Some(Payload::Status(stat)),
-                _ => None,
+            MessageType::Status => {
+                let stat = Status::from_json_value(payload_obj)?;
+                Ok(Payload::Status(stat))
             },
 
-            _ => Some(Payload::NoPayload),
+            _ => Ok(Payload::NoPayload),
         }
     }
 
@@ -648,31 +621,22 @@ impl Result {
         &self.status_label
     }
 
-    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
-        let mut msg_wrapper: super::classified::ClassifiedJson =
-            match super::classified::ClassifiedJson::declassify(json_obj) {
-                Some(sm) => sm,
-                None => return None,
-            };
+    pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
+        let err = || format!("Invalid Result message: {}", json_obj.dump());
+
+        let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
 
         let mut msg_hash = msg_wrapper.take_json();
         let content = msg_hash["content"].take();
 
-        let code = match util::json_isize(&msg_hash["statusCode"]) {
-            Some(tt) => tt,
-            None => {
-                log::warn!("Result has invalid status code {}", msg_hash.dump());
-                return None;
-            }
-        };
-
+        let code = util::json_isize(&msg_hash["statusCode"]).ok_or_else(err)?;
         let stat: MessageStatus = code.into();
 
         // If the message contains a status label, use it, otherwise
         // use the label associated locally with the status code
         let stat_str: &str = msg_hash["status"].as_str().unwrap_or(stat.into());
 
-        Some(Result::new(stat, stat_str, msg_wrapper.class(), content))
+        Ok(Result::new(stat, stat_str, msg_wrapper.class(), content))
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
@@ -710,31 +674,22 @@ impl Status {
         &self.status_label
     }
 
-    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
-        let msg_wrapper: super::classified::ClassifiedJson =
-            match super::classified::ClassifiedJson::declassify(json_obj) {
-                Some(sm) => sm,
-                None => return None,
-            };
+    pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
+        let err = || format!("Invalid Status message; {}", json_obj.dump());
+
+        let msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
 
         let msg_class = msg_wrapper.class();
         let msg_hash = msg_wrapper.json();
 
-        let code = match util::json_isize(&msg_hash["statusCode"]) {
-            Some(tt) => tt,
-            None => {
-                log::warn!("Status has invalid status code {}", msg_hash.dump());
-                return None;
-            }
-        };
-
+        let code = util::json_isize(&msg_hash["statusCode"]).ok_or_else(err)?;
         let stat: MessageStatus = code.into();
 
         // If the message contains a status label, use it, otherwise
         // use the label associated locally with the status code
         let stat_str: &str = msg_hash["status"].as_str().unwrap_or(stat.into());
 
-        Some(Status::new(stat, stat_str, msg_class))
+        Ok(Status::new(stat, stat_str, msg_class))
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
@@ -775,27 +730,21 @@ impl MethodCall {
     }
 
     /// Create a Method from a JsonValue.
-    pub fn from_json_value(json_obj: json::JsonValue) -> Option<Self> {
-        let mut msg_wrapper: super::classified::ClassifiedJson =
-            match super::classified::ClassifiedJson::declassify(json_obj) {
-                Some(mw) => mw,
-                None => return None,
-            };
+    pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
+        let err = || format!("Invalid MethodCall message: {}", json_obj.dump());
 
+        let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
         let mut msg_hash = msg_wrapper.take_json();
 
-        let method = match msg_hash["method"].as_str() {
-            Some(m) => m.to_string(),
-            None => return None,
-        };
+        let method = msg_hash["method"].as_str().ok_or_else(err)?;
 
         let mut params = Vec::new();
         if let json::JsonValue::Array(vec) = msg_hash["params"].take() {
             params = vec;
         }
 
-        Some(MethodCall {
-            method,
+        Ok(MethodCall {
+            method: method.to_string(),
             params,
             msg_class: msg_wrapper.class().to_string(),
         })

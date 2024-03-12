@@ -41,11 +41,15 @@ pub enum EgValue {
     Blessed(BlessedValue),
 }
 
-pub fn from(v: JsonValue) -> EgValue {
-    EgValue::from_json_value(v)
-}
-
 impl EgValue {
+
+    pub fn new_object() -> EgValue {
+        EgValue::Hash(HashMap::new())
+    }
+
+    pub fn new_array() -> EgValue {
+        EgValue::Array(Vec::new())
+    }
 
     pub fn take(&mut self) -> EgValue {
         std::mem::replace(self, EgValue::Null)
@@ -73,21 +77,21 @@ impl EgValue {
 
     /// Transform a JSON value into an EgValue.
     ///
-    /// Panics if the value is shaped like and IDL object but contains
-    /// an unrecognized class name.
-    pub fn from_json_value(mut v: JsonValue) -> EgValue {
+    /// Returns an Err if the value is shaped like and IDL object
+    /// but contains an unrecognized class name.
+    pub fn from_json_value(mut v: JsonValue) -> EgResult<EgValue> {
         match v {
-            JsonValue::Null => return EgValue::Null,
-            JsonValue::Boolean(b) => return EgValue::Boolean(b),
+            JsonValue::Null => return Ok(EgValue::Null),
+            JsonValue::Boolean(b) => return Ok(EgValue::Boolean(b)),
             JsonValue::Short(_) | JsonValue::String(_) =>
-                return EgValue::String(v.take_string().unwrap()),
-            JsonValue::Number(n) => return EgValue::Number(n),
+                return Ok(EgValue::String(v.take_string().unwrap())),
+            JsonValue::Number(n) => return Ok(EgValue::Number(n)),
             JsonValue::Array(mut list) => {
                 let mut val_list = Vec::new();
                 for v in list.drain(..) {
-                    val_list.push(EgValue::from_json_value(v));
+                    val_list.push(EgValue::from_json_value(v)?);
                 }
-                return EgValue::Array(val_list)
+                return Ok(EgValue::Array(val_list))
             },
             _ => {}
         };
@@ -101,36 +105,34 @@ impl EgValue {
             None => {
                 // Vanilla JSON object
                 while let Some(k) = keys.pop() {
-                    let val = EgValue::from_json_value(v.remove(&k));
+                    let val = EgValue::from_json_value(v.remove(&k))?;
                     map.insert(k, val);
                 }
 
-                return EgValue::Hash(map);
+                return Ok(EgValue::Hash(map));
             }
         };
 
         let idl_class = match idl::get_class(classname) {
             Some(c) => c,
-            None => {
-                let err = format!("Not and IDL class: '{classname}'");
-                log::error!("{}", err);
-                panic!("{}", err)
-            }
+            None => return Err(format!("Not and IDL class: '{classname}'").into()),
         };
 
         let mut map = HashMap::new();
         for field in idl_class.fields().values() {
             map.insert(
                 field.name().to_string(),
-                EgValue::from_json_value(v[field.array_pos()].take())
+                EgValue::from_json_value(v[field.array_pos()].take())?
             );
         }
 
-        EgValue::Blessed(
-            BlessedValue {
-                idl_class: idl_class.clone(),
-                values: map
-            }
+        Ok(
+            EgValue::Blessed(
+                BlessedValue {
+                    idl_class: idl_class.clone(),
+                    values: map
+                }
+            )
         )
     }
 
@@ -464,12 +466,6 @@ impl fmt::Display for EgValue {
                 write!(f, "{s}")
             }
         }
-    }
-}
-
-impl From<JsonValue> for EgValue {
-    fn from(v: JsonValue) -> EgValue {
-        EgValue::from_json_value(v)
     }
 }
 

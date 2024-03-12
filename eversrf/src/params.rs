@@ -1,5 +1,5 @@
 use json::JsonValue;
-use crate::EgValue;
+use crate::{EgValue, EgResult};
 
 /// Generic container for translating various data types into a Vec<JsonValue>.
 ///
@@ -13,21 +13,17 @@ pub struct ApiParams {
 
 impl ApiParams {
 
-    /*
     /// Consumes the stored parameters
-    pub fn serialize(&mut self, client: &Client) -> Vec<JsonValue> {
-        if let Some(s) = client.singleton().borrow().serializer() {
-            let mut arr: Vec<JsonValue> = Vec::new();
-
-            while self.params.len() > 0 {
-                arr.push(s.pack(self.params.remove(0)));
-            }
-            arr
-        } else {
-            std::mem::replace(&mut self.params, Vec::new())
+    pub fn serialize(mut self) -> Vec<JsonValue> {
+        let mut arr: Vec<JsonValue> = Vec::new();
+        while self.params.len() > 0 {
+            arr.push(self.params.remove(0).into_json_value());
         }
+
+        arr
     }
 
+    /*
     /// Consumes the stored parameters
     pub fn deserialize(&mut self, client: &Client) -> Vec<JsonValue> {
         if let Some(s) = client.singleton().borrow().serializer() {
@@ -53,8 +49,11 @@ impl ApiParams {
     pub fn add(&mut self, v: EgValue) {
         self.params.push(v)
     }
-}
 
+    pub fn from_json_value(v: JsonValue) -> EgResult<ApiParams> {
+        Ok(ApiParams::from(EgValue::from_json_value(v)?))
+    }
+}
 
 impl From<Vec<EgValue>> for ApiParams {
     fn from(v: Vec<EgValue>) -> ApiParams {
@@ -208,25 +207,3 @@ impl From<Vec<String>> for ApiParams {
     }
 }
 
-impl From<JsonValue> for ApiParams {
-    fn from(v: JsonValue) -> ApiParams {
-        ApiParams::from(EgValue::from_json_value(v))
-    }
-}
-
-impl From<&JsonValue> for ApiParams {
-    fn from(v: &JsonValue) -> ApiParams {
-        ApiParams::from(v.clone())
-    }
-}
-
-impl From<Option<JsonValue>> for ApiParams {
-    fn from(v: Option<JsonValue>) -> ApiParams {
-        ApiParams {
-            params: match v {
-                Some(v) => vec![EgValue::from(v)],
-                None => Vec::new(),
-            },
-        }
-    }
-}
