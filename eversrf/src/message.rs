@@ -349,7 +349,7 @@ impl TransportMessage {
     ///
     /// Returns None if the JSON value cannot be coerced into a TransportMessage.
     pub fn from_json_value(mut json_obj: json::JsonValue) -> EgResult<Self> {
-        let err = || format!("Invalid TransportMessage: {}", json_obj.dump());
+        let err = || format!("Invalid TransportMessage");
 
         let to = json_obj["to"].as_str().ok_or_else(err)?;
         let from = json_obj["from"].as_str().ok_or_else(err)?;
@@ -479,10 +479,9 @@ impl Message {
     ///
     /// Returns Err if the JSON value cannot be coerced into a Message.
     pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
-        let err = || format!("Invalid JSON Message: {}", json_obj.dump());
+        let err = || format!("Invalid JSON Message");
 
-        let mut msg_wrapper = ClassifiedJson::declassify(json_obj)
-            .ok_or_else(|| format!("Invalid JSON Message: {}", json_obj.dump()))?;
+        let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
 
         let msg_class = msg_wrapper.class();
 
@@ -622,7 +621,7 @@ impl Result {
     }
 
     pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
-        let err = || format!("Invalid Result message: {}", json_obj.dump());
+        let err = || format!("Invalid Result message");
 
         let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
 
@@ -675,7 +674,7 @@ impl Status {
     }
 
     pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
-        let err = || format!("Invalid Status message; {}", json_obj.dump());
+        let err = || format!("Invalid Status message");
 
         let msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
 
@@ -731,12 +730,12 @@ impl MethodCall {
 
     /// Create a Method from a JsonValue.
     pub fn from_json_value(json_obj: json::JsonValue) -> EgResult<Self> {
-        let err = || format!("Invalid MethodCall message: {}", json_obj.dump());
+        let err = || format!("Invalid MethodCall message");
 
         let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
         let mut msg_hash = msg_wrapper.take_json();
 
-        let method = msg_hash["method"].as_str().ok_or_else(err)?;
+        let method = msg_hash["method"].as_str().ok_or_else(err)?.to_string();
 
         let mut params = Vec::new();
         if let json::JsonValue::Array(vec) = msg_hash["params"].take() {
@@ -744,7 +743,7 @@ impl MethodCall {
         }
 
         Ok(MethodCall {
-            method: method.to_string(),
+            method,
             params,
             msg_class: msg_wrapper.class().to_string(),
         })
