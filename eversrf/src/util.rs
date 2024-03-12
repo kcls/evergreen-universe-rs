@@ -1,3 +1,4 @@
+use json;
 use rand::Rng;
 use std::thread;
 use std::time::{Instant, SystemTime};
@@ -26,7 +27,7 @@ pub fn thread_id() -> u64 {
 /// Returns a string of random numbers of the requested length
 ///
 /// ```
-/// use opensrf::util;
+/// use eversrf::util;
 /// let n = util::random_number(12);
 /// assert_eq!(n.len(), 12);
 /// let n = util::random_number(100);
@@ -38,10 +39,54 @@ pub fn random_number(size: usize) -> String {
     format!("{:0width$}", num, width = size)[0..size].to_string()
 }
 
+/// Converts a JSON number or string to an isize if possible
+///
+/// ```
+/// use eversrf::util;
+/// use json;
+/// let v = json::from(-123);
+/// assert_eq!(util::json_isize(&v), Some(-123));
+/// let v = json::from("hello");
+/// assert_eq!(util::json_isize(&v), None);
+/// ```
+pub fn json_isize(value: &json::JsonValue) -> Option<isize> {
+    if let Some(i) = value.as_isize() {
+        return Some(i);
+    } else if let Some(s) = value.as_str() {
+        if let Ok(i2) = s.parse::<isize>() {
+            return Some(i2);
+        }
+    };
+
+    None
+}
+
+/// Converts a JSON number or string to an usize if possible
+/// ```
+/// use eversrf::util;
+/// use json;
+/// let v = json::from(-123);
+/// assert_eq!(util::json_usize(&v), None);
+/// let v = json::from("hello");
+/// assert_eq!(util::json_usize(&v), None);
+/// let v = json::from(12321);
+/// assert_eq!(util::json_usize(&v), Some(12321));
+/// ```
+pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
+    if let Some(i) = value.as_usize() {
+        return Some(i);
+    } else if let Some(s) = value.as_str() {
+        if let Ok(i2) = s.parse::<usize>() {
+            return Some(i2);
+        }
+    };
+
+    None
+}
 
 /// Simple seconds-based countdown timer.
 /// ```
-/// use opensrf::util;
+/// use eversrf::util;
 ///
 /// let t = util::Timer::new(60);
 /// assert!(!t.done());
@@ -103,7 +148,7 @@ pub fn epoch_secs_str() -> String {
 /// methods.
 ///
 /// ```
-/// use opensrf::util;
+/// use eversrf::util;
 /// let method = "opensrf.system.private.stuff";
 /// let log_protect = vec!["opensrf.system.private".to_string()];
 /// let params = vec![];
