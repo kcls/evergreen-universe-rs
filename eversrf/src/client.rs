@@ -227,7 +227,7 @@ impl ClientSingleton {
         }
 
         let bus = self.get_domain_bus(domain)?;
-        bus.send(&tmsg)?;
+        bus.send(tmsg)?;
 
         Ok(())
     }

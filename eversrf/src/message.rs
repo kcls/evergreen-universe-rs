@@ -232,11 +232,11 @@ pub enum Payload {
 }
 
 impl Payload {
-    pub fn to_json_value(&self) -> JsonValue {
+    pub fn into_json_value(self) -> JsonValue {
         match self {
-            Payload::Method(pl) => pl.to_json_value(),
-            Payload::Result(pl) => pl.to_json_value(),
-            Payload::Status(pl) => pl.to_json_value(),
+            Payload::Method(pl) => pl.into_json_value(),
+            Payload::Result(pl) => pl.into_json_value(),
+            Payload::Status(pl) => pl.into_json_value(),
             Payload::NoPayload => JsonValue::Null,
         }
     }
@@ -388,8 +388,12 @@ impl TransportMessage {
         Ok(tmsg)
     }
 
-    pub fn to_json_value(&self) -> JsonValue {
-        let body: Vec<JsonValue> = self.body().iter().map(|b| b.to_json_value()).collect();
+    pub fn into_json_value(mut self) -> JsonValue {
+        let mut body: Vec<JsonValue> = Vec::new();
+
+        while self.body.len() > 0 {
+            body.push(self.body.remove(0).into_json_value());
+        }
 
         let mut obj = json::object! {
             to: self.to(),
@@ -413,6 +417,7 @@ impl TransportMessage {
 
         obj
     }
+
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -548,8 +553,7 @@ impl Message {
         }
     }
 
-    /// Create a JSON value from a Message.
-    pub fn to_json_value(&self) -> JsonValue {
+    pub fn into_json_value(self) -> JsonValue {
         let mtype: &str = self.mtype.into();
 
         let mut obj = json::object! {
@@ -564,7 +568,7 @@ impl Message {
         match self.payload {
             // Avoid adding the "payload" key for non-payload messages.
             Payload::NoPayload => {}
-            _ => obj["payload"] = self.payload.to_json_value(),
+            _ => obj["payload"] = self.payload.into_json_value(),
         }
 
         ClassifiedJson::classify(obj, OSRF_MESSAGE_CLASS)
@@ -639,15 +643,14 @@ impl Result {
         Ok(Result::new(stat, stat_str, msg_wrapper.class(), content))
     }
 
-    /// TODO into_json_value to avoid the clones
-    pub fn to_json_value(&self) -> JsonValue {
+    pub fn into_json_value(mut self) -> JsonValue {
         let obj = json::object! {
             status: self.status_label(),
             statusCode: self.status as isize,
-            content: self.content.clone().into_json_value(),
+            content: self.content.take().into_json_value(),
         };
 
-        super::classified::ClassifiedJson::classify(obj, &self.msg_class)
+        ClassifiedJson::classify(obj, &self.msg_class)
     }
 }
 
@@ -693,7 +696,7 @@ impl Status {
         Ok(Status::new(stat, stat_str, msg_class))
     }
 
-    pub fn to_json_value(&self) -> JsonValue {
+    pub fn into_json_value(self) -> JsonValue {
         let obj = json::object! {
             status: self.status_label(),
             statusCode: self.status as isize,
@@ -776,10 +779,12 @@ impl MethodCall {
         self.params.get(index).unwrap_or(&EG_NULL)
     }
 
-    /// Create a JsonValue from a MethodCall
-    /// TODO into_json_value() to avoid clones
-    pub fn to_json_value(&self) -> JsonValue {
-        let params: Vec<JsonValue> = self.params().iter().map(|v| v.clone().into_json_value()).collect();
+    pub fn into_json_value(mut self) -> JsonValue {
+        let mut params: Vec<JsonValue> = Vec::new();
+
+        while self.params.len() > 0 {
+            params.push(self.params.remove(0).into_json_value());
+        }
 
         let obj = json::object! {
             "method": self.method(),
@@ -788,4 +793,5 @@ impl MethodCall {
 
         ClassifiedJson::classify(obj, &self.msg_class)
     }
+
 }

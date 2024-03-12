@@ -246,18 +246,20 @@ impl Bus {
     }
 
     /// Sends a TransportMessage to the "to" value in the message.
-    pub fn send(&mut self, msg: &TransportMessage) -> EgResult<()> {
-        self.send_to(msg, msg.to())
+    pub fn send(&mut self, msg: TransportMessage) -> EgResult<()> {
+        // TODO refactor so we can avoi this to_string()
+        let to = msg.to().to_string();
+        self.send_to(msg, &to)
     }
 
     /// Sends a TransportMessage to the specified BusAddress, regardless
     /// of what value is in the msg.to() field.
-    pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> EgResult<()> {
-        let mut json_val = msg.to_json_value();
+    pub fn send_to(&mut self, msg: TransportMessage, recipient: &str) -> EgResult<()> {
+        let mut json_val = msg.into_json_value();
 
         // Play a little inside baseball here and tag the message
         // with our log trace.  This way the layers above don't have
-        // to worry about it or pass us mutable messages.
+        // to worry about it.
         json_val["osrf_xid"] = json::from(Logger::get_log_trace());
 
         let json_str = json_val.dump();

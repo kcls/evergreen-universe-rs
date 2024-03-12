@@ -468,14 +468,14 @@ impl Session {
             let router_addr = self.router_addr().as_str();
             self.client_internal_mut()
                 .bus_mut()
-                .send_to(&tmsg, router_addr)?;
+                .send_to(tmsg, router_addr)?;
         } else {
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the domain of the client address.
                 self.client_internal_mut()
                     .get_domain_bus(a.domain())?
-                    .send(&tmsg)?;
+                    .send(tmsg)?;
             } else {
                 self.reset();
                 return Err(format!("We are connected, but have no worker_addr()").into());
@@ -512,7 +512,7 @@ impl Session {
             .singleton()
             .borrow_mut()
             .bus_mut()
-            .send_to(&tm, self.router_addr().as_str())?;
+            .send_to(tm, self.router_addr().as_str())?;
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 
@@ -549,7 +549,7 @@ impl Session {
 
         self.client_internal_mut()
             .get_domain_bus(dest_addr.domain())?
-            .send(&tmsg)?;
+            .send(tmsg)?;
 
         self.reset();
 
@@ -925,7 +925,7 @@ impl ServerSession {
 
         self.client_internal_mut()
             .get_domain_bus(self.sender.domain())?
-            .send(&tmsg)
+            .send(tmsg)
     }
 
     pub fn send_complete(&mut self) -> EgResult<()> {
