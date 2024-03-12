@@ -1,7 +1,7 @@
 use crate::addr::BusAddress;
 use crate::client::{Client, ClientSingleton};
 use crate::message;
-use crate::EgResult;
+use crate::{EgResult, EgValue};
 use crate::message::Message;
 use crate::message::MessageStatus;
 use crate::message::MessageType;
@@ -11,7 +11,6 @@ use crate::message::Status;
 use crate::message::TransportMessage;
 use crate::params::ApiParams;
 use crate::util;
-use json::JsonValue;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::VecDeque;
@@ -24,8 +23,8 @@ pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 /// Response data propagated from a session to the calling Request.
 #[derive(Debug)]
 struct Response {
-    /// Response from an API call as a JsonValue.
-    value: Option<JsonValue>,
+    /// Response from an API call as a EgValue.
+    value: Option<EgValue>,
     /// True if our originating Request is complete.
     complete: bool,
     /// True if this is a partial response
@@ -88,7 +87,7 @@ impl Request {
     /// Handy if you are expecting exactly one result, or only care
     /// about the first, but want to pull all data off the bus until the
     /// message is officially marked as complete.
-    pub fn first(&mut self) -> EgResult<Option<JsonValue>> {
+    pub fn first(&mut self) -> EgResult<Option<EgValue>> {
         self.first_with_timeout(DEFAULT_REQUEST_TIMEOUT)
     }
 
@@ -97,8 +96,8 @@ impl Request {
     /// This still waits for all responses to arrive so the request can
     /// be marked as complete and no responses are left lingering on the
     /// message bus.
-    pub fn first_with_timeout(&mut self, timeout: i32) -> EgResult<Option<JsonValue>> {
-        let mut resp: Option<JsonValue> = None;
+    pub fn first_with_timeout(&mut self, timeout: i32) -> EgResult<Option<EgValue>> {
+        let mut resp: Option<EgValue> = None;
         while !self.complete {
             if let Some(r) = self.recv_with_timeout(timeout)? {
                 if resp.is_none() {
@@ -116,7 +115,7 @@ impl Request {
     ///     <0 == wait indefinitely
     ///      0 == do not wait/block
     ///     >0 == wait up to this many seconds for a reply.
-    pub fn recv_with_timeout(&mut self, mut timeout: i32) -> EgResult<Option<JsonValue>> {
+    pub fn recv_with_timeout(&mut self, mut timeout: i32) -> EgResult<Option<EgValue>> {
         if self.complete {
             // If we are marked complete, we've pulled all of our
             // resposnes from the bus.  However, we could still have
@@ -147,7 +146,7 @@ impl Request {
         }
     }
 
-    pub fn recv(&mut self) -> EgResult<Option<JsonValue>> {
+    pub fn recv(&mut self) -> EgResult<Option<EgValue>> {
         self.recv_with_timeout(DEFAULT_REQUEST_TIMEOUT)
     }
 }
@@ -372,14 +371,12 @@ impl Session {
 
                 // Compile the collected JSON chunks into a single value,
                 // which is the final response value.
-                value = json::parse(&buf)
+                let jval = json::parse(&buf)
                     .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
 
-                log::trace!("Partial message is now complete");
-            }
+                value = EgValue::from_json_value(jval)?;
 
-            if let Some(s) = self.client.singleton().borrow().serializer() {
-                value = s.unpack(value);
+                log::trace!("Partial message is now complete");
             }
 
             return Ok(Some(Response {
@@ -444,9 +441,8 @@ impl Session {
 
         let trace = self.incr_thread_trace();
 
-        // Turn the abstract params into an ApiParams, then serialize
-        // it to vanilla JSON.
-        let params = params.into().serialize();
+        let mut params: ApiParams = params.into();
+        let params: Vec<EgValue> = params.take_params();
 
         if !self.connected() {
             // Discard any knowledge about previous communication
@@ -625,7 +621,7 @@ pub struct ResponseIterator {
 }
 
 impl Iterator for ResponseIterator {
-    type Item = EgResult<JsonValue>;
+    type Item = EgResult<EgValue>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.request.recv().transpose()
@@ -695,7 +691,7 @@ impl MultiSession {
     /// of our outstanding requests.
     ///
     /// Returns (Thread, Response) if found
-    pub fn recv(&mut self, timeout: i32) -> EgResult<Option<(String, JsonValue)>> {
+    pub fn recv(&mut self, timeout: i32) -> EgResult<Option<(String, EgValue)>> {
         // Wait for replies to any sessions on this client to appear
         // then see if we can find one related specfically to the
         // requests we are managing.
@@ -754,7 +750,7 @@ pub struct ServerSession {
     last_thread_trace: usize,
 
     /// Responses collected to be packed into an "atomic" response array.
-    atomic_resp_queue: Option<Vec<JsonValue>>,
+    atomic_resp_queue: Option<Vec<EgValue>>,
 }
 
 impl fmt::Display for ServerSession {
@@ -825,16 +821,9 @@ impl ServerSession {
     /// should even be sent if this the result to an atomic request.
     fn build_result_message(
         &mut self,
-        mut result: Option<JsonValue>,
+        mut result: Option<EgValue>,
         complete: bool,
     ) -> EgResult<Option<Message>> {
-        if let Some(s) = self.client.singleton().borrow().serializer() {
-            // Serialize the data for the network
-            if let Some(res) = result.take() {
-                result = Some(s.pack(res));
-            }
-        }
-
         let result_value;
 
         if self.atomic_resp_queue.is_some() {
@@ -851,8 +840,7 @@ impl ServerSession {
                 // queue to the caller and leave the queue cleared
                 // [take() above].
 
-                let q = self.atomic_resp_queue.take().unwrap();
-                result_value = json::from(q);
+                result_value = self.atomic_resp_queue.take().unwrap().into();
             } else {
                 // Nothing left to do since this atmoic request
                 // is still producing results.
@@ -882,7 +870,7 @@ impl ServerSession {
     /// Respond with a value and/or a complete message.
     fn respond_with_parts(
         &mut self,
-        value: Option<JsonValue>,
+        value: Option<EgValue>,
         complete: bool,
     ) -> EgResult<()> {
         if self.responded_complete {
@@ -944,11 +932,11 @@ impl ServerSession {
         self.respond_with_parts(None, true)
     }
 
-    pub fn respond(&mut self, value: impl Into<JsonValue>) -> EgResult<()> {
+    pub fn respond(&mut self, value: impl Into<EgValue>) -> EgResult<()> {
         self.respond_with_parts(Some(value.into()), false)
     }
 
-    pub fn respond_complete(&mut self, value: impl Into<JsonValue>) -> EgResult<()> {
+    pub fn respond_complete(&mut self, value: impl Into<EgValue>) -> EgResult<()> {
         self.respond_with_parts(Some(value.into()), true)
     }
 }

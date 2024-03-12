@@ -13,7 +13,7 @@ use std::collections::HashMap;
 const EG_NULL: EgValue = EgValue::Null;
 
 /// An JSON-ish object whose structure is defined in the IDL.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BlessedValue {
     idl_class: Arc<idl::Class>,
     values: HashMap<String, EgValue>,
@@ -30,7 +30,7 @@ impl BlessedValue {
 
 /// Wrapper class which stores JSON-style values with one special
 /// value type which maps to IDL objects.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum EgValue {
     Null,
     Number(json::number::Number),
@@ -244,6 +244,14 @@ impl EgValue {
     /// Our IDL class name.
     pub fn classname(&self) -> &str {
         self.idl_class_unchecked().classname()
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        if let EgValue::String(s) = self {
+            Some(s.as_str())
+        } else {
+            None
+        }
     }
 
     pub fn as_int(&self) -> Option<i64> {
@@ -466,6 +474,12 @@ impl fmt::Display for EgValue {
                 write!(f, "{s}")
             }
         }
+    }
+}
+
+impl From<Vec<EgValue>> for EgValue {
+    fn from (v: Vec<EgValue>) -> EgValue {
+        EgValue::Array(v)
     }
 }
 

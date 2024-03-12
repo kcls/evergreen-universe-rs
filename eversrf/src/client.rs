@@ -6,19 +6,13 @@ use crate::params::ApiParams;
 use crate::session::ResponseIterator;
 use crate::session::SessionHandle;
 use crate::util;
-use crate::EgResult;
-use json::JsonValue;
+use crate::{EgResult, EgValue};
 use log::info;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
-
-pub trait DataSerializer {
-    fn pack(&self, value: JsonValue) -> JsonValue;
-    fn unpack(&self, value: JsonValue) -> JsonValue;
-}
 
 /// Generally speaking, we only need 1 ClientSingleton per thread (hence
 /// the name).  This manages one bus connection per domain and stores
@@ -41,10 +35,6 @@ pub struct ClientSingleton {
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
     backlog: Vec<message::TransportMessage>,
-
-    /// If present, JsonValue's will be passed through its pack() and
-    /// unpack() methods before/after data hits the network.
-    serializer: Option<Arc<dyn DataSerializer>>,
 }
 
 impl ClientSingleton {
@@ -63,12 +53,7 @@ impl ClientSingleton {
             bus: Some(bus),
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
-            serializer: None,
         }
-    }
-
-    pub fn serializer(&self) -> &Option<Arc<dyn DataSerializer>> {
-        &self.serializer
     }
 
     /// Delete all messages that have been received but not yet pulled
@@ -337,10 +322,6 @@ impl Client {
         }
     }
 
-    pub fn set_serializer(&self, serializer: Arc<dyn DataSerializer>) {
-        self.singleton.borrow_mut().serializer = Some(serializer);
-    }
-
     pub fn address(&self) -> &BusAddress {
         &self.address
     }
@@ -408,7 +389,7 @@ impl Client {
         service: &str,
         method: &str,
         params: impl Into<ApiParams>,
-    ) -> EgResult<Option<JsonValue>> {
+    ) -> EgResult<Option<EgValue>> {
         let mut ses = self.session(service);
         let mut req = ses.request(method, params)?;
 

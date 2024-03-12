@@ -41,8 +41,16 @@ impl ApiParams {
     }
     */
 
+    pub fn take_params(&mut self) -> Vec<EgValue> {
+        std::mem::replace(&mut self.params, Vec::new())
+    }
+
     pub fn params(&self) -> &Vec<EgValue> {
         &self.params
+    }
+
+    pub fn params_mut(&mut self) -> &mut Vec<EgValue> {
+        &mut self.params
     }
 
     /// Add a json value to the list of params
