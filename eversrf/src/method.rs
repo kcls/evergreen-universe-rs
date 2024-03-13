@@ -2,6 +2,7 @@ use crate::app;
 use crate::message;
 use crate::session;
 use crate::EgValue;
+use crate::EgResult;
 use json::JsonValue;
 use std::fmt;
 
@@ -9,7 +10,7 @@ pub type MethodHandler = fn(
     &mut Box<dyn app::ApplicationWorker>,
     &mut session::ServerSession,
     &message::MethodCall,
-) -> Result<(), String>;
+) -> EgResult<()>;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ParamCount {
@@ -131,15 +132,17 @@ pub struct Param {
 }
 
 impl Param {
-    pub fn to_json_value(&self) -> JsonValue {
-        json::object! {
-            "name": self.name.as_str(),
-            "datatype": self.datatype.to_string(),
-            "desc": match self.desc.as_ref() {
-                Some(d) => d.as_str().into(),
-                _ => JsonValue::Null,
+    pub fn to_eg_value(&self) -> EgValue {
+        EgValue::from_json_value_plain(
+            json::object! {
+                "name": self.name.as_str(),
+                "datatype": self.datatype.to_string(),
+                "desc": match self.desc.as_ref() {
+                    Some(d) => d.as_str().into(),
+                    _ => JsonValue::Null,
+                }
             }
-        }
+        )
     }
 }
 
@@ -258,25 +261,27 @@ impl MethodDef {
         params.push(param);
     }
 
-    pub fn to_json_value(&self) -> JsonValue {
-        let mut pa = JsonValue::new_array();
+    pub fn to_eg_value(&self) -> EgValue {
+        let mut pa = EgValue::new_array();
         if let Some(params) = self.params() {
             for param in params {
-                pa.push(param.to_json_value()).unwrap();
+                pa.push(param.to_eg_value()).expect("Is Array");
             }
         }
 
-        json::object! {
-            "api_name": self.name(),
-            "argc": self.param_count().to_string(),
-            "params": pa,
-            // All Rust methods are streaming.
-            "stream": JsonValue::Boolean(true),
-            "desc": match self.desc() {
-                Some(d) => d.into(),
-                _ => JsonValue::Null,
+        EgValue::from_json_value_plain(
+            json::object! {
+                "api_name": self.name(),
+                "argc": self.param_count().to_string(),
+                "params": pa.into_json_value(),
+                // All Rust methods are streaming.
+                "stream": JsonValue::Boolean(true),
+                "desc": match self.desc() {
+                    Some(d) => d.into(),
+                    _ => JsonValue::Null,
+                }
             }
-        }
+        )
     }
 
     /// Produces e.g. "foo.bar.baz('param1', 'param2')"

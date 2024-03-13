@@ -55,6 +55,19 @@ impl EgValue {
         std::mem::replace(self, EgValue::Null)
     }
 
+    pub fn dump(self) -> String {
+        self.into_json_value().dump()
+    }
+
+    pub fn push(&mut self, v: EgValue) -> EgResult<()> {
+        if let EgValue::Array(ref mut list) = self {
+            list.push(v);
+            Ok(())
+        } else {
+            Err(format!("push() requires an EgValue::Array").into())
+        }
+    }
+
     /// Insert a new value into an object-typed value.  Returns Err
     /// if this is not an object-typed value.
     pub fn insert(&mut self, key: &str, value: EgValue) -> EgResult<()>{
@@ -75,26 +88,54 @@ impl EgValue {
         }
     }
 
+    /// Translates a JsonValue into an EgValue treating values which
+    /// appear to be IDL-classed values as vanilla JsonValue::Object's
+    ///
+    /// Useful if you know the data you are working with does
+    /// not contain any IDL-classed content.
+    pub fn from_json_value_plain(mut v: JsonValue) -> EgValue {
+        match v {
+            JsonValue::Null => return EgValue::Null,
+            JsonValue::Boolean(b) => return EgValue::Boolean(b),
+            JsonValue::Short(_) | JsonValue::String(_) =>
+                return EgValue::String(v.take_string().unwrap()),
+            JsonValue::Number(n) => return EgValue::Number(n),
+            JsonValue::Array(mut list) => {
+                let mut val_list = Vec::new();
+                for v in list.drain(..) {
+                    val_list.push(EgValue::from_json_value_plain(v));
+                }
+                return EgValue::Array(val_list)
+            },
+            JsonValue::Object(_) => {
+                let mut map = HashMap::new();
+                let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
+
+                while let Some(k) = keys.pop() {
+                    let val = EgValue::from_json_value_plain(v.remove(&k));
+                    map.insert(k, val);
+                }
+                return EgValue::Hash(map);
+            }
+        };
+    }
+
     /// Transform a JSON value into an EgValue.
     ///
     /// Returns an Err if the value is shaped like and IDL object
     /// but contains an unrecognized class name.
     pub fn from_json_value(mut v: JsonValue) -> EgResult<EgValue> {
-        match v {
-            JsonValue::Null => return Ok(EgValue::Null),
-            JsonValue::Boolean(b) => return Ok(EgValue::Boolean(b)),
-            JsonValue::Short(_) | JsonValue::String(_) =>
-                return Ok(EgValue::String(v.take_string().unwrap())),
-            JsonValue::Number(n) => return Ok(EgValue::Number(n)),
-            JsonValue::Array(mut list) => {
-                let mut val_list = Vec::new();
-                for v in list.drain(..) {
-                    val_list.push(EgValue::from_json_value(v)?);
-                }
-                return Ok(EgValue::Array(val_list))
-            },
-            _ => {}
-        };
+        if v.is_number() || v.is_null() || v.is_boolean() || v.is_string() {
+            return Ok(EgValue::from_json_value_plain(v));
+        }
+
+        if let JsonValue::Array(mut list) = v {
+            let mut val_list = Vec::new();
+            for v in list.drain(..) {
+                val_list.push(EgValue::from_json_value(v)?);
+            }
+            return Ok(EgValue::Array(val_list))
+        }
 
         // JSON object
         let mut map = HashMap::new();

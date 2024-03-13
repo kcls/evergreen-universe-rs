@@ -1,4 +1,5 @@
 use json;
+use crate::EgValue;
 use rand::Rng;
 use std::thread;
 use std::time::{Instant, SystemTime};
@@ -158,7 +159,7 @@ pub fn epoch_secs_str() -> String {
 /// ```
 pub fn stringify_params(
     method: &str,
-    params: &Vec<json::JsonValue>,
+    params: &Vec<EgValue>,
     log_protect: &Vec<String>,
 ) -> String {
     if log_protect
@@ -169,7 +170,8 @@ pub fn stringify_params(
     {
         params
             .iter()
-            .map(|p| p.dump())
+            // EgValue.dump() consumes the value, hence the clone.
+            .map(|p| p.clone().dump())
             .collect::<Vec<_>>()
             .join(", ")
     } else {

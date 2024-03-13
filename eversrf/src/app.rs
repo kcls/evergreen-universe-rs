@@ -1,8 +1,10 @@
-use super::client;
-use super::conf;
-use super::message;
-use super::method;
-use super::sclient;
+use crate::client;
+use crate::conf;
+use crate::message;
+use crate::method;
+use crate::sclient;
+use crate::EgResult;
+use crate::EgError;
 use std::any::Any;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -54,26 +56,26 @@ pub trait ApplicationWorker: Any {
         host_settings: Arc<sclient::HostSettings>,
         methods: Arc<HashMap<String, method::MethodDef>>,
         env: Box<dyn ApplicationEnv>,
-    ) -> Result<(), String>;
+    ) -> EgResult<()>;
 
     /// Called after absorb_env, but before any work occurs.
-    fn worker_start(&mut self) -> Result<(), String>;
+    fn worker_start(&mut self) -> EgResult<()>;
 
     /// Called for stateful sessions on CONNECT and for each request
     /// in a stateless session.
-    fn start_session(&mut self) -> Result<(), String>;
+    fn start_session(&mut self) -> EgResult<()>;
 
     /// Called for stateful sessions on DISCONNECT or keepliave timeout --
     /// Also called for stateless sessions (one-offs) after the request
     /// completes.
-    fn end_session(&mut self) -> Result<(), String>;
+    fn end_session(&mut self) -> EgResult<()>;
 
     /// Called if the client sent a CONNECT but failed to send a DISCONNECT
     /// before the keepliave timeout expired.
-    fn keepalive_timeout(&mut self) -> Result<(), String>;
+    fn keepalive_timeout(&mut self) -> EgResult<()>;
 
     /// Called on the worker when a MethodCall invocation exits with an Err.
-    fn api_call_error(&mut self, request: &message::MethodCall, error: &str);
+    fn api_call_error(&mut self, request: &message::MethodCall, error: EgError);
 
     /// Called every time our worker wakes up to check for signals,
     /// timeouts, etc.
@@ -83,12 +85,12 @@ pub trait ApplicationWorker: Any {
     /// is a shutdown signal, keepliave timeout, API request, etc.
     ///
     /// * `connected` - True if we are in the middle of a stateful conversation.
-    fn worker_idle_wake(&mut self, connected: bool) -> Result<(), String>;
+    fn worker_idle_wake(&mut self, connected: bool) -> EgResult<()>;
 
     /// Called after all work is done and the thread is going away.
     ///
     /// Offers a chance to clean up any resources.
-    fn worker_end(&mut self) -> Result<(), String>;
+    fn worker_end(&mut self) -> EgResult<()>;
 }
 
 pub trait Application {
@@ -101,7 +103,7 @@ pub trait Application {
         client: client::Client,
         config: Arc<conf::Config>,
         host_settings: Arc<sclient::HostSettings>,
-    ) -> Result<(), String>;
+    ) -> EgResult<()>;
 
     /// Tell the server what methods this application implements.
     ///
@@ -111,7 +113,7 @@ pub trait Application {
         client: client::Client,
         config: Arc<conf::Config>,
         host_settings: Arc<sclient::HostSettings>,
-    ) -> Result<Vec<method::MethodDef>, String>;
+    ) -> EgResult<Vec<method::MethodDef>>;
 
     /// Returns a function pointer (ApplicationWorkerFactory) that returns
     /// new ApplicationWorker's when called.
