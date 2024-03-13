@@ -9,6 +9,7 @@ pub use value::EgValue;
 pub use logging::Logger;
 
 pub mod addr;
+pub mod app;
 pub mod bus;
 pub mod cache;
 pub mod classified;
@@ -18,6 +19,7 @@ pub mod idl;
 pub mod event;
 pub mod logging;
 pub mod message;
+pub mod method;
 pub mod params;
 pub mod result;
 pub mod sclient;
@@ -26,9 +28,7 @@ pub mod util;
 pub mod value;
 
 /*
-pub mod app;
 pub mod init;
-pub mod method;
 pub mod server;
 pub mod worker;
 

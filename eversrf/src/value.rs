@@ -200,7 +200,7 @@ impl EgValue {
         }
     }
 
-    pub fn is_bool(&self) -> bool {
+    pub fn is_boolean(&self) -> bool {
         match self {
             EgValue::Boolean(_) => true,
             _ => false,
