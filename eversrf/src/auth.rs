@@ -1,10 +1,8 @@
-use crate::event;
+use crate as eg;
+use crate::EgEvent;
 use crate::EgResult;
 use crate::EgValue;
 use crate::Client;
-use json;
-
-
 
 const LOGIN_TIMEOUT: i32 = 30;
 
@@ -86,17 +84,17 @@ impl AuthLoginArgs {
     pub fn to_eg_value(&self) -> EgValue {
         let lt: &str = self.login_type().into();
 
-        let mut jv = json::object! {
+        let mut jv = eg::object! {
             username: self.username(),
             password: self.password(),
             "type": lt,
         };
 
         if let Some(w) = &self.workstation {
-            jv["workstation"] = json::from(w.as_str());
+            jv["workstation"] = EgValue::from(w.as_str());
         }
 
-        EgValue::from_json_value_plain(jv)
+        jv
     }
 }
 
@@ -124,20 +122,20 @@ impl AuthInternalLoginArgs {
     pub fn to_eg_value(&self) -> EgValue {
         let lt: &str = (&self.login_type).into();
 
-        let mut jv = json::object! {
+        let mut jv = eg::object! {
             "login_type": lt,
             "user_id": self.user_id,
         };
 
         if let Some(w) = &self.workstation {
-            jv["workstation"] = json::from(w.as_str());
+            jv["workstation"] = EgValue::from(w.as_str());
         }
 
         if let Some(w) = self.org_unit {
-            jv["org_unit"] = json::from(w);
+            jv["org_unit"] = EgValue::from(w);
         }
 
-        EgValue::from_json_value_plain(jv)
+        jv
     }
 }
 
@@ -197,7 +195,7 @@ impl AuthSession {
         workstation: &Option<String>,
         response: &EgValue,
     ) -> EgResult<Option<AuthSession>> {
-        let evt = match event::EgEvent::parse(&response) {
+        let evt = match EgEvent::parse(&response) {
             Some(e) => e,
             None => {
                 return Err(format!("Unexpected response: {:?}", response).into());

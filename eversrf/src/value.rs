@@ -3,7 +3,6 @@
 /// i.e. those that have an IDL class and a well-defined set of fields.
 use crate::idl;
 use crate::{EgResult, EgError};
-use crate::classified::ClassifiedJson;
 use json::JsonValue;
 use std::ops::{Index, IndexMut};
 use std::fmt;
@@ -11,21 +10,23 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 const EG_NULL: EgValue = EgValue::Null;
+const JSON_CLASS_KEY: &str = "__c";
+const JSON_PAYLOAD_KEY: &str = "__p";
 
 // ---
 // Create some wrapper macros for JSON value building so that we can
 // build EgValue's directly without having to directly invoke json.
 #[macro_export]
 macro_rules! object {
-    ($($tts:tt)*) => { 
-        EgValue::from_json_value_plain(json::object!($($tts)*)) 
+    ($($tts:tt)*) => {
+        EgValue::from_json_value_plain(json::object!($($tts)*))
     }
 }
 
 #[macro_export]
 macro_rules! array {
-    ($($tts:tt)*) => { 
-        EgValue::from_json_value_plain(json::array!($($tts)*)) 
+    ($($tts:tt)*) => {
+        EgValue::from_json_value_plain(json::array!($($tts)*))
     }
 }
 // ---
@@ -39,8 +40,6 @@ fn macros() {
 
     assert_eq!(v["hello"].as_str(), Some("stuff"));
 }
-
-
 
 /// An JSON-ish object whose structure is defined in the IDL.
 #[derive(Debug, PartialEq, Clone)]
@@ -72,6 +71,34 @@ pub enum EgValue {
 }
 
 impl EgValue {
+
+    /// Wrap a JSON object (obj) in {"__c":"classname", "__p": obj}
+    pub fn add_class_wrapper(val: JsonValue, class: &str) -> json::JsonValue {
+        let mut hash = json::JsonValue::new_object();
+        hash.insert(JSON_CLASS_KEY, class).expect("Is Object");
+        hash.insert(JSON_PAYLOAD_KEY, val).expect("Is Object");
+
+        hash
+    }
+
+    pub fn remove_class_wrapper(mut obj: JsonValue) -> Option<(String, JsonValue)> {
+        if let Some(cname) = EgValue::wrapped_classname(&obj) {
+            Some((cname.to_string(), obj[JSON_PAYLOAD_KEY].take()))
+        } else {
+            None
+        }
+    }
+
+    pub fn wrapped_classname(obj: &JsonValue) -> Option<&str> {
+        if obj.is_object()
+            && obj.has_key(JSON_CLASS_KEY)
+            && obj.has_key(JSON_PAYLOAD_KEY)
+            && obj[JSON_CLASS_KEY].is_string() {
+                obj[JSON_CLASS_KEY].as_str()
+        } else {
+            None
+        }
+    }
 
     pub fn len(&self) -> usize {
         match self {
@@ -180,7 +207,7 @@ impl EgValue {
         let mut map = HashMap::new();
         let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
 
-        let classname = match ClassifiedJson::classname(&v) {
+        let classname = match EgValue::wrapped_classname(&v) {
             Some(c) => c,
             None => {
                 // Vanilla JSON object
@@ -257,7 +284,7 @@ impl EgValue {
                     array.push(v.into_json_value()).expect("Is Array");
                 }
 
-                ClassifiedJson::classify(array, o.idl_class.classname())
+                Self::add_class_wrapper(array, o.idl_class.classname())
             }
         }
     }
@@ -303,14 +330,14 @@ impl EgValue {
     }
 
     /// True if this is an IDL-classed object
-    pub fn is_classed(&self) -> bool {
+    pub fn is_blessed(&self) -> bool {
         match self {
             &EgValue::Blessed(_) => true,
             _ => false
         }
     }
 
-    /// Our IDL class name.
+    /// Returns the IDL class if this is a blessed object.
     pub fn classname(&self) -> Option<&str> {
         if let EgValue::Blessed(b) = self {
             Some(b.idl_class.classname())
@@ -505,11 +532,64 @@ impl EgValue {
             }
         }
     }
+
+    /// De-Flesh a blessed object.
+    ///
+    /// Replace Object values with the primary key value for each fleshed field.
+    /// Replace Array values with empty arrays.
+    /// Ignore everything else.
+    pub fn de_flesh(&mut self) -> EgResult<()> {
+        let inner = match self {
+            EgValue::Blessed(ref mut i) => i,
+            _ => return Ok(()),
+        };
+
+        // This alternate idl_class access allows us to modify ourselves
+        // in the loop below w/o a parallel borrow
+        let idl_class = idl::get_class(inner.idl_class.classname()).expect("Blessed Has a Class");
+
+        for (name, field) in idl_class.fields().iter() {
+
+            if self[name].is_array() {
+                self[name] = EgValue::new_array();
+                continue;
+            }
+
+            if !self[name].is_blessed() {
+                continue;
+            }
+
+            if field.is_virtual() {
+                // Virtual fields can be fully cleared.
+                self[name] = EG_NULL;
+            } else {
+                self[name] = self[name].pkey_value().clone();
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Iterator over the real IDL fields for this blessed value.
+    ///
+    /// Empty iterator if this is not a blessed value.
+    pub fn real_fields(&self) -> EgValueRealFields {
+        EgValueRealFields {
+            map_iter: match self {
+                EgValue::Blessed(ref o) => Some(o.idl_class.fields().values()),
+                _ => None,
+            }
+        }
+    }
+
+    // TODO real_fields, etc.
+
 }
 
 // EgValue Iterators ------------------------------------------------------
 
 // List iterators are simply standard slices.
+//pub type EgValueFields<'a> = std::slice::Iter<'a, idl::Field>;
 pub type EgValueMembers<'a> = std::slice::Iter<'a, EgValue>;
 pub type EgValueMembersMut<'a> = std::slice::IterMut<'a, EgValue>;
 
@@ -558,6 +638,22 @@ impl<'a> Iterator for EgValueKeys<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(iter) = self.map_iter.as_mut() {
             iter.next().map(|k| k.as_str())
+        } else {
+            None
+        }
+    }
+}
+
+pub struct EgValueRealFields<'a> {
+    map_iter: Option<std::collections::hash_map::Values<'a, String, idl::Field>>
+}
+
+impl<'a> Iterator for EgValueRealFields<'a> {
+    type Item = &'a idl::Field;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(iter) = self.map_iter.as_mut() {
+            iter.next().filter(|f| !f.is_virtual())
         } else {
             None
         }

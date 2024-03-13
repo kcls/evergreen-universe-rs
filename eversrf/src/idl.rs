@@ -84,7 +84,7 @@ impl DataFormat {
 /// Key where IDL class name/hint value is stored on unpacked JSON objects.
 /// OpenSRF has its own class key used for storing class names on
 /// packed (array-based) JSON objects, which is separate.
-pub const CLASSNAME_KEY: &str = "_classname";
+//pub const CLASSNAME_KEY: &str = "_classname";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataType {
@@ -410,14 +410,6 @@ impl fmt::Debug for Parser {
     }
 }
 impl Parser {
-    /// Create a ref to a DataSerializer suitable for OpenSRF
-    /// data packing and unpacking.
-    /*
-    pub fn as_serializer(idlref: &Arc<Parser>) -> Arc<dyn DataSerializer> {
-        idlref.clone()
-    }
-    */
-
     /// All of our IDL classes keyed on classname/hint (e.g. "aou")
     pub fn classes(&self) -> &HashMap<String, Arc<Class>> {
         &self.classes
@@ -663,60 +655,6 @@ impl Parser {
     }
 
     /*
-
-    /// Converts an IDL-classed array into a hash whose keys match
-    /// the values defined in the IDL for this class, consuming the
-    /// array as it goes.
-    ///
-    /// Includes a _classname key with the IDL class.
-    fn array_to_hash(&self, class: &str, mut value: JsonValue) -> JsonValue {
-        let fields = &self.classes.get(class).unwrap().fields;
-
-        let mut hash = JsonValue::new_object();
-
-        hash.insert(CLASSNAME_KEY, json::from(class)).unwrap();
-
-        for (name, field) in fields {
-            hash.insert(name, value[field.array_pos].take()).unwrap();
-        }
-
-        hash
-    }
-
-    /// Converts an IDL-classed hash into an IDL-classed array, whose
-    /// array positions match the IDL field position, consuming the
-    /// hash as it goes.
-    fn hash_to_array(&self, class: &str, mut hash: JsonValue) -> JsonValue {
-        let fields = &self.classes.get(class).unwrap().fields;
-
-        // Translate the fields hash into a sorted array
-        let mut sorted = fields.values().collect::<Vec<&Field>>();
-        sorted.sort_by_key(|f| f.array_pos);
-
-        let mut array = JsonValue::new_array();
-
-        for field in sorted {
-            array.push(hash[&field.name].take()).unwrap();
-        }
-
-        array
-    }
-    */
-
-    /// Returns true if the provided value is shaped like an IDL-blessed
-    /// object and has a valid IDL class name.
-    pub fn is_idl_object(&self, obj: &JsonValue) -> bool {
-        if obj.is_object() {
-            if let Some(cname) = obj[CLASSNAME_KEY].as_str() {
-                if self.classes.get(cname).is_some() {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
-
     /// Replace Object or Array values on an IDL object with the
     /// scalar primary key value of the linked object (real fields)
     /// or null (virtual fields).
@@ -897,8 +835,6 @@ impl Parser {
         Ok(())
     }
 
-    /*
-
     /// Translate and IDL-classed flat hash into an array-based
     /// Fieldmapper object, recursively.
     pub fn encode(&self, mut value: JsonValue) -> JsonValue {
@@ -1054,12 +990,14 @@ impl DataSerializer for Parser {
 
 /// Remove the class designation and any auto-fields, resulting in a
 /// vanilla hash.
+/*
 pub fn unbless(hash: &mut JsonValue) {
     hash.remove(CLASSNAME_KEY);
     for field in AUTO_FIELDS {
         hash.remove(field);
     }
 }
+*/
 
 /// Remove NULL values from JSON objects (hashes) recursively.
 ///

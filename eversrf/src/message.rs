@@ -1,6 +1,5 @@
 use crate::util;
 use crate::{EgResult, EgValue};
-use crate::classified::ClassifiedJson;
 use json::JsonValue;
 use std::cell::RefCell;
 use std::fmt;
@@ -487,15 +486,11 @@ impl Message {
     pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
         let err = || format!("Invalid JSON Message");
 
-        let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
-
-        let msg_class = msg_wrapper.class();
+        let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
         if msg_class != "osrfMessage" {
             return Err(format!("Unknown message class {msg_class}").into());
         }
-
-        let mut msg_hash = msg_wrapper.take_json();
 
         let thread_trace = util::json_usize(&msg_hash["threadTrace"]).ok_or_else(err)?;
 
@@ -571,7 +566,7 @@ impl Message {
             _ => obj["payload"] = self.payload.into_json_value(),
         }
 
-        ClassifiedJson::classify(obj, OSRF_MESSAGE_CLASS)
+        EgValue::add_class_wrapper(obj, OSRF_MESSAGE_CLASS)
     }
 }
 
@@ -628,9 +623,8 @@ impl Result {
     pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
         let err = || format!("Invalid Result message");
 
-        let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
+        let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
-        let mut msg_hash = msg_wrapper.take_json();
         let content = EgValue::from_json_value(msg_hash["content"].take())?;
 
         let code = util::json_isize(&msg_hash["statusCode"]).ok_or_else(err)?;
@@ -640,7 +634,7 @@ impl Result {
         // use the label associated locally with the status code
         let stat_str: &str = msg_hash["status"].as_str().unwrap_or(stat.into());
 
-        Ok(Result::new(stat, stat_str, msg_wrapper.class(), content))
+        Ok(Result::new(stat, stat_str, &msg_class, content))
     }
 
     pub fn into_json_value(mut self) -> JsonValue {
@@ -650,7 +644,7 @@ impl Result {
             content: self.content.take().into_json_value(),
         };
 
-        ClassifiedJson::classify(obj, &self.msg_class)
+        EgValue::add_class_wrapper(obj, &self.msg_class)
     }
 }
 
@@ -681,10 +675,7 @@ impl Status {
     pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
         let err = || format!("Invalid Status message");
 
-        let msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
-
-        let msg_class = msg_wrapper.class();
-        let msg_hash = msg_wrapper.json();
+        let (msg_class, msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
         let code = util::json_isize(&msg_hash["statusCode"]).ok_or_else(err)?;
         let stat: MessageStatus = code.into();
@@ -693,7 +684,7 @@ impl Status {
         // use the label associated locally with the status code
         let stat_str: &str = msg_hash["status"].as_str().unwrap_or(stat.into());
 
-        Ok(Status::new(stat, stat_str, msg_class))
+        Ok(Status::new(stat, stat_str, &msg_class))
     }
 
     pub fn into_json_value(self) -> JsonValue {
@@ -702,7 +693,7 @@ impl Status {
             statusCode: self.status as isize,
         };
 
-        ClassifiedJson::classify(obj, &self.msg_class)
+        EgValue::add_class_wrapper(obj, &self.msg_class)
     }
 }
 
@@ -737,8 +728,7 @@ impl MethodCall {
     pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
         let err = || format!("Invalid MethodCall message");
 
-        let mut msg_wrapper = ClassifiedJson::declassify(json_obj).ok_or_else(err)?;
-        let mut msg_hash = msg_wrapper.take_json();
+        let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
         let method = msg_hash["method"].as_str().ok_or_else(err)?.to_string();
 
@@ -752,7 +742,7 @@ impl MethodCall {
         Ok(MethodCall {
             method,
             params,
-            msg_class: msg_wrapper.class().to_string(),
+            msg_class,
         })
     }
 
@@ -791,7 +781,7 @@ impl MethodCall {
             "params": params
         };
 
-        ClassifiedJson::classify(obj, &self.msg_class)
+        EgValue::add_class_wrapper(obj, &self.msg_class)
     }
 
 }
