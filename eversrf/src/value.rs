@@ -74,12 +74,26 @@ impl EgValue {
 
     /// Translate an EgValue::Hash into an EGValue::Blessed using
     /// the provided class name.
+    ///
+    /// Returns Err of the classname is unknown or the object
+    /// contains a field which is not present in the IDL class.
+    ///
+    /// The provided EgValue::Hash does not have to have all IDL fields.
     pub fn bless(v: EgValue, classname: &str) -> EgResult<EgValue> {
         let idl_class = idl::get_class(classname)
             .ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
         if let Self::Hash(mut h) = v {
+            // Take the hashmap away from the ::Hash variant
             let myhash = std::mem::replace(&mut h, HashMap::new());
+
+            for k in myhash.keys() {
+                if !idl_class.has_field(k) {
+                    let msg = format!("IDL class '{classname}' has no field named '{k}'");
+                    log::error!("{msg}");
+                    return Err(msg.into());
+                }
+            }
 
             Ok(EgValue::Blessed(
                 BlessedValue {
@@ -130,6 +144,17 @@ impl EgValue {
     }
 
     /// Wrap a JSON object (obj) in {"__c":"classname", "__p": obj}
+    ///
+    /// ```
+    /// use eversrf::EgValue;
+    ///
+    /// let v = json::array! ["one", "two", "three"];
+    /// let v = EgValue::add_class_wrapper(v, "foo");
+    /// let v = EgValue::from_json_value_plain(v);
+    /// assert!(v.is_object());
+    /// assert_eq!(v["__c"].as_str(), Some("foo"));
+    /// assert_eq!(v["__p"][0].as_str(), Some("one"));
+    /// assert_eq!(EgValue::wrapped_classname(&v.into_json_value()), Some("foo"));
     pub fn add_class_wrapper(val: JsonValue, class: &str) -> json::JsonValue {
         let mut hash = json::JsonValue::new_object();
         hash.insert(JSON_CLASS_KEY, class).expect("Is Object");
@@ -157,6 +182,17 @@ impl EgValue {
         }
     }
 
+    /// Returns the number of elements/entries contained in an EgValue
+    /// Array, Hash, or BlessedValue.
+    ///
+    ///
+    /// use eversrf::EgValue;
+    ///
+    /// let v = eversrf::array! ["one", "two", "three"];
+    /// assert_eq!(v.len(), 3);
+    ///
+    /// let v = eversrf::object! {"just":"some","stuff",["fooozle", "fazzle", "frizzle"]};
+    /// assert_eq(v.len(), 2);
     pub fn len(&self) -> usize {
         match self {
             EgValue::Array(ref l) => l.len(),
@@ -174,6 +210,8 @@ impl EgValue {
         EgValue::Array(Vec::new())
     }
 
+    /// Replace self with EgValue::Null and return what was previously
+    /// stored at self.
     pub fn take(&mut self) -> EgValue {
         std::mem::replace(self, EgValue::Null)
     }
@@ -193,10 +231,10 @@ impl EgValue {
 
     /// Insert a new value into an object-typed value.  Returns Err
     /// if this is not an object-typed value.
-    pub fn insert(&mut self, key: &str, value: EgValue) -> EgResult<()>{
+    pub fn insert(&mut self, key: &str, value: impl Into<EgValue>) -> EgResult<()>{
         match self {
-            EgValue::Hash(ref mut o) => o.insert(key.to_string(), value),
-            EgValue::Blessed(ref mut o) => o.values.insert(key.to_string(), value),
+            EgValue::Hash(ref mut o) => o.insert(key.to_string(), value.into()),
+            EgValue::Blessed(ref mut o) => o.values.insert(key.to_string(), value.into()),
             _ => return Err(format!("{self} Cannot call insert() on a non-object type").into()),
         };
 
@@ -412,6 +450,10 @@ impl EgValue {
     }
 
     pub fn as_int(&self) -> Option<i64> {
+        self.as_i64()
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
@@ -419,11 +461,6 @@ impl EgValue {
             _ => None,
         }
     }
-
-    pub fn as_i64(&self) -> Option<i64> {
-        self.as_int()
-    }
-
 
     pub fn as_usize(&self) -> Option<usize> {
         match self {
@@ -452,13 +489,16 @@ impl EgValue {
         }
     }
 
-
-    pub fn as_float(&self) -> Option<f64> {
+    pub fn as_f64(&self) -> Option<f64> {
         match self {
             EgValue::Number(n) => Some((*n).into()),
             EgValue::String(ref s) => s.parse::<f64>().ok(),
             _ => None,
         }
+    }
+
+    pub fn as_float(&self) -> Option<f64> {
+        self.as_f64()
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -630,23 +670,35 @@ impl EgValue {
     /// Iterator over the real IDL fields for this blessed value.
     ///
     /// Empty iterator if this is not a blessed value.
-    pub fn real_fields(&self) -> EgValueRealFields {
-        EgValueRealFields {
-            map_iter: match self {
-                EgValue::Blessed(ref o) => Some(o.idl_class.fields().values()),
-                _ => None,
-            }
+    pub fn real_fields(&self) -> Vec<&idl::Field> {
+        if let EgValue::Blessed(b) = self {
+            b.idl_class().real_fields()
+        } else {
+            Vec::new()
         }
     }
 
-    // TODO real_fields, etc.
+    /// List of real field sorted by field name.
+    pub fn real_fields_sorted(&self) -> Vec<&idl::Field> {
+        if let EgValue::Blessed(b) = self {
+            b.idl_class().real_fields_sorted()
+        } else {
+            Vec::new()
+        }
+    }
 
+    pub fn has_real_field(&self, field: &str) -> bool {
+        if let EgValue::Blessed(b) = self {
+            b.idl_class().has_real_field(field)
+        } else {
+            false
+        }
+    }
 }
 
 // EgValue Iterators ------------------------------------------------------
 
 // List iterators are simply standard slices.
-//pub type EgValueFields<'a> = std::slice::Iter<'a, idl::Field>;
 pub type EgValueMembers<'a> = std::slice::Iter<'a, EgValue>;
 pub type EgValueMembersMut<'a> = std::slice::IterMut<'a, EgValue>;
 
@@ -701,23 +753,6 @@ impl<'a> Iterator for EgValueKeys<'a> {
     }
 }
 
-pub struct EgValueRealFields<'a> {
-    map_iter: Option<std::collections::hash_map::Values<'a, String, idl::Field>>
-}
-
-impl<'a> Iterator for EgValueRealFields<'a> {
-    type Item = &'a idl::Field;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(iter) = self.map_iter.as_mut() {
-            iter.next().filter(|f| !f.is_virtual())
-        } else {
-            None
-        }
-    }
-}
-
-
 impl fmt::Display for EgValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -746,6 +781,58 @@ impl PartialEq<EgValue> for &str {
     fn eq(&self, val: &EgValue) -> bool {
         if let Some(s) = val.as_str() {
             s == *self
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for &String {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(s) = val.as_str() {
+            s == self.as_str()
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for String {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(s) = val.as_str() {
+            s == self.as_str()
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for i64 {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(v) = val.as_i64() {
+            v == *self
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for f64 {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(v) = val.as_f64() {
+            v == *self
+        } else {
+            false
+        }
+    }
+}
+
+
+
+impl PartialEq<EgValue> for bool {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(v) = val.as_bool() {
+            v == *self
         } else {
             false
         }
@@ -843,8 +930,45 @@ impl From<usize> for EgValue {
     }
 }
 
+/// Allows numeric index access to EgValue::Array's
+impl Index<usize> for EgValue {
+    type Output = EgValue;
 
-/// Allows index-based access to EgValue's
+    /// Returns the JsonValue stored in the provided index or EgValue::Null;
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            Self::Array(ref o) => {
+                if let Some(v) = o.get(index) {
+                    v
+                } else {
+                    &EG_NULL
+                }
+            },
+            _ => &EG_NULL
+        }
+    }
+}
+
+/// Mutably acessing an index that is beyond the size of the list will
+/// cause NULL values to be appended to the list until the list reaches
+/// the needed size to allow editing the specified index.
+impl IndexMut<usize> for EgValue {
+    fn index_mut(&mut self, index: usize) -> &mut EgValue {
+        if !self.is_array() {
+            *self = EgValue::new_array();
+        }
+        if let EgValue::Array(ref mut list) = self {
+            while list.len() < index + 1 {
+                list.push(EG_NULL)
+            }
+            &mut list[index]
+        } else {
+            panic!("Cannot get here")
+        }
+    }
+}
+
+/// Allows index-based access to EgValue Hash and Blessed values.
 ///
 /// Follows the pattern of JsonValue where undefined values are all null's
 impl Index<&str> for EgValue {
@@ -920,6 +1044,19 @@ impl IndexMut<&str> for EgValue {
             *self = EgValue::Hash(map);
             &mut self[key]
         }
+    }
+}
+
+impl Index<&String> for EgValue {
+    type Output = EgValue;
+    fn index(&self, key: &String) -> &Self::Output {
+        &self[key.as_str()]
+    }
+}
+
+impl IndexMut<&String> for EgValue {
+    fn index_mut(&mut self, key: &String) -> &mut Self::Output {
+        &mut self[key.as_str()]
     }
 }
 
