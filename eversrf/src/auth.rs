@@ -84,7 +84,7 @@ impl AuthLoginArgs {
     pub fn to_eg_value(&self) -> EgValue {
         let lt: &str = self.login_type().into();
 
-        let mut jv = eg::object! {
+        let mut jv = eg::hash! {
             username: self.username(),
             password: self.password(),
             "type": lt,
@@ -122,7 +122,7 @@ impl AuthInternalLoginArgs {
     pub fn to_eg_value(&self) -> EgValue {
         let lt: &str = (&self.login_type).into();
 
-        let mut jv = eg::object! {
+        let mut jv = eg::hash! {
             "login_type": lt,
             "user_id": self.user_id,
         };

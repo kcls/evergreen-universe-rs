@@ -17,7 +17,7 @@ const JSON_PAYLOAD_KEY: &str = "__p";
 // Create some wrapper macros for JSON value building so that we can
 // build EgValue's directly without having to directly invoke json.
 #[macro_export]
-macro_rules! object {
+macro_rules! hash {
     ($($tts:tt)*) => {
         EgValue::from_json_value_plain(json::object!($($tts)*))
     }
@@ -33,7 +33,7 @@ macro_rules! array {
 
 #[test]
 fn macros() {
-    let v = crate::object! {
+    let v = crate::hash! {
         "hello": "stuff",
         "gbye": ["floogle", EgValue::new_object()]
     };
@@ -71,6 +71,63 @@ pub enum EgValue {
 }
 
 impl EgValue {
+
+    /// Translate an EgValue::Hash into an EGValue::Blessed using
+    /// the provided class name.
+    pub fn bless(v: EgValue, classname: &str) -> EgResult<EgValue> {
+        let idl_class = idl::get_class(classname)
+            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+
+        if let Self::Hash(mut h) = v {
+            let myhash = std::mem::replace(&mut h, HashMap::new());
+
+            Ok(EgValue::Blessed(
+                BlessedValue {
+                    idl_class: idl_class.clone(),
+                    values: myhash
+                }
+            ))
+        } else {
+            Err(format!("Cannot bless a non-HASH object").into())
+        }
+    }
+
+    /// Remove NULL values from EgValue::Hash's contained within
+    /// EgValue::Hash's or EgValue::Array's
+    ///
+    /// Does not remove NULL Array values, since that would change value
+    /// positions, but may modify a hash/object which is a member of an
+    /// array.
+    pub fn scrub_hash_nulls(&mut self) {
+        if let EgValue::Hash(ref mut m) = self {
+            // Build a new map containg the scrubbed values and no
+            // NULLs then turn that into the map used by this EGValue.
+            let mut newmap = HashMap::new();
+
+            for (key, mut val) in m.drain() {
+                if val.is_array() || val.is_object() {
+                    val.scrub_hash_nulls();
+                }
+                if !val.is_null() {
+                    newmap.insert(key, val);
+                }
+            }
+
+            let _ = std::mem::replace(m, newmap);
+
+        } else if let EgValue::Array(ref mut list) = self {
+            for v in list.iter_mut() {
+                v.scrub_hash_nulls();
+            }
+        }
+    }
+
+    pub fn contains(&self, item: impl PartialEq<EgValue>) -> bool {
+        match *self {
+            EgValue::Array(ref vec) => vec.iter().any(|member| item == *member),
+            _ => false
+        }
+    }
 
     /// Wrap a JSON object (obj) in {"__c":"classname", "__p": obj}
     pub fn add_class_wrapper(val: JsonValue, class: &str) -> json::JsonValue {
@@ -125,9 +182,9 @@ impl EgValue {
         self.into_json_value().dump()
     }
 
-    pub fn push(&mut self, v: EgValue) -> EgResult<()> {
+    pub fn push(&mut self, v: impl Into<EgValue>) -> EgResult<()> {
         if let EgValue::Array(ref mut list) = self {
-            list.push(v);
+            list.push(v.into());
             Ok(())
         } else {
             Err(format!("push() requires an EgValue::Array").into())
@@ -681,6 +738,16 @@ impl fmt::Display for EgValue {
                 }
                 write!(f, "{s}")
             }
+        }
+    }
+}
+
+impl PartialEq<EgValue> for &str {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(s) = val.as_str() {
+            s == *self
+        } else {
+            false
         }
     }
 }

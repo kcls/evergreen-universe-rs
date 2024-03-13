@@ -49,7 +49,7 @@ impl fmt::Display for EgEvent {
 
 impl From<&EgEvent> for EgValue {
     fn from(evt: &EgEvent) -> Self {
-        let mut obj: EgValue = eg::object! {
+        let mut obj: EgValue = eg::hash! {
             "code": evt.code(),
             "textcode": evt.textcode(),
             "payload": evt.payload().clone(),
@@ -207,7 +207,7 @@ impl EgEvent {
     /// use eg::EgEvent;
     /// use eg::EgValue;
     ///
-    /// let jv = eg::object! {
+    /// let jv = eg::hash! {
     ///     code: EgValue::from(100),
     ///     textcode: EgValue::from("SUCCESS"),
     ///     ilsperm: EgValue::from("STAFF_LOGIN"),
@@ -221,7 +221,7 @@ impl EgEvent {
     /// assert_eq!(format!("{}", evt), String::from("Event: -1:SUCCESS STAFF_LOGIN@1"));
     /// assert!(evt.ad_hoc().unwrap().has_key("foo"));
     ///
-    /// let jv2 = eg::object! {
+    /// let jv2 = eg::hash! {
     ///     howdy: EgValue::from(123)
     /// };
     ///

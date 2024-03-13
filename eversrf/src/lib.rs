@@ -12,7 +12,6 @@ pub mod app;
 pub mod auth;
 pub mod bus;
 pub mod cache;
-//pub mod classified;
 pub mod client;
 pub mod conf;
 pub mod idl;
