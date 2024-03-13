@@ -12,6 +12,36 @@ use std::collections::HashMap;
 
 const EG_NULL: EgValue = EgValue::Null;
 
+// ---
+// Create some wrapper macros for JSON value building so that we can
+// build EgValue's directly without having to directly invoke json.
+#[macro_export]
+macro_rules! object {
+    ($($tts:tt)*) => { 
+        EgValue::from_json_value_plain(json::object!($($tts)*)) 
+    }
+}
+
+#[macro_export]
+macro_rules! array {
+    ($($tts:tt)*) => { 
+        EgValue::from_json_value_plain(json::array!($($tts)*)) 
+    }
+}
+// ---
+
+#[test]
+fn macros() {
+    let v = crate::object! {
+        "hello": "stuff",
+        "gbye": ["floogle", EgValue::new_object()]
+    };
+
+    assert_eq!(v["hello"].as_str(), Some("stuff"));
+}
+
+
+
 /// An JSON-ish object whose structure is defined in the IDL.
 #[derive(Debug, PartialEq, Clone)]
 pub struct BlessedValue {
@@ -42,6 +72,15 @@ pub enum EgValue {
 }
 
 impl EgValue {
+
+    pub fn len(&self) -> usize {
+        match self {
+            EgValue::Array(ref l) => l.len(),
+            EgValue::Hash(ref h) => h.len(),
+            EgValue::Blessed(ref b) => b.values.len(),
+            _ => 0
+        }
+    }
 
     pub fn new_object() -> EgValue {
         EgValue::Hash(HashMap::new())
@@ -271,20 +310,13 @@ impl EgValue {
         }
     }
 
-    /// Returns our idl::Class or panics if we are unclassed.
-    fn idl_class_unchecked(&self) -> &Arc<idl::Class> {
-        if let EgValue::Blessed(ref o) = self {
-            o.idl_class()
-        } else {
-            let s = format!("EgValue is not an IDL object: {self}");
-            log::error!("{s}");
-            panic!("{s}");
-        }
-    }
-
     /// Our IDL class name.
-    pub fn classname(&self) -> &str {
-        self.idl_class_unchecked().classname()
+    pub fn classname(&self) -> Option<&str> {
+        if let EgValue::Blessed(b) = self {
+            Some(b.idl_class.classname())
+        } else {
+            None
+        }
     }
 
     pub fn as_str(&self) -> Option<&str> {
@@ -304,11 +336,25 @@ impl EgValue {
         }
     }
 
+    pub fn as_i64(&self) -> Option<i64> {
+        self.as_int()
+    }
+
+
     pub fn as_usize(&self) -> Option<usize> {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(ref s) => s.parse::<usize>().ok(),
+            _ => None,
+        }
+    }
+
+    pub fn as_isize(&self) -> Option<isize> {
+        match self {
+            EgValue::Number(n) => (*n).try_into().ok(),
+            // It's not uncommon to receive numeric strings over the wire.
+            EgValue::String(ref s) => s.parse::<isize>().ok(),
             _ => None,
         }
     }
@@ -362,7 +408,7 @@ impl EgValue {
             if o.idl_class().has_field("id") {
                 self["id"].as_int()
             } else {
-                panic!("Class {} has no 'id' field", self.classname());
+                panic!("Class {} has no 'id' field", self.classname().unwrap());
             }
         } else {
             panic!("Not an IDL object: {}", self);
@@ -371,7 +417,11 @@ impl EgValue {
 
     /// Returns the idl::Field for the primary key if present.
     pub fn pkey_field(&self) -> Option<&idl::Field> {
-        self.idl_class_unchecked().pkey_field()
+        if let EgValue::Blessed(b) = self {
+            b.idl_class.pkey_field()
+        } else {
+            None
+        }
     }
 
     /// Returns the value from the primary key field.
@@ -388,11 +438,13 @@ impl EgValue {
 
     /// Value stored in the reporter:selector field if set.
     pub fn selector_value(&self) -> Option<&EgValue> {
-        if let Some(selector) = self.idl_class_unchecked().selector() {
-            Some(&self[selector])
-        } else {
-            None
+        if let EgValue::Blessed(b) = self {
+            if let Some(selector) = b.idl_class.selector() {
+                return Some(&self[selector]);
+            }
         }
+
+        None
     }
 
     /// Iterator over values in an EgValue::Array.
@@ -469,11 +521,11 @@ pub struct EgValueEntriesMut<'a> {
 }
 
 impl<'a> Iterator for EgValueEntriesMut<'a> {
-    type Item = (&'a String, &'a mut EgValue);
+    type Item = (&'a str, &'a mut EgValue);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(iter) = self.map_iter.as_mut() {
-            iter.next()
+            iter.next().map(|(k, v)| (k.as_str(), v))
         } else {
             None
         }
@@ -485,11 +537,11 @@ pub struct EgValueEntries<'a> {
 }
 
 impl<'a> Iterator for EgValueEntries<'a> {
-    type Item = (&'a String, &'a EgValue);
+    type Item = (&'a str, &'a EgValue);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(iter) = self.map_iter.as_mut() {
-            iter.next()
+            iter.next().map(|(k, v)| (k.as_str(), v))
         } else {
             None
         }
@@ -501,11 +553,11 @@ pub struct EgValueKeys<'a> {
 }
 
 impl<'a> Iterator for EgValueKeys<'a> {
-    type Item = &'a String;
+    type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(iter) = self.map_iter.as_mut() {
-            iter.next()
+            iter.next().map(|k| k.as_str())
         } else {
             None
         }
@@ -534,6 +586,12 @@ impl fmt::Display for EgValue {
                 write!(f, "{s}")
             }
         }
+    }
+}
+
+impl From<EgValue> for JsonValue {
+    fn from(v: EgValue) -> JsonValue {
+        v.into_json_value()
     }
 }
 
@@ -637,10 +695,10 @@ impl Index<&str> for EgValue {
     fn index(&self, key: &str) -> &Self::Output {
         match self {
             Self::Blessed(ref o) => {
-                if key.starts_with("_") || self.idl_class_unchecked().has_field(key) {
+                if key.starts_with("_") || o.idl_class.has_field(key) {
                     o.values.get(key).unwrap_or(&EG_NULL)
                 } else {
-                    let err = format!("IDL class {} has no field {key}", self.classname());
+                    let err = format!("IDL class {} has no field {key}", self.classname().unwrap());
                     log::error!("{err}");
                     panic!("{}", err);
                 }
@@ -662,16 +720,14 @@ impl Index<&str> for EgValue {
 /// ```
 impl IndexMut<&str> for EgValue {
     fn index_mut(&mut self, key: &str) -> &mut Self::Output {
-        let classed = match self {
-            Self::Blessed(_) => true,
-             _ => false
+        let (is_classed, has_field) = match self {
+            Self::Blessed(o) => (true, o.idl_class.has_field(key)),
+             _ => (false, false)
         };
 
-        if classed {
-            let has_field = key.starts_with("_") || self.idl_class_unchecked().has_field(key);
-
-            if !has_field {
-                let err = format!("IDL class {} has no field {key}", self.classname());
+        if is_classed {
+            if has_field || key.starts_with("_") {
+                let err = format!("IDL class {} has no field {key}", self.classname().unwrap());
                 log::error!("{err}");
                 panic!("{}", err);
             }

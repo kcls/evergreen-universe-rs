@@ -26,7 +26,7 @@ impl ParamCount {
     /// number specified by the ParamCount enum.
     ///
     /// ```
-    /// use opensrf::method::ParamCount;
+    /// use eversrf::method::ParamCount;
     /// assert!(ParamCount::matches(&ParamCount::Any, 0));
     /// assert!(!ParamCount::matches(&ParamCount::Exactly(1), 10));
     /// assert!(ParamCount::matches(&ParamCount::AtLeast(10), 20));

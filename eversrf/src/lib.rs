@@ -4,10 +4,12 @@ pub use sclient::SettingsClient;
 pub use session::SessionHandle;
 pub use result::{EgResult, EgError};
 pub use value::EgValue;
+pub use event::EgEvent;
 pub use logging::Logger;
 
 pub mod addr;
 pub mod app;
+pub mod auth;
 pub mod bus;
 pub mod cache;
 pub mod classified;
@@ -28,8 +30,8 @@ pub mod util;
 pub mod value;
 pub mod worker;
 
-/*
 
 #[cfg(test)]
 mod tests;
-*/
+
+
