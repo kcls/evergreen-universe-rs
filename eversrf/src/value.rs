@@ -15,7 +15,7 @@ const JSON_PAYLOAD_KEY: &str = "__p";
 
 // ---
 // Create some wrapper macros for JSON value building so that we can
-// build EgValue's directly without having to directly invoke json.
+// build EgValue's without having to invoke json directly.
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
@@ -157,9 +157,9 @@ impl EgValue {
     /// assert_eq!(EgValue::wrapped_classname(&v.into_json_value()), Some("foo"));
     pub fn add_class_wrapper(val: JsonValue, class: &str) -> json::JsonValue {
         let mut hash = json::JsonValue::new_object();
+
         hash.insert(JSON_CLASS_KEY, class).expect("Is Object");
         hash.insert(JSON_PAYLOAD_KEY, val).expect("Is Object");
-
         hash
     }
 
@@ -302,30 +302,29 @@ impl EgValue {
         let mut map = HashMap::new();
         let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
 
-        let classname = match EgValue::wrapped_classname(&v) {
-            Some(c) => c,
-            None => {
-                // Vanilla JSON object
-                while let Some(k) = keys.pop() {
-                    let val = EgValue::from_json_value(v.remove(&k))?;
-                    map.insert(k, val);
-                }
-
-                return Ok(EgValue::Hash(map));
+        if EgValue::wrapped_classname(&v).is_none() {
+            // Vanilla JSON object
+            while let Some(k) = keys.pop() {
+                let val = EgValue::from_json_value(v.remove(&k))?;
+                map.insert(k, val);
             }
-        };
 
-        let idl_class = match idl::get_class(classname) {
-            Some(c) => c,
-            None => return Err(format!("Not and IDL class: '{classname}'").into()),
-        };
+            return Ok(EgValue::Hash(map));
+        }
+
+        let (classname, mut list) = EgValue::remove_class_wrapper(v).unwrap();
+
+        let idl_class = idl::get_class(&classname)
+            .ok_or_else(|| format!("Not and IDL class: '{classname}'"))?;
 
         let mut map = HashMap::new();
         for field in idl_class.fields().values() {
-            map.insert(
-                field.name().to_string(),
-                EgValue::from_json_value(v[field.array_pos()].take())?
-            );
+            if list.len() > field.array_pos() {
+                map.insert(
+                    field.name().to_string(),
+                    EgValue::from_json_value(list[field.array_pos()].take())?
+                );
+            }
         }
 
         Ok(

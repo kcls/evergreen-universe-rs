@@ -8,9 +8,7 @@ pub fn main() {
         "opensrf.settings",
         "opensrf.system.echo",
         eg::hash! {"water":"baloon"}
-    )
-    .expect("Bus OK")
-    .expect("Has Response");
+    ).expect("Bus OK").expect("Has Response");
 
     println!("value is {v:?}");
 
@@ -26,6 +24,14 @@ pub fn main() {
     println!("v = {v:?}");
 
     let v = EgValue::bless(v, "aou").expect("Sane Object");
+
+    println!("value is {v}");
+
+    let v = ctx.client().send_recv_one(
+        "opensrf.settings",
+        "opensrf.system.echo",
+        v
+    ).expect("Bus OK").expect("Has Response");
 
     println!("value is {v}");
 
