@@ -1,8 +1,8 @@
 use crate::app;
 use crate::message;
 use crate::session;
-use crate::EgValue;
 use crate::EgResult;
+use crate::EgValue;
 use json::JsonValue;
 use std::fmt;
 
@@ -133,16 +133,14 @@ pub struct Param {
 
 impl Param {
     pub fn to_eg_value(&self) -> EgValue {
-        EgValue::from_json_value_plain(
-            json::object! {
-                "name": self.name.as_str(),
-                "datatype": self.datatype.to_string(),
-                "desc": match self.desc.as_ref() {
-                    Some(d) => d.as_str().into(),
-                    _ => JsonValue::Null,
-                }
+        EgValue::from_json_value_plain(json::object! {
+            "name": self.name.as_str(),
+            "datatype": self.datatype.to_string(),
+            "desc": match self.desc.as_ref() {
+                Some(d) => d.as_str().into(),
+                _ => JsonValue::Null,
             }
-        )
+        })
     }
 }
 
@@ -269,19 +267,17 @@ impl MethodDef {
             }
         }
 
-        EgValue::from_json_value_plain(
-            json::object! {
-                "api_name": self.name(),
-                "argc": self.param_count().to_string(),
-                "params": pa.into_json_value(),
-                // All Rust methods are streaming.
-                "stream": JsonValue::Boolean(true),
-                "desc": match self.desc() {
-                    Some(d) => d.into(),
-                    _ => JsonValue::Null,
-                }
+        EgValue::from_json_value_plain(json::object! {
+            "api_name": self.name(),
+            "argc": self.param_count().to_string(),
+            "params": pa.into_json_value(),
+            // All Rust methods are streaming.
+            "stream": JsonValue::Boolean(true),
+            "desc": match self.desc() {
+                Some(d) => d.into(),
+                _ => JsonValue::Null,
             }
-        )
+        })
     }
 
     /// Produces e.g. "foo.bar.baz('param1', 'param2')"

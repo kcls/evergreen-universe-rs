@@ -1,13 +1,14 @@
 ///! EgValue
 /// Wrapper class for JsonValue's which may also contain IDL-blessed values,
 /// i.e. those that have an IDL class and a well-defined set of fields.
-use crate::idl;
-use crate::{EgResult, EgError};
+use crate as eg;
+use eg::idl;
+use eg::{EgError, EgResult};
 use json::JsonValue;
-use std::ops::{Index, IndexMut};
-use std::fmt;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::fmt;
+use std::ops::{Index, IndexMut};
+use std::sync::Arc;
 
 const EG_NULL: EgValue = EgValue::Null;
 const JSON_CLASS_KEY: &str = "__c";
@@ -19,21 +20,21 @@ const JSON_PAYLOAD_KEY: &str = "__p";
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
-        EgValue::from_json_value_plain(json::object!($($tts)*))
+        eg::value::EgValue::from_json_value_plain(json::object!($($tts)*))
     }
 }
 
 #[macro_export]
 macro_rules! array {
     ($($tts:tt)*) => {
-        EgValue::from_json_value_plain(json::array!($($tts)*))
+        eg::value::EgValue::from_json_value_plain(json::array!($($tts)*))
     }
 }
 // ---
 
 #[test]
 fn macros() {
-    let v = crate::hash! {
+    let v = eg::hash! {
         "hello": "stuff",
         "gbye": ["floogle", EgValue::new_object()]
     };
@@ -71,7 +72,6 @@ pub enum EgValue {
 }
 
 impl EgValue {
-
     /// Translate an EgValue::Hash into an EGValue::Blessed using
     /// the provided class name.
     ///
@@ -80,8 +80,8 @@ impl EgValue {
     ///
     /// The provided EgValue::Hash does not have to have all IDL fields.
     pub fn bless(v: EgValue, classname: &str) -> EgResult<EgValue> {
-        let idl_class = idl::get_class(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        let idl_class =
+            idl::get_class(classname).ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
         if let Self::Hash(mut h) = v {
             // Take the hashmap away from the ::Hash variant
@@ -95,12 +95,10 @@ impl EgValue {
                 }
             }
 
-            Ok(EgValue::Blessed(
-                BlessedValue {
-                    idl_class: idl_class.clone(),
-                    values: myhash
-                }
-            ))
+            Ok(EgValue::Blessed(BlessedValue {
+                idl_class: idl_class.clone(),
+                values: myhash,
+            }))
         } else {
             Err(format!("Cannot bless a non-HASH object").into())
         }
@@ -128,7 +126,6 @@ impl EgValue {
             }
 
             let _ = std::mem::replace(m, newmap);
-
         } else if let EgValue::Array(ref mut list) = self {
             for v in list.iter_mut() {
                 v.scrub_hash_nulls();
@@ -139,7 +136,7 @@ impl EgValue {
     pub fn contains(&self, item: impl PartialEq<EgValue>) -> bool {
         match *self {
             EgValue::Array(ref vec) => vec.iter().any(|member| item == *member),
-            _ => false
+            _ => false,
         }
     }
 
@@ -175,8 +172,9 @@ impl EgValue {
         if obj.is_object()
             && obj.has_key(JSON_CLASS_KEY)
             && obj.has_key(JSON_PAYLOAD_KEY)
-            && obj[JSON_CLASS_KEY].is_string() {
-                obj[JSON_CLASS_KEY].as_str()
+            && obj[JSON_CLASS_KEY].is_string()
+        {
+            obj[JSON_CLASS_KEY].as_str()
         } else {
             None
         }
@@ -198,7 +196,7 @@ impl EgValue {
             EgValue::Array(ref l) => l.len(),
             EgValue::Hash(ref h) => h.len(),
             EgValue::Blessed(ref b) => b.values.len(),
-            _ => 0
+            _ => 0,
         }
     }
 
@@ -216,8 +214,8 @@ impl EgValue {
         std::mem::replace(self, EgValue::Null)
     }
 
-    pub fn dump(self) -> String {
-        self.into_json_value().dump()
+    pub fn dump(&self) -> String {
+        self.clone().into_json_value().dump()
     }
 
     pub fn push(&mut self, v: impl Into<EgValue>) -> EgResult<()> {
@@ -231,7 +229,7 @@ impl EgValue {
 
     /// Insert a new value into an object-typed value.  Returns Err
     /// if this is not an object-typed value.
-    pub fn insert(&mut self, key: &str, value: impl Into<EgValue>) -> EgResult<()>{
+    pub fn insert(&mut self, key: &str, value: impl Into<EgValue>) -> EgResult<()> {
         match self {
             EgValue::Hash(ref mut o) => o.insert(key.to_string(), value.into()),
             EgValue::Blessed(ref mut o) => o.values.insert(key.to_string(), value.into()),
@@ -258,16 +256,17 @@ impl EgValue {
         match v {
             JsonValue::Null => return EgValue::Null,
             JsonValue::Boolean(b) => return EgValue::Boolean(b),
-            JsonValue::Short(_) | JsonValue::String(_) =>
-                return EgValue::String(v.take_string().unwrap()),
+            JsonValue::Short(_) | JsonValue::String(_) => {
+                return EgValue::String(v.take_string().unwrap())
+            }
             JsonValue::Number(n) => return EgValue::Number(n),
             JsonValue::Array(mut list) => {
                 let mut val_list = Vec::new();
                 for v in list.drain(..) {
                     val_list.push(EgValue::from_json_value_plain(v));
                 }
-                return EgValue::Array(val_list)
-            },
+                return EgValue::Array(val_list);
+            }
             JsonValue::Object(_) => {
                 let mut map = HashMap::new();
                 let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
@@ -295,7 +294,7 @@ impl EgValue {
             for v in list.drain(..) {
                 val_list.push(EgValue::from_json_value(v)?);
             }
-            return Ok(EgValue::Array(val_list))
+            return Ok(EgValue::Array(val_list));
         }
 
         // JSON object
@@ -322,19 +321,15 @@ impl EgValue {
             if list.len() > field.array_pos() {
                 map.insert(
                     field.name().to_string(),
-                    EgValue::from_json_value(list[field.array_pos()].take())?
+                    EgValue::from_json_value(list[field.array_pos()].take())?,
                 );
             }
         }
 
-        Ok(
-            EgValue::Blessed(
-                BlessedValue {
-                    idl_class: idl_class.clone(),
-                    values: map
-                }
-            )
-        )
+        Ok(EgValue::Blessed(BlessedValue {
+            idl_class: idl_class.clone(),
+            values: map,
+        }))
     }
 
     /// Turn an EgValue into a vanilla JsonValue consuming the EgValue.
@@ -397,7 +392,7 @@ impl EgValue {
     pub fn is_string(&self) -> bool {
         match self {
             EgValue::String(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -427,7 +422,7 @@ impl EgValue {
     pub fn is_blessed(&self) -> bool {
         match self {
             &EgValue::Blessed(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -435,6 +430,14 @@ impl EgValue {
     pub fn classname(&self) -> Option<&str> {
         if let EgValue::Blessed(b) = self {
             Some(b.idl_class.classname())
+        } else {
+            None
+        }
+    }
+
+    pub fn idl_class(&self) -> Option<&Arc<idl::Class>> {
+        if let Self::Blessed(b) = self {
+            Some(b.idl_class())
         } else {
             None
         }
@@ -509,8 +512,8 @@ impl EgValue {
 
     /// True if this EgValue is a non-scalar or its scalar value is true-ish.
     ///
-    /// Zeros and strings that start with "f" are false since that's how
-    /// false values are conveyed by the DB layer.
+    /// Zeros, empty strings, and strings that start with "f" are false
+    /// since that's how false values are conveyed by the DB layer.
     pub fn as_boolish(&self) -> bool {
         match self {
             EgValue::Boolean(b) => *b,
@@ -549,13 +552,12 @@ impl EgValue {
 
     /// Returns the value from the primary key field.
     ///
-    /// Returns EgNull if the pkey value is NULL or the
-    /// IDL class in question has no primary key field.
-    pub fn pkey_value(&self) -> &EgValue {
+    /// Returns None if the value has no primary key field.
+    pub fn pkey_value(&self) -> Option<&EgValue> {
         if let Some(pkey_field) = self.pkey_field() {
-            &self[pkey_field.name()]
+            Some(&self[pkey_field.name()])
         } else {
-            &EG_NULL
+            None
         }
     }
 
@@ -576,7 +578,7 @@ impl EgValue {
     pub fn members(&self) -> EgValueMembers {
         match *self {
             EgValue::Array(ref list) => list.iter(),
-            _ => [].iter()
+            _ => [].iter(),
         }
     }
 
@@ -586,7 +588,7 @@ impl EgValue {
     pub fn members_mut(&mut self) -> EgValueMembersMut {
         match *self {
             EgValue::Array(ref mut list) => list.iter_mut(),
-            _ => [].iter_mut()
+            _ => [].iter_mut(),
         }
     }
 
@@ -599,7 +601,7 @@ impl EgValue {
                 EgValue::Hash(ref o) => Some(o.iter()),
                 EgValue::Blessed(ref o) => Some(o.values.iter()),
                 _ => None,
-            }
+            },
         }
     }
 
@@ -612,7 +614,7 @@ impl EgValue {
                 EgValue::Hash(ref mut o) => Some(o.iter_mut()),
                 EgValue::Blessed(ref mut o) => Some(o.values.iter_mut()),
                 _ => None,
-            }
+            },
         }
     }
 
@@ -625,7 +627,7 @@ impl EgValue {
                 EgValue::Hash(ref o) => Some(o.keys()),
                 EgValue::Blessed(ref o) => Some(o.values.keys()),
                 _ => None,
-            }
+            },
         }
     }
 
@@ -645,7 +647,6 @@ impl EgValue {
         let idl_class = idl::get_class(inner.idl_class.classname()).expect("Blessed Has a Class");
 
         for (name, field) in idl_class.fields().iter() {
-
             if self[name].is_array() {
                 self[name] = EgValue::new_array();
                 continue;
@@ -659,7 +660,11 @@ impl EgValue {
                 // Virtual fields can be fully cleared.
                 self[name] = EG_NULL;
             } else {
-                self[name] = self[name].pkey_value().clone();
+                if let Some(pval) = self[name].pkey_value() {
+                    self[name] = pval.clone();
+                } else {
+                    self[name] = EG_NULL;
+                }
             }
         }
 
@@ -705,7 +710,7 @@ pub type EgValueMembersMut<'a> = std::slice::IterMut<'a, EgValue>;
 // tracking the hashmap iterator within a custom iterator type.
 
 pub struct EgValueEntriesMut<'a> {
-    map_iter: Option<std::collections::hash_map::IterMut<'a, String, EgValue>>
+    map_iter: Option<std::collections::hash_map::IterMut<'a, String, EgValue>>,
 }
 
 impl<'a> Iterator for EgValueEntriesMut<'a> {
@@ -721,7 +726,7 @@ impl<'a> Iterator for EgValueEntriesMut<'a> {
 }
 
 pub struct EgValueEntries<'a> {
-    map_iter: Option<std::collections::hash_map::Iter<'a, String, EgValue>>
+    map_iter: Option<std::collections::hash_map::Iter<'a, String, EgValue>>,
 }
 
 impl<'a> Iterator for EgValueEntries<'a> {
@@ -737,7 +742,7 @@ impl<'a> Iterator for EgValueEntries<'a> {
 }
 
 pub struct EgValueKeys<'a> {
-    map_iter: Option<std::collections::hash_map::Keys<'a, String, EgValue>>
+    map_iter: Option<std::collections::hash_map::Keys<'a, String, EgValue>>,
 }
 
 impl<'a> Iterator for EgValueKeys<'a> {
@@ -764,8 +769,9 @@ impl fmt::Display for EgValue {
             EgValue::Blessed(ref o) => {
                 let mut s = o.idl_class.classname().to_string();
                 if let Some(pkey) = self.pkey_field() {
-                    let pval = self.pkey_value();
-                    s += &format!(" {}={pval}", pkey.name());
+                    if let Some(pval) = self.pkey_value() {
+                        s += &format!(" {}={pval}", pkey.name());
+                    }
                 }
                 if let Some(selector) = self.selector_value() {
                     s += &format!(" label={selector}");
@@ -826,8 +832,6 @@ impl PartialEq<EgValue> for f64 {
     }
 }
 
-
-
 impl PartialEq<EgValue> for bool {
     fn eq(&self, val: &EgValue) -> bool {
         if let Some(v) = val.as_bool() {
@@ -858,73 +862,73 @@ impl From<bool> for EgValue {
 }
 
 impl From<Vec<EgValue>> for EgValue {
-    fn from (v: Vec<EgValue>) -> EgValue {
+    fn from(v: Vec<EgValue>) -> EgValue {
         EgValue::Array(v)
     }
 }
 
 impl From<&str> for EgValue {
-    fn from (s: &str) -> EgValue {
+    fn from(s: &str) -> EgValue {
         EgValue::String(s.to_string())
     }
 }
 
 impl From<String> for EgValue {
-    fn from (s: String) -> EgValue {
+    fn from(s: String) -> EgValue {
         EgValue::String(s)
     }
 }
 
 impl From<i32> for EgValue {
-    fn from (s: i32) -> EgValue {
+    fn from(s: i32) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<i8> for EgValue {
-    fn from (s: i8) -> EgValue {
+    fn from(s: i8) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<i64> for EgValue {
-    fn from (s: i64) -> EgValue {
+    fn from(s: i64) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<f64> for EgValue {
-    fn from (s: f64) -> EgValue {
+    fn from(s: f64) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<f32> for EgValue {
-    fn from (s: f32) -> EgValue {
+    fn from(s: f32) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<u32> for EgValue {
-    fn from (s: u32) -> EgValue {
+    fn from(s: u32) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<u64> for EgValue {
-    fn from (s: u64) -> EgValue {
+    fn from(s: u64) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<u8> for EgValue {
-    fn from (s: u8) -> EgValue {
+    fn from(s: u8) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
 impl From<usize> for EgValue {
-    fn from (s: usize) -> EgValue {
+    fn from(s: usize) -> EgValue {
         EgValue::Number(s.into())
     }
 }
@@ -942,8 +946,8 @@ impl Index<usize> for EgValue {
                 } else {
                     &EG_NULL
                 }
-            },
-            _ => &EG_NULL
+            }
+            _ => &EG_NULL,
         }
     }
 }
@@ -988,10 +992,10 @@ impl Index<&str> for EgValue {
                     log::error!("{err}");
                     panic!("{}", err);
                 }
-            },
+            }
             EgValue::Hash(ref hash) => hash.get(key).unwrap_or(&EG_NULL),
             // Only Object-y things can be indexed
-            _ => &EG_NULL
+            _ => &EG_NULL,
         }
     }
 }
@@ -1008,7 +1012,7 @@ impl IndexMut<&str> for EgValue {
     fn index_mut(&mut self, key: &str) -> &mut Self::Output {
         let (is_classed, has_field) = match self {
             Self::Blessed(o) => (true, o.idl_class.has_field(key)),
-             _ => (false, false)
+            _ => (false, false),
         };
 
         if is_classed {
@@ -1027,9 +1031,7 @@ impl IndexMut<&str> for EgValue {
             } else {
                 panic!("Cannot get here");
             }
-
         } else {
-
             if let EgValue::Hash(ref mut hash) = self {
                 if hash.get(key).is_none() {
                     hash.insert(key.to_string(), EG_NULL);
@@ -1058,5 +1060,3 @@ impl IndexMut<&String> for EgValue {
         &mut self[key.as_str()]
     }
 }
-
-

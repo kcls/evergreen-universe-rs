@@ -18,7 +18,10 @@ impl SettingsClient {
 
         let mut req = ses.request(
             "opensrf.settings.host_config.get",
-            vec![EgValue::from(client.config().hostname()), EgValue::from(force)],
+            vec![
+                EgValue::from(client.config().hostname()),
+                EgValue::from(force),
+            ],
         )?;
 
         if let Some(s) = req.recv_with_timeout(SETTINGS_TIMEOUT)? {
@@ -32,7 +35,7 @@ impl SettingsClient {
 /// Read-only wrapper around a JSON blob of server setting values, which
 /// provides accessor methods for pulling setting values.
 pub struct HostSettings {
-    settings: EgValue
+    settings: EgValue,
 }
 
 impl HostSettings {

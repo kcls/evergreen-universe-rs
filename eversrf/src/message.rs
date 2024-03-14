@@ -416,7 +416,6 @@ impl TransportMessage {
 
         obj
     }
-
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -524,25 +523,22 @@ impl Message {
         Ok(msg)
     }
 
-    fn payload_from_json_value(
-        mtype: MessageType,
-        payload_obj: JsonValue,
-    ) -> EgResult<Payload> {
+    fn payload_from_json_value(mtype: MessageType, payload_obj: JsonValue) -> EgResult<Payload> {
         match mtype {
             MessageType::Request => {
                 let method = MethodCall::from_json_value(payload_obj)?;
                 Ok(Payload::Method(method))
-            },
+            }
 
             MessageType::Result => {
                 let result = Result::from_json_value(payload_obj)?;
                 Ok(Payload::Result(result))
-            },
+            }
 
             MessageType::Status => {
                 let stat = Status::from_json_value(payload_obj)?;
                 Ok(Payload::Status(stat))
-            },
+            }
 
             _ => Ok(Payload::NoPayload),
         }
@@ -783,5 +779,4 @@ impl MethodCall {
 
         EgValue::add_class_wrapper(obj, &self.msg_class)
     }
-
 }

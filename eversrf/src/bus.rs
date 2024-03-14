@@ -1,8 +1,8 @@
 use crate::addr::BusAddress;
 use crate::conf;
-use crate::util;
 use crate::logging::Logger;
 use crate::message::TransportMessage;
+use crate::util;
 use crate::EgResult;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::fmt;

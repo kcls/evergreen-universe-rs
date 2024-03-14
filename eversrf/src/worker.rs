@@ -477,11 +477,8 @@ impl Worker {
         let param_count = method_call.params().len();
         let api_name = method_call.method();
 
-        let log_params = util::stringify_params(
-            api_name,
-            method_call.params(),
-            self.config.log_protect()
-        );
+        let log_params =
+            util::stringify_params(api_name, method_call.params(), self.config.log_protect());
 
         // Log the API call
         log::info!("CALL: {} {}", api_name, log_params);
@@ -625,9 +622,11 @@ impl Worker {
     fn notify_state(&self, state: WorkerState) -> EgResult<()> {
         log::trace!("{self} notifying parent of state change => {state:?}");
 
-        self.to_parent_tx.send(WorkerStateEvent {
-            worker_id: self.worker_id(),
-            state: state,
-        }).map_err(|e| format!("mpsc::SendError: {e}").into())
+        self.to_parent_tx
+            .send(WorkerStateEvent {
+                worker_id: self.worker_id(),
+                state: state,
+            })
+            .map_err(|e| format!("mpsc::SendError: {e}").into())
     }
 }

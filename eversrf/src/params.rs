@@ -1,5 +1,5 @@
+use crate::{EgResult, EgValue};
 use json::JsonValue;
-use crate::{EgValue, EgResult};
 
 /// Generic container for translating various data types into a Vec<JsonValue>.
 ///
@@ -12,7 +12,6 @@ pub struct ApiParams {
 }
 
 impl ApiParams {
-
     /// Consumes the stored parameters
     pub fn serialize(mut self) -> Vec<JsonValue> {
         let mut arr: Vec<JsonValue> = Vec::new();
@@ -104,7 +103,6 @@ impl From<i32> for ApiParams {
     }
 }
 
-
 impl From<i64> for ApiParams {
     fn from(v: i64) -> ApiParams {
         ApiParams::from(EgValue::from(v))
@@ -117,7 +115,6 @@ impl From<u32> for ApiParams {
     }
 }
 
-
 impl From<u64> for ApiParams {
     fn from(v: u64) -> ApiParams {
         ApiParams::from(EgValue::from(v))
@@ -129,7 +126,6 @@ impl From<u8> for ApiParams {
         ApiParams::from(EgValue::from(v))
     }
 }
-
 
 impl From<i8> for ApiParams {
     fn from(v: i8) -> ApiParams {
@@ -151,7 +147,6 @@ impl From<&Vec<&str>> for ApiParams {
     }
 }
 
-
 impl From<Vec<&str>> for ApiParams {
     fn from(v: Vec<&str>) -> ApiParams {
         ApiParams::from(&v)
@@ -171,7 +166,6 @@ impl From<Vec<u8>> for ApiParams {
         ApiParams::from(&v)
     }
 }
-
 
 impl From<&Vec<i64>> for ApiParams {
     fn from(v: &Vec<i64>) -> ApiParams {
@@ -214,4 +208,3 @@ impl From<Vec<String>> for ApiParams {
         ApiParams::from(&v)
     }
 }
-

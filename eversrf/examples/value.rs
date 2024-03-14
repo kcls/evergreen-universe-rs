@@ -1,14 +1,18 @@
-use eversrf as eg;
+use eg::EgResult;
 use eg::EgValue;
+use eversrf as eg;
 
-pub fn main() {
-    let ctx = eg::init::init().unwrap();
+pub fn main() -> EgResult<()> {
+    let ctx = eg::init::init()?;
 
-    let v = ctx.client().send_recv_one(
-        "opensrf.settings",
-        "opensrf.system.echo",
-        eg::hash! {"water":"baloon"}
-    ).expect("Bus OK").expect("Has Response");
+    let v = ctx
+        .client()
+        .send_recv_one(
+            "opensrf.settings",
+            "opensrf.system.echo",
+            eg::hash! {"water":"baloon"},
+        )?
+        .expect("Has Response");
 
     println!("value is {v:?}");
 
@@ -27,15 +31,14 @@ pub fn main() {
 
     println!("value is {v}");
 
-    let v = ctx.client().send_recv_one(
-        "opensrf.settings",
-        "opensrf.system.echo",
-        v
-    ).expect("Bus OK").expect("Has Response");
+    let v = ctx
+        .client()
+        .send_recv_one("opensrf.settings", "opensrf.system.echo", v)?
+        .expect("Has Response");
 
     println!("value is {v}");
 
-    let mut list = eg::array! ["1", 78, true, EgValue::Null, eg::hash! {"water":"cannon"}];
+    let mut list = eg::array!["1", 78, true, EgValue::Null, eg::hash! {"water":"cannon"}];
 
     println!("contains 1 = {}", list.contains("1"));
     println!("contains 78 = {}", list.contains(78));
@@ -46,5 +49,6 @@ pub fn main() {
     list[20] = eg::hash! {"foo":"baz"};
 
     println!("LIST is {list:?}");
-}
 
+    Ok(())
+}

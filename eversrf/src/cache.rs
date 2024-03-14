@@ -166,12 +166,7 @@ impl Cache {
     }
 
     /// Store a JSON thing in the cache
-    pub fn set(
-        &mut self,
-        key: &str,
-        value: EgValue,
-        timeout: Option<usize>,
-    ) -> EgResult<()> {
+    pub fn set(&mut self, key: &str, value: EgValue, timeout: Option<usize>) -> EgResult<()> {
         let key = to_key(key);
         let ctype = self.active_cache()?;
         let max_timeout = ctype.max_cache_time();
@@ -191,10 +186,7 @@ impl Cache {
         let valstr = value.into_json_value().dump();
 
         if valstr.bytes().count() > max_size {
-            return Err(format!(
-                "Cache value too large: bytes={}",
-                valstr.bytes().count()
-            ).into());
+            return Err(format!("Cache value too large: bytes={}", valstr.bytes().count()).into());
         }
 
         let res: Result<(), _> = self.redis.set_ex(&key, valstr, time);

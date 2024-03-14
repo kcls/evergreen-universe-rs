@@ -1,7 +1,6 @@
 use crate::addr::BusAddress;
 use crate::client::{Client, ClientSingleton};
 use crate::message;
-use crate::{EgResult, EgValue};
 use crate::message::Message;
 use crate::message::MessageStatus;
 use crate::message::MessageType;
@@ -11,6 +10,7 @@ use crate::message::Status;
 use crate::message::TransportMessage;
 use crate::params::ApiParams;
 use crate::util;
+use crate::{EgResult, EgValue};
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::VecDeque;
@@ -389,8 +389,11 @@ impl Session {
         let trace = msg.thread_trace();
 
         if let Payload::Status(stat) = msg.payload() {
-            self.unpack_status_message(trace, timer, &stat).map_err(|e| { self.reset(); e })
-
+            self.unpack_status_message(trace, timer, &stat)
+                .map_err(|e| {
+                    self.reset();
+                    e
+                })
         } else {
             self.reset();
             Err(format!("{self} unexpected response for request {trace}: {msg:?}").into())
@@ -576,11 +579,7 @@ impl SessionHandle {
     /// Issue a new API call and return the Request
     ///
     /// params is a JSON-able thing.  E.g. vec![1,2,3], json::object!{"a": "b"}, etc.
-    pub fn request(
-        &mut self,
-        method: &str,
-        params: impl Into<ApiParams>,
-    ) -> EgResult<Request> {
+    pub fn request(&mut self, method: &str, params: impl Into<ApiParams>) -> EgResult<Request> {
         let thread = self.session.borrow().thread().to_string();
 
         Ok(Request::new(
@@ -664,11 +663,7 @@ impl MultiSession {
     ///
     /// Returns the session thead so the caller can link specific
     /// request to their responses (see recv()) if needed.
-    pub fn request(
-        &mut self,
-        method: &str,
-        params: impl Into<ApiParams>,
-    ) -> EgResult<String> {
+    pub fn request(&mut self, method: &str, params: impl Into<ApiParams>) -> EgResult<String> {
         let mut ses = self.client.session(&self.service);
         let req = ses.request(method, params)?;
         let thread = req.thread().to_string();
@@ -868,11 +863,7 @@ impl ServerSession {
     }
 
     /// Respond with a value and/or a complete message.
-    fn respond_with_parts(
-        &mut self,
-        value: Option<EgValue>,
-        complete: bool,
-    ) -> EgResult<()> {
+    fn respond_with_parts(&mut self, value: Option<EgValue>, complete: bool) -> EgResult<()> {
         if self.responded_complete {
             log::warn!(
                 r#"Dropping trailing replies after already sending a

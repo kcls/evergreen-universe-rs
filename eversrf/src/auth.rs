@@ -1,8 +1,8 @@
 use crate as eg;
+use crate::Client;
 use crate::EgEvent;
 use crate::EgResult;
 use crate::EgValue;
-use crate::Client;
 
 const LOGIN_TIMEOUT: i32 = 30;
 

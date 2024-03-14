@@ -1,9 +1,9 @@
-use crate::conf;
-use crate::logging;
-use crate::idl;
-use crate::EgResult;
 use crate::client::Client;
+use crate::conf;
+use crate::idl;
+use crate::logging;
 use crate::sclient;
+use crate::EgResult;
 use std::env;
 use std::sync::Arc;
 

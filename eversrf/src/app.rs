@@ -3,11 +3,11 @@ use crate::conf;
 use crate::message;
 use crate::method;
 use crate::sclient;
-use crate::EgResult;
 use crate::EgError;
+use crate::EgResult;
 use std::any::Any;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// * Server spawns a worker thread
 /// * Worker thread calls an ApplicationWorkerFactory function to

@@ -1,6 +1,6 @@
 use crate as eg;
-use eg::EgValue;
 use chrono::Local;
+use eg::EgValue;
 use std::fmt;
 
 /// Common argument to API calls that allow for targeted overrides.
@@ -110,7 +110,7 @@ impl EgEvent {
         EgEvent::new("SUCCESS")
     }
 
-    pub fn to_eg_value(&self) -> EgValue {
+    pub fn to_value(&self) -> EgValue {
         self.into()
     }
 
@@ -229,7 +229,7 @@ impl EgEvent {
     /// assert!(evt_op.is_none());
     /// ```
     pub fn parse(jv: &EgValue) -> Option<EgEvent> {
-        if !jv.is_object() {
+        if !jv.is_object() || jv.is_blessed() {
             return None;
         }
 

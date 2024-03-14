@@ -8,11 +8,11 @@ use crate as eg;
 use crate::EgResult;
 use crate::EgValue;
 use roxmltree;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
-use std::cell::RefCell;
 
 // TODO move a lot of the object-specific functions/methods into EgValue.
 
@@ -26,7 +26,6 @@ const OILS_NS_PERSIST: &str = "http://open-ils.org/spec/opensrf/IDL/persistence/
 const OILS_NS_REPORTER: &str = "http://open-ils.org/spec/opensrf/IDL/reporter/v1";
 const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
 
-
 /// Every thread needs its own copy of the Arc<Parser>
 pub fn set_thread_idl(idl: &Arc<Parser>) {
     THREAD_LOCAL_IDL.with(|p| *p.borrow_mut() = Some(idl.clone()));
@@ -35,18 +34,20 @@ pub fn set_thread_idl(idl: &Arc<Parser>) {
 pub fn get_class(classname: &str) -> Option<Arc<Class>> {
     let mut idl_class: Option<Arc<Class>> = None;
 
-    THREAD_LOCAL_IDL.with(|p| idl_class = p.borrow()
-        .as_ref()
-        .expect("Thread Local IDL Required")
-        .classes()
-        .get(classname)
-        .map(|c| c.clone()) // Arc::clone()
+    THREAD_LOCAL_IDL.with(
+        |p| {
+            idl_class = p
+                .borrow()
+                .as_ref()
+                .expect("Thread Local IDL Required")
+                .classes()
+                .get(classname)
+                .map(|c| c.clone())
+        }, // Arc::clone()
     );
 
     idl_class
 }
-
-
 
 /// Various forms an IDL-classed object can take internally and on
 /// the wire.
@@ -653,7 +654,6 @@ impl Parser {
         class.links.insert(link.field.to_string(), link);
     }
 
-
     /// Translates a set of path-based flesh definition into a flesh
     /// object that can be used by cstore, etc.
     ///
@@ -705,4 +705,3 @@ impl Parser {
         Ok(flesh)
     }
 }
-
