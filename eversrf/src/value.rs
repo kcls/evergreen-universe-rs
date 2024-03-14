@@ -16,7 +16,8 @@ const JSON_PAYLOAD_KEY: &str = "__p";
 
 // ---
 // Create some wrapper macros for JSON value building so that we can
-// build EgValue's without having to invoke json directly.
+// build EgValue's without invoking json directly.
+// let h = eg::hash! {"hello": "errbody"};
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
@@ -24,6 +25,7 @@ macro_rules! hash {
     }
 }
 
+// let a = eg::array! ["hello", "errbody"];
 #[macro_export]
 macro_rules! array {
     ($($tts:tt)*) => {
@@ -40,6 +42,8 @@ fn macros() {
     };
 
     assert_eq!(v["hello"].as_str(), Some("stuff"));
+
+    assert_eq!((eg::array! [1, 2, 3]).len(), 3);
 }
 
 /// An JSON-ish object whose structure is defined in the IDL.
@@ -1127,7 +1131,7 @@ impl IndexMut<&str> for EgValue {
         };
 
         if is_classed {
-            if has_field || key.starts_with("_") {
+            if !has_field || key.starts_with("_") {
                 let err = format!("IDL class {} has no field {key}", self.classname().unwrap());
                 log::error!("{err}");
                 panic!("{}", err);

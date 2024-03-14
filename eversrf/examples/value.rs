@@ -27,7 +27,7 @@ pub fn main() -> EgResult<()> {
     v.scrub_hash_nulls();
     println!("v = {v:?}");
 
-    let v = EgValue::bless(v, "aou").expect("Sane Object");
+    v.bless("aou")?;
 
     println!("value is {v}");
 

@@ -188,7 +188,7 @@ pub fn stringify_params(method: &str, params: &Vec<EgValue>, log_protect: &Vec<S
 /// Turns a PG array string (e.g. '{1,23,456}') into a uniq list of ints.
 ///
 /// ```
-/// let mut res = evergreen::util::pg_unpack_int_array("{1,23,NULL,23,456}");
+/// let mut res = eversrf::util::pg_unpack_int_array("{1,23,NULL,23,456}");
 /// res.sort();
 /// assert_eq!(res, vec![1,23,456]);
 /// ```

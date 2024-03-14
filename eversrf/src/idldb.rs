@@ -116,15 +116,16 @@ impl FleshDef {
     /// Creates a FleshDef from a JSON options hash/object.
     ///
     /// ```
-    /// use evergreen::idldb::FleshDef;
+    /// use eversrf as eg;
+    /// use eg::idldb::FleshDef;
     /// use json;
     ///
     /// let obj = eg::hash! {
     ///   "flesh": -1, "flesh_fields": {"au": ["home_ou", "profile"]}
     /// };
     ///
-    /// let flesh_def = FleshDef::from_json_value(&obj).expect("Parsed Flesh");
-    /// assert_eq!(flesh_def.depth, evergreen::idldb::MAX_FLESH_DEPTH);
+    /// let flesh_def = FleshDef::from_eg_value(&obj).expect("Parsed Flesh");
+    /// assert_eq!(flesh_def.depth, eversrf::idldb::MAX_FLESH_DEPTH);
     /// assert_eq!(flesh_def.fields.len(), 1);
     /// assert_eq!(flesh_def.fields.get("au").expect("Has an au").len(), 2);
     /// ```

@@ -16,7 +16,7 @@ pub type EgDate = DateTime<FixedOffset>;
 /// (e.g.) https://crates.io/crates/parse_duration
 ///
 /// ```
-/// use evergreen::date;
+/// use eversrf::date;
 ///
 /// let seconds = date::interval_to_seconds("02:20:05").expect("Parse OK");
 /// assert_eq!(seconds, 8405);
@@ -93,7 +93,7 @@ pub fn now() -> EgDate {
 /// DateTime value produced will also be in the local timezone.
 ///
 /// ```
-/// use evergreen::date;
+/// use eversrf::date;
 /// use chrono::{DateTime, FixedOffset, Local};
 ///
 /// let dt = date::parse_datetime("2023-07-11T12:00:00-0200");
@@ -110,13 +110,13 @@ pub fn now() -> EgDate {
 /// let dt = date::parse_datetime("2023-07-11 HOWDY");
 /// assert!(dt.is_err());
 ///
-/// let res = evergreen::date::parse_datetime("2023-02-03T12:23:19-0400");
+/// let res = eversrf::date::parse_datetime("2023-02-03T12:23:19-0400");
 /// assert!(res.is_ok());
 ///
 /// let d = res.unwrap().to_rfc3339();
 /// assert_eq!(d, "2023-02-03T12:23:19-04:00");
 ///
-/// let res = evergreen::date::parse_datetime("2023-02-03T123");
+/// let res = eversrf::date::parse_datetime("2023-02-03T123");
 /// assert!(res.is_err());
 /// ```
 pub fn parse_datetime(dt: &str) -> EgResult<EgDate> {
@@ -152,7 +152,7 @@ pub fn parse_datetime(dt: &str) -> EgResult<EgDate> {
 
 /// Turn a DateTime into the kind of date string we like in these parts.
 /// ```
-/// use evergreen::date;
+/// use eversrf::date;
 /// use chrono::{DateTime, FixedOffset, Local};
 /// let dt: date::EgDate = "2023-07-11T12:00:00-0700".parse().unwrap();
 /// assert_eq!(date::to_iso(&dt), "2023-07-11T12:00:00-0700");
@@ -170,7 +170,7 @@ pub fn to_iso_millis(dt: &EgDate) -> String {
 /// Translate a DateTime into the Local timezone while leaving the
 /// DateTime as a FixedOffset DateTime.
 /// ```
-/// use evergreen::date;
+/// use eversrf::date;
 /// use chrono::{DateTime, FixedOffset, Local};
 /// let dt: date::EgDate = "2023-07-11T12:00:00-0200".parse().unwrap();
 /// let dt2: date::EgDate = date::to_local_timezone_fixed(dt);
@@ -199,7 +199,7 @@ pub fn to_local_timezone_fixed(dt: EgDate) -> DateTime<FixedOffset> {
 /// set_timezone(local_date.into(), "America/New_York");
 ///
 /// ```
-/// use evergreen::date;
+/// use eversrf::date;
 /// use chrono::{DateTime, FixedOffset};
 /// let dt: date::EgDate = "2023-07-11T12:00:00-0400".parse().unwrap();
 /// let dt = date::set_timezone(dt, "GMT").unwrap();
@@ -230,7 +230,7 @@ pub fn set_timezone(dt: EgDate, timezone: &str) -> EgResult<EgDate> {
 /// (There's gotta be a better way...)
 ///
 /// ```
-/// use evergreen::date;
+/// use eversrf::date;
 /// use chrono::{DateTime, FixedOffset};
 /// let dt: date::EgDate = "2023-07-11T01:25:18-0400".parse().unwrap();
 /// let dt = date::set_hms(&dt, 23, 59, 59).unwrap();
