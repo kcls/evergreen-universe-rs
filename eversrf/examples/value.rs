@@ -3,6 +3,7 @@ use eg::EgValue;
 use eversrf as eg;
 
 pub fn main() -> EgResult<()> {
+    // Connect and load the IDLj
     let ctx = eg::init::init()?;
 
     let v = ctx
@@ -10,7 +11,7 @@ pub fn main() -> EgResult<()> {
         .send_recv_one(
             "opensrf.settings",
             "opensrf.system.echo",
-            eg::hash! {"water":"baloon"},
+            eg::hash! {"water": "baloon"},
         )?
         .expect("Has Response");
 
@@ -20,11 +21,17 @@ pub fn main() -> EgResult<()> {
         "shortname": "BR1",
         "name": "Branch 1",
         "id": 4,
-        "foo": EgValue::Null,
+        "foo": eg::NULL,
     };
 
     println!("v = {v:?}");
+
+    // Fails on invalid field "foo"
+    assert!(v.bless("aou").is_err());
+
+    // remove "foo"
     v.scrub_hash_nulls();
+
     println!("v = {v:?}");
 
     v.bless("aou")?;
@@ -38,17 +45,33 @@ pub fn main() -> EgResult<()> {
 
     println!("value is {v}");
 
-    let mut list = eg::array!["1", 78, true, EgValue::Null, eg::hash! {"water":"cannon"}];
+    let mut list = eg::array!["1", 78, true, eg::NULL, eg::hash! {"water":"cannon"}];
 
-    println!("contains 1 = {}", list.contains("1"));
-    println!("contains 78 = {}", list.contains(78));
-    println!("contains 79 = {}", list.contains(79));
-    println!("contains true = {}", list.contains(true));
-    println!("contains EgValue::Null = {}", list.contains(EgValue::Null));
+    assert!(list.contains("1"));
+    assert!(list.contains(78));
+    assert!(!list.contains(79));
+    assert!(list.contains(true));
+    assert!(list.contains(eg::NULL));
 
+    // This expands the array to accomodate the value.
     list[20] = eg::hash! {"foo":"baz"};
 
     println!("LIST is {list:?}");
 
+    let mut v = EgValue::create(
+        "aou",
+        eg::hash! {"id": 1, "shortname":"AAA", "name": "HOWDYDFD"}
+    )?;
+
+    v["shortname"] = EgValue::from("HELLLO");
+
+    println!("v = {v}");
+
+    v.unbless()?;
+
+    println!("v = {}", v.dump());
+
     Ok(())
 }
+
+

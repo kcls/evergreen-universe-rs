@@ -9,6 +9,8 @@ pub use sclient::SettingsClient;
 pub use session::SessionHandle;
 pub use value::EgValue;
 
+pub const NULL: EgValue = EgValue::Null;
+
 pub mod addr;
 pub mod app;
 pub mod auth;
@@ -16,7 +18,7 @@ pub mod bus;
 pub mod cache;
 pub mod client;
 pub mod conf;
-//pub mod common;
+pub mod common;
 pub mod constants;
 pub mod date;
 pub mod db;
