@@ -503,8 +503,23 @@ impl EgValue {
         }
     }
 
+    /// Translates String and Number values into allocated strings.
+    ///
+    /// Err of the value is neither a Number or String.
+    pub fn as_string(&self) -> EgResult<String> {
+        match self {
+            EgValue::String(s) => Ok(s.to_string()),
+            EgValue::Number(n) => Ok(format!("{n}")),
+            _ => Err(format!("Cannot create string from {:?}", self).into())
+        }
+    }
+
     pub fn as_int(&self) -> Option<i64> {
         self.as_i64()
+    }
+
+    pub fn as_int_unchecked(&self) -> i64 {
+        self.as_i64().expect("{self} should be an integer");
     }
 
     pub fn as_i64(&self) -> Option<i64> {
@@ -589,17 +604,23 @@ impl EgValue {
     /// Handy shortcut.
     ///
     /// Must be an IDL object with an "id" field and a numeric value.
-    /// or the IDL class has no field called "id".
     pub fn id(&self) -> Option<i64> {
         if let EgValue::Blessed(ref o) = self {
             if o.idl_class().has_field("id") {
-                self["id"].as_int()
-            } else {
-                panic!("Class {} has no 'id' field", self.classname().unwrap());
+                return self["id"].as_int()
             }
-        } else {
-            panic!("Not an IDL object: {}", self);
         }
+        None
+    }
+
+    /// Variant of EgValue::id() that produces an Err if no numeric
+    /// ID value is found.
+    pub fn id_or_err(&self) -> EgResult<i64> {
+        self.id().ok_or_else(|| format!("{self} has no id value").into())
+    }
+
+    pub id_unchecked(&self) -> i64 {
+        self.id().expect("{self} should have an id value")
     }
 
     /// Returns the idl::Field for the primary key if present.
@@ -922,6 +943,18 @@ impl TryFrom<JsonValue> for EgValue {
     type Error = EgError;
     fn try_from(v: JsonValue) -> EgResult<EgValue> {
         EgValue::from_json_value(v)
+    }
+}
+
+impl From<Vec<i64>> for EgValue {
+    fn from(mut v: Vec<i64>) -> EgValue {
+        EgValue::Array(v.drain(..).map(|n| EgValue::from(n)).collect())
+    }
+}
+
+impl From<Vec<String>> for EgValue {
+    fn from(mut v: Vec<String>) -> EgValue {
+        EgValue::Array(v.drain(..).map(|s| EgValue::from(s)).collect())
     }
 }
 
