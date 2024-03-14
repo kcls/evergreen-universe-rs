@@ -533,8 +533,8 @@ impl EgValue {
         self.as_i64()
     }
 
-    pub fn as_int_unchecked(&self) -> i64 {
-        self.as_i64().expect("{self} should be an integer")
+    pub fn int_required(&self) -> i64 {
+        self.as_i64().expect("{self} must  be an integer")
     }
 
     pub fn as_i64(&self) -> Option<i64> {
@@ -634,7 +634,7 @@ impl EgValue {
         self.id().ok_or_else(|| format!("{self} has no id value").into())
     }
 
-    pub fn id_unchecked(&self) -> i64 {
+    pub fn id_required(&self) -> i64 {
         self.id().expect("{self} should have an id value")
     }
 
@@ -676,6 +676,14 @@ impl EgValue {
         }
 
         None
+    }
+
+    pub fn pop(&mut self) -> EgValue {
+        if let Self::Array(mut list) = self {
+            list.pop().unwrap_or(eg::NULL)
+        } else {
+            eg::NULL
+        }
     }
 
     /// Iterator over values in an EgValue::Array.

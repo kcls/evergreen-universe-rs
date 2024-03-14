@@ -1,3 +1,4 @@
+use crate as eg;
 use eg::common::org;
 use eg::common::settings::Settings;
 use eg::common::targeter;
@@ -107,7 +108,7 @@ pub fn calc_hold_shelf_expire_time(
     hold: &EgValue,
     start_time: Option<&str>,
 ) -> EgResult<Option<String>> {
-    let pickup_lib = hold["pickup_lib"].as_int_unchecked();
+    let pickup_lib = hold["pickup_lib"].int_required();
 
     let mut settings = Settings::new(&editor);
     let interval =
@@ -204,13 +205,13 @@ pub fn find_nearest_permitted_hold(
     let mut best_holds: Vec<i64> = Vec::new();
     if let Some(bhr) = best_hold_results {
         for h in bhr.members() {
-            best_holds.push(h.as_int_unchecked());
+            best_holds.push(h.int_required());
         }
     }
 
     // Holds that already target this copy are still in the game.
     for old_hold in old_holds.iter() {
-        let old_id = old_hold.id_unchecked();
+        let old_id = old_hold.id_required();
         if !best_holds.contains(&old_id) {
             best_holds.push(old_id);
         }
@@ -239,11 +240,11 @@ pub fn find_nearest_permitted_hold(
 
         let result = test_copy_for_hold(
             editor,
-            hold["usr"].as_int_unchecked(),
+            hold["usr"].int_required(),
             copy_id,
-            hold["pickup_lib"].as_int_unchecked(),
-            hold["request_lib"].as_int_unchecked(),
-            hold["requestor"].as_int_unchecked(),
+            hold["pickup_lib"].int_required(),
+            hold["request_lib"].int_required(),
+            hold["requestor"].int_required(),
             true, // is_retarget
             None, // overrides
             true, // check_only
@@ -284,7 +285,7 @@ pub fn find_nearest_permitted_hold(
             if hold["id"] == targeted_hold["id"] {
                 continue;
             }
-            let hold_id = hold.id_unchecked();
+            let hold_id = hold.id_required();
 
             hold["current_copy"].take();
             hold["prev_check_time"].take();
@@ -544,7 +545,7 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
             .retrieve("acp", hold["current_copy"].clone())?
             .ok_or_else(|| editor.die_event())?;
 
-        let copy_status = copy["status"].as_int_unchecked();
+        let copy_status = copy["status"].int_required();
 
         if copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
             copy["status"] = EgValue::from(C::COPY_STATUS_RESHELVING);
@@ -559,7 +560,7 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
             };
 
             if let Some(ht) = editor.search("ahtc", query)?.pop() {
-                transit::cancel_transit(&mut editor, ht.id_unchecked(), true)?;
+                transit::cancel_transit(&mut editor, ht.id_required(), true)?;
             }
         }
     }

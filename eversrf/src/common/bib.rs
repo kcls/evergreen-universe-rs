@@ -134,7 +134,7 @@ pub fn get_display_attrs(
     let attrs = editor.search("mfde", eg::hash! {"source": bib_ids})?;
 
     for attr in attrs {
-        let bib_id = attr["source"].as_int_unchecked();
+        let bib_id = attr["source"].int_required();
 
         // First time seeing this bib record?
         if !map.contains_key(&bib_id) {

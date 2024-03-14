@@ -4,6 +4,7 @@ pub mod bib;
 //pub mod holds;
 pub mod org;
 pub mod settings;
+pub mod targeter;
 
 /*
 pub mod billing;
@@ -16,7 +17,6 @@ pub mod jq;
 pub mod noncat;
 pub mod penalty;
 pub mod renew;
-pub mod targeter;
 pub mod transit;
 pub mod trigger;
 pub mod user;
