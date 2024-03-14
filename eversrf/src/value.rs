@@ -79,29 +79,36 @@ impl EgValue {
     /// contains a field which is not present in the IDL class.
     ///
     /// The provided EgValue::Hash does not have to have all IDL fields.
-    pub fn bless(v: EgValue, classname: &str) -> EgResult<EgValue> {
+    pub fn bless(&mut self, classname: &str) -> EgResult<()> {
         let idl_class =
             idl::get_class(classname).ok_or_else(|| format!("No such IDL class: {classname}"))?;
 
-        if let Self::Hash(mut h) = v {
-            // Take the hashmap away from the ::Hash variant
-            let myhash = std::mem::replace(&mut h, HashMap::new());
+        // Pull the map out of the EgValue::Hash so we can inspect
+        // it and eventually consume it.
+        let map = match self {
+            Self::Hash(ref mut h) => std::mem::replace(h, HashMap::new()),
+            _ => return Err(format!("Only EgValue::Hash's can be blessed").into()),
+        };
 
-            for k in myhash.keys() {
-                if !idl_class.has_field(k) {
-                    let msg = format!("IDL class '{classname}' has no field named '{k}'");
-                    log::error!("{msg}");
-                    return Err(msg.into());
-                }
+        // Verify the existing data contains only fields that are
+        // represented in the IDL for the provided class.
+        for k in map.keys() {
+            if !idl_class.has_field(k) {
+                let msg = format!("IDL class '{classname}' has no field named '{k}'");
+                log::error!("{msg}");
+                return Err(msg.into());
             }
-
-            Ok(EgValue::Blessed(BlessedValue {
-                idl_class: idl_class.clone(),
-                values: myhash,
-            }))
-        } else {
-            Err(format!("Cannot bless a non-HASH object").into())
         }
+
+        // Transmute ourselves into a Blessed value.
+        *self = EgValue::Blessed(
+            BlessedValue {
+                idl_class: idl_class.clone(),
+                values: map,
+            }
+        );
+
+        Ok(())
     }
 
     /// Remove NULL values from EgValue::Hash's contained within
@@ -491,6 +498,15 @@ impl EgValue {
         }
     }
 
+    pub fn as_i16(&self) -> Option<i16> {
+        match self {
+            EgValue::Number(n) => (*n).try_into().ok(),
+            // It's not uncommon to receive numeric strings over the wire.
+            EgValue::String(ref s) => s.parse::<i16>().ok(),
+            _ => None,
+        }
+    }
+
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             EgValue::Number(n) => Some((*n).into()),
@@ -559,6 +575,15 @@ impl EgValue {
         } else {
             None
         }
+    }
+
+    pub fn pkey_info(&self) -> Option<(&idl::Field, &EgValue)> {
+        if let Some(f) = self.pkey_field() {
+            if let Some(v) = self.pkey_value() {
+                return Some((f, v));
+            }
+        }
+        None
     }
 
     /// Value stored in the reporter:selector field if set.
@@ -861,6 +886,16 @@ impl From<bool> for EgValue {
     }
 }
 
+impl From<Option<bool>> for EgValue {
+    fn from(o: Option<bool>) -> EgValue {
+        if let Some(b) = o {
+            EgValue::from(b)
+        } else {
+            EG_NULL
+        }
+    }
+}
+
 impl From<Vec<EgValue>> for EgValue {
     fn from(v: Vec<EgValue>) -> EgValue {
         EgValue::Array(v)
@@ -870,6 +905,16 @@ impl From<Vec<EgValue>> for EgValue {
 impl From<&str> for EgValue {
     fn from(s: &str) -> EgValue {
         EgValue::String(s.to_string())
+    }
+}
+
+impl From<Option<String>> for EgValue {
+    fn from(o: Option<String>) -> EgValue {
+        if let Some(s) = o {
+            EgValue::from(s)
+        } else {
+            EG_NULL
+        }
     }
 }
 
@@ -885,9 +930,45 @@ impl From<i32> for EgValue {
     }
 }
 
+impl From<Option<i32>> for EgValue {
+    fn from(v: Option<i32>) -> EgValue {
+        if let Some(n) = v {
+            EgValue::from(n)
+        } else {
+            EG_NULL
+        }
+    }
+}
+
 impl From<i8> for EgValue {
     fn from(s: i8) -> EgValue {
         EgValue::Number(s.into())
+    }
+}
+
+impl From<i16> for EgValue {
+    fn from(s: i16) -> EgValue {
+        EgValue::Number(s.into())
+    }
+}
+
+impl From<Option<i16>> for EgValue {
+    fn from(v: Option<i16>) -> EgValue {
+        if let Some(n) = v {
+            EgValue::from(n)
+        } else {
+            EG_NULL
+        }
+    }
+}
+
+impl From<Option<i8>> for EgValue {
+    fn from(v: Option<i8>) -> EgValue {
+        if let Some(n) = v {
+            EgValue::from(n)
+        } else {
+            EG_NULL
+        }
     }
 }
 
@@ -897,15 +978,45 @@ impl From<i64> for EgValue {
     }
 }
 
+impl From<Option<i64>> for EgValue {
+    fn from(v: Option<i64>) -> EgValue {
+        if let Some(n) = v {
+            EgValue::from(n)
+        } else {
+            EG_NULL
+        }
+    }
+}
+
 impl From<f64> for EgValue {
     fn from(s: f64) -> EgValue {
         EgValue::Number(s.into())
     }
 }
 
+impl From<Option<f64>> for EgValue {
+    fn from(v: Option<f64>) -> EgValue {
+        if let Some(n) = v {
+            EgValue::from(n)
+        } else {
+            EG_NULL
+        }
+    }
+}
+
 impl From<f32> for EgValue {
     fn from(s: f32) -> EgValue {
         EgValue::Number(s.into())
+    }
+}
+
+impl From<Option<f32>> for EgValue {
+    fn from(v: Option<f32>) -> EgValue {
+        if let Some(n) = v {
+            EgValue::from(n)
+        } else {
+            EG_NULL
+        }
     }
 }
 

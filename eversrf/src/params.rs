@@ -22,24 +22,6 @@ impl ApiParams {
         arr
     }
 
-    /*
-    /// Consumes the stored parameters
-    pub fn deserialize(&mut self, client: &Client) -> Vec<JsonValue> {
-        if let Some(s) = client.singleton().borrow().serializer() {
-            let mut arr: Vec<JsonValue> = Vec::new();
-
-            while self.params.len() > 0 {
-                arr.push(s.unpack(self.params.remove(0)));
-            }
-            arr
-        } else {
-            // Replace our params with an empty array and return the
-            // original params to the caller.
-            std::mem::replace(&mut self.params, Vec::new())
-        }
-    }
-    */
-
     pub fn take_params(&mut self) -> Vec<EgValue> {
         std::mem::replace(&mut self.params, Vec::new())
     }
