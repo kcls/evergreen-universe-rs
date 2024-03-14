@@ -3,19 +3,8 @@ use eg::EgValue;
 use eversrf as eg;
 
 pub fn main() -> EgResult<()> {
-    // Connect and load the IDLj
+    // Connect and load the IDL
     let ctx = eg::init::init()?;
-
-    let v = ctx
-        .client()
-        .send_recv_one(
-            "opensrf.settings",
-            "opensrf.system.echo",
-            eg::hash! {"water": "baloon"},
-        )?
-        .expect("Has Response");
-
-    println!("value is {v:?}");
 
     let mut v = eg::hash! {
         "shortname": "BR1",
@@ -24,6 +13,9 @@ pub fn main() -> EgResult<()> {
         "foo": eg::NULL,
     };
 
+    v["floogle"] = "fanagle".into();
+    v["floogle"] = eg::NULL;
+
     println!("v = {v:?}");
 
     // Fails on invalid field "foo"
@@ -31,8 +23,6 @@ pub fn main() -> EgResult<()> {
 
     // remove "foo"
     v.scrub_hash_nulls();
-
-    println!("v = {v:?}");
 
     v.bless("aou")?;
 
@@ -43,7 +33,8 @@ pub fn main() -> EgResult<()> {
         .send_recv_one("opensrf.settings", "opensrf.system.echo", v)?
         .expect("Has Response");
 
-    println!("value is {v}");
+    println!("shortname is {v}");
+    println!("shortname is {}", v["shortname"]);
 
     let mut list = eg::array!["1", 78, true, eg::NULL, eg::hash! {"water":"cannon"}];
 
@@ -63,13 +54,26 @@ pub fn main() -> EgResult<()> {
         eg::hash! {"id": 1, "shortname":"AAA", "name": "HOWDYDFD"}
     )?;
 
-    v["shortname"] = EgValue::from("HELLLO");
+    //v["shortname"] = EgValue::from("HELLLO");
+    v["shortname"] = "HELLLO".into();
 
     println!("v = {v}");
 
     v.unbless()?;
 
     println!("v = {}", v.dump());
+
+    let v = ctx
+        .client()
+        .send_recv_one(
+            "opensrf.settings",
+            "opensrf.system.echo",
+            eg::hash! {"water": "baloon"},
+        )?
+        .expect("Has Response");
+
+    println!("value is {v:?}");
+
 
     Ok(())
 }

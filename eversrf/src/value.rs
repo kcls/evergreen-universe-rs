@@ -79,6 +79,13 @@ pub enum EgValue {
 
 impl EgValue {
 
+    pub fn parse(s: &str) -> EgResult<EgValue> {
+        match json::parse(s) {
+            Ok(v) => EgValue::from_json_value(v),
+            Err(e) => Err(format!("JSON Parse Error: {e} : {s}").into()),
+        }
+    }
+
     /// Create a new empty blessed value using the provided class name.
     pub fn stub(classname: &str) -> EgResult<EgValue> {
         let idl_class = idl::get_class(classname)
@@ -112,8 +119,8 @@ impl EgValue {
 
         // Pull the map out of the EgValue::Hash so we can inspect
         // it and eventually consume it.
-        let map = match self {
-            Self::Hash(ref mut h) => std::mem::replace(h, HashMap::new()),
+        let mut map = match self {
+            Self::Hash(ref mut h) => h,
             _ => return Err(format!("Only EgValue::Hash's can be blessed").into()),
         };
 
@@ -127,11 +134,12 @@ impl EgValue {
             }
         }
 
-        // Transmute ourselves into a Blessed value.
+        // Transmute ourselves into a Blessed value and absorb the
+        // existing hashmap.
         *self = EgValue::Blessed(
             BlessedValue {
                 idl_class: idl_class.clone(),
-                values: map,
+                values: std::mem::replace(&mut map, HashMap::new()),
             }
         );
 
@@ -371,10 +379,17 @@ impl EgValue {
         let mut map = HashMap::new();
         for field in idl_class.fields().values() {
             if list.len() > field.array_pos() {
-                map.insert(
-                    field.name().to_string(),
-                    EgValue::from_json_value(list[field.array_pos()].take())?,
-                );
+
+                // No point in storing NULL entries since blessed values
+                // have a known set of fields.
+                let val = list[field.array_pos()].take();
+
+                if !val.is_null() {
+                    map.insert(
+                        field.name().to_string(),
+                        EgValue::from_json_value(list[field.array_pos()].take())?,
+                    );
+                }
             }
         }
 
@@ -519,7 +534,7 @@ impl EgValue {
     }
 
     pub fn as_int_unchecked(&self) -> i64 {
-        self.as_i64().expect("{self} should be an integer");
+        self.as_i64().expect("{self} should be an integer")
     }
 
     pub fn as_i64(&self) -> Option<i64> {
@@ -619,7 +634,7 @@ impl EgValue {
         self.id().ok_or_else(|| format!("{self} has no id value").into())
     }
 
-    pub id_unchecked(&self) -> i64 {
+    pub fn id_unchecked(&self) -> i64 {
         self.id().expect("{self} should have an id value")
     }
 
