@@ -239,26 +239,29 @@ impl Editor {
         }
     }
 
-    pub fn perm_org(&self) -> i64 {
-        match self.requestor.as_ref() {
-            Some(r) => match r["ws_ou"].as_i64() {
-                Some(v) => v,
-                None => r["home_ou"].as_i64().unwrap(), // required
-            },
-            None => -1,
+    /// Workstation ID of the requestor's workstation.
+    ///
+    /// Panics if requestor value is unset.
+    pub fn requestor_home_ou(&self) -> Option<i64> {
+        if let Some(r) = self.requestor() {
+            r["home_ou"].as_int()
+        } else {
+            None
         }
+    }
+
+    pub fn perm_org(&self) -> i64 {
+        self.requestor_ws_ou().unwrap_or(
+            self.requestor_home_ou().unwrap_or(-1))
     }
 
     pub fn requestor(&self) -> Option<&EgValue> {
         self.requestor.as_ref()
     }
 
-    /// Returns Err if no requestor value is set.
-    pub fn has_requestor(&self) -> EgResult<()> {
-        self.requestor
-            .as_ref()
-            .map(|_| ())
-            .ok_or_else(|| format!("Editor requestor is unset").into())
+    /// True if a requestor is set
+    pub fn has_requestor(&self) -> bool {
+        self.requestor.is_some()
     }
 
     pub fn set_requestor(&mut self, r: &EgValue) {
@@ -271,11 +274,6 @@ impl Editor {
 
     pub fn take_last_event(&mut self) -> Option<EgEvent> {
         self.last_event.take()
-    }
-
-    /// Panics if there is no last event
-    pub fn last_event_unchecked(&self) -> &EgEvent {
-        self.last_event().unwrap()
     }
 
     pub fn event_as_err(&self) -> EgError {
@@ -551,7 +549,12 @@ impl Editor {
     pub fn json_query_with_ops(&mut self, query: EgValue, ops: EgValue) -> EgResult<Vec<EgValue>> {
         let method = self.app_method(&format!("json_query.atomic"));
 
-        if let Some(jvec) = self.request(&method, vec![query, ops])? {
+        let mut params: ApiParams = query.into();
+        if !ops.is_null() {
+            params.add(ops);
+        }
+
+        if let Some(jvec) = self.request(&method, params)? {
             if let EgValue::Array(vec) = jvec {
                 return Ok(vec);
             }
@@ -579,7 +582,9 @@ impl Editor {
         let method = self.app_method(&format!("direct.{fmapper}.retrieve"));
 
         let mut params: ApiParams = id.into();
-        params.add(ops);
+        if !ops.is_null() {
+            params.add(ops);
+        }
 
         let resp_op = self.request(&method, params)?;
 
@@ -606,7 +611,12 @@ impl Editor {
 
         let method = self.app_method(&format!("direct.{fmapper}.search.atomic"));
 
-        if let Some(jvec) = self.request(&method, vec![query, ops])? {
+        let mut params: ApiParams = query.into();
+        if !ops.is_null() {
+            params.add(ops);
+        }
+
+        if let Some(jvec) = self.request(&method, params)? {
             if let EgValue::Array(vec) = jvec {
                 return Ok(vec);
             }
