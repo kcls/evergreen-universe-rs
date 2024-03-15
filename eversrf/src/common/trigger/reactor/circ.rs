@@ -1,10 +1,11 @@
 //! Base module for A/T Reactors
-use crate::auth::{AuthInternalLoginArgs, AuthSession};
-use crate::common::{trigger, trigger::Event, trigger::Processor};
-use crate::event::EgEvent;
-use crate::result::EgResult;
-use crate::util::json_int;
-use json;
+use crate as eg;
+use eg::auth::{AuthInternalLoginArgs, AuthSession};
+use eg::common::{trigger, trigger::Event, trigger::Processor};
+use eg::util::json_int;
+use eg::EgEvent;
+use eg::EgResult;
+use eg::EgValue;
 
 impl Processor<'_> {
     pub fn autorenew(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
@@ -13,7 +14,9 @@ impl Processor<'_> {
         let patron_id = usr.as_int().unwrap_or(usr.id_required());
 
         let home_ou = if usr.is_object() {
-            usr["home_ou"].as_int().unwrap_or(usr["home_ou"].id_required())
+            usr["home_ou"]
+                .as_int()
+                .unwrap_or(usr["home_ou"].id_required())
         } else {
             // Fetch the patron so we can determine the home or unit
             let patron = self
@@ -140,7 +143,7 @@ impl Processor<'_> {
             &mut self.editor,
             "autorenewal",
             event.target(),
-            json_int(&circ_lib)?,
+            circ_lib,
             None,
             Some(&user_data),
             false,

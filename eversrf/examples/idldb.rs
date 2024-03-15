@@ -1,8 +1,8 @@
-use eversrf as eg;
-use eg::EgValue;
 use eg::db::DatabaseConnection;
 use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
+use eg::EgValue;
+use eversrf as eg;
 use getopts;
 use std::env;
 

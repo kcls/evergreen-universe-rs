@@ -704,4 +704,23 @@ impl Parser {
 
         Ok(flesh)
     }
+
+    #[deprecated(note = "See EgValue::create()")]
+    pub fn create_from(&self, classname: &str, v: EgValue) -> EgResult<EgValue> {
+        EgValue::create(classname, v)
+    }
+
+    #[deprecated(note = "See EgValue::is_blessed()")]
+    pub fn is_idl_object(&self, v: &EgValue) -> bool {
+        v.is_blessed()
+    }
+
+    #[deprecated(note = "See EgValue::pkey_value()")]
+    pub fn get_pkey_value(&self, v: &EgValue) -> EgResult<EgValue> {
+        if let Some(v) = v.pkey_value() {
+            Ok(v.clone())
+        } else {
+            Err(format!("Cannot determine pkey value: {}", v.dump()).into())
+        }
+    }
 }

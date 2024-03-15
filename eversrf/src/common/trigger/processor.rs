@@ -1,11 +1,12 @@
 /// Main entry point for processing A/T events related to a
 /// given event definition.
-use crate::common::trigger::{Event, EventState};
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util;
-use EgValue;
-use opensrf::util::thread_id;
+use crate as eg;
+use eg::common::trigger::{Event, EventState};
+use eg::util;
+use eg::util::thread_id;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 use std::fmt;
 use std::process;
 
@@ -304,7 +305,7 @@ impl<'a> Processor<'a> {
 
         let target = self
             .editor
-            .retrieve_with_ops(&core_type, event.target_pkey(), flesh)?
+            .retrieve_with_ops(&core_type, event.target_pkey().clone(), flesh)?
             .ok_or_else(|| self.editor.die_event())?;
 
         event.set_target(target);

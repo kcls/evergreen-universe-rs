@@ -1,7 +1,8 @@
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util;
-use EgValue;
+use crate as eg;
+use eg::util;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 
 /// Extract the copy status from either a potentially-fleshed copy object
 /// of from the in-database copy by ID.

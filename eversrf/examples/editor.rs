@@ -35,6 +35,7 @@ fn main() -> Result<(), String> {
 
     let query = eg::hash! {"id": eg::hash!{"<": 10u8}};
     for perm in editor.search("ppl", query)? {
+        println!("Search found permission: {perm}");
         println!("Search found permission: {}", perm["code"]);
     }
 

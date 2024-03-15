@@ -1,6 +1,7 @@
-use crate::result::{EgError, EgResult};
-use crate::util;
-use EgValue;
+use crate as eg;
+use eg::result::{EgError, EgResult};
+use eg::util;
+use eg::EgValue;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -82,7 +83,7 @@ impl Event {
         let event_def = util::json_int(&source["event_def"])?;
 
         let user_data = if let Some(data) = source["user_data"].as_str() {
-            match json::parse(data) {
+            match EgValue::parse(data) {
                 Ok(d) => Some(d),
                 Err(e) => {
                     return Err(format!("Invalid user data for event {id}: {e} {data}").into())

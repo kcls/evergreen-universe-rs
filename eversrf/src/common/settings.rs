@@ -1,7 +1,7 @@
 //! General purpose org / workstation / user setting fetcher and cache.
 //! Primarily uses the 'actor.get_cascade_setting()' DB function.
 use crate as eg;
-use eg::{EgValue, EgResult, Editor};
+use eg::{Editor, EgResult, EgValue};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
@@ -313,11 +313,7 @@ impl Settings {
         Ok(())
     }
 
-    fn store_setting_value(
-        &mut self,
-        context: &SettingContext,
-        setting: &EgValue,
-    ) -> EgResult<()> {
+    fn store_setting_value(&mut self, context: &SettingContext, setting: &EgValue) -> EgResult<()> {
         let value = match setting["value"].as_str() {
             Some(v) => match EgValue::parse(v) {
                 Ok(vv) => vv,

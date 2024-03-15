@@ -143,9 +143,9 @@ pub fn get_display_attrs(
 
         let attr_set = map.get_mut(&bib_id).unwrap();
 
-        let attr_name = attr["name"].as_string()?;
-        let attr_label = attr["label"].as_string()?;
-        let attr_value = attr["value"].as_string()?;
+        let attr_name = attr["name"].as_string().expect("Required");
+        let attr_label = attr["label"].as_string().expect("Required");
+        let attr_value = attr["value"].as_string().expect("Required");
 
         if let Some(attr) = attr_set.attr_mut(&attr_name) {
             attr.add_value(attr_value);

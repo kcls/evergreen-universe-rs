@@ -51,7 +51,7 @@ pub fn main() -> EgResult<()> {
 
     let mut v = EgValue::create(
         "aou",
-        eg::hash! {"id": 1, "shortname":"AAA", "name": "HOWDYDFD"}
+        eg::hash! {"id": 1, "shortname":"AAA", "name": "HOWDYDFD"},
     )?;
 
     //v["shortname"] = EgValue::from("HELLLO");
@@ -74,8 +74,5 @@ pub fn main() -> EgResult<()> {
 
     println!("value is {v:?}");
 
-
     Ok(())
 }
-
-

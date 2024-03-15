@@ -1,6 +1,12 @@
 ///! EgValue
+///
 /// Wrapper class for JsonValue's which may also contain IDL-blessed values,
 /// i.e. those that have an IDL class and a well-defined set of fields.
+///
+/// Values serialize and deserialize as JsonValue's and much of the
+/// code here takes direct inspiration from from the implemention for:
+///
+/// https://docs.rs/json/latest/json/enum.JsonValue.html
 use crate as eg;
 use eg::idl;
 use eg::{EgError, EgResult};
@@ -45,7 +51,7 @@ fn macros() {
     };
 
     assert_eq!(v["hello"].as_str(), Some("stuff"));
-    assert_eq!((eg::array! [1, 2, 3]).len(), 3);
+    assert_eq!((eg::array![1, 2, 3]).len(), 3);
 }
 
 /// An JSON-ish object whose structure is defined in the IDL.
@@ -78,7 +84,6 @@ pub enum EgValue {
 }
 
 impl EgValue {
-
     pub fn parse(s: &str) -> EgResult<EgValue> {
         match json::parse(s) {
             Ok(v) => EgValue::from_json_value(v),
@@ -88,16 +93,12 @@ impl EgValue {
 
     /// Create a new empty blessed value using the provided class name.
     pub fn stub(classname: &str) -> EgResult<EgValue> {
-        let idl_class = idl::get_class(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
-        Ok(
-            EgValue::Blessed(
-                BlessedValue {
-                    idl_class,
-                    values: HashMap::new(),
-                }
-            )
-        )
+        let idl_class =
+            idl::get_class(classname).ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        Ok(EgValue::Blessed(BlessedValue {
+            idl_class,
+            values: HashMap::new(),
+        }))
     }
 
     /// Create a new blessed value from an existing Hash value using
@@ -137,12 +138,10 @@ impl EgValue {
 
         // Transmute ourselves into a Blessed value and absorb the
         // existing hashmap.
-        *self = EgValue::Blessed(
-            BlessedValue {
-                idl_class: idl_class.clone(),
-                values: std::mem::replace(&mut map, HashMap::new()),
-            }
-        );
+        *self = EgValue::Blessed(BlessedValue {
+            idl_class: idl_class.clone(),
+            values: std::mem::replace(&mut map, HashMap::new()),
+        });
 
         Ok(())
     }
@@ -151,10 +150,10 @@ impl EgValue {
     /// the original classname in the HASH_CLASSNAME_KEY key.
     pub fn unbless(&mut self) -> EgResult<()> {
         let (classname, mut map) = match self {
-            EgValue::Blessed(ref mut o) => {(
+            EgValue::Blessed(ref mut o) => (
                 o.idl_class().classname().to_string(),
-                std::mem::replace(&mut o.values, HashMap::new())
-            )},
+                std::mem::replace(&mut o.values, HashMap::new()),
+            ),
             _ => return Err(format!("Cannot unbless non-blessed value").into()),
         };
 
@@ -312,7 +311,8 @@ impl EgValue {
     /// appear to be IDL-classed values as vanilla JsonValue::Object's
     ///
     /// Useful if you know the data you are working with does
-    /// not contain any IDL-classed content.
+    /// not contain any IDL-classed content and you don't
+    /// want to handle errors that can't happen.
     pub fn from_json_value_plain(mut v: JsonValue) -> EgValue {
         match v {
             JsonValue::Null => return EgValue::Null,
@@ -380,16 +380,12 @@ impl EgValue {
         let mut map = HashMap::new();
         for field in idl_class.fields().values() {
             if list.len() > field.array_pos() {
-
                 // No point in storing NULL entries since blessed values
                 // have a known set of fields.
                 let val = list[field.array_pos()].take();
 
                 if !val.is_null() {
-                    map.insert(
-                        field.name().to_string(),
-                        EgValue::from_json_value(list[field.array_pos()].take())?,
-                    );
+                    map.insert(field.name().to_string(), EgValue::from_json_value(val)?);
                 }
             }
         }
@@ -522,11 +518,11 @@ impl EgValue {
     /// Translates String and Number values into allocated strings.
     ///
     /// Err of the value is neither a Number or String.
-    pub fn as_string(&self) -> EgResult<String> {
+    pub fn as_string(&self) -> Option<String> {
         match self {
-            EgValue::String(s) => Ok(s.to_string()),
-            EgValue::Number(n) => Ok(format!("{n}")),
-            _ => Err(format!("Cannot create string from {:?}", self).into())
+            EgValue::String(s) => Some(s.to_string()),
+            EgValue::Number(n) => Some(format!("{n}")),
+            _ => None,
         }
     }
 
@@ -606,12 +602,14 @@ impl EgValue {
     ///
     /// Zeros, empty strings, and strings that start with "f" are false
     /// since that's how false values are conveyed by the DB layer.
+    ///
+    /// Non-scalara values are also false.
     pub fn as_boolish(&self) -> bool {
         match self {
             EgValue::Boolean(b) => *b,
             EgValue::Number(n) => *n != 0,
             EgValue::String(ref s) => s.len() > 0 && !s.starts_with("f"),
-            _ => true,
+            _ => false,
         }
     }
 
@@ -623,7 +621,7 @@ impl EgValue {
     pub fn id(&self) -> Option<i64> {
         if let EgValue::Blessed(ref o) = self {
             if o.idl_class().has_field("id") {
-                return self["id"].as_int()
+                return self["id"].as_int();
             }
         }
         None
@@ -632,7 +630,8 @@ impl EgValue {
     /// Variant of EgValue::id() that produces an Err if no numeric
     /// ID value is found.
     pub fn id_or_err(&self) -> EgResult<i64> {
-        self.id().ok_or_else(|| format!("{self} has no id value").into())
+        self.id()
+            .ok_or_else(|| format!("{self} has no id value").into())
     }
 
     pub fn id_required(&self) -> i64 {
@@ -680,11 +679,20 @@ impl EgValue {
     }
 
     pub fn pop(&mut self) -> EgValue {
-        if let Self::Array(mut list) = self {
+        if let Self::Array(ref mut list) = self {
             list.pop().unwrap_or(eg::NULL)
         } else {
             eg::NULL
         }
+    }
+
+    pub fn array_remove(&mut self, index: usize) -> EgValue {
+        if let Self::Array(ref mut list) = self {
+            if list.len() > index {
+                return list.remove(index);
+            }
+        }
+        eg::NULL
     }
 
     /// Iterator over values in an EgValue::Array.

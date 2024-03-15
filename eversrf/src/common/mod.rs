@@ -1,6 +1,7 @@
 //! Shared, common utility functions
 
 pub mod bib;
+pub mod holdings;
 pub mod holds;
 pub mod org;
 pub mod settings;
@@ -14,7 +15,6 @@ pub mod checkin;
 pub mod checkout;
 pub mod circ;
 pub mod circulator;
-pub mod holdings;
 pub mod jq;
 pub mod noncat;
 pub mod penalty;

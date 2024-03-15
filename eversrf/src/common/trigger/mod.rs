@@ -2,11 +2,10 @@
 use crate as eg;
 use eg::common::org;
 use eg::date;
+use eg::util;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
-use eg::util;
-use chrono::Duration;
 
 pub mod event;
 pub use event::{Event, EventState};
@@ -33,7 +32,8 @@ pub fn create_events_for_object(
         }
     };
 
-    let class = target.classname()
+    let class = target
+        .classname()
         .ok_or_else(|| format!("Invalid target: {target}"))?;
 
     if hook_obj["core_type"].as_str().unwrap() != class {
@@ -96,7 +96,8 @@ pub fn create_event_for_object_and_def(
         None => return Ok(None),
     };
 
-    let pkey = target.pkey_value()
+    let pkey = target
+        .pkey_value()
         .ok_or_else(|| format!("Pkey value required"))?;
 
     let mut event = eg::hash! {
@@ -136,7 +137,7 @@ fn test_calc_runtime() {
 ///
 /// Returns the value as an ISO string.
 fn calc_runtime(event_def: &EgValue, target: &EgValue) -> EgResult<Option<String>> {
-    if !util::json_bool(&event_def["passive"]) {
+    if !event_def["passive"].as_boolish() {
         // Active events always run now.
         return Ok(Some(date::to_iso(&date::now_local())));
     }
@@ -157,7 +158,7 @@ fn calc_runtime(event_def: &EgValue, target: &EgValue) -> EgResult<Option<String
     };
 
     let runtime = date::parse_datetime(&delay_start)?;
-    let runtime = date::add_duration(runtime, &delay_intvl)?;
+    let runtime = date::add_interval(runtime, &delay_intvl)?;
 
     Ok(Some(date::to_iso(&runtime)))
 }
@@ -165,11 +166,7 @@ fn calc_runtime(event_def: &EgValue, target: &EgValue) -> EgResult<Option<String
 /// Returns true if the event def does not require opt in (i.e. everyone
 /// is opted in) or it does require an opt-in and the user linked to the
 /// target has the needed opt-in user setting.
-fn user_is_opted_in(
-    editor: &mut Editor,
-    event_def: &EgValue,
-    target: &EgValue,
-) -> EgResult<bool> {
+fn user_is_opted_in(editor: &mut Editor, event_def: &EgValue, target: &EgValue) -> EgResult<bool> {
     let opt_in = match event_def["opt_in_setting"].as_str() {
         Some(o) => o,
         None => return Ok(true),
@@ -182,12 +179,9 @@ fn user_is_opted_in(
         None => return Ok(false),
     };
 
-    let user_id = if target[usr_field].is_object() {
-        // fleshed
-        util::json_int(&target[usr_field]["id"])?
-    } else {
-        util::json_int(&target[usr_field])?
-    };
+    let user_id = target[usr_field]
+        .as_int()
+        .unwrap_or(target[usr_field].id_required());
 
     let query = eg::hash! {
         "usr": user_id,
@@ -354,7 +348,7 @@ pub fn create_passive_events_for_def(
     let mut result_ids = Vec::new();
 
     for target in targets {
-        let id = util::json_string(&target[pkey_field])?;
+        let id = target[pkey_field].to_string();
 
         let mut event = eg::hash! {
             "target": id,
@@ -366,7 +360,7 @@ pub fn create_passive_events_for_def(
 
         let event = editor.create(event)?;
 
-        result_ids.push(util::json_int(&event["id"])?);
+        result_ids.push(event.id_required());
     }
 
     log::info!("Done creating events for event_def {event_def_id}");

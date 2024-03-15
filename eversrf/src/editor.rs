@@ -251,8 +251,8 @@ impl Editor {
     }
 
     pub fn perm_org(&self) -> i64 {
-        self.requestor_ws_ou().unwrap_or(
-            self.requestor_home_ou().unwrap_or(-1))
+        self.requestor_ws_ou()
+            .unwrap_or(self.requestor_home_ou().unwrap_or(-1))
     }
 
     pub fn requestor(&self) -> Option<&EgValue> {

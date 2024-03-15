@@ -1,5 +1,5 @@
-use eversrf as eg;
 use eg::cache;
+use eversrf as eg;
 
 fn main() {
     // Standard setup + connect routines.
@@ -16,7 +16,11 @@ fn main() {
 
     println!(
         "{}",
-        cache.get("funstuff").expect("Get OK").expect("Has Value").dump()
+        cache
+            .get("funstuff")
+            .expect("Get OK")
+            .expect("Has Value")
+            .dump()
     );
 
     cache.del("funstuff").expect("Del OK");

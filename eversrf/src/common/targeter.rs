@@ -1,10 +1,10 @@
 use crate as eg;
-use eg::{EgValue, EgResult, Editor, EgError};
 use eg::common::holds;
 use eg::common::settings::Settings;
 use eg::common::trigger;
 use eg::constants as C;
 use eg::date;
+use eg::{Editor, EgError, EgResult, EgValue};
 use rand;
 use rand::seq::SliceRandom;
 use std::collections::{HashMap, HashSet};
@@ -244,7 +244,7 @@ impl<'a> HoldTargeter<'a> {
             };
 
             if let Some(intvl) = self.editor().search("cgf", query)?.get(0) {
-                retarget_intvl_bind = Some(intvl["value"].as_string()?);
+                retarget_intvl_bind = intvl["value"].as_string();
                 retarget_intvl_bind.as_ref().unwrap()
             } else {
                 // If all else fails, use a one day retarget interval.
@@ -274,7 +274,9 @@ impl<'a> HoldTargeter<'a> {
         // won't be retargeted until the next check date.  If a
         // next_check_interval is provided it overrides the
         // retarget_interval.
-        let next_check_intvl = self.next_check_interval
+        let next_check_intvl = self
+            .next_check_interval
+            .as_ref()
             .map(|i| i.as_str())
             .unwrap_or(retarget_intvl);
 
@@ -823,8 +825,8 @@ impl<'a> HoldTargeter<'a> {
             .get_value_at_org("circ.holds.recall_threshold", context.pickup_lib)?;
 
         let recall_threshold = match recall_threshold.as_string() {
-            Ok(t) => t,
-            Err(_) => return Ok(()), // null / not set
+            Some(t) => t,
+            None => return Ok(()),
         };
 
         let return_interval = self
@@ -832,8 +834,8 @@ impl<'a> HoldTargeter<'a> {
             .get_value_at_org("circ.holds.recall_return_interval", context.pickup_lib)?;
 
         let return_interval = match return_interval.as_string() {
-            Ok(t) => t,
-            Err(_) => return Ok(()), // null / not set
+            Some(t) => t,
+            None => return Ok(()),
         };
 
         let copy_ids = context
@@ -847,7 +849,7 @@ impl<'a> HoldTargeter<'a> {
         let query = eg::hash! {
             "target_copy": copy_ids,
             "checkin_time": eg::NULL,
-            "duration": {">": recall_threshold}
+            "duration": {">": recall_threshold.as_str()}
         };
 
         let ops = eg::hash! {
@@ -1101,7 +1103,7 @@ impl<'a> HoldTargeter<'a> {
             "current_copy": context.previous_copy_id
         };
 
-        unful.bless("aufh");
+        unful.bless("aufh")?;
         self.editor().create(unful)?;
 
         Ok(())

@@ -1,11 +1,11 @@
 ///! Tools for translating between IDL objects and Database rows.
 use crate as eg;
+use chrono::prelude::*;
 use eg::db;
 use eg::idl;
+use eg::util::Pager;
 use eg::EgResult;
 use eg::EgValue;
-use eg::util::Pager;
-use chrono::prelude::*;
 use pg::types::ToSql;
 use postgres as pg;
 use rust_decimal::Decimal;
@@ -340,7 +340,8 @@ impl Translator {
             // fleshed object back to us, the search value will be
             // this object's primary key.
 
-            search_value = object.pkey_value()
+            search_value = object
+                .pkey_value()
                 .ok_or_else(|| format!("Object has no pkey value: {}", object.dump()))?;
         } else {
             //search_value = object[fieldname].clone();
@@ -425,7 +426,8 @@ impl Translator {
 
     /// Get the IDL Class representing to the provided object.
     pub fn get_idl_class_from_object<'a>(&self, obj: &'a EgValue) -> EgResult<&'a Arc<idl::Class>> {
-        obj.idl_class().ok_or_else(|| format!("Not an IDL object: {}", obj.dump()).into())
+        obj.idl_class()
+            .ok_or_else(|| format!("Not an IDL object: {}", obj.dump()).into())
     }
 
     /// Create an IDL object in the database
@@ -548,7 +550,8 @@ impl Translator {
             update.add_value(name, &obj[name]);
         }
 
-        let (pkey_field, pkey_value) = obj.pkey_info()
+        let (pkey_field, pkey_value) = obj
+            .pkey_info()
             .ok_or_else(|| format!("Object has no primary key field"))?;
 
         let mut filter = EgValue::new_object();
@@ -902,15 +905,14 @@ impl Translator {
                 EgValue::Hash(_) => {
                     self.compile_class_filter_object(param_index, param_list, idl_field, &subq)?
                 }
-                EgValue::Number(_) | EgValue::String(_) => self
-                    .append_json_literal(
-                        param_index,
-                        param_list,
-                        idl_field,
-                        subq,
-                        Some("="),
-                        false,
-                    )?,
+                EgValue::Number(_) | EgValue::String(_) => self.append_json_literal(
+                    param_index,
+                    param_list,
+                    idl_field,
+                    subq,
+                    Some("="),
+                    false,
+                )?,
                 EgValue::Boolean(_) | EgValue::Null => self.append_json_literal(
                     param_index,
                     param_list,
@@ -919,8 +921,9 @@ impl Translator {
                     Some("IS"),
                     false,
                 )?,
-                EgValue::Blessed(_) => return Err(format!(
-                    "Cannot create JSON filter from a blessed value").into()),
+                EgValue::Blessed(_) => {
+                    return Err(format!("Cannot create JSON filter from a blessed value").into())
+                }
             };
 
             filters.push(format!(" {field} {filter}"));

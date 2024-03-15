@@ -7,9 +7,9 @@ use eg::constants as C;
 use eg::date;
 use eg::event::{EgEvent, Overrides};
 use eg::Editor;
-use eg::EgValue;
 use eg::EgError;
 use eg::EgResult;
+use eg::EgValue;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -684,8 +684,7 @@ pub fn related_to_copy(
     // Limiting on wether current_shelf_lib == pickup_lib.
     if let Some(v) = on_shelf {
         if v {
-            query["where"]["+ahr"]["current_shelf_lib"] =
-                eg::hash! {"=": {"+ahr": "pickup_lib"}};
+            query["where"]["+ahr"]["current_shelf_lib"] = eg::hash! {"=": {"+ahr": "pickup_lib"}};
         } else {
             query["where"]["+ahr"]["-or"] = eg::array! [
                 {"current_shelf_lib": eg::NULL},

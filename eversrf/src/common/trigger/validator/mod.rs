@@ -1,11 +1,12 @@
-use crate::common::holdings;
-/// Base module for A/T Validators
-use crate::common::trigger::{Event, EventState, Processor};
-use crate::constants as C;
-use crate::date;
-use crate::result::EgResult;
-use crate::util;
-use chrono::Duration;
+//! Base module for A/T Validators
+use crate as eg;
+use eg::common::holdings;
+use eg::common::trigger::{Event, EventState, Processor};
+use eg::constants as C;
+use eg::date;
+use eg::util;
+use eg::EgResult;
+use eg::EgValue;
 
 /// Add validation routines to the Processor.
 impl Processor<'_> {
@@ -71,26 +72,25 @@ impl Processor<'_> {
     }
 
     fn min_passive_target_age(&mut self, event: &Event) -> EgResult<bool> {
-        let min_target_age = self.param_value_as_str("min_target_age").ok_or_else(|| {
-            format!("'min_target_age' parameter required for MinPassiveTargetAge")
-        })?;
-
-        let interval = date::interval_to_seconds(min_target_age)?;
+        let min_target_age = self
+            .param_value_as_str("min_target_age")
+            .ok_or_else(|| format!("'min_target_age' parameter required for MinPassiveTargetAge"))?
+            .to_string();
 
         let age_field = self.param_value_as_str("target_age_field").ok_or_else(|| {
             format!("'target_age_field' parameter or delay_field required for MinPassiveTargetAge")
         })?;
 
-        let age_field_jval = &event.target()[age_field];
-        let age_date_str = age_field_jval.as_str().ok_or_else(|| {
+        let age_field_val = &event.target()[age_field];
+        let age_date_str = age_field_val.as_str().ok_or_else(|| {
             format!(
                 "MinPassiveTargetAge age field {age_field} has unexpected value: {}",
-                age_field_jval.dump()
+                age_field_val.dump()
             )
         })?;
 
-        let age_field_ts = date::parse_datetime(age_date_str)?;
-        let age_field_ts = age_field_ts + Duration::seconds(interval);
+        let age_field_ts =
+            date::add_interval(date::parse_datetime(age_date_str)?, &min_target_age)?;
 
         Ok(age_field_ts <= date::now())
     }
