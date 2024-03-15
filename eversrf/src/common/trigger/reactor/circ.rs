@@ -9,11 +9,11 @@ use json;
 impl Processor<'_> {
     pub fn autorenew(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
         let usr = &events[0].target()["usr"];
-        let patron_id = self.editor.idl().de_flesh_value(usr)?;
-        let patron_id = json_int(&patron_id)?;
+        // "usr" is either the id itself or a user object with an ID.
+        let patron_id = usr.as_int().unwrap_or(usr.id_required());
 
         let home_ou = if usr.is_object() {
-            json_int(&self.editor.idl().de_flesh_value(&usr["home_ou"])?)?
+            usr["home_ou"].as_int().unwrap_or(usr["home_ou"].id_required())
         } else {
             // Fetch the patron so we can determine the home or unit
             let patron = self
@@ -38,10 +38,8 @@ impl Processor<'_> {
     }
 
     fn renew_one_circ(&mut self, authtoken: &str, patron_id: i64, event: &Event) -> EgResult<()> {
-        let copy_id = self
-            .editor
-            .idl()
-            .de_flesh_value(&event.target()["target_copy"])?;
+        let tc = &event.target()["target_copy"];
+        let copy_id = tc.as_int().unwrap_or(tc.id_required());
 
         log::info!(
             "Auto-Renewing Circ id={} copy={copy_id}",
@@ -49,8 +47,8 @@ impl Processor<'_> {
         );
 
         let params = vec![
-            json::from(authtoken),
-            json::object! {
+            EgValue::from(authtoken),
+            eg::hash! {
                 "patron_id": patron_id,
                 "copy_id": copy_id.clone(),
                 "auto_renewal": true
@@ -121,7 +119,7 @@ impl Processor<'_> {
             auto_remaining = total_remaining;
         }
 
-        let user_data = json::object! {
+        let user_data = eg::hash! {
             "copy": copy_id,
             "is_renewed": success,
             "reason": fail_reason,
@@ -132,10 +130,8 @@ impl Processor<'_> {
             "auto_renewal_remaining": auto_remaining,
         };
 
-        let circ_lib = self
-            .editor
-            .idl()
-            .de_flesh_value(&event.target()["circ_lib"])?;
+        let target = &event.target()["circ_lib"];
+        let circ_lib = target.as_int().unwrap_or(target.id_required());
 
         // Create the event from the source circ instead of the new
         // circ, since the renewal may have failed.  Fire and do not

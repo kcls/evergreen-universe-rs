@@ -8,7 +8,7 @@ use crate::result::EgResult;
 use crate::util;
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::Duration;
-use json::JsonValue;
+use EgValue;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
@@ -22,7 +22,7 @@ pub fn void_bills(
 ) -> EgResult<()> {
     editor.has_requestor()?;
 
-    let mut bills = editor.search("mb", json::object! {"id": billing_ids})?;
+    let mut bills = editor.search("mb", eg::hash! {"id": billing_ids})?;
     let mut penalty_users: HashSet<(i64, i64)> = HashSet::new();
 
     if bills.len() == 0 {
@@ -47,16 +47,16 @@ pub fn void_bills(
 
         penalty_users.insert((xact_user, xact_org));
 
-        bill["voided"] = json::from("t");
-        bill["voider"] = json::from(editor.requestor_id());
-        bill["void_time"] = json::from("now");
+        bill["voided"] = EgValue::from("t");
+        bill["voider"] = EgValue::from(editor.requestor_id());
+        bill["void_time"] = EgValue::from("now");
 
         if let Some(orig_note) = bill["note"].as_str() {
             if let Some(new_note) = maybe_note {
-                bill["note"] = json::from(format!("{}\n{}", orig_note, new_note).as_str());
+                bill["note"] = EgValue::from(format!("{}\n{}", orig_note, new_note).as_str());
             }
         } else if let Some(new_note) = maybe_note {
-            bill["note"] = json::from(new_note);
+            bill["note"] = EgValue::from(new_note);
         }
 
         editor.update(bill)?;
@@ -97,7 +97,7 @@ pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> EgResult<()> {
             // and this transaction is not an open circulation, close it.
 
             log::info!("Closing completed transaction {xact_id} on zero balance");
-            xact["xact_finish"] = json::from("now");
+            xact["xact_finish"] = EgValue::from("now");
             return editor.update(xact);
         }
     } else if !xact_open {
@@ -105,7 +105,7 @@ pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> EgResult<()> {
 
         if !zero_owed && !xact_open {
             log::info!("Re-opening transaction {xact_id} on non-zero balance");
-            xact["xact_finish"] = json::JsonValue::Null;
+            xact["xact_finish"] = EgValue::Null;
             return editor.update(xact);
         }
     }
@@ -134,12 +134,12 @@ pub fn create_bill(
     maybe_note: Option<&str>,
     period_start: Option<&str>,
     period_end: Option<&str>,
-) -> EgResult<JsonValue> {
+) -> EgResult<EgValue> {
     log::info!("System is charging ${amount} [btype={btype_id}:{btype_label}] on xact {xact_id}");
 
     let note = maybe_note.unwrap_or("SYSTEM GENERATED");
 
-    let bill = json::object! {
+    let bill = eg::hash! {
         "xact": xact_id,
         "amount": amount,
         "period_start": period_start,
@@ -165,7 +165,7 @@ pub fn void_or_zero_bills_of_type(
     log::info!("Void/Zero Bills for xact={xact_id} and btype={btype_id}");
 
     let mut settings = Settings::new(&editor);
-    let query = json::object! {"xact": xact_id, "btype": btype_id};
+    let query = eg::hash! {"xact": xact_id, "btype": btype_id};
     let bills = editor.search("mb", query)?;
 
     if bills.len() == 0 {
@@ -209,14 +209,14 @@ pub fn void_or_zero_bills_of_type(
 
 /// Assumes all bills are linked to the same transaction.
 pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -> EgResult<()> {
-    let mut bills = editor.search("mb", json::object! {"id": bill_ids})?;
+    let mut bills = editor.search("mb", eg::hash! {"id": bill_ids})?;
     if bills.len() == 0 {
         return Ok(());
     }
 
     let xact_id = json_int(&bills[0]["xact"])?;
 
-    let flesh = json::object! {
+    let flesh = eg::hash! {
         "flesh": 2,
         "flesh_fields": {
             "mbt": ["grocery", "circulation"],
@@ -265,7 +265,7 @@ pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -
         }
 
         // Create the account adjustment
-        let payment = json::object! {
+        let payment = eg::hash! {
             "amount": amount_to_adjust,
             "amount_collected": amount_to_adjust,
             "xact": xact_id,
@@ -285,7 +285,7 @@ pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -
 
         // Should come to zero:
         let new_bill_amount = util::fpdiff(json_float(&bill["amount"])?, amount_to_adjust);
-        bill["amount"] = json::from(new_bill_amount);
+        bill["amount"] = EgValue::from(new_bill_amount);
     }
 
     check_open_xact(editor, xact_id)?;
@@ -298,11 +298,11 @@ pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -
 
 pub struct BillPaymentMap {
     /// The adjusted bill object
-    pub bill: JsonValue,
+    pub bill: EgValue,
     /// List of account adjustments that apply directly to the bill.
-    pub adjustments: Vec<JsonValue>,
+    pub adjustments: Vec<EgValue>,
     /// List of payment objects applied to the bill
-    pub payments: Vec<JsonValue>,
+    pub payments: Vec<EgValue>,
     /// original amount from the billing object
     pub bill_amount: f64,
     /// Total of account adjustments that apply to the bill.
@@ -313,11 +313,11 @@ pub fn bill_payment_map_for_xact(
     editor: &mut Editor,
     xact_id: i64,
 ) -> EgResult<Vec<BillPaymentMap>> {
-    let query = json::object! {
+    let query = eg::hash! {
         "xact": xact_id,
         "voided": "f",
     };
-    let ops = json::object! {
+    let ops = eg::hash! {
         "order_by": {
             "mb": {
                 "billing_ts": {
@@ -349,9 +349,9 @@ pub fn bill_payment_map_for_xact(
         maps.push(map);
     }
 
-    let query = json::object! {"xact": xact_id, "voided": "f"};
+    let query = eg::hash! {"xact": xact_id, "voided": "f"};
 
-    let ops = json::object! {
+    let ops = eg::hash! {
         "flesh": 1,
         "flesh_fields": {"mp": ["account_adjustment"]},
         "order_by": {"mp": {"payment_ts": {"direction": "asc"}}},
@@ -381,7 +381,7 @@ pub fn bill_payment_map_for_xact(
 
         // Find adjustments that apply to this individual billing and
         // has not already been accounted for.
-        let mut my_adjustments: Vec<&mut JsonValue> = payments
+        let mut my_adjustments: Vec<&mut EgValue> = payments
             .iter_mut()
             .filter(|p| p["payment_type"].as_str().unwrap() == "account_adjustment")
             .filter(|p| {
@@ -404,7 +404,7 @@ pub fn bill_payment_map_for_xact(
             if new_amount >= 0.0 {
                 map.adjustments.push(adjustment.clone());
                 map.adjustment_amount += adjust_amount;
-                bill["amount"] = json::from(new_amount);
+                bill["amount"] = EgValue::from(new_amount);
                 used_adjustments.insert(adjust_id);
             } else {
                 // It should never happen that we have more adjustment
@@ -417,8 +417,8 @@ pub fn bill_payment_map_for_xact(
                 new_adjustment["amount_collected"] = bill["amount"].clone();
                 map.adjustments.push(new_adjustment.clone());
                 map.adjustment_amount += json_float(&new_adjustment["amount"])?;
-                bill["amount"] = json::from(0.0);
-                adjustment["amount"] = json::from(-new_amount);
+                bill["amount"] = EgValue::from(0.0);
+                adjustment["amount"] = EgValue::from(-new_amount);
             }
 
             if json_float(&bill["amount"])? == 0.0 {
@@ -443,7 +443,7 @@ pub fn bill_payment_map_for_xact(
             None => continue,
         };
 
-        map.bill["amount"] = json::from(0.0);
+        map.bill["amount"] = EgValue::from(0.0);
         map.payments.push(payment.clone());
         used_payments.insert(json_int(&payment["id"])?);
     }
@@ -475,12 +475,12 @@ pub fn bill_payment_map_for_xact(
                     let new_amount = util::fpdiff(bill_amount, json_float(&pay["amount"])?);
                     if new_amount < 0.0 {
                         let mut new_payment = pay.clone();
-                        new_payment["amount"] = json::from(bill_amount);
-                        bill["amount"] = json::from(0.0);
+                        new_payment["amount"] = EgValue::from(bill_amount);
+                        bill["amount"] = EgValue::from(0.0);
                         map.payments.push(new_payment);
-                        pay["amount"] = json::from(-new_amount);
+                        pay["amount"] = EgValue::from(-new_amount);
                     } else {
-                        bill["amount"] = json::from(new_amount);
+                        bill["amount"] = EgValue::from(new_amount);
                         map.payments.push(pay.clone());
                         used_payments.insert(json_int(&pay["id"])?);
                     }
@@ -499,12 +499,12 @@ pub fn xact_has_payment_within(
     xact_id: i64,
     interval: &str,
 ) -> EgResult<bool> {
-    let query = json::object! {
+    let query = eg::hash! {
         "xact": xact_id,
         "payment_type": {"!=": "account_adjustment"}
     };
 
-    let ops = json::object! {
+    let ops = eg::hash! {
         "limit": 1,
         "order_by": {"mp": "payment_ts DESC"}
     };
@@ -603,12 +603,12 @@ pub fn generate_fines_for_xact(
 
     // TODO add the bit about reservation time zone offsets
 
-    let query = json::object! {
+    let query = eg::hash! {
         "xact": xact_id,
         "btype": C::BTYPE_OVERDUE_MATERIALS,
     };
 
-    let ops = json::object! {
+    let ops = eg::hash! {
         "flesh": 1,
         "flesh_fields": {"mb": ["adjustments"]},
         "order_by": {"mb": "billing_ts DESC"},
@@ -637,7 +637,7 @@ pub fn generate_fines_for_xact(
     // occurred after the current due date*.  Otherwise, when a
     // due date changes, the fine generator will back-fill billings
     // for a period of time where the item was not technically overdue.
-    let fines: Vec<JsonValue> = fines
+    let fines: Vec<EgValue> = fines
         .drain(..)
         .filter(|f| f["billing_ts"].as_str().unwrap() > due_date)
         .collect();
@@ -709,8 +709,8 @@ pub fn generate_fines_for_xact(
                 log::info!("Max fines reached for circulation {xact_id}");
 
                 if let Some(mut circ) = editor.retrieve("circ", xact_id)? {
-                    circ["stop_fines"] = json::from("MAXFINES");
-                    circ["stop_fines_time"] = json::from("now");
+                    circ["stop_fines"] = EgValue::from("MAXFINES");
+                    circ["stop_fines_time"] = EgValue::from("now");
                     editor.update(circ)?;
                     break;
                 }
@@ -752,7 +752,7 @@ pub fn generate_fines_for_xact(
 
         current_fine_total += this_billing_amount;
 
-        let bill = json::object! {
+        let bill = eg::hash! {
             xact: xact_id,
             note: "System Generated Overdue Fine",
             billing_type: "Overdue materials",
@@ -857,7 +857,7 @@ pub fn void_or_zero_overdues(
         .retrieve("circ", circ_id)?
         .ok_or_else(|| editor.die_event())?;
 
-    let mut query = json::object! {
+    let mut query = eg::hash! {
         "xact": circ_id,
         "btype": C::BTYPE_OVERDUE_MATERIALS,
     };
@@ -867,7 +867,7 @@ pub fn void_or_zero_overdues(
             note = Some("System: OVERDUE REVERSED FOR BACKDATE");
         }
         if let Some(min_date) = calc_min_void_date(editor, &circ, bd)? {
-            query["billing_ts"] = json::object! {">=": date::to_iso(&min_date) };
+            query["billing_ts"] = eg::hash! {">=": date::to_iso(&min_date) };
         }
     }
 
@@ -917,7 +917,7 @@ pub fn void_or_zero_overdues(
 /// voiding fines that were applicable before the backdate.
 fn calc_min_void_date(
     editor: &mut Editor,
-    circ: &JsonValue,
+    circ: &EgValue,
     backdate: &str,
 ) -> EgResult<Option<date::EgDate>> {
     let fine_interval = json_string(&circ["fine_interval"])?;
@@ -950,7 +950,7 @@ fn calc_min_void_date(
 /// for which field to pull the cost from and how to handle zero/unset
 /// cost values.
 pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
-    let flesh = json::object! {"flesh": 1, "flesh_fields": {"acp": ["call_number"]}};
+    let flesh = eg::hash! {"flesh": 1, "flesh_fields": {"acp": ["call_number"]}};
 
     let copy = editor
         .retrieve_with_ops("acp", copy_id, flesh)?
@@ -1019,7 +1019,7 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
             Some(p) => p,
             _ => 0.0,
         };
-        price_binding = Some(json::from(def_price));
+        price_binding = Some(EgValue::from(def_price));
         price = price_binding.as_ref().unwrap();
     }
 

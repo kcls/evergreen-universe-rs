@@ -4,7 +4,7 @@ use crate::date;
 use crate::editor::Editor;
 use crate::result::EgResult;
 use crate::util::{json_int, json_string};
-use json::JsonValue;
+use EgValue;
 use std::time::Duration;
 
 /// Create X number of non-cat checkouts.
@@ -17,11 +17,11 @@ pub fn checkout(
     circ_lib: i64,
     count: i64,
     circ_time: Option<&str>,
-) -> EgResult<Vec<JsonValue>> {
+) -> EgResult<Vec<EgValue>> {
     let mut circs = Vec::new();
 
     for _ in 0..count {
-        let noncat = json::object! {
+        let noncat = eg::hash! {
             "patron": patron_id,
             "staff": editor.requestor_id(),
             "circ_lib": circ_lib,
@@ -32,7 +32,7 @@ pub fn checkout(
         let noncat = editor.idl().create_from("ancc", noncat)?;
         let mut noncat = editor.create(noncat)?;
 
-        noncat["duedate"] = json::from(noncat_due_date(editor, &noncat)?);
+        noncat["duedate"] = EgValue::from(noncat_due_date(editor, &noncat)?);
 
         circs.push(noncat);
     }
@@ -43,7 +43,7 @@ pub fn checkout(
 /// Calculate the due date of a noncat circulation, which is a function
 /// of the checkout time, the duration of the noncat type, plus org
 /// open time checks.
-pub fn noncat_due_date(editor: &mut Editor, noncat: &JsonValue) -> EgResult<String> {
+pub fn noncat_due_date(editor: &mut Editor, noncat: &EgValue) -> EgResult<String> {
     let duration = if noncat["item_type"].is_object() {
         json_string(&noncat["item_type"]["circ_duration"])?
     } else {

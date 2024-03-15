@@ -100,7 +100,8 @@ impl EgValue {
         )
     }
 
-    /// Create a new blessed value from an existing value using the provided class name.
+    /// Create a new blessed value from an existing Hash value using
+    /// the provided class name.
     pub fn create(classname: &str, mut v: EgValue) -> EgResult<EgValue> {
         v.bless(classname)?;
         Ok(v)

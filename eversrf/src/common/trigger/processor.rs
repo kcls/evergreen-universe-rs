@@ -4,7 +4,7 @@ use crate::common::trigger::{Event, EventState};
 use crate::editor::Editor;
 use crate::result::EgResult;
 use crate::util;
-use json::JsonValue;
+use EgValue;
 use opensrf::util::thread_id;
 use std::fmt;
 use std::process;
@@ -14,8 +14,8 @@ use std::process;
 pub struct Processor<'a> {
     pub editor: &'a mut Editor,
     event_def_id: i64,
-    event_def: JsonValue,
-    target_flesh: JsonValue,
+    event_def: EgValue,
+    target_flesh: EgValue,
 }
 
 impl fmt::Display for Processor<'_> {
@@ -30,7 +30,7 @@ impl fmt::Display for Processor<'_> {
 
 impl<'a> Processor<'a> {
     pub fn new(editor: &'a mut Editor, event_def_id: i64) -> EgResult<Processor> {
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             "flesh": 1,
             "flesh_fields": {"atevdef": ["hook", "env", "params"]}
         };
@@ -42,7 +42,7 @@ impl<'a> Processor<'a> {
         let mut proc = Self {
             event_def,
             event_def_id,
-            target_flesh: JsonValue::Null,
+            target_flesh: EgValue::Null,
             editor,
         };
 
@@ -87,7 +87,7 @@ impl<'a> Processor<'a> {
         editor: &mut Editor,
         event_ids: &[i64],
     ) -> EgResult<Vec<Event>> {
-        let query = json::object! {"id": event_ids};
+        let query = eg::hash! {"id": event_ids};
         let mut jevents = editor.search("atev", query)?;
 
         if jevents.len() == 0 {
@@ -135,7 +135,7 @@ impl<'a> Processor<'a> {
     pub fn event_def_id(&self) -> i64 {
         self.event_def_id
     }
-    pub fn event_def(&self) -> &JsonValue {
+    pub fn event_def(&self) -> &EgValue {
         &self.event_def
     }
     pub fn core_type(&self) -> &str {
@@ -153,12 +153,12 @@ impl<'a> Processor<'a> {
     pub fn reactor(&self) -> &str {
         self.event_def["reactor"].as_str().unwrap()
     }
-    pub fn environment(&self) -> &JsonValue {
+    pub fn environment(&self) -> &EgValue {
         &self.event_def["env"]
     }
 
     /// Will be a JSON array
-    pub fn params(&self) -> &JsonValue {
+    pub fn params(&self) -> &EgValue {
         &self.event_def["params"]
     }
 
@@ -196,7 +196,7 @@ impl<'a> Processor<'a> {
 
     /// Returns the parameter value with the provided name or None if no
     /// such parameter exists.
-    pub fn param_value(&mut self, param_name: &str) -> Option<&JsonValue> {
+    pub fn param_value(&mut self, param_name: &str) -> Option<&EgValue> {
         for param in self.params().members() {
             if param["param"].as_str() == Some(param_name) {
                 return Some(&param["value"]);
@@ -253,7 +253,7 @@ impl<'a> Processor<'a> {
             .ok_or_else(|| format!("Our event disappeared from the DB?"))?;
 
         if let Some(err) = error_text {
-            let output = json::object! {
+            let output = eg::hash! {
                 "data": err,
                 "is_error": true,
                 // TODO locale
@@ -265,16 +265,16 @@ impl<'a> Processor<'a> {
             atev["error_output"] = result["id"].take();
         }
 
-        atev["state"] = json::from(state_str);
-        atev["update_time"] = json::from("now");
-        atev["update_process"] = json::from(format!("{}-{}", process::id(), thread_id()));
+        atev["state"] = EgValue::from(state_str);
+        atev["update_time"] = EgValue::from("now");
+        atev["update_process"] = EgValue::from(format!("{}-{}", process::id(), thread_id()));
 
         if atev["start_time"].is_null() && state != EventState::Pending {
-            atev["start_time"] = json::from("now");
+            atev["start_time"] = EgValue::from("now");
         }
 
         if state == EventState::Complete {
-            atev["complete_time"] = json::from("now");
+            atev["complete_time"] = EgValue::from("now");
         }
 
         self.editor.update(atev)?;

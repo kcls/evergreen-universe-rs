@@ -10,7 +10,7 @@ use crate::event::EgEvent;
 use crate::result::{EgError, EgResult};
 use crate::util::{json_bool, json_float, json_int, json_string};
 use chrono::{Duration, Local, Timelike};
-use json::JsonValue;
+use EgValue;
 use std::collections::HashSet;
 
 /// Performs item checkins
@@ -96,7 +96,7 @@ impl Circulator<'_> {
                 // As noted in the Perl, it may be unexpected that
                 // floating items are modified during NO-OP checkins,
                 // but the behavior is retained for backwards compat.
-                self.update_copy(json::object! {"circ_lib": self.circ_lib})?;
+                self.update_copy(eg::hash! {"circ_lib": self.circ_lib})?;
             }
         } else {
             item_is_needed = self.try_to_capture()?;
@@ -156,7 +156,7 @@ impl Circulator<'_> {
             None => C::COPY_STATUS_MISSING,
         };
 
-        self.update_copy(json::object! {"status": next_status})?;
+        self.update_copy(eg::hash! {"status": next_status})?;
 
         Ok(true)
     }
@@ -172,10 +172,10 @@ impl Circulator<'_> {
     /// Load the open transit and make sure our copy is in the right
     /// status if there's a matching transit.
     fn fix_broken_transit_status(&mut self) -> EgResult<()> {
-        let query = json::object! {
+        let query = eg::hash! {
             target_copy: self.copy()["id"].clone(),
-            dest_recv_time: JsonValue::Null,
-            cancel_time: JsonValue::Null,
+            dest_recv_time: EgValue::Null,
+            cancel_time: EgValue::Null,
         };
 
         let mut results = self.editor().search("atc", query)?;
@@ -187,7 +187,7 @@ impl Circulator<'_> {
 
         if self.copy_status() != C::COPY_STATUS_IN_TRANSIT {
             log::warn!("{self} Copy has an open transit, but incorrect status");
-            let changes = json::object! {status: C::COPY_STATUS_IN_TRANSIT};
+            let changes = eg::hash! {status: C::COPY_STATUS_IN_TRANSIT};
             self.update_copy(changes)?;
         }
 
@@ -277,7 +277,7 @@ impl Circulator<'_> {
             return Ok(());
         }
 
-        let query = json::object! {target_copy: json::from(self.copy_id)};
+        let query = eg::hash! {target_copy: EgValue::from(self.copy_id)};
         let parts = self.editor().search("acpm", query)?;
         let parts = parts
             .into_iter()
@@ -423,7 +423,7 @@ impl Circulator<'_> {
             .retrieve("cfg", float_id)?
             .ok_or_else(|| self.editor().die_event())?;
 
-        let query = json::object! {
+        let query = eg::hash! {
             from: [
                 "evergreen.can_float",
                 float_group["id"].clone(),
@@ -461,7 +461,7 @@ impl Circulator<'_> {
         }
 
         // Create a new copy inventory row.
-        let aci = json::object! {
+        let aci = eg::hash! {
             inventory_date: "now",
             inventory_workstation: ws_id,
             copy: self.copy()["id"].clone(),
@@ -488,8 +488,8 @@ impl Circulator<'_> {
             // TODO run in the same transaction once ported to Rust.
 
             let params = vec![
-                json::from(self.editor().authtoken()),
-                json::from(self.circ_lib),
+                EgValue::from(self.editor().authtoken()),
+                EgValue::from(self.circ_lib),
                 self.copy()["id"].clone(),
             ];
 
@@ -566,7 +566,7 @@ impl Circulator<'_> {
                 && status != C::COPY_STATUS_IN_TRANSIT
                 && status != next_status)
         {
-            self.update_copy(json::object! {status: json::from(next_status)})?;
+            self.update_copy(eg::hash! {status: EgValue::from(next_status)})?;
         }
 
         Ok(())
@@ -591,7 +591,7 @@ impl Circulator<'_> {
             None => return Ok(()),
         };
 
-        let query = json::object! {
+        let query = eg::hash! {
             btype: C::BTYPE_DEPOSIT,
             voided: "f",
             xact: circ_id,
@@ -646,13 +646,13 @@ impl Circulator<'_> {
             .options
             .get("backdate")
             .map(|bd| bd.clone())
-            .unwrap_or(json::from("now"));
+            .unwrap_or(EgValue::from("now"));
 
-        circ["checkin_scan_time"] = json::from("now");
-        circ["checkin_staff"] = json::from(req_id);
-        circ["checkin_lib"] = json::from(self.circ_lib);
+        circ["checkin_scan_time"] = EgValue::from("now");
+        circ["checkin_staff"] = EgValue::from(req_id);
+        circ["checkin_lib"] = EgValue::from(self.circ_lib);
         if let Some(id) = req_ws_id {
-            circ["checkin_workstation"] = json::from(id);
+            circ["checkin_workstation"] = EgValue::from(id);
         }
 
         log::info!(
@@ -689,7 +689,7 @@ impl Circulator<'_> {
         } else {
             if self.get_option_bool("claims_never_checked_out") {
                 let circ = self.circ.as_mut().unwrap();
-                circ["stop_fines"] = json::from("CLAIMSNEVERCHECKEDOUT");
+                circ["stop_fines"] = EgValue::from("CLAIMSNEVERCHECKEDOUT");
             } else if copy_status == C::COPY_STATUS_LOST {
                 // Note copy_status refers to the status of the copy
                 // before self.checkin_handle_lost() was called.
@@ -730,7 +730,7 @@ impl Circulator<'_> {
     fn checkin_handle_lost(&mut self) -> EgResult<()> {
         log::info!("{self} processing LOST checkin...");
 
-        let billing_options = json::object! {
+        let billing_options = eg::hash! {
             ous_void_item_cost: "circ.void_lost_on_checkin",
             ous_void_proc_fee: "circ.void_lost_proc_fee_on_checkin",
             ous_restore_overdue: "circ.restore_overdue_on_lost_return",
@@ -750,7 +750,7 @@ impl Circulator<'_> {
 
     /// Collect params and call checkin_handle_lost_or_long_overdue()
     fn checkin_handle_long_overdue(&mut self) -> EgResult<()> {
-        let billing_options = json::object! {
+        let billing_options = eg::hash! {
             is_longoverdue: true,
             ous_void_item_cost: "circ.void_longoverdue_on_checkin",
             ous_void_proc_fee: "circ.void_longoverdue_proc_fee_on_checkin",
@@ -912,7 +912,7 @@ impl Circulator<'_> {
         } else {
             self.options.insert(
                 "backdate".to_string(),
-                json::from(date::to_iso(&new_date.into())),
+                EgValue::from(date::to_iso(&new_date.into())),
             );
         }
 
@@ -1048,11 +1048,11 @@ impl Circulator<'_> {
             "CHECKIN"
         };
 
-        let stop_fines = json::from(stop_fines);
+        let stop_fines = EgValue::from(stop_fines);
 
         let stop_fines_time = match self.options.get("backdate") {
             Some(bd) => bd.clone(),
-            None => json::from("now"),
+            None => EgValue::from("now"),
         };
 
         let mut circ = circ.clone();
@@ -1079,8 +1079,8 @@ impl Circulator<'_> {
         let circ_id = json_int(&circ["id"])?;
         let void_max = json_float(&circ["max_fine"])?;
 
-        let query = json::object! {xact: circ_id, btype: C::BTYPE_OVERDUE_MATERIALS};
-        let ops = json::object! {"order_by": {"mb": "billing_ts desc"}};
+        let query = eg::hash! {xact: circ_id, btype: C::BTYPE_OVERDUE_MATERIALS};
+        let ops = eg::hash! {"order_by": {"mb": "billing_ts desc"}};
         let overdues = self.editor().search_with_ops("mb", query, ops)?;
 
         if overdues.len() == 0 {
@@ -1097,10 +1097,10 @@ impl Circulator<'_> {
 
         let mut void_amount = 0.0;
 
-        let billing_ids: Vec<JsonValue> = overdues.iter().map(|b| b["id"].clone()).collect();
+        let billing_ids: Vec<EgValue> = overdues.iter().map(|b| b["id"].clone()).collect();
         let voids = self
             .editor()
-            .search("maa", json::object! {"billing": billing_ids})?;
+            .search("maa", eg::hash! {"billing": billing_ids})?;
 
         if voids.len() > 0 {
             // Overdues adjusted via account adjustment
@@ -1198,14 +1198,14 @@ impl Circulator<'_> {
 
         // Receive the transit
         let mut transit = self.transit.take().unwrap();
-        transit["dest_recv_time"] = json::from("now");
+        transit["dest_recv_time"] = EgValue::from("now");
         self.editor().update(transit)?;
 
         // Refresh our copy of the transit.
         self.transit = self.editor().retrieve("atc", transit_id)?;
 
         // Apply the destination copy status.
-        self.update_copy(json::object! {"status": transit_copy_status})?;
+        self.update_copy(eg::hash! {"status": transit_copy_status})?;
 
         if self.hold.is_some() {
             self.put_hold_on_shelf()?;
@@ -1215,7 +1215,7 @@ impl Circulator<'_> {
             self.clear_option("fake_hold_dest");
         }
 
-        let mut payload = json::object! {
+        let mut payload = eg::hash! {
             transit: self.transit.as_ref().unwrap().clone()
         };
 
@@ -1225,7 +1225,7 @@ impl Circulator<'_> {
 
         let mut evt = EgEvent::success();
         evt.set_payload(payload);
-        evt.set_ad_hoc_value("ishold", json::from(self.hold.is_some()));
+        evt.set_ad_hoc_value("ishold", EgValue::from(self.hold.is_some()));
 
         self.add_event(evt);
 
@@ -1267,14 +1267,14 @@ impl Circulator<'_> {
 
         if hold["hold_type"].as_str().unwrap() == "R" {
             // hold_type required
-            self.update_copy(json::object! {status: C::COPY_STATUS_CATALOGING})?;
+            self.update_copy(eg::hash! {status: C::COPY_STATUS_CATALOGING})?;
             self.clear_option("fake_hold_dest");
             // no further processing needed.
             self.set_option_true("noop");
 
             let mut hold = self.hold.take().unwrap();
             let hold_id = json_int(&hold["id"])?;
-            hold["fulfillment_time"] = json::from("now");
+            hold["fulfillment_time"] = EgValue::from("now");
             self.editor().update(hold)?;
 
             self.hold = self.editor().retrieve("ahr", hold_id)?;
@@ -1286,7 +1286,7 @@ impl Circulator<'_> {
             let hold = self.hold.as_mut().unwrap();
             // Perl code does not update the hold in the database
             // at this point.  Doing same.
-            hold["pickup_lib"] = json::from(self.circ_lib);
+            hold["pickup_lib"] = EgValue::from(self.circ_lib);
 
             return Ok(());
         }
@@ -1329,7 +1329,7 @@ impl Circulator<'_> {
             return Ok(false);
         }
 
-        // json::* knows if two JsonValue's are the same.
+        // json::* knows if two EgValue's are the same.
         if suppress_for_here != suppress_for_dest {
             return Ok(false);
         }
@@ -1342,11 +1342,11 @@ impl Circulator<'_> {
         let mut hold = self.hold.take().unwrap();
         let hold_id = json_int(&hold["id"])?;
 
-        hold["shelf_time"] = json::from("now");
-        hold["current_shelf_lib"] = json::from(self.circ_lib);
+        hold["shelf_time"] = EgValue::from("now");
+        hold["current_shelf_lib"] = EgValue::from(self.circ_lib);
 
         if let Some(date) = holds::calc_hold_shelf_expire_time(self.editor(), &hold, None)? {
-            hold["shelf_expire_time"] = json::from(date);
+            hold["shelf_expire_time"] = EgValue::from(date);
         }
 
         self.editor().update(hold)?;
@@ -1428,8 +1428,8 @@ impl Circulator<'_> {
         let suppress_transit = self.should_suppress_transit(pickup_lib, true)?;
 
         hold["hopeless_date"].take();
-        hold["current_copy"] = json::from(self.copy_id);
-        hold["capture_time"] = json::from("now");
+        hold["current_copy"] = EgValue::from(self.copy_id);
+        hold["capture_time"] = EgValue::from("now");
 
         // Clear some other potential cruft
         hold["fulfillment_time"].take();
@@ -1459,9 +1459,9 @@ impl Circulator<'_> {
         }
 
         let params = vec![
-            json::from(self.editor().authtoken()),
+            EgValue::from(self.editor().authtoken()),
             self.copy()["barcode"].clone(),
-            json::from(true), // Avoid updating the copy.
+            EgValue::from(true), // Avoid updating the copy.
         ];
 
         let result = self.editor().client_mut().send_recv_one(
@@ -1496,7 +1496,7 @@ impl Circulator<'_> {
         log::info!("{self} booking capture succeeded");
 
         if let Ok(stat) = json_int(&evt.payload()["new_copy_status"]) {
-            self.update_copy(json::object! {"status": stat})?;
+            self.update_copy(eg::hash! {"status": stat})?;
         }
 
         let reservation = evt.payload_mut()["reservation"].take();
@@ -1516,7 +1516,7 @@ impl Circulator<'_> {
 
     /// Returns a hold object if one is found which may be suitable
     /// for capturing our item.
-    fn hold_capture_is_possible(&mut self) -> EgResult<Option<JsonValue>> {
+    fn hold_capture_is_possible(&mut self) -> EgResult<Option<EgValue>> {
         if self.capture_state() == "nocapture" {
             return Ok(None);
         }
@@ -1542,13 +1542,13 @@ impl Circulator<'_> {
 
     /// Returns a reservation object if one is found which may be suitable
     /// for capturing our item.
-    fn reservation_capture_is_possible(&mut self) -> EgResult<Option<JsonValue>> {
+    fn reservation_capture_is_possible(&mut self) -> EgResult<Option<EgValue>> {
         if self.capture_state() == "nocapture" {
             return Ok(None);
         }
 
         let params = vec![
-            json::from(self.editor().authtoken()),
+            EgValue::from(self.editor().authtoken()),
             self.copy()["barcode"].clone(),
         ];
 
@@ -1596,7 +1596,7 @@ impl Circulator<'_> {
 
         if can_float && manual_float && !has_remote_hold {
             // Copy is floating -- make it stick here
-            self.update_copy(json::object! {"circ_lib": self.circ_lib})?;
+            self.update_copy(eg::hash! {"circ_lib": self.circ_lib})?;
             return Ok(());
         }
 
@@ -1622,13 +1622,13 @@ impl Circulator<'_> {
 
         self.add_event_code("ITEM_NOT_CATALOGED");
 
-        self.update_copy(json::object! {"status": C::COPY_STATUS_CATALOGING})
+        self.update_copy(eg::hash! {"status": C::COPY_STATUS_CATALOGING})
             .map(|_| ())
     }
 
     /// Create the actual transit object dn set our item as in-transit.
     fn checkin_build_copy_transit(&mut self, dest_lib: i64) -> EgResult<()> {
-        let mut transit = json::object! {
+        let mut transit = eg::hash! {
             "source": self.circ_lib,
             "dest": dest_lib,
             "target_copy": self.copy_id,
@@ -1665,7 +1665,7 @@ impl Circulator<'_> {
             self.transit = self.editor().retrieve("ahtc", t["id"].clone())?;
         }
 
-        self.update_copy(json::object! {"status": C::COPY_STATUS_IN_TRANSIT})?;
+        self.update_copy(eg::hash! {"status": C::COPY_STATUS_IN_TRANSIT})?;
         Ok(())
     }
 
@@ -1720,7 +1720,7 @@ impl Circulator<'_> {
         // De-flesh the copy
         self.editor().idl().de_flesh_object(&mut copy)?;
 
-        let mut payload = json::object! {
+        let mut payload = eg::hash! {
             "copy": copy,
             "volume": volume,
         };
@@ -1733,16 +1733,16 @@ impl Circulator<'_> {
 
         if let Some(mut hold) = self.hold.take() {
             if hold["cancel_time"].is_null() {
-                hold["notes"] = json::from(
+                hold["notes"] = EgValue::from(
                     self.editor()
-                        .search("ahrn", json::object! {hold: hold["id"].clone()})?,
+                        .search("ahrn", eg::hash! {hold: hold["id"].clone()})?,
                 );
                 payload["hold"] = hold;
             }
         }
 
         if let Some(circ) = self.circ.as_ref() {
-            let flesh = json::object! {
+            let flesh = eg::hash! {
                 "flesh": 1,
                 "flesh_fields": {
                     "circ": ["billable_transaction"],
@@ -1758,7 +1758,7 @@ impl Circulator<'_> {
         }
 
         if let Some(patron) = self.patron.as_ref() {
-            let flesh = json::object! {
+            let flesh = eg::hash! {
                 "flesh": 1,
                 "flesh_fields": {
                     "au": ["card", "billing_address", "mailing_address"]
@@ -1780,8 +1780,8 @@ impl Circulator<'_> {
             payload["transit"] = transit;
         }
 
-        let query = json::object! {"copy": copy_id};
-        let flesh = json::object! {
+        let query = eg::hash! {"copy": copy_id};
+        let flesh = eg::hash! {
             "flesh": 1,
             "flesh_fields": {
                 "alci": ["inventory_workstation"]
@@ -1840,14 +1840,14 @@ impl Circulator<'_> {
             return Ok(false);
         }
 
-        let query = json::object! {
+        let query = eg::hash! {
             "usr": self.patron.as_ref().unwrap()["id"].clone(),
-            "cancel_time": JsonValue::Null,
-            "fulfillment_time": {"!=": JsonValue::Null},
+            "cancel_time": EgValue::Null,
+            "fulfillment_time": {"!=": EgValue::Null},
             "current_copy": self.copy()["id"].clone(),
         };
 
-        let ops = json::object! {
+        let ops = eg::hash! {
             "order_by": {
                 "ahr": "fulfillment_time desc"
             },
@@ -1885,7 +1885,7 @@ impl Circulator<'_> {
 
         self.editor().update(hold)?;
 
-        self.update_copy(json::object! {"status": C::COPY_STATUS_ON_HOLDS_SHELF})?;
+        self.update_copy(eg::hash! {"status": C::COPY_STATUS_ON_HOLDS_SHELF})?;
 
         Ok(true)
     }

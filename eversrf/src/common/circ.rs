@@ -1,10 +1,10 @@
 //! Shared, circ-focused utility functions
 use crate::editor::Editor;
 use crate::result::EgResult;
-use json::JsonValue;
+use EgValue;
 
-pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<JsonValue> {
-    let query = json::object! {
+pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<EgValue> {
+    let query = eg::hash! {
         from: ["action.summarize_all_circ_chain", circ_id]
     };
 
@@ -15,8 +15,8 @@ pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<JsonValue>
     }
 }
 
-pub fn circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<Vec<JsonValue>> {
-    let query = json::object! {
+pub fn circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<Vec<EgValue>> {
+    let query = eg::hash! {
         from: ["action.all_circ_chain", circ_id]
     };
 

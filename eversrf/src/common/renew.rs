@@ -4,7 +4,7 @@ use crate::date;
 use crate::event::EgEvent;
 use crate::result::EgResult;
 use crate::util::{json_bool, json_bool_op, json_int};
-use json::JsonValue;
+use EgValue;
 /*
 use crate::common::bib;
 use crate::common::billing;
@@ -42,18 +42,18 @@ impl Circulator<'_> {
 
     /// Find the circ we're trying to renew and extra the patron info.
     pub fn load_renewal_circ(&mut self) -> EgResult<()> {
-        let mut query = json::object! {
+        let mut query = eg::hash! {
             "target_copy": self.copy_id,
-            "xact_finish": JsonValue::Null,
-            "checkin_time": JsonValue::Null,
+            "xact_finish": EgValue::Null,
+            "checkin_time": EgValue::Null,
         };
 
         if self.patron_id > 0 {
             // Renewal caller does not always pass patron data.
-            query["usr"] = json::from(self.patron_id);
+            query["usr"] = EgValue::from(self.patron_id);
         }
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             "flesh": 2,
             "flesh_fields": {
                 "circ": ["usr"],
@@ -73,7 +73,7 @@ impl Circulator<'_> {
         self.patron = Some(patron);
 
         // Replace the usr value which was null-ified above w/ take()
-        circ["usr"] = json::from(self.patron_id);
+        circ["usr"] = EgValue::from(self.patron_id);
 
         self.parent_circ = Some(circ_id);
         self.circ = Some(circ);

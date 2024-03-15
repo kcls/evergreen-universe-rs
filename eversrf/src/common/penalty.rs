@@ -4,12 +4,12 @@ use crate::common::trigger;
 use crate::editor::Editor;
 use crate::result::EgResult;
 use crate::util;
-use json::JsonValue;
+use EgValue;
 
 // Shortcut for unckecked int conversions for values that are known good.
-// We coul compare JsonValue's directly, but there's a chance a number may be
+// We coul compare EgValue's directly, but there's a chance a number may be
 // transferred as a JSON String, so turn them into numbers for conformity.
-fn number(v: &JsonValue) -> i64 {
+fn number(v: &EgValue) -> i64 {
     util::json_int(v).unwrap()
 }
 
@@ -17,9 +17,9 @@ pub fn calculate_penalties(
     editor: &mut Editor,
     user_id: i64,
     context_org: i64,
-    only_penalties: Option<&Vec<JsonValue>>,
+    only_penalties: Option<&Vec<EgValue>>,
 ) -> EgResult<()> {
-    let query = json::object! {
+    let query = eg::hash! {
         from: [
             "actor.calculate_system_penalties",
             user_id, context_org
@@ -38,14 +38,14 @@ pub fn calculate_penalties(
     }
 
     // Applied penalties have a DB ID.
-    let mut existing_penalties: Vec<&JsonValue> =
+    let mut existing_penalties: Vec<&EgValue> =
         penalties.iter().filter(|p| !p["id"].is_null()).collect();
 
     // Penalties that should be applied do not have a DB ID.
-    let wanted_penalties: Vec<&JsonValue> =
+    let wanted_penalties: Vec<&EgValue> =
         penalties.iter().filter(|p| p["id"].is_null()).collect();
 
-    let mut trigger_events: Vec<(String, JsonValue, i64)> = Vec::new();
+    let mut trigger_events: Vec<(String, EgValue, i64)> = Vec::new();
 
     for pen_hash in wanted_penalties {
         let org_unit = number(&pen_hash["org_unit"]);
@@ -69,7 +69,7 @@ pub fn calculate_penalties(
             existing_penalties = existing_penalties
                 .iter()
                 .filter(|p| number(&p["id"]) != id)
-                .map(|p| *p) // &&JsonValue
+                .map(|p| *p) // &&EgValue
                 .collect();
         } else {
             // This is a new penalty.  Create it.
@@ -114,9 +114,9 @@ pub fn calculate_penalties(
 fn trim_to_wanted_penalties(
     editor: &mut Editor,
     context_org: i64,
-    only_penalties: Option<&Vec<JsonValue>>,
-    all_penalties: Vec<JsonValue>,
-) -> EgResult<Vec<JsonValue>> {
+    only_penalties: Option<&Vec<EgValue>>,
+    all_penalties: Vec<EgValue>,
+) -> EgResult<Vec<EgValue>> {
     let only_penalties = match only_penalties {
         Some(op) => op,
         None => return Ok(all_penalties),
@@ -127,8 +127,8 @@ fn trim_to_wanted_penalties(
     }
 
     // The set to limit may be specified as penalty type IDs or names.
-    let mut penalty_id_list: Vec<JsonValue> = Vec::new();
-    let mut penalty_name_list: Vec<JsonValue> = Vec::new();
+    let mut penalty_id_list: Vec<EgValue> = Vec::new();
+    let mut penalty_name_list: Vec<EgValue> = Vec::new();
 
     for pen in only_penalties {
         if pen.is_number() {
@@ -140,7 +140,7 @@ fn trim_to_wanted_penalties(
 
     if penalty_name_list.len() > 0 {
         // Get penalty type IDs from their names.
-        let query = json::object! {"name": {"in": penalty_name_list.clone()}};
+        let query = eg::hash! {"name": {"in": penalty_name_list.clone()}};
         let penalty_types = editor.search("csp", query)?;
         for ptype in penalty_types {
             penalty_id_list.push(ptype["id"].clone());
@@ -164,14 +164,14 @@ fn trim_to_wanted_penalties(
             let pen_id = settings.get_value(name)?;
             // Verify the org unit setting value is numerifiable.
             if let Ok(n) = util::json_int(&pen_id) {
-                penalty_id_list.push(json::from(n));
+                penalty_id_list.push(EgValue::from(n));
             }
         }
     }
 
     // Trim our list of penalties to those whose IDs we have identified
     // the caller is interested in.
-    let mut final_penalties: Vec<JsonValue> = Vec::new();
+    let mut final_penalties: Vec<EgValue> = Vec::new();
     for pen in all_penalties {
         if penalty_id_list
             .iter()

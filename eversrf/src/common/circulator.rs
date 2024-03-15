@@ -8,7 +8,7 @@ use crate::event::{EgEvent, Overrides};
 use crate::result::{EgError, EgResult};
 use crate::util;
 use crate::util::{json_bool, json_bool_op, json_int, json_string};
-use json::JsonValue;
+use EgValue;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -95,17 +95,17 @@ pub struct CircPolicy {
     pub max_fine: f64,
     pub duration: String,
     pub recurring_fine: f64,
-    pub matchpoint: JsonValue,
-    pub duration_rule: JsonValue,
-    pub recurring_fine_rule: JsonValue,
-    pub max_fine_rule: JsonValue,
-    pub hard_due_date: Option<JsonValue>,
-    pub limit_groups: Option<JsonValue>,
+    pub matchpoint: EgValue,
+    pub duration_rule: EgValue,
+    pub recurring_fine_rule: EgValue,
+    pub max_fine_rule: EgValue,
+    pub hard_due_date: Option<EgValue>,
+    pub limit_groups: Option<EgValue>,
 }
 
 impl CircPolicy {
-    pub fn to_json_value(&self) -> JsonValue {
-        json::object! {
+    pub fn to_json_value(&self) -> EgValue {
+        eg::hash! {
             "max_fine": self.max_fine,
             "duration": self.duration.as_str(),
             "recurring_fine": self.recurring_fine,
@@ -127,25 +127,25 @@ pub struct Circulator<'a> {
     pub init_run: bool,
     pub settings: Settings,
     pub circ_lib: i64,
-    pub copy: Option<JsonValue>,
+    pub copy: Option<EgValue>,
     pub copy_id: i64,
     pub copy_barcode: Option<String>,
-    pub circ: Option<JsonValue>,
-    pub hold: Option<JsonValue>,
-    pub reservation: Option<JsonValue>,
-    pub patron: Option<JsonValue>,
+    pub circ: Option<EgValue>,
+    pub hold: Option<EgValue>,
+    pub reservation: Option<EgValue>,
+    pub patron: Option<EgValue>,
     pub patron_id: i64,
-    pub transit: Option<JsonValue>,
-    pub hold_transit: Option<JsonValue>,
+    pub transit: Option<EgValue>,
+    pub hold_transit: Option<EgValue>,
     pub is_noncat: bool,
-    pub system_copy_alerts: Vec<JsonValue>,
-    pub runtime_copy_alerts: Vec<JsonValue>,
+    pub system_copy_alerts: Vec<EgValue>,
+    pub runtime_copy_alerts: Vec<EgValue>,
     pub is_override: bool,
     pub is_inspect: bool,
     pub circ_op: CircOp,
     pub parent_circ: Option<i64>,
-    pub deposit_billing: Option<JsonValue>,
-    pub rental_billing: Option<JsonValue>,
+    pub deposit_billing: Option<EgValue>,
+    pub rental_billing: Option<EgValue>,
 
     /// A circ test can be successfull without a matched policy
     /// if the matched policy is for
@@ -156,7 +156,7 @@ pub struct Circulator<'a> {
     pub circ_policy_rules: Option<CircPolicy>,
 
     /// Raw results from the database.
-    pub circ_policy_results: Option<Vec<JsonValue>>,
+    pub circ_policy_results: Option<Vec<EgValue>>,
 
     /// When true, stop further processing and exit.
     /// This is not necessarily an error condition.
@@ -180,8 +180,8 @@ pub struct Circulator<'a> {
     /// List of hold IDs for holds that need to be retargeted.
     pub retarget_holds: Option<Vec<i64>>,
 
-    pub checkout_is_for_hold: Option<JsonValue>,
-    pub hold_found_for_alt_patron: Option<JsonValue>,
+    pub checkout_is_for_hold: Option<EgValue>,
+    pub hold_found_for_alt_patron: Option<EgValue>,
 
     pub fulfilled_hold_ids: Option<Vec<i64>>,
 
@@ -192,7 +192,7 @@ pub struct Circulator<'a> {
     /// circ_op (e.g. checkin) then make it an option.  If it's used
     /// more or less globally for circ stuff, make it part of the
     /// Circulator proper.
-    pub options: HashMap<String, JsonValue>,
+    pub options: HashMap<String, EgValue>,
 }
 
 impl fmt::Display for Circulator<'_> {
@@ -230,7 +230,7 @@ impl<'a> Circulator<'a> {
     ///
     pub fn new(
         editor: &'a mut Editor,
-        options: HashMap<String, JsonValue>,
+        options: HashMap<String, EgValue>,
     ) -> EgResult<Circulator> {
         if editor.requestor().is_none() {
             Err(format!("Circulator requires an authenticated requestor"))?;
@@ -282,16 +282,16 @@ impl<'a> Circulator<'a> {
         })
     }
 
-    pub fn policy_to_json_value(&self) -> JsonValue {
-        let mut value = json::object! {};
+    pub fn policy_to_json_value(&self) -> EgValue {
+        let mut value = eg::hash! {};
 
         if let Some(rules) = self.circ_policy_rules.as_ref() {
             value["rules"] = rules.to_json_value();
         }
 
         if let Some(results) = self.circ_policy_results.as_ref() {
-            let matches: Vec<JsonValue> = results.iter().map(|v| v.clone()).collect();
-            value["matches"] = json::from(matches);
+            let matches: Vec<EgValue> = results.iter().map(|v| v.clone()).collect();
+            value["matches"] = EgValue::from(matches);
         }
 
         return value;
@@ -341,7 +341,7 @@ impl<'a> Circulator<'a> {
     /// Unchecked copy getter.
     ///
     /// Panics if copy is None.
-    pub fn copy(&self) -> &JsonValue {
+    pub fn copy(&self) -> &EgValue {
         self.copy
             .as_ref()
             .expect("{self} self.copy() requires a copy")
@@ -418,7 +418,7 @@ impl<'a> Circulator<'a> {
 
     /// Search for the copy in question
     pub fn load_copy(&mut self) -> EgResult<()> {
-        let copy_flesh = json::object! {
+        let copy_flesh = eg::hash! {
             flesh: 1,
             flesh_fields: {
                 acp: COPY_FLESH
@@ -447,7 +447,7 @@ impl<'a> Circulator<'a> {
         } else if let Some(copy_barcode) = self.options.get("copy_barcode") {
             self.copy_barcode = Some(json_string(&copy_barcode)?);
 
-            let query = json::object! {
+            let query = eg::hash! {
                 barcode: copy_barcode.clone(),
                 deleted: "f", // cstore turns json false into NULL :\
             };
@@ -482,12 +482,12 @@ impl<'a> Circulator<'a> {
             return Ok(());
         }
 
-        let query = json::object! {
+        let query = eg::hash! {
             copy: self.copy_id,
-            ack_time: JsonValue::Null,
+            ack_time: EgValue::Null,
         };
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             flesh: 1,
             flesh_fields: {aca: ["alert_type"]}
         };
@@ -510,7 +510,7 @@ impl<'a> Circulator<'a> {
         }
 
         let circ_lib = self.circ_lib;
-        let query = json::object! {
+        let query = eg::hash! {
             org: org::full_path(self.editor(), circ_lib, None)?
         };
 
@@ -614,7 +614,7 @@ impl<'a> Circulator<'a> {
             return Ok(());
         };
 
-        let list = self.editor().json_query(json::object! {
+        let list = self.editor().json_query(eg::hash! {
             from: ["asset.copy_state", copy_id]
         })?;
 
@@ -632,7 +632,7 @@ impl<'a> Circulator<'a> {
 
         let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
 
-        let query = json::object! {
+        let query = eg::hash! {
             org: org::full_path(self.editor(), circ_lib, None)?
         };
 
@@ -643,12 +643,12 @@ impl<'a> Circulator<'a> {
 
         let is_renew_filter = if self.is_renewal() { "t" } else { "f" };
 
-        let query = json::object! {
+        let query = eg::hash! {
             "active": "t",
             "scope_org": alert_orgs,
             "event": events,
             "state": copy_state,
-            "-or": [{"in_renew": is_renew_filter}, {"in_renew": JsonValue::Null}]
+            "-or": [{"in_renew": is_renew_filter}, {"in_renew": EgValue::Null}]
         };
 
         // config.copy_alert_type
@@ -699,13 +699,13 @@ impl<'a> Circulator<'a> {
                     .iter()
                     .any(|v| &v["alert_type"] == &atype["id"])
                 {
-                    atype["next_status"] = JsonValue::new_array();
+                    atype["next_status"] = EgValue::new_array();
                 } else {
-                    atype["next_status"] = json::from(util::pg_unpack_int_array(ns));
+                    atype["next_status"] = EgValue::from(util::pg_unpack_int_array(ns));
                 }
             }
 
-            let alert = json::object! {
+            let alert = eg::hash! {
                 alert_type: atype["id"].clone(),
                 copy: self.copy_id,
                 temp: "t",
@@ -815,7 +815,7 @@ impl<'a> Circulator<'a> {
         if alert_on.len() > 0 {
             // We have new-style alerts to reports.
             let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
-            evt.set_payload(json::from(alert_on));
+            evt.set_payload(EgValue::from(alert_on));
             self.add_event(evt);
             return Ok(());
         }
@@ -827,7 +827,7 @@ impl<'a> Circulator<'a> {
 
         if let Some(msg) = self.copy()["alert_message"].as_str() {
             let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
-            evt.set_payload(json::from(msg));
+            evt.set_payload(EgValue::from(msg));
             self.add_event(evt);
         }
 
@@ -843,9 +843,9 @@ impl<'a> Circulator<'a> {
         }
 
         if let Some(copy) = self.copy.as_ref() {
-            let query = json::object! {
+            let query = eg::hash! {
                 target_copy: copy["id"].clone(),
-                checkin_time: JsonValue::Null,
+                checkin_time: EgValue::Null,
             };
 
             if let Some(circ) = self.editor().search("circ", query)?.pop() {
@@ -886,12 +886,12 @@ impl<'a> Circulator<'a> {
         // See if we can find the circulation / patron related
         // to the provided copy.
 
-        let query = json::object! {
+        let query = eg::hash! {
             target_copy: copy["id"].clone(),
-            checkin_time: JsonValue::Null,
+            checkin_time: EgValue::Null,
         };
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             flesh: 2,
             flesh_fields: {
                 circ: ["usr"],
@@ -923,8 +923,8 @@ impl<'a> Circulator<'a> {
             None => return Ok(false),
         };
 
-        let query = json::object! {barcode: barcode.clone()};
-        let flesh = json::object! {flesh: 1, flesh_fields: {"ac": ["usr"]}};
+        let query = eg::hash! {barcode: barcode.clone()};
+        let flesh = eg::hash! {flesh: 1, flesh_fields: {"ac": ["usr"]}};
 
         let mut card = match self.editor().search_with_ops("ac", query, flesh)?.pop() {
             Some(c) => c,
@@ -952,7 +952,7 @@ impl<'a> Circulator<'a> {
             None => return Ok(false),
         };
 
-        let flesh = json::object! {flesh: 1, flesh_fields: {au: ["card"]}};
+        let flesh = eg::hash! {flesh: 1, flesh_fields: {au: ["card"]}};
 
         let patron = self
             .editor()
@@ -1002,14 +1002,14 @@ impl<'a> Circulator<'a> {
     /// Update our copy with the values provided.
     ///
     /// * `changes` - a JSON Object with key/value copy attributes to update.
-    pub fn update_copy(&mut self, mut changes: JsonValue) -> EgResult<&JsonValue> {
+    pub fn update_copy(&mut self, mut changes: EgValue) -> EgResult<&EgValue> {
         let mut copy = match self.copy.take() {
             Some(c) => c,
             None => Err(format!("We have no copy to update"))?,
         };
 
-        copy["editor"] = json::from(self.requestor_id());
-        copy["edit_date"] = json::from("now");
+        copy["editor"] = EgValue::from(self.requestor_id());
+        copy["edit_date"] = EgValue::from("now");
 
         for (k, v) in changes.entries_mut() {
             copy[k] = v.take();
@@ -1027,7 +1027,7 @@ impl<'a> Circulator<'a> {
 
     /// Set a free-text option value to true.
     pub fn set_option_true(&mut self, name: &str) {
-        self.options.insert(name.to_string(), json::from(true));
+        self.options.insert(name.to_string(), EgValue::from(true));
     }
 
     /// Delete an option key and value from our options hash.
@@ -1249,7 +1249,7 @@ impl<'a> Circulator<'a> {
         if let Some(c) = self.copy.as_ref() {
             if json_bool(&c["deleted"]) {
                 self.options
-                    .insert(String::from("capture"), json::from("nocapture"));
+                    .insert(String::from("capture"), EgValue::from("nocapture"));
             }
         }
     }

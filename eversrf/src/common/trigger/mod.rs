@@ -1,11 +1,12 @@
 //! Action/Trigger main entry point.
-use crate::common::org;
-use crate::date;
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util;
+use crate as eg;
+use eg::common::org;
+use eg::date;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
+use eg::util;
 use chrono::Duration;
-use json::JsonValue;
 
 pub mod event;
 pub use event::{Event, EventState};
@@ -18,10 +19,10 @@ mod validator;
 pub fn create_events_for_object(
     editor: &mut Editor,
     hook: &str,
-    target: &JsonValue,
+    target: &EgValue,
     org_id: i64,
     granularity: Option<&str>,
-    user_data: Option<&JsonValue>,
+    user_data: Option<&EgValue>,
     ignore_opt_in: bool,
 ) -> EgResult<()> {
     let hook_obj = match editor.retrieve("ath", hook)? {
@@ -32,7 +33,8 @@ pub fn create_events_for_object(
         }
     };
 
-    let class = editor.idl().get_classname(target)?;
+    let class = target.classname()
+        .ok_or_else(|| format!("Invalid target: {target}"))?;
 
     if hook_obj["core_type"].as_str().unwrap() != class {
         // "key" is required.
@@ -40,7 +42,7 @@ pub fn create_events_for_object(
         return Ok(());
     }
 
-    let query = json::object! {
+    let query = eg::hash! {
         "hook": hook,
         "active": "t",
         "owner": org::ancestors(editor, org_id)?,
@@ -67,12 +69,12 @@ pub fn create_events_for_object(
 /// Assumes that the target is appropriate for the event def.
 pub fn create_event_for_object_and_def(
     editor: &mut Editor,
-    event_def: &JsonValue,
-    target: &JsonValue,
+    event_def: &EgValue,
+    target: &EgValue,
     granularity: Option<&str>,
-    user_data: Option<&JsonValue>,
+    user_data: Option<&EgValue>,
     ignore_opt_in: bool,
-) -> EgResult<Option<JsonValue>> {
+) -> EgResult<Option<EgValue>> {
     if let Some(gran) = granularity {
         // If a granularity is provided by the caller, the def
         // must a) have one and b) have one that matches.
@@ -94,19 +96,21 @@ pub fn create_event_for_object_and_def(
         None => return Ok(None),
     };
 
-    let pkey = editor.idl().get_pkey_value(target)?;
+    let pkey = target.pkey_value()
+        .ok_or_else(|| format!("Pkey value required"))?;
 
-    let mut event = json::object! {
-        "target": pkey,
+    let mut event = eg::hash! {
         "event_def": event_def["id"].clone(),
         "run_time": runtime,
     };
 
+    event["target"] = pkey.clone();
+
     if let Some(udata) = user_data {
-        event["user_data"] = json::from(udata.dump());
+        event["user_data"] = EgValue::from(udata.dump());
     }
 
-    let event = editor.idl().create_from("atev", event)?;
+    event.bless("atev")?;
 
     Ok(Some(editor.create(event)?))
 }
@@ -114,13 +118,13 @@ pub fn create_event_for_object_and_def(
 // Non-doc test required since this is a private function.
 #[test]
 fn test_calc_runtime() {
-    let event_def = json::object! {
+    let event_def = eg::hash! {
       "passive": "t",
       "delay_field": "due_date",
       "delay": "1 day 1 hour 5 minutes 1 second",
     };
 
-    let target = json::object! {
+    let target = eg::hash! {
       "due_date": "2023-08-18T23:59:59-0400"
     };
 
@@ -131,7 +135,7 @@ fn test_calc_runtime() {
 /// Determine the run_time value for an event.
 ///
 /// Returns the value as an ISO string.
-fn calc_runtime(event_def: &JsonValue, target: &JsonValue) -> EgResult<Option<String>> {
+fn calc_runtime(event_def: &EgValue, target: &EgValue) -> EgResult<Option<String>> {
     if !util::json_bool(&event_def["passive"]) {
         // Active events always run now.
         return Ok(Some(date::to_iso(&date::now_local())));
@@ -153,8 +157,7 @@ fn calc_runtime(event_def: &JsonValue, target: &JsonValue) -> EgResult<Option<St
     };
 
     let runtime = date::parse_datetime(&delay_start)?;
-    let seconds = date::interval_to_seconds(&delay_intvl)?;
-    let runtime = runtime + Duration::seconds(seconds);
+    let runtime = date::add_duration(runtime, &delay_intvl)?;
 
     Ok(Some(date::to_iso(&runtime)))
 }
@@ -164,8 +167,8 @@ fn calc_runtime(event_def: &JsonValue, target: &JsonValue) -> EgResult<Option<St
 /// target has the needed opt-in user setting.
 fn user_is_opted_in(
     editor: &mut Editor,
-    event_def: &JsonValue,
-    target: &JsonValue,
+    event_def: &EgValue,
+    target: &EgValue,
 ) -> EgResult<bool> {
     let opt_in = match event_def["opt_in_setting"].as_str() {
         Some(o) => o,
@@ -186,7 +189,7 @@ fn user_is_opted_in(
         util::json_int(&target[usr_field])?
     };
 
-    let query = json::object! {
+    let query = eg::hash! {
         "usr": user_id,
         "name": opt_in,
         "value": "true",
@@ -203,9 +206,9 @@ pub fn create_passive_events_for_def(
     editor: &mut Editor,
     event_def_id: i64,
     location_field: &str,
-    mut filter_op: Option<JsonValue>,
+    mut filter_op: Option<EgValue>,
 ) -> EgResult<Option<Vec<i64>>> {
-    let flesh = json::object! {
+    let flesh = eg::hash! {
         "flesh": 1,
         "flesh_fields": {
             "atevdef": ["hook"]
@@ -218,11 +221,11 @@ pub fn create_passive_events_for_def(
 
     let mut filters = match filter_op.take() {
         Some(f) => f,
-        None => json::object! {},
+        None => eg::hash! {},
     };
 
     // Limit to targets within range of our event def.
-    filters[location_field] = json::object! {
+    filters[location_field] = eg::hash! {
         "in": {
             "select": {
                 "aou": [{
@@ -239,23 +242,21 @@ pub fn create_passive_events_for_def(
     // Determine the date range of the items we want to target.
 
     let def_delay = event_def["delay"].as_str().unwrap(); // required
-    let delay_secs = date::interval_to_seconds(def_delay)?;
-    let delay_dt = date::now() - Duration::seconds(delay_secs);
+    let delay_dt = date::add_interval(date::now(), def_delay)?;
 
     let delay_filter;
     if let Some(max_delay) = event_def["max_delay"].as_str() {
-        let max_secs = date::interval_to_seconds(max_delay)?;
-        let max_delay_dt = date::now() - Duration::seconds(max_secs);
+        let max_delay_dt = date::add_interval(date::now(), max_delay)?;
 
         if max_delay_dt < delay_dt {
-            delay_filter = json::object! {
+            delay_filter = eg::hash! {
                 "between": [
                     date::to_iso(&max_delay_dt),
                     date::to_iso(&delay_dt),
                 ]
             };
         } else {
-            delay_filter = json::object! {
+            delay_filter = eg::hash! {
                 "between": [
                     date::to_iso(&delay_dt),
                     date::to_iso(&max_delay_dt),
@@ -263,7 +264,7 @@ pub fn create_passive_events_for_def(
             };
         }
     } else {
-        delay_filter = json::object! {"<=": date::to_iso(&delay_dt)};
+        delay_filter = eg::hash! {"<=": date::to_iso(&delay_dt)};
     }
 
     let delay_field = event_def["delay_field"]
@@ -286,7 +287,7 @@ pub fn create_passive_events_for_def(
         .pkey()
         .ok_or_else(|| format!("IDL class {core_type} has no primary key"))?;
 
-    let mut join = json::object! {
+    let mut join = eg::hash! {
         "join": {
             "atev": {
                 "field": "target",
@@ -299,10 +300,9 @@ pub fn create_passive_events_for_def(
 
     // Some event types are repeatable depending on a repeat delay.
     if let Some(rpt_delay) = event_def["repeat_delay"].as_str() {
-        let delay_secs = date::interval_to_seconds(rpt_delay)?;
-        let delay_dt = date::now() - Duration::seconds(delay_secs);
+        let delay_dt = date::add_interval(date::now(), rpt_delay)?;
 
-        join["join"]["atev"]["filter"] = json::object! {
+        join["join"]["atev"]["filter"] = eg::hash! {
             "start_time": {">": date::to_iso(&delay_dt)}
         }
     }
@@ -311,10 +311,10 @@ pub fn create_passive_events_for_def(
     if let Some(usr_field) = event_def["usr_field"].as_str() {
         if let Some(setting) = event_def["opt_in_setting"].as_str() {
             // {"+circ": "usr"}
-            let mut user_matches = json::object! {};
-            user_matches[format!("+{core_type}")] = json::from(usr_field);
+            let mut user_matches = eg::hash! {};
+            user_matches[&format!("+{core_type}")] = EgValue::from(usr_field);
 
-            let opt_filter = json::object! {
+            let opt_filter = eg::hash! {
                 "-exists": {
                     "from": "aus",
                     "where": {
@@ -328,7 +328,7 @@ pub fn create_passive_events_for_def(
             if filters["-and"].is_array() {
                 filters["-and"].push(opt_filter).expect("Is Array");
             } else {
-                filters["-and"] = json::array![opt_filter];
+                filters["-and"] = eg::array![opt_filter];
             }
         }
     }
@@ -356,13 +356,13 @@ pub fn create_passive_events_for_def(
     for target in targets {
         let id = util::json_string(&target[pkey_field])?;
 
-        let event = json::object! {
+        let mut event = eg::hash! {
             "target": id,
             "event_def": event_def_id,
             "run_time": "now",
         };
 
-        let event = editor.idl().create_from("atev", event)?;
+        event.bless("atev")?;
 
         let event = editor.create(event)?;
 
