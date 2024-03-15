@@ -164,6 +164,61 @@ impl EgValue {
         Ok(())
     }
 
+    // TODO make this a method
+
+    /// Create an EgValue from a JsonValue which may have IDL class names
+    /// encoded in the HASH_CLASSNAME_KEY of a hash.
+    pub fn from_classed_hash(mut v: JsonValue) -> EgResult<EgValue> {
+        if v.is_number() || v.is_null() || v.is_boolean() || v.is_string() {
+            return Ok(EgValue::from_json_value_plain(v));
+        }
+
+        if let JsonValue::Array(mut list) = v {
+            let mut val_list = Vec::new();
+            for v in list.drain(..) {
+                val_list.push(EgValue::from_json_value(v)?);
+            }
+            return Ok(EgValue::Array(val_list));
+        }
+
+        // JSON object
+        let mut map = HashMap::new();
+        let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
+
+        let classname = match v[HASH_CLASSNAME_KEY].as_str() {
+            Some(c) => c,
+            None => {
+                // Vanilla JSON object
+                while let Some(k) = keys.pop() {
+                    let val = EgValue::from_json_value(v.remove(&k))?;
+                    map.insert(k, val);
+                }
+                return Ok(EgValue::Hash(map));
+            }
+        };
+
+        let idl_class = idl::get_class(&classname)
+            .ok_or_else(|| format!("Not and IDL class: '{classname}'"))?;
+
+        let mut map = HashMap::new();
+        while let Some(k) = keys.pop() {
+            let val = EgValue::from_json_value(v.remove(&k))?;
+            if !idl_class.fields().contains_key(&k) {
+                return Err(
+                    format!("Class '{}' has no field named '{k}'", idl_class.classname()).into(),
+                );
+            }
+            if !val.is_null() {
+                map.insert(k, val);
+            }
+        }
+
+        Ok(EgValue::Blessed(BlessedValue {
+            idl_class: idl_class.clone(),
+            values: map,
+        }))
+    }
+
     /// Remove NULL values from EgValue::Hash's contained within
     /// EgValue::Hash's or EgValue::Array's
     ///
@@ -276,6 +331,10 @@ impl EgValue {
 
     pub fn dump(&self) -> String {
         self.clone().into_json_value().dump()
+    }
+
+    pub fn pretty(&self, indent: u16) -> String {
+        self.clone().into_json_value().pretty(indent)
     }
 
     pub fn push(&mut self, v: impl Into<EgValue>) -> EgResult<()> {
@@ -987,6 +1046,12 @@ impl From<Vec<i64>> for EgValue {
 impl From<Vec<String>> for EgValue {
     fn from(mut v: Vec<String>) -> EgValue {
         EgValue::Array(v.drain(..).map(|s| EgValue::from(s)).collect())
+    }
+}
+
+impl From<u16> for EgValue {
+    fn from(v: u16) -> EgValue {
+        EgValue::Number(v.into())
     }
 }
 
