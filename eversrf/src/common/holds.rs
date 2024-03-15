@@ -10,9 +10,6 @@ use eg::Editor;
 use eg::EgValue;
 use eg::EgError;
 use eg::EgResult;
-use chrono::Duration;
-use json::EgValue;
-use std::convert::TryFrom;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -119,15 +116,13 @@ pub fn calc_hold_shelf_expire_time(
         None => return Ok(None), // hold never expire on-shelf.
     };
 
-    let interval = date::interval_to_seconds(interval)?;
-
     let start_time = if let Some(st) = start_time {
         date::parse_datetime(&st)?
     } else {
         date::now_local()
     };
 
-    let mut start_time = start_time + Duration::seconds(interval);
+    let mut start_time = date::add_interval(start_time, interval)?;
     let org_info = org::next_open_date(editor, pickup_lib, &start_time)?;
 
     if let org::OrgOpenState::OpensOnDate(open_on) = org_info {
@@ -194,14 +189,14 @@ pub fn find_nearest_permitted_hold(
         EgValue::from(hold_stall_intvl.clone()),
     ];
 
-    // best_holds is a JSON array of JSON hold IDs.
+    // best_holds is an array of hold IDs.
     let best_hold_results = editor.client_mut().send_recv_one(
         "open-ils.storage",
         "open-ils.storage.action.hold_request.nearest_hold.atomic",
         params,
     )?;
 
-    // Map the JSON hold IDs to numbers.
+    // Map the hold IDs to numbers.
     let mut best_holds: Vec<i64> = Vec::new();
     if let Some(bhr) = best_hold_results {
         for h in bhr.members() {
@@ -705,9 +700,9 @@ pub fn related_to_copy(
         let hold_type = HoldType::try_from(val["hold_type"].as_str().unwrap()).unwrap();
 
         let h = MinimalHold {
-            id: json_int(&val["id"])?,
-            target: json_int(&val["target"])?,
-            pickup_lib: json_int(&val["pickup_lib"])?,
+            id: val.id_required(),
+            target: val["target"].int_required(),
+            pickup_lib: val["pickup_lib"].int_required(),
             hold_type,
             active: true,
         };

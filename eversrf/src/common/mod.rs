@@ -1,7 +1,7 @@
 //! Shared, common utility functions
 
 pub mod bib;
-//pub mod holds;
+pub mod holds;
 pub mod org;
 pub mod settings;
 pub mod targeter;

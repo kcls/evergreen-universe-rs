@@ -1,5 +1,5 @@
 use crate::result::EgResult;
-use chrono::{DateTime, Datelike, FixedOffset, Local, NaiveDate, TimeZone};
+use chrono::{DateTime, Datelike, FixedOffset, Local, NaiveDate, TimeZone, Duration};
 use chrono_tz::Tz;
 use regex::{Captures, Regex};
 
@@ -251,4 +251,20 @@ pub fn set_hms(date: &EgDate, hours: u32, minutes: u32, seconds: u32) -> EgResul
     };
 
     Ok(new_date)
+}
+
+pub fn add_interval(date: EgDate, interval: &str) -> EgResult<EgDate> {
+    let seconds = interval_to_seconds(interval)?;
+    let duration = Duration::try_seconds(seconds)
+        .ok_or_else(|| format!("Invalid duration seconds: {seconds}"))?;
+
+    Ok(date + duration)
+}
+
+pub fn subtract_interval(date: EgDate, interval: &str) -> EgResult<EgDate> {
+    let seconds = interval_to_seconds(interval)?;
+    let duration = Duration::try_seconds(seconds)
+        .ok_or_else(|| format!("Invalid duration seconds: {seconds}"))?;
+
+    Ok(date - duration)
 }

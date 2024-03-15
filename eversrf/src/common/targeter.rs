@@ -5,7 +5,6 @@ use eg::common::settings::Settings;
 use eg::common::trigger;
 use eg::constants as C;
 use eg::date;
-use chrono::Duration;
 use rand;
 use rand::seq::SliceRandom;
 use std::collections::{HashMap, HashSet};
@@ -255,17 +254,16 @@ impl<'a> HoldTargeter<'a> {
 
         log::info!("{self} using retarget interval: {retarget_intvl}");
 
-        let retarget_secs = date::interval_to_seconds(retarget_intvl)?;
-
-        let rt = date::to_iso(&(date::now() - Duration::seconds(retarget_secs)));
+        let retarget_date = date::subtract_interval(date::now(), retarget_intvl)?;
+        let rt = date::to_iso(&retarget_date);
 
         log::info!("{self} using retarget time: {rt}");
 
         self.retarget_time = Some(rt);
 
         if let Some(sri) = self.soft_retarget_interval.as_ref() {
-            let secs = date::interval_to_seconds(sri)?;
-            let srt = date::to_iso(&(date::now() - Duration::seconds(secs)));
+            let rt_date = date::subtract_interval(date::now(), sri)?;
+            let srt = date::to_iso(&rt_date);
 
             log::info!("{self} using soft retarget time: {srt}");
 
@@ -276,12 +274,11 @@ impl<'a> HoldTargeter<'a> {
         // won't be retargeted until the next check date.  If a
         // next_check_interval is provided it overrides the
         // retarget_interval.
-        let next_check_secs = match self.next_check_interval.as_ref() {
-            Some(intvl) => date::interval_to_seconds(intvl)?,
-            None => retarget_secs,
-        };
+        let next_check_intvl = self.next_check_interval
+            .map(|i| i.as_str())
+            .unwrap_or(retarget_intvl);
 
-        let next_check_date = date::now() + Duration::seconds(next_check_secs);
+        let next_check_date = date::add_interval(date::now(), next_check_intvl)?;
         let next_check_time = date::to_iso(&next_check_date);
 
         log::info!("{self} next check time {next_check_time}");
@@ -839,9 +836,6 @@ impl<'a> HoldTargeter<'a> {
             Err(_) => return Ok(()), // null / not set
         };
 
-        let thresh_intvl_secs = date::interval_to_seconds(&recall_threshold)?;
-        let return_intvl_secs = date::interval_to_seconds(&return_interval)?;
-
         let copy_ids = context
             .recall_copies
             .iter()
@@ -876,8 +870,9 @@ impl<'a> HoldTargeter<'a> {
 
         let old_due_date = date::parse_datetime(circ["due_date"].as_str().unwrap())?;
         let xact_start_date = date::parse_datetime(circ["xact_start"].as_str().unwrap())?;
-        let thresh_date = xact_start_date + Duration::seconds(thresh_intvl_secs);
-        let mut return_date = date::now() + Duration::seconds(return_intvl_secs);
+
+        let thresh_date = date::add_interval(xact_start_date, &recall_threshold)?;
+        let mut return_date = date::add_interval(date::now(), &return_interval)?;
 
         // Give the user a new due date of either a full recall threshold,
         // or the return interval, whichever is further in the future.
@@ -1256,8 +1251,7 @@ impl<'a> HoldTargeter<'a> {
         let req_time = context.hold["request_time"].as_str().unwrap();
         let req_time = date::parse_datetime(&req_time)?;
 
-        let hard_stall_secs = date::interval_to_seconds(interval)?;
-        let hard_stall_time = req_time.clone() + Duration::seconds(hard_stall_secs);
+        let hard_stall_time = date::add_interval(req_time, interval)?;
 
         log::info!("{self} hard stall deadline is/was {hard_stall_time}");
 
