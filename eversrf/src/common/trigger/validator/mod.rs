@@ -4,9 +4,7 @@ use eg::common::holdings;
 use eg::common::trigger::{Event, EventState, Processor};
 use eg::constants as C;
 use eg::date;
-use eg::util;
 use eg::EgResult;
-use eg::EgValue;
 
 /// Add validation routines to the Processor.
 impl Processor<'_> {
@@ -151,11 +149,9 @@ impl Processor<'_> {
             },
         };
 
-        let pickup_lib = match hold["pickup_lib"].as_i64() {
-            Some(id) => id,
-            // pickup_lib is a required numeric value.
-            None => util::json_int(&hold["pickup_lib"]["id"])?,
-        };
+        let pickup_lib = hold["pickup_lib"]
+            .as_int()
+            .unwrap_or(hold["pickup_lib"].id_required());
 
         if shelf_lib != pickup_lib {
             return Ok(false);
@@ -192,19 +188,19 @@ impl Processor<'_> {
         let hold = event.target();
 
         if self.param_value_as_bool("check_email_notify") {
-            if !util::json_bool(&hold["email_notify"]) {
+            if !hold["email_notify"].as_boolish() {
                 return Ok(false);
             }
         }
 
         if self.param_value_as_bool("check_sms_notify") {
-            if !util::json_bool(&hold["sms_notify"]) {
+            if !hold["sms_notify"].as_boolish() {
                 return Ok(false);
             }
         }
 
         if self.param_value_as_bool("check_phone_notify") {
-            if !util::json_bool(&hold["phone_notify"]) {
+            if !hold["phone_notify"].as_boolish() {
                 return Ok(false);
             }
         }
@@ -220,7 +216,7 @@ impl Processor<'_> {
     }
 
     fn patron_is_barred(&mut self, event: &Event) -> EgResult<bool> {
-        Ok(util::json_bool(&event.target()["barred"]))
+        Ok(event.target()["barred"].as_boolish())
     }
 
     // Perl has CircIsAutoRenewable but it oddly creates the same

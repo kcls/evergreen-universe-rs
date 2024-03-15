@@ -1,6 +1,5 @@
 use eg::date;
 use eg::db::DatabaseConnection;
-use eg::EgValue;
 use eversrf as eg;
 use getopts;
 use marc::Record;

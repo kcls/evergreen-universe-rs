@@ -65,7 +65,6 @@ struct ParsedHttpRequest {
 struct GatewayHandler {
     bus: Option<eg::bus::Bus>,
     osrf_conf: Arc<eg::conf::Config>,
-    idl: Arc<idl::Parser>,
     partial_buffer: Option<String>,
 }
 
@@ -572,7 +571,6 @@ impl mptc::RequestStream for GatewayStream {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = GatewayHandler {
             bus: None,
-            idl: self.eg_ctx.idl().clone(),
             osrf_conf: self.eg_ctx.config().clone(),
             partial_buffer: None,
         };

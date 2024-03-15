@@ -15,7 +15,6 @@ use eg::db;
 use eg::db::DatabaseConnection;
 use eg::editor;
 use eg::event;
-use eg::idl;
 use eg::idldb;
 use eg::init;
 

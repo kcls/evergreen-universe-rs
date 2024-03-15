@@ -109,7 +109,7 @@ fn main() -> EgResult<()> {
         }
     }
 
-    let parallel = util::json_int(&target_options["parallel_count"]).unwrap_or(1);
+    let parallel = target_options["parallel_count"].as_int().unwrap_or(1);
 
     let mut sleep = 0;
     if let Some(v) = params.opt_str("parallel-init-sleep") {

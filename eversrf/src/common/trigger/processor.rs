@@ -2,7 +2,6 @@
 /// given event definition.
 use crate as eg;
 use eg::common::trigger::{Event, EventState};
-use eg::util;
 use eg::util::thread_id;
 use eg::Editor;
 use eg::EgResult;
@@ -58,7 +57,7 @@ impl<'a> Processor<'a> {
             .retrieve("atev", event_id)?
             .ok_or_else(|| editor.die_event())?;
 
-        let mut proc = Processor::new(editor, util::json_int(&jevent["event_def"])?)?;
+        let mut proc = Processor::new(editor, jevent["event_def"].int_required())?;
 
         let mut event = Event::from_source(jevent)?;
 
@@ -221,7 +220,7 @@ impl<'a> Processor<'a> {
     /// false otherwise.
     pub fn param_value_as_bool(&mut self, param_name: &str) -> bool {
         if let Some(pval) = self.param_value(param_name) {
-            util::json_bool(&pval["value"])
+            pval["value"].as_boolish()
         } else {
             false
         }
@@ -254,13 +253,13 @@ impl<'a> Processor<'a> {
             .ok_or_else(|| format!("Our event disappeared from the DB?"))?;
 
         if let Some(err) = error_text {
-            let output = eg::hash! {
+            let mut output = eg::hash! {
                 "data": err,
                 "is_error": true,
                 // TODO locale
             };
+            output.bless("ateo")?;
 
-            let output = self.editor.idl().create_from("ateo", output)?;
             let mut result = self.editor.create(output)?;
 
             atev["error_output"] = result["id"].take();
@@ -333,18 +332,18 @@ impl<'a> Processor<'a> {
             obj = &obj[part];
         }
 
-        let pkey_value;
-        if self.editor.idl().is_idl_object(obj) {
+        let obj_clone;
+        if let Some(pkey) = obj.pkey_value() {
             // The object may have been fleshed beyond where we
             // need it during target collection. If so, extract
             // the pkey value from the fleshed object.
-
-            pkey_value = self.editor.idl().get_pkey_value(obj)?;
-            obj = &pkey_value;
+            obj_clone = pkey.clone();
+        } else {
+            obj_clone = obj.clone();
         }
 
         if obj.is_string() || obj.is_number() {
-            event.set_group_value(obj.clone());
+            event.set_group_value(obj_clone);
             Ok(())
         } else {
             Err(format!("Invalid group field path: {gfield_path}").into())

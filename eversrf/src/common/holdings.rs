@@ -1,5 +1,4 @@
 use crate as eg;
-use eg::util;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
@@ -12,16 +11,24 @@ pub fn copy_status(
     copy: Option<&EgValue>,
 ) -> EgResult<i64> {
     if let Some(copy) = copy {
-        if copy["status"].is_object() {
-            util::json_int(&copy["status"]["id"])
+        if let Some(id) = copy["status"].id() {
+            Ok(id)
         } else {
-            util::json_int(&copy["status"])
+            let stat = copy["status"]
+                .as_int()
+                .ok_or_else(|| format!("Cannot get stopy status ID"))?;
+            Ok(stat)
         }
     } else if let Some(id) = copy_id {
         let copy = editor
             .retrieve("acp", id)?
             .ok_or_else(|| editor.die_event())?;
-        util::json_int(&copy["status"])
+
+        let stat = copy["status"]
+            .as_int()
+            .ok_or_else(|| format!("Cannot get stopy status ID"))?;
+
+        Ok(stat)
     } else {
         Err(format!("copy_status() requires a useful parameter").into())
     }

@@ -1,5 +1,4 @@
 use eg::db::DatabaseConnection;
-use eg::EgValue;
 use eversrf as eg;
 use getopts::Options;
 use log::{debug, error, info};

@@ -1,6 +1,5 @@
 use crate as eg;
 use eg::result::{EgError, EgResult};
-use eg::util;
 use eg::EgValue;
 use std::fmt;
 
@@ -79,8 +78,8 @@ impl Event {
         // required field w/ limited set of values
         let state: EventState = source["state"].as_str().unwrap().try_into()?;
 
-        let id = util::json_int(&source["id"])?;
-        let event_def = util::json_int(&source["event_def"])?;
+        let id = source.id_required();
+        let event_def = source["event_def"].int_required();
 
         let user_data = if let Some(data) = source["user_data"].as_str() {
             match EgValue::parse(data) {

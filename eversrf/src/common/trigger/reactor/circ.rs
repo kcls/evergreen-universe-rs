@@ -2,7 +2,6 @@
 use crate as eg;
 use eg::auth::{AuthInternalLoginArgs, AuthSession};
 use eg::common::{trigger, trigger::Event, trigger::Processor};
-use eg::util::json_int;
 use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
@@ -24,7 +23,7 @@ impl Processor<'_> {
                 .retrieve("au", patron_id)?
                 .ok_or_else(|| self.editor.die_event())?;
 
-            json_int(&patron["home_ou"])?
+            patron["home_ou"].int_required()
         };
 
         let mut auth_args = AuthInternalLoginArgs::new(patron_id, "opac");
@@ -91,21 +90,21 @@ impl Processor<'_> {
         let success = eg_evt.is_success();
         if success && new_circ.is_object() {
             new_due_date = new_circ["due_date"].as_str().unwrap(); // required
-            total_remaining = json_int(&new_circ["renewal_remaining"])?; // required
+            total_remaining = new_circ["renewal_remaining"].int_required();
 
             // nullable / maybe a string
-            auto_remaining = if let Ok(r) = json_int(&new_circ["auto_renewal_remaining"]) {
+            auto_remaining = if let Some(r) = new_circ["auto_renewal_remaining"].as_int() {
                 r
             } else {
                 0
             };
         } else {
             old_due_date = source_circ["due_date"].as_str().unwrap(); // required
-            total_remaining = json_int(&source_circ["renewal_remaining"])?;
+            total_remaining = source_circ["renewal_remaining"].int_required();
             fail_reason = eg_evt.desc().unwrap_or("");
 
             // nullable / maybe a string
-            auto_remaining = if let Ok(r) = json_int(&source_circ["auto_renewal_remaining"]) {
+            auto_remaining = if let Some(r) = source_circ["auto_renewal_remaining"].as_int() {
                 r
             } else {
                 0

@@ -2,7 +2,6 @@
 use crate as eg;
 use eg::common::org;
 use eg::date;
-use eg::util;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
