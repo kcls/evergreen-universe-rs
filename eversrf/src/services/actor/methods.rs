@@ -195,7 +195,7 @@ pub fn get_barcodes(
     // Incorrectly shaped parameters will result in an error
     // response to the caller.
     let authtoken = method.param(0).to_string_or_err()?;
-    let org_id = method.param(1).int_or_err()?;
+    let org_id = method.param(1).int()?;
     let context = method.param(2).to_string_or_err()?;
     let barcode = method.param(3).to_string_or_err()?;
 
@@ -226,12 +226,12 @@ pub fn get_barcodes(
         return session.respond(result);
     }
 
-    let requestor_id = editor.requestor_id_required();
+    let requestor_id = editor.requestor_id()?;
     let mut response: Vec<EgValue> = Vec::new();
 
     // "actor" barcodes require additional perm checks.
     for user_row in result {
-        let user_id = user_row.id_required();
+        let user_id = user_row.id()?;
 
         if user_id == requestor_id {
             // We're allowed to know about ourselves.
@@ -285,8 +285,8 @@ pub fn user_has_work_perm_at_batch(
 
     // user_id parameter is optional
     let user_id = match method.params().get(2) {
-        Some(id) => id.int_or_err()?,
-        None => editor.requestor_id_required(),
+        Some(id) => id.int()?,
+        None => editor.requestor_id()?,
     };
 
     let mut map: HashMap<String, Vec<i64>> = HashMap::new();
@@ -356,7 +356,7 @@ pub fn ou_setting_ancestor_default_batch(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let org_id = method.param(0).int_or_err()?;
+    let org_id = method.param(0).int()?;
 
     let setting_names: Vec<&str> = method
         .param(1)
@@ -383,7 +383,7 @@ pub fn ou_setting_ancestor_default_batch(
         if !editor.apply_authtoken(token)? {
             return session.respond(editor.event());
         }
-        settings.set_user_id(editor.requestor_id_required());
+        settings.set_user_id(editor.requestor_id()?);
     }
 
     // Pre-cache the settings en masse, then pull each from the settings
@@ -413,13 +413,13 @@ pub fn user_opac_vital_stats(
         return session.respond(editor.event());
     }
 
-    let user_id = method.param(1).as_i64().unwrap_or(editor.requestor_id_required());
+    let user_id = method.param(1).as_i64().unwrap_or(editor.requestor_id()?);
     let mut user = match editor.retrieve("au", user_id)? {
         Some(u) => u,
         None => return session.respond(editor.event()),
     };
 
-    if user_id != editor.requestor_id_required() {
+    if user_id != editor.requestor_id()? {
         let home_ou = user["home_ou"].int_required();
 
         // This list of perms seems like overkill for summary data, but
