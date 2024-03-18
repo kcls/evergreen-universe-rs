@@ -590,7 +590,7 @@ impl EgValue {
     }
 
     pub fn int_required(&self) -> i64 {
-        self.as_i64().expect("{self} must  be an integer")
+        self.as_i64().expect(&format!("Should be an integer: {}", self.dump()))
     }
 
     pub fn as_i64(&self) -> Option<i64> {
@@ -694,7 +694,7 @@ impl EgValue {
     }
 
     pub fn id_required(&self) -> i64 {
-        self.id().expect("{self} should have an id value")
+        self.id().expect(&format!("Should have an id value: {}", self.dump()))
     }
 
     /// Returns the idl::Field for the primary key if present.

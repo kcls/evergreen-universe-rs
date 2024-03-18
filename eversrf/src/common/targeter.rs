@@ -411,7 +411,7 @@ impl<'a> HoldTargeter<'a> {
 
         log::info!("{self} found {} holds to target", holds.len());
 
-        Ok(holds.iter().map(|h| h.id_required()).collect())
+        Ok(holds.iter().map(|h| h["id"].int_required()).collect())
     }
 
     pub fn commit(&mut self) -> EgResult<()> {
@@ -679,7 +679,7 @@ impl<'a> HoldTargeter<'a> {
             .map(|c| {
                 // While we're looping, see if we found the copy the
                 // caller was interested in.
-                let id = c.id_required();
+                let id = c["id"].int_required();
                 if id == context.find_copy {
                     found_copy = true;
                 }
