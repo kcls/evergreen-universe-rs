@@ -35,7 +35,7 @@ fn org_relations_query(
 
     let mut ids = Vec::new();
     for h in list {
-        ids.push(h.id_or_err()?);
+        ids.push(h.id()?);
     }
     Ok(ids)
 }

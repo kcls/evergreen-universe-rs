@@ -209,20 +209,11 @@ impl Editor {
     }
 
     /// ID of the requestor.
-    pub fn requestor_id(&self) -> Option<i64> {
+    pub fn requestor_id(&self) -> EgResult<i64> {
         if let Some(req) = self.requestor() {
             req.id()
         } else {
-            None
-        }
-    }
-
-    /// Panics if this editor has no requestor ID to return.
-    pub fn requestor_id_required(&self) -> i64 {
-        if let Some(req) = self.requestor() {
-            req.id_required()
-        } else {
-            panic!("Editor has no requestor ID");
+            Err(format!("Editor has no requestor").into())
         }
     }
 
@@ -251,11 +242,11 @@ impl Editor {
     /// Workstation ID of the requestor's workstation.
     ///
     /// Panics if requestor value is unset.
-    pub fn requestor_home_ou(&self) -> Option<i64> {
+    pub fn requestor_home_ou(&self) -> EgResult<i64> {
         if let Some(r) = self.requestor() {
-            r["home_ou"].as_int()
+            r["home_ou"].int()
         } else {
-            None
+            Err(format!("Editor has no requestor").into())
         }
     }
 
@@ -716,8 +707,8 @@ impl Editor {
 
     fn allowed_maybe_at(&mut self, perm: &str, org_id_op: Option<i64>) -> EgResult<bool> {
         let user_id = match self.requestor_id() {
-            Some(v) => v,
-            None => return Ok(false),
+            Ok(v) => v,
+            Err(_) => return Ok(false),
         };
 
         let org_id = match org_id_op {
@@ -739,7 +730,7 @@ impl Editor {
         };
 
         let resp = self.json_query(query)?;
-        let has_perm = resp[0]["has_perm"].as_boolish();
+        let has_perm = resp[0]["has_perm"].boolish();
 
         if !has_perm {
             let mut evt = EgEvent::new("PERM_FAILURE");

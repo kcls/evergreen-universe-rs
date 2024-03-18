@@ -70,7 +70,7 @@ pub fn verify_password(
     let verify = e.json_query(query)?;
 
     if let Some(resp) = verify.get(0) {
-        Ok(resp["actor.verify_passwd"].as_boolish())
+        Ok(resp["actor.verify_passwd"].boolish())
     } else {
         Err(format!("actor.verify_passwd failed to return a response").into())
     }

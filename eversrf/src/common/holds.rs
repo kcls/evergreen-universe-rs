@@ -376,7 +376,7 @@ pub fn test_copy_for_hold(
 
     if let Some(row) = db_results.first() {
         // If the first result is a success, we're done.
-        if row["success"].as_boolish() {
+        if row["success"].boolish() {
             let mut res = HoldPermitResult::new();
 
             res.matchpoint = row["matchpoint"].as_int(); // Option
@@ -544,7 +544,7 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
 
         if copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
             copy["status"] = EgValue::from(C::COPY_STATUS_RESHELVING);
-            copy["editor"] = EgValue::from(editor.requestor_id());
+            copy["editor"] = EgValue::from(editor.requestor_id()?);
             copy["edit_date"] = EgValue::from("now");
 
             editor.update(copy)?;

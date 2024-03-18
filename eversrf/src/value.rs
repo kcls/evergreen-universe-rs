@@ -566,6 +566,15 @@ impl EgValue {
         }
     }
 
+    /// Variant of as_str() that produces an error if this value
+    /// is not a string.
+    ///
+    /// NOTE if the value may exist a Number, consider .to_string() instead,
+    /// which will coerce numbers into strings.
+    pub fn str(&self) -> EgResult<&str> {
+        self.as_str().ok_or_else(|| format!("{self} is not a string").into())
+    }
+
     pub fn as_str(&self) -> Option<&str> {
         if let EgValue::String(s) = self {
             Some(s.as_str())
@@ -593,15 +602,15 @@ impl EgValue {
         self.as_i64()
     }
 
-    pub fn int_required(&self) -> i64 {
-        self.as_i64().expect(&format!("Should be an integer: {}", self.dump()))
-    }
-
     /// Variant of EgValue::id() that produces an Err if no numeric
     /// ID value is found.
-    pub fn int_or_err(&self) -> EgResult<i64> {
-        self.as_int()
-            .ok_or_else(|| format!("{self} is not an integer").into())
+    pub fn int(&self) -> EgResult<i64> {
+        self.as_int().ok_or_else(|| format!("{self} is not an integer").into())
+    }
+
+    //#[deprecated(note="use int()")]
+    pub fn int_required(&self) -> i64 {
+        self.int().expect("No int found")
     }
 
     pub fn as_i64(&self) -> Option<i64> {
@@ -657,10 +666,18 @@ impl EgValue {
         }
     }
 
+    /// Variant of EgValue::as_float() that produces an Err if no float
+    /// value is found.
+    pub fn float(&self) -> EgResult<f64> {
+        self.as_float().ok_or_else(|| format!("{self} is not a float").into())
+    }
+
+    /// Returns a float if we can be coerced into one.
     pub fn as_float(&self) -> Option<f64> {
         self.as_f64()
     }
 
+    /// Returns a bool if we are a boolean value.
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             EgValue::Boolean(b) => Some(*b),
@@ -674,7 +691,7 @@ impl EgValue {
     /// since that's how false values are conveyed by the DB layer.
     ///
     /// Non-scalara values are also false.
-    pub fn as_boolish(&self) -> bool {
+    pub fn boolish(&self) -> bool {
         match self {
             EgValue::Boolean(b) => *b,
             EgValue::Number(n) => *n != 0,
@@ -686,26 +703,25 @@ impl EgValue {
     /// Returns the numeric ID of this EgValue.
     ///
     /// Must be a Hash or Blessed with an "id" field and a numeric value.
-    pub fn id(&self) -> Option<i64> {
+    pub fn id(&self) -> EgResult<i64> {
         // If it's Blessed, verify "id" is a valid field so
         // the index lookup doesn't panic.
         if let EgValue::Blessed(ref o) = self {
-            if !o.idl_class().has_field("id") {
-                return None;
+            if o.idl_class().has_field("id") {
+                self["id"].as_i64()
+                    .ok_or_else(|| format!("{self} has no valid ID"))?;
             }
         }
-        self["id"].as_int()
+        self["id"].as_i64().ok_or_else(|| format!("{self} has no valid ID").into())
     }
 
-    /// Variant of EgValue::id() that produces an Err if no numeric
-    /// ID value is found.
-    pub fn id_or_err(&self) -> EgResult<i64> {
-        self.id()
-            .ok_or_else(|| format!("{self} has no id value").into())
-    }
-
+    /// Variant of self.id() which panics if no valid ID is found.
+    ///
+    /// Useful for iterator filters, etc. where you cannot "?" (try)
+    /// in the closuer.
+    //#[deprecated(note="use id()")]
     pub fn id_required(&self) -> i64 {
-        self.id().expect(&format!("Should have an id value: {}", self.dump()))
+        self.id().expect("ID Required")
     }
 
     /// Returns the idl::Field for the primary key if present.

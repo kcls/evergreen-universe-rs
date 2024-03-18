@@ -136,7 +136,7 @@ fn test_calc_runtime() {
 ///
 /// Returns the value as an ISO string.
 fn calc_runtime(event_def: &EgValue, target: &EgValue) -> EgResult<Option<String>> {
-    if !event_def["passive"].as_boolish() {
+    if !event_def["passive"].boolish() {
         // Active events always run now.
         return Ok(Some(date::to_iso(&date::now_local())));
     }

@@ -220,7 +220,7 @@ impl<'a> Processor<'a> {
     /// false otherwise.
     pub fn param_value_as_bool(&mut self, param_name: &str) -> bool {
         if let Some(pval) = self.param_value(param_name) {
-            pval["value"].as_boolish()
+            pval["value"].boolish()
         } else {
             false
         }

@@ -11,24 +11,18 @@ pub fn copy_status(
     copy: Option<&EgValue>,
 ) -> EgResult<i64> {
     if let Some(copy) = copy {
-        if let Some(id) = copy["status"].id() {
+        if let Ok(id) = copy["status"].id() {
             Ok(id)
         } else {
-            let stat = copy["status"]
-                .as_int()
-                .ok_or_else(|| format!("Cannot get stopy status ID"))?;
-            Ok(stat)
+            copy["status"].int()
         }
     } else if let Some(id) = copy_id {
         let copy = editor
             .retrieve("acp", id)?
             .ok_or_else(|| editor.die_event())?;
 
-        let stat = copy["status"]
-            .as_int()
-            .ok_or_else(|| format!("Cannot get stopy status ID"))?;
+        copy["status"].int()
 
-        Ok(stat)
     } else {
         Err(format!("copy_status() requires a useful parameter").into())
     }

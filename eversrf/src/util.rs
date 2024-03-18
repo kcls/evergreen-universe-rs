@@ -351,7 +351,7 @@ pub fn json_int(v: &EgValue) -> EgResult<i64> {
         .ok_or_else(|| format!("Cannot coerce to int: {}", v.dump()))?)
 }
 
-#[deprecated(note = "See EgValue::as_bool() / as_boolish()")]
+#[deprecated(note = "See EgValue::as_bool() / boolish()")]
 pub fn json_bool(v: &EgValue) -> bool {
-    v.as_boolish()
+    v.boolish()
 }

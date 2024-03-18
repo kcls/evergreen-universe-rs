@@ -460,7 +460,7 @@ impl<'a> HoldTargeter<'a> {
         if hold["capture_time"].is_null()
             && hold["cancel_time"].is_null()
             && hold["fulfillment_time"].is_null()
-            && !hold["frozen"].as_boolish()
+            && !hold["frozen"].boolish()
         {
             return true;
         }
@@ -580,7 +580,7 @@ impl<'a> HoldTargeter<'a> {
 
             query["where"]["+acp"]["holdable"] = EgValue::from("t");
 
-            if hold["mint_condition"].as_boolish() {
+            if hold["mint_condition"].boolish() {
                 query["where"]["+acp"]["mint_condition"] = EgValue::from("t");
             }
         }
@@ -970,7 +970,7 @@ impl<'a> HoldTargeter<'a> {
 
                 let value = self.settings.get_value_at_org(setting, copy.circ_lib)?;
 
-                if value.as_boolish() {
+                if value.boolish() {
                     log::info!("{self} skipping copy at closed org unit {}", copy.circ_lib);
                     continue;
                 }

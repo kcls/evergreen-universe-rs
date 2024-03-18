@@ -77,7 +77,7 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
             copy["status"] = EgValue::from(tc_status);
         }
 
-        copy["editor"] = EgValue::from(editor.requestor_id());
+        copy["editor"] = EgValue::from(editor.requestor_id()?);
         copy["edit_date"] = EgValue::from("now");
 
         editor.update(copy)?;

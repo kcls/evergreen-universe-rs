@@ -188,19 +188,19 @@ impl Processor<'_> {
         let hold = event.target();
 
         if self.param_value_as_bool("check_email_notify") {
-            if !hold["email_notify"].as_boolish() {
+            if !hold["email_notify"].boolish() {
                 return Ok(false);
             }
         }
 
         if self.param_value_as_bool("check_sms_notify") {
-            if !hold["sms_notify"].as_boolish() {
+            if !hold["sms_notify"].boolish() {
                 return Ok(false);
             }
         }
 
         if self.param_value_as_bool("check_phone_notify") {
-            if !hold["phone_notify"].as_boolish() {
+            if !hold["phone_notify"].boolish() {
                 return Ok(false);
             }
         }
@@ -216,7 +216,7 @@ impl Processor<'_> {
     }
 
     fn patron_is_barred(&mut self, event: &Event) -> EgResult<bool> {
-        Ok(event.target()["barred"].as_boolish())
+        Ok(event.target()["barred"].boolish())
     }
 
     // Perl has CircIsAutoRenewable but it oddly creates the same
