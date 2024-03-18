@@ -244,7 +244,7 @@ impl<'a> HoldTargeter<'a> {
             };
 
             if let Some(intvl) = self.editor().search("cgf", query)?.get(0) {
-                retarget_intvl_bind = intvl["value"].as_string();
+                retarget_intvl_bind = intvl["value"].to_string();
                 retarget_intvl_bind.as_ref().unwrap()
             } else {
                 // If all else fails, use a one day retarget interval.
@@ -824,7 +824,7 @@ impl<'a> HoldTargeter<'a> {
             .settings
             .get_value_at_org("circ.holds.recall_threshold", context.pickup_lib)?;
 
-        let recall_threshold = match recall_threshold.as_string() {
+        let recall_threshold = match recall_threshold.to_string() {
             Some(t) => t,
             None => return Ok(()),
         };
@@ -833,7 +833,7 @@ impl<'a> HoldTargeter<'a> {
             .settings
             .get_value_at_org("circ.holds.recall_return_interval", context.pickup_lib)?;
 
-        let return_interval = match return_interval.as_string() {
+        let return_interval = match return_interval.to_string() {
             Some(t) => t,
             None => return Ok(()),
         };

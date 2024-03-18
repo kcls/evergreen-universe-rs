@@ -970,7 +970,7 @@ impl Translator {
         // perspective.
         if obj.is_string() {
             let s = format!("{opstr}${param_index}");
-            param_list.push(obj.to_string());
+            param_list.push(obj.to_string().expect("Is String"));
             *param_index += 1;
             Ok(s)
         } else {

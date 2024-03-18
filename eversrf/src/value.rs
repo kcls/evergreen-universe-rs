@@ -577,7 +577,7 @@ impl EgValue {
     /// Translates String and Number values into allocated strings.
     ///
     /// Err of the value is neither a Number or String.
-    pub fn as_string(&self) -> Option<String> {
+    pub fn to_string(&self) -> Option<String> {
         match self {
             EgValue::String(s) => Some(s.to_string()),
             EgValue::Number(n) => Some(format!("{n}")),
@@ -674,16 +674,16 @@ impl EgValue {
 
     /// Returns the numeric ID of this EgValue.
     ///
-    /// Handy shortcut.
-    ///
-    /// Must be an IDL object with an "id" field and a numeric value.
+    /// Must be a Hash or Blessed with an "id" field and a numeric value.
     pub fn id(&self) -> Option<i64> {
+        // If it's Blessed, verify "id" is a valid field so
+        // the index lookup doesn't panic.
         if let EgValue::Blessed(ref o) = self {
-            if o.idl_class().has_field("id") {
-                return self["id"].as_int();
+            if !o.idl_class().has_field("id") {
+                return None;
             }
         }
-        None
+        self["id"].as_int()
     }
 
     /// Variant of EgValue::id() that produces an Err if no numeric
