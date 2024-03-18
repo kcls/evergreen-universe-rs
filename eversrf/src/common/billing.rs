@@ -512,13 +512,12 @@ pub fn xact_has_payment_within(
     }
 
     let payment = &last_payment[0];
-    let intvl_secs = date::interval_to_seconds(interval)?;
 
     // Every payment has a payment_ts value
     let payment_ts = &payment["payment_ts"].as_str().unwrap();
     let payment_dt = date::parse_datetime(payment_ts)?;
 
-    let window_start = date::now() - Duration::seconds(intvl_secs);
+    let window_start = date::subtract_interval(date::now(), interval)?;
 
     Ok(payment_dt > window_start)
 }
@@ -565,7 +564,7 @@ pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> EgResult<()
         circ["due_date"].as_str().unwrap(),
         circ["circ_lib"].int()?,
         circ["recurring_fine"].float()?,
-        circ["fine_interval"].as_str().unwrap(),
+        circ["fine_interval"].str()?,
         circ["max_fine"].float()?,
         circ["grace_period"].as_str(),
         BillableTransactionType::Circ,
@@ -585,11 +584,11 @@ pub fn generate_fines_for_xact(
 ) -> EgResult<()> {
     let mut settings = Settings::new(&editor);
 
-    let fine_interval = date::interval_to_seconds(fine_interval)?;
+    let fine_interval_secs = date::interval_to_seconds(fine_interval)?;
     let mut grace_period = date::interval_to_seconds(grace_period.unwrap_or("0s"))?;
     let now = date::now();
 
-    if fine_interval == 0 || recurring_fine * 100.0 == 0.0 || max_fine * 100.0 == 0.0 {
+    if fine_interval_secs == 0 || recurring_fine * 100.0 == 0.0 || max_fine * 100.0 == 0.0 {
         log::info!(
             "Fine generator skipping transaction {xact_id}
             due to 0 fine interval, 0 fine rate, or 0 max fine."
@@ -675,7 +674,7 @@ pub fn generate_fines_for_xact(
 
     // Generate fines for each past interval, including the one we are inside.
     let range = now.timestamp() - last_fine_dt.timestamp();
-    let pending_fine_count = (range as f64 / fine_interval as f64).ceil() as i64;
+    let pending_fine_count = (range as f64 / fine_interval_secs as f64).ceil() as i64;
 
     if pending_fine_count == 0 {
         // No fines to generate.
@@ -721,11 +720,14 @@ pub fn generate_fines_for_xact(
 
         let mut current_bill_count = slot;
         while current_bill_count > 0 {
-            period_end = period_end + Duration::seconds(fine_interval);
+            period_end = date::add_interval(period_end, fine_interval)?;
             current_bill_count -= 1;
         }
 
-        let period_start = period_end - Duration::seconds(fine_interval - 1);
+        let duration = Duration::try_seconds(fine_interval_secs - 1)
+            .ok_or_else(|| format!("Invalid interval {fine_interval}"))?;
+
+        let period_start = period_end - duration;
 
         if !skip_closed_check {
             let org_open_data = org::next_open_date(editor, circ_lib, &period_end)?;
@@ -804,17 +806,18 @@ pub fn extend_grace_period(
     if extend_into_closed {
         // Merge closed dates trailing the grace period into the grace period.
         // Note to self: why add exactly one day?
-        due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+        due_date = date::add_interval(due_date, "1 day")?;
     }
 
     let extend_all = settings.get_value_at_org("circ.grace.extend.all", context_org)?.boolish();
 
     if extend_all {
         // Start checking the day after the item was due.
-        due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+        due_date = date::add_interval(due_date, "1 day")?;
     } else {
         // Jump to the end of the grace period.
-        due_date = due_date + Duration::seconds(grace_period);
+        due_date = due_date + Duration::try_seconds(grace_period)
+            .ok_or_else(|| format!("Invalid duration seconds: {grace_period}"))?;
     }
 
     let org_open_data = org::next_open_date(editor, context_org, &due_date.into())?;
@@ -833,7 +836,7 @@ pub fn extend_grace_period(
     let mut new_grace_period = grace_period;
     while due_date.date_naive() < closed_until.date_naive() {
         new_grace_period += DAY_OF_SECONDS;
-        due_date = due_date + Duration::seconds(DAY_OF_SECONDS);
+        due_date = date::add_interval(due_date, "1 day")?;
     }
 
     Ok(new_grace_period)
@@ -915,7 +918,6 @@ fn calc_min_void_date(
     backdate: &str,
 ) -> EgResult<Option<date::EgDate>> {
     let fine_interval = circ["fine_interval"].str()?;
-    let fine_interval = date::interval_to_seconds(&fine_interval)?;
     let backdate = date::parse_datetime(backdate)?;
     let due_date = date::parse_datetime(circ["due_date"].str()?)?;
 
@@ -930,11 +932,14 @@ fn calc_min_void_date(
         None,
     )?;
 
-    if backdate < due_date + Duration::seconds(grace_period) {
+    let grace_duration = Duration::try_seconds(grace_period)
+        .ok_or_else(|| format!("Invalid duration seconds: {grace_period}"))?;
+
+    if backdate < due_date + grace_duration {
         log::info!("Backdate {backdate} is within grace period, voiding all");
         Ok(None)
     } else {
-        let backdate = backdate + Duration::seconds(fine_interval);
+        let backdate = date::add_interval(backdate, fine_interval)?;
         log::info!("Applying backdate {backdate} in overdue voiding");
         Ok(Some(backdate))
     }
