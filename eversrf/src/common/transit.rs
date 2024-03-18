@@ -21,7 +21,7 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
     let mut copy = transit["target_copy"].take();
     transit["target_copy"] = copy["id"].clone();
 
-    let tc_status = transit["copy_status"].int_required();
+    let tc_status = transit["copy_status"].int()?;
 
     let to_lost = tc_status == C::COPY_STATUS_LOST || tc_status == C::COPY_STATUS_LOST_AND_PAID;
 
@@ -36,8 +36,8 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
     }
 
     let here = editor.requestor_ws_ou().expect("Workstation Required");
-    let source = transit["source"].int_required();
-    let dest = transit["dest"].int_required();
+    let source = transit["source"].int()?;
+    let dest = transit["dest"].int()?;
 
     if source != here && dest != here {
         // Perl uses "here" as the permission org, but checking
@@ -50,13 +50,13 @@ pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: boo
     let mut reset_hold_id = None;
     if transit["hold_transit_copy"].is_object() && !skip_hold_reset {
         // capture this before the transit is consumed below.
-        reset_hold_id = Some(transit["hold_transit_copy"]["hold"].int_required());
+        reset_hold_id = Some(transit["hold_transit_copy"]["hold"].int()?);
     }
 
     transit["cancel_time"] = EgValue::from("now");
     editor.update(transit)?;
 
-    let copy_status = copy["status"].int_required();
+    let copy_status = copy["status"].int()?;
 
     // The status adopted by the copy in transit depends on
     // the intended destination status of the copy.

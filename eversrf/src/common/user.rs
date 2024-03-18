@@ -87,7 +87,7 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Ve
 
     let mut orgs: Vec<i64> = Vec::new();
     for value in values.iter() {
-        let org = value[dbfunc].int_required();
+        let org = value[dbfunc].int()?;
         orgs.push(org);
     }
 
@@ -98,7 +98,7 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Ve
 pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     match e.retrieve("ocirccount", user_id)? {
         Some(mut c) => {
-            c["total_out"] = EgValue::from(c["out"].int_required() + c["overdue"].int_required());
+            c["total_out"] = EgValue::from(c["out"].int()? + c["overdue"].int()?);
             c.unbless()?;
             Ok(c)
         }
@@ -151,8 +151,8 @@ pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     let mut ready = 0;
 
     for hold in holds.iter().filter(|h| !h["current_shelf_lib"].is_null()) {
-        let pickup_lib = hold["pickup_lib"].int_required();
-        let shelf_lib = hold["current_shelf_lib"].int_required();
+        let pickup_lib = hold["pickup_lib"].int()?;
+        let shelf_lib = hold["current_shelf_lib"].int()?;
 
         // A hold is ready for pickup if its current shelf location is
         // the pickup location.

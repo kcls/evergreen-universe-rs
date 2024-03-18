@@ -57,7 +57,7 @@ impl<'a> Processor<'a> {
             .retrieve("atev", event_id)?
             .ok_or_else(|| editor.die_event())?;
 
-        let mut proc = Processor::new(editor, jevent["event_def"].int_required())?;
+        let mut proc = Processor::new(editor, jevent["event_def"].int()?)?;
 
         let mut event = Event::from_source(jevent)?;
 

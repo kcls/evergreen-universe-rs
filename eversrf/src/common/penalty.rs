@@ -10,7 +10,7 @@ use eg::EgValue;
 // We coul compare EgValue's directly, but there's a chance a number may be
 // transferred as a JSON String, so turn them into numbers for conformity.
 fn number(v: &EgValue) -> i64 {
-    v.int_required()
+    v.int().expect("Has Number")
 }
 
 pub fn calculate_penalties(

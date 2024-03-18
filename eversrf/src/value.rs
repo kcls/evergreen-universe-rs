@@ -608,7 +608,8 @@ impl EgValue {
         self.as_int().ok_or_else(|| format!("{self} is not an integer").into())
     }
 
-    //#[deprecated(note="use int()")]
+    /// Useful for panicing if a value cannot be coerced into an int,
+    /// particularly within iterator filters, etc.
     pub fn int_required(&self) -> i64 {
         self.int().expect("No int found")
     }
@@ -719,7 +720,6 @@ impl EgValue {
     ///
     /// Useful for iterator filters, etc. where you cannot "?" (try)
     /// in the closuer.
-    //#[deprecated(note="use id()")]
     pub fn id_required(&self) -> i64 {
         self.id().expect("ID Required")
     }

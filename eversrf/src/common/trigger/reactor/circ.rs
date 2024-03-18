@@ -10,12 +10,12 @@ impl Processor<'_> {
     pub fn autorenew(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
         let usr = &events[0].target()["usr"];
         // "usr" is either the id itself or a user object with an ID.
-        let patron_id = usr.as_int().unwrap_or(usr.id_required());
+        let patron_id = usr.as_int().unwrap_or(usr.id()?);
 
         let home_ou = if usr.is_object() {
             usr["home_ou"]
                 .as_int()
-                .unwrap_or(usr["home_ou"].id_required())
+                .unwrap_or(usr["home_ou"].id()?)
         } else {
             // Fetch the patron so we can determine the home or unit
             let patron = self
@@ -23,7 +23,7 @@ impl Processor<'_> {
                 .retrieve("au", patron_id)?
                 .ok_or_else(|| self.editor.die_event())?;
 
-            patron["home_ou"].int_required()
+            patron["home_ou"].int()?
         };
 
         let mut auth_args = AuthInternalLoginArgs::new(patron_id, "opac");
@@ -41,7 +41,7 @@ impl Processor<'_> {
 
     fn renew_one_circ(&mut self, authtoken: &str, patron_id: i64, event: &Event) -> EgResult<()> {
         let tc = &event.target()["target_copy"];
-        let copy_id = tc.as_int().unwrap_or(tc.id_required());
+        let copy_id = tc.as_int().unwrap_or(tc.id()?);
 
         log::info!(
             "Auto-Renewing Circ id={} copy={copy_id}",
@@ -90,7 +90,7 @@ impl Processor<'_> {
         let success = eg_evt.is_success();
         if success && new_circ.is_object() {
             new_due_date = new_circ["due_date"].as_str().unwrap(); // required
-            total_remaining = new_circ["renewal_remaining"].int_required();
+            total_remaining = new_circ["renewal_remaining"].int()?;
 
             // nullable / maybe a string
             auto_remaining = if let Some(r) = new_circ["auto_renewal_remaining"].as_int() {
@@ -100,7 +100,7 @@ impl Processor<'_> {
             };
         } else {
             old_due_date = source_circ["due_date"].as_str().unwrap(); // required
-            total_remaining = source_circ["renewal_remaining"].int_required();
+            total_remaining = source_circ["renewal_remaining"].int()?;
             fail_reason = eg_evt.desc().unwrap_or("");
 
             // nullable / maybe a string
@@ -133,7 +133,7 @@ impl Processor<'_> {
         };
 
         let target = &event.target()["circ_lib"];
-        let circ_lib = target.as_int().unwrap_or(target.id_required());
+        let circ_lib = target.as_int().unwrap_or(target.id()?);
 
         // Create the event from the source circ instead of the new
         // circ, since the renewal may have failed.  Fire and do not

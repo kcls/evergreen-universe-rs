@@ -241,7 +241,7 @@ pub fn get_barcodes(
 
         // Do we have permission to view info about this user?
         let u = editor.retrieve("au", user_id)?.unwrap();
-        let home_ou = u["home_ou"].int_required();
+        let home_ou = u["home_ou"].int()?;
 
         if editor.allowed_at("VIEW_USER", home_ou)? {
             response.push(user_row);
@@ -420,7 +420,7 @@ pub fn user_opac_vital_stats(
     };
 
     if user_id != editor.requestor_id()? {
-        let home_ou = user["home_ou"].int_required();
+        let home_ou = user["home_ou"].int()?;
 
         // This list of perms seems like overkill for summary data, but
         // it matches the perm checks of the existing open-ils.actor APIs.
@@ -455,7 +455,7 @@ pub fn user_opac_vital_stats(
 
     let mut unread_count = 0;
     if let Some(unread) = editor.json_query(unread_query)?.get(0) {
-        unread_count = unread["count"].int_required();
+        unread_count = unread["count"].int()?;
     }
 
     let resp = eg::hash! {
@@ -482,7 +482,7 @@ pub fn update_penalties(
 ) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
     let authtoken = method.param(0).to_string_or_err()?;
-    let user_id =method.param(1).int_required();
+    let user_id =method.param(1).int()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -495,7 +495,7 @@ pub fn update_penalties(
         None => return session.respond(editor.event()),
     };
 
-    let mut context_org = user["home_ou"].int_required();
+    let mut context_org = user["home_ou"].int()?;
 
     if !editor.allowed_at("UPDATE_USER", context_org)? {
         return session.respond(editor.event());

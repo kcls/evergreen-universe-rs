@@ -180,7 +180,7 @@ fn user_is_opted_in(editor: &mut Editor, event_def: &EgValue, target: &EgValue) 
 
     let user_id = target[usr_field]
         .as_int()
-        .unwrap_or(target[usr_field].id_required());
+        .unwrap_or(target[usr_field].id()?);
 
     let query = eg::hash! {
         "usr": user_id,
@@ -359,7 +359,7 @@ pub fn create_passive_events_for_def(
 
         let event = editor.create(event)?;
 
-        result_ids.push(event.id_required());
+        result_ids.push(event.id()?);
     }
 
     log::info!("Done creating events for event_def {event_def_id}");

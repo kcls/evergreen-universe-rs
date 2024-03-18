@@ -81,7 +81,7 @@ pub struct HoldTargetContext {
 impl HoldTargetContext {
     fn new(hold_id: i64, hold: EgValue) -> HoldTargetContext {
         // Required, numeric value.
-        let pickup_lib = hold["pickup_lib"].int_required();
+        let pickup_lib = hold["pickup_lib"].int().expect("Hold Pickup Lib Required");
 
         HoldTargetContext {
             success: false,
@@ -300,14 +300,14 @@ impl<'a> HoldTargeter<'a> {
         let closed_orgs = self.editor().search("aoucd", query)?;
 
         for co in closed_orgs {
-            self.closed_orgs.push(co["org_unit"].int_required());
+            self.closed_orgs.push(co["org_unit"].int()?);
         }
 
         for stat in self
             .editor()
             .search("ccs", eg::hash! {"hopeless_prone":"t"})?
         {
-            self.hopeless_prone_statuses.push(stat["id"].int_required());
+            self.hopeless_prone_statuses.push(stat["id"].int()?);
         }
 
         Ok(())
@@ -514,9 +514,9 @@ impl<'a> HoldTargeter<'a> {
     fn get_hold_copies(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         let hold = &context.hold;
 
-        let hold_target = hold["target"].int_required();
+        let hold_target = hold["target"].int()?;
         let hold_type = hold["hold_type"].as_str().unwrap(); // required.
-        let org_unit = hold["selection_ou"].int_required();
+        let org_unit = hold["selection_ou"].int()?;
         let org_depth = hold["selection_depth"].as_int().unwrap_or(0); // not required
 
         let mut query = eg::hash! {
@@ -913,7 +913,7 @@ impl<'a> HoldTargeter<'a> {
             self.editor(),
             "circ.recall.target",
             &circ,
-            circ["circ_lib"].int_required(),
+            circ["circ_lib"].int()?,
             None,
             None,
             false,
@@ -992,11 +992,11 @@ impl<'a> HoldTargeter<'a> {
     ) -> EgResult<bool> {
         let result = holds::test_copy_for_hold(
             self.editor(),
-            context.hold["usr"].int_required(),
+            context.hold["usr"].int()?,
             copy_id,
             context.pickup_lib,
-            context.hold["request_lib"].int_required(),
-            context.hold["requestor"].int_required(),
+            context.hold["request_lib"].int()?,
+            context.hold["requestor"].int()?,
             true, // is_retarget
             None, // overrides
             true, // check_only
@@ -1094,7 +1094,7 @@ impl<'a> HoldTargeter<'a> {
                 .retrieve("acp", context.previous_copy_id)?
                 .ok_or(format!("Cannot find copy {}", context.previous_copy_id))?;
 
-            copy["circ_lib"].int_required()
+            copy["circ_lib"].int()?
         };
 
         let mut unful = eg::hash! {
@@ -1289,7 +1289,7 @@ impl<'a> HoldTargeter<'a> {
         // Highest per-lib target attempts
         let mut max_tried = 0;
         for lib in targeted_libs.iter() {
-            let count = lib["count"].int_required();
+            let count = lib["count"].int()?;
             if count > max_tried {
                 max_tried = count;
             }
@@ -1393,8 +1393,8 @@ impl<'a> HoldTargeter<'a> {
         let mut flat_map: HashMap<i64, i64> = HashMap::new();
 
         for map in copy_maps.iter() {
-            let copy_id = map["target_copy"].int_required();
-            let proximity = map["proximity"].int_required();
+            let copy_id = map["target_copy"].int()?;
+            let proximity = map["proximity"].int()?;
             flat_map.insert(copy_id, proximity);
         }
 
@@ -1421,7 +1421,7 @@ impl<'a> HoldTargeter<'a> {
             let weight = if weight.is_null() {
                 1
             } else {
-                weight.int_required()
+                weight.int()?
             };
 
             if let Some(list) = weighted.get_mut(&prox) {

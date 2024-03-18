@@ -105,7 +105,7 @@ pub fn calc_hold_shelf_expire_time(
     hold: &EgValue,
     start_time: Option<&str>,
 ) -> EgResult<Option<String>> {
-    let pickup_lib = hold["pickup_lib"].int_required();
+    let pickup_lib = hold["pickup_lib"].int()?;
 
     let mut settings = Settings::new(&editor);
     let interval =
@@ -200,13 +200,13 @@ pub fn find_nearest_permitted_hold(
     let mut best_holds: Vec<i64> = Vec::new();
     if let Some(bhr) = best_hold_results {
         for h in bhr.members() {
-            best_holds.push(h.int_required());
+            best_holds.push(h.int()?);
         }
     }
 
     // Holds that already target this copy are still in the game.
     for old_hold in old_holds.iter() {
-        let old_id = old_hold.id_required();
+        let old_id = old_hold.id()?;
         if !best_holds.contains(&old_id) {
             best_holds.push(old_id);
         }
@@ -235,11 +235,11 @@ pub fn find_nearest_permitted_hold(
 
         let result = test_copy_for_hold(
             editor,
-            hold["usr"].int_required(),
+            hold["usr"].int()?,
             copy_id,
-            hold["pickup_lib"].int_required(),
-            hold["request_lib"].int_required(),
-            hold["requestor"].int_required(),
+            hold["pickup_lib"].int()?,
+            hold["request_lib"].int()?,
+            hold["requestor"].int()?,
             true, // is_retarget
             None, // overrides
             true, // check_only
@@ -280,7 +280,7 @@ pub fn find_nearest_permitted_hold(
             if hold["id"] == targeted_hold["id"] {
                 continue;
             }
-            let hold_id = hold.id_required();
+            let hold_id = hold.id()?;
 
             hold["current_copy"].take();
             hold["prev_check_time"].take();
@@ -540,7 +540,7 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
             .retrieve("acp", hold["current_copy"].clone())?
             .ok_or_else(|| editor.die_event())?;
 
-        let copy_status = copy["status"].int_required();
+        let copy_status = copy["status"].int()?;
 
         if copy_status == C::COPY_STATUS_ON_HOLDS_SHELF {
             copy["status"] = EgValue::from(C::COPY_STATUS_RESHELVING);
@@ -555,7 +555,7 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
             };
 
             if let Some(ht) = editor.search("ahtc", query)?.pop() {
-                transit::cancel_transit(&mut editor, ht.id_required(), true)?;
+                transit::cancel_transit(&mut editor, ht.id()?, true)?;
             }
         }
     }
@@ -699,9 +699,9 @@ pub fn related_to_copy(
         let hold_type = HoldType::try_from(val["hold_type"].as_str().unwrap()).unwrap();
 
         let h = MinimalHold {
-            id: val.id_required(),
-            target: val["target"].int_required(),
-            pickup_lib: val["pickup_lib"].int_required(),
+            id: val.id()?,
+            target: val["target"].int()?,
+            pickup_lib: val["pickup_lib"].int()?,
             hold_type,
             active: true,
         };
