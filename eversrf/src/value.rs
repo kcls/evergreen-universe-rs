@@ -566,6 +566,18 @@ impl EgValue {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Number(n) => *n != 0,
+            Self::String(ref s) => !s.eq(""),
+            Self::Boolean(b) => !b,
+            Self::Null => true,
+            Self::Array(ref l) => l.len() == 0,
+            Self::Hash(ref h) => h.is_empty(),
+            Self::Blessed(ref h) => h.values.is_empty(),
+        }
+    }
+
     /// Variant of as_str() that produces an error if this value
     /// is not a string.
     ///

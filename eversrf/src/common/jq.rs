@@ -1,10 +1,10 @@
 ///! JSON Query Parser
-use crate::db;
-use crate::idl;
-use crate::result::EgResult;
-use crate::util;
-use EgValue;
-use opensrf::message;
+use crate as eg;
+use eg::db;
+use eg::idl;
+use eg::result::EgResult;
+use eg::EgValue;
+use eg::message;
 use std::sync::Arc;
 
 const JOIN_WITH_AND: &str = "AND";
@@ -115,7 +115,7 @@ impl JsonQueryCompiler {
                 let mut obj = eg::hash! {};
 
                 // Every parameter should have a value at compile/execute time.
-                obj[format!("${}", idx + 1)] = EgValue::from(value.as_str());
+                obj[&format!("${}", idx + 1)] = EgValue::from(value.as_str());
 
                 array.push(obj).expect("this is an array");
             }
@@ -247,11 +247,11 @@ impl JsonQueryCompiler {
             return Err(format!("json_query must be a JSON hash").into());
         }
 
-        if util::json_bool(&query["no_i18n"]) {
+        if query["no_i18n"].boolish() {
             self.disable_i18n = true;
         }
 
-        if util::json_bool(&query["distinct"]) {
+        if query["distinct"].boolish() {
             self.has_aggregate = true;
         }
 
@@ -375,7 +375,7 @@ impl JsonQueryCompiler {
 
     /// Compiles a UNION, INTERSECT, or EXCEPT query.
     fn compile_combo_query(&mut self, query: &EgValue) -> EgResult<String> {
-        let all = util::json_bool(&query["all"]);
+        let all = query["all"].boolish();
         let qtype;
 
         let query_array = if query["union"].is_array() {
@@ -602,7 +602,7 @@ impl JsonQueryCompiler {
             // properties, like a transform or other flags.
 
             // Do we support aggregate functions?  Maybe.
-            is_aggregate = util::json_bool(&fdef["aggregate"]);
+            is_aggregate = fdef["aggregate"].boolish();
 
             if let Some(xform) = fdef["transform"].as_str() {
                 let mut sql = String::new();
@@ -610,7 +610,7 @@ impl JsonQueryCompiler {
                 sql += &self.check_identifier(xform)?;
                 sql += "(";
 
-                if util::json_bool(&fdef["distinct"]) {
+                if fdef["distinct"].boolish() {
                     sql += "DISTINCT ";
                 }
 
@@ -1302,12 +1302,10 @@ impl JsonQueryCompiler {
         if idl_field.datatype().is_numeric() {
             // No need to quote numeric parameters for numeric columns.
 
-            if let Some(num) = value.as_number() {
-                Ok(num.to_string())
-            } else if let Ok(num) = util::json_int(&value) {
+            if let Some(num) = value.as_int() {
                 // Handle cases where we receive numeric values as JSON strings.
                 Ok(num.to_string())
-            } else if let Ok(num) = util::json_float(&value) {
+            } else if let Some(num) = value.as_float() {
                 // Handle cases where we receive numeric values as JSON strings.
                 Ok(num.to_string())
             } else {
@@ -1412,7 +1410,7 @@ impl JsonQueryCompiler {
     ///
     /// The value parameter Must be a String or Number.
     fn add_param(&mut self, value: &EgValue) -> EgResult<usize> {
-        let s = util::json_string(value)?;
+        let s = value.to_string().ok_or_else(|| format!("Cannot stringify: {value}"))?;
         Ok(self.add_param_string(s))
     }
 
@@ -1510,8 +1508,8 @@ impl JsonQueryCompiler {
                 } else if value.is_string() {
                     let index = self.add_param(&value)?;
                     params.push(format!("${index}"));
-                } else if let Some(num) = value.as_number() {
-                    params.push(num.to_string());
+                } else if value.is_number() {
+                    params.push(value.to_string().unwrap());
                 } else {
                     return Err(format!("Invalid function parameter: {}", value.dump()).into());
                 };
