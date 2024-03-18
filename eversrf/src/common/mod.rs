@@ -1,6 +1,7 @@
 //! Shared, common utility functions
 
 pub mod bib;
+pub mod billing;
 pub mod holdings;
 pub mod holds;
 pub mod org;
@@ -12,7 +13,6 @@ pub mod trigger;
 pub mod user;
 
 /*
-pub mod billing;
 pub mod checkin;
 pub mod checkout;
 pub mod circ;
