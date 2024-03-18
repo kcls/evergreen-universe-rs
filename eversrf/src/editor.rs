@@ -217,6 +217,15 @@ impl Editor {
         }
     }
 
+    /// Panics if this editor has no requestor ID to return.
+    pub fn requestor_id_required(&self) -> i64 {
+        if let Some(req) = self.requestor() {
+            req.id_required()
+        } else {
+            panic!("Editor has no requestor ID");
+        }
+    }
+
     /// Org Unit ID of the requestor's workstation.
     ///
     /// Panics if requestor value is unset.

@@ -1,16 +1,16 @@
 //! Standing penalty utility functions
-use crate::common::settings::Settings;
-use crate::common::trigger;
-use crate::editor::Editor;
-use crate::result::EgResult;
-use crate::util;
-use EgValue;
+use crate as eg;
+use eg::common::settings::Settings;
+use eg::common::trigger;
+use eg::editor::Editor;
+use eg::result::EgResult;
+use eg::EgValue;
 
 // Shortcut for unckecked int conversions for values that are known good.
 // We coul compare EgValue's directly, but there's a chance a number may be
 // transferred as a JSON String, so turn them into numbers for conformity.
 fn number(v: &EgValue) -> i64 {
-    util::json_int(v).unwrap()
+    v.int_required()
 }
 
 pub fn calculate_penalties(
@@ -73,7 +73,7 @@ pub fn calculate_penalties(
                 .collect();
         } else {
             // This is a new penalty.  Create it.
-            let new_pen = editor.idl().create_from("ausp", pen_hash.clone())?;
+            let new_pen = EgValue::create("ausp", pen_hash.clone())?;
             let new_pen = editor.create(new_pen)?;
 
             // Track new penalties so we can fire related A/T events.
@@ -90,7 +90,7 @@ pub fn calculate_penalties(
 
     // Delete applied penalties that are no longer wanted.
     for pen_hash in existing_penalties {
-        let del_pen = editor.idl().create_from("ausp", pen_hash.clone())?;
+        let del_pen = EgValue::create("ausp", pen_hash.clone())?;
         editor.delete(del_pen)?;
     }
 
@@ -163,7 +163,7 @@ fn trim_to_wanted_penalties(
         for name in names.iter() {
             let pen_id = settings.get_value(name)?;
             // Verify the org unit setting value is numerifiable.
-            if let Ok(n) = util::json_int(&pen_id) {
+            if let Some(n) = pen_id.as_int() {
                 penalty_id_list.push(EgValue::from(n));
             }
         }

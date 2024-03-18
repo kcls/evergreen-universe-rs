@@ -1,10 +1,8 @@
 //! Shared, user-focused utility functions
-use crate::editor::Editor;
-use crate::idl;
-use crate::result::EgResult;
-use crate::util;
-use crate::util::json_int;
-use EgValue;
+use crate as eg;
+use eg::editor::Editor;
+use eg::result::EgResult;
+use eg::EgValue;
 use md5;
 
 pub const PW_TYPE_MAIN: &str = "main";
@@ -72,7 +70,7 @@ pub fn verify_password(
     let verify = e.json_query(query)?;
 
     if let Some(resp) = verify.get(0) {
-        Ok(util::json_bool(&resp["actor.verify_passwd"]))
+        Ok(resp["actor.verify_passwd"].as_boolish())
     } else {
         Err(format!("actor.verify_passwd failed to return a response").into())
     }
@@ -89,7 +87,7 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Ve
 
     let mut orgs: Vec<i64> = Vec::new();
     for value in values.iter() {
-        let org = util::json_int(&value[dbfunc])?;
+        let org = value[dbfunc].int_required();
         orgs.push(org);
     }
 
@@ -100,8 +98,8 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Ve
 pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     match e.retrieve("ocirccount", user_id)? {
         Some(mut c) => {
-            c["total_out"] = EgValue::from(json_int(&c["out"])? + json_int(&c["overdue"])?);
-            idl::unbless(&mut c);
+            c["total_out"] = EgValue::from(c["out"].int_required() + c["overdue"].int_required());
+            c.unbless()?;
             Ok(c)
         }
         None => {
@@ -123,7 +121,7 @@ pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     let mut fines_list = e.search("mous", eg::hash! {usr: user_id})?;
 
     if let Some(mut fines) = fines_list.pop() {
-        idl::unbless(&mut fines);
+        fines.unbless()?;
         Ok(fines)
     } else {
         // Not all users have a fines summary row in the database.
@@ -153,8 +151,8 @@ pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     let mut ready = 0;
 
     for hold in holds.iter().filter(|h| !h["current_shelf_lib"].is_null()) {
-        let pickup_lib = json_int(&hold["pickup_lib"])?;
-        let shelf_lib = json_int(&hold["current_shelf_lib"])?;
+        let pickup_lib = hold["pickup_lib"].int_required();
+        let shelf_lib = hold["current_shelf_lib"].int_required();
 
         // A hold is ready for pickup if its current shelf location is
         // the pickup location.

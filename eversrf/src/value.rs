@@ -576,7 +576,7 @@ impl EgValue {
 
     /// Translates String and Number values into allocated strings.
     ///
-    /// Err of the value is neither a Number or String.
+    /// None if the value is neither a Number or String.
     pub fn to_string(&self) -> Option<String> {
         match self {
             EgValue::String(s) => Some(s.to_string()),
@@ -585,12 +585,23 @@ impl EgValue {
         }
     }
 
+    pub fn to_string_or_err(&self) -> EgResult<String> {
+        self.to_string().ok_or_else(|| format!("{self} cannot be stringified").into())
+    }
+
     pub fn as_int(&self) -> Option<i64> {
         self.as_i64()
     }
 
     pub fn int_required(&self) -> i64 {
         self.as_i64().expect(&format!("Should be an integer: {}", self.dump()))
+    }
+
+    /// Variant of EgValue::id() that produces an Err if no numeric
+    /// ID value is found.
+    pub fn int_or_err(&self) -> EgResult<i64> {
+        self.as_int()
+            .ok_or_else(|| format!("{self} is not an integer").into())
     }
 
     pub fn as_i64(&self) -> Option<i64> {
@@ -1068,6 +1079,16 @@ impl From<Option<bool>> for EgValue {
         } else {
             eg::NULL
         }
+    }
+}
+
+impl From<HashMap<std::string::String, Vec<i64>>> for EgValue {
+    fn from(mut m: HashMap<std::string::String, Vec<i64>>) -> EgValue {
+        let mut map: HashMap<String, EgValue> = HashMap::new();
+        for (k, v) in m.drain() {
+            map.insert(k, v.into());
+        }
+        EgValue::Hash(map)
     }
 }
 
