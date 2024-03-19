@@ -688,17 +688,17 @@ impl Circulator<'_> {
         }
 
         if self.is_renewal() {
-            if let Some(v) = self.options.get("opac_renewal") {
-                if v.boolish() { circ["opac_renewal"] = EgValue::from("t"); }
+            if self.options.get("opac_renewal").unwrap_or(&eg::NULL).boolish() {
+                circ["opac_renewal"] = EgValue::from("t");
             }
-            if let Some(v) = self.options.get("phone_renewal") {
-                if v.boolish() { circ["phone_renewal"] = EgValue::from("t"); }
+            if self.options.get("phone_renewal").unwrap_or(&eg::NULL).boolish() {
+                circ["phone_renewal"] = EgValue::from("t");
             }
-            if let Some(v) = self.options.get("desk_renewal") {
-                if v.boolish() { circ["desk_renewal"] = EgValue::from("t"); }
+            if self.options.get("desk_renewal").unwrap_or(&eg::NULL).boolish() {
+                circ["desk_renewal"] = EgValue::from("t");
             }
-            if let Some(v) = self.options.get("auto_renewal") {
-                if v.boolish() { circ["auto_renewal"] = EgValue::from("t"); }
+            if self.options.get("auto_renewal").unwrap_or(&eg::NULL).boolish() {
+                circ["auto_renewal"] = EgValue::from("t");
             }
 
             circ["renewal_remaining"] = EgValue::from(self.renewal_remaining);
