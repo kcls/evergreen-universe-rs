@@ -233,7 +233,7 @@ impl Editor {
     /// Panics if requestor value is unset.
     pub fn requestor_ws_id(&self) -> Option<i64> {
         if let Some(r) = self.requestor() {
-            r["ws_id"].as_int()
+            r["wsid"].as_int()
         } else {
             None
         }

@@ -30,7 +30,10 @@ const HASH_CLASSNAME_KEY: &str = "_classname";
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
-        eg::value::EgValue::from_json_value_plain(json::object!($($tts)*))
+        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
+            Ok(v) => v,
+            Err(e) => panic!("Invalid EgValue: {e}")
+        }
     }
 }
 
@@ -38,7 +41,10 @@ macro_rules! hash {
 #[macro_export]
 macro_rules! array {
     ($($tts:tt)*) => {
-        eg::value::EgValue::from_json_value_plain(json::array!($($tts)*))
+        match eg::value::EgValue::from_json_value(json::array!($($tts)*)) {
+            Ok(v) => v,
+            Err(e) => panic!("Invalid EgValue: {e}")
+        }
     }
 }
 // ---

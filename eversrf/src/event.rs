@@ -1,5 +1,5 @@
 use crate as eg;
-use chrono::Local;
+use eg::date;
 use eg::EgValue;
 use std::fmt;
 
@@ -88,7 +88,7 @@ impl From<&EgEvent> for EgValue {
 impl EgEvent {
     /// Create a new event with the provided code.
     pub fn new(textcode: &str) -> Self {
-        let servertime = Local::now().to_rfc3339();
+        let servertime = date::to_iso(&date::now());
 
         EgEvent {
             code: -1,

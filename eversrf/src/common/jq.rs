@@ -21,10 +21,10 @@ pub struct SourceDef {
 }
 
 impl SourceDef {
-    fn idl_class(&self) -> &Arc<idl::Class> {
+    pub fn idl_class(&self) -> &Arc<idl::Class> {
         &self.idl_class
     }
-    fn classname(&self) -> &str {
+    pub fn classname(&self) -> &str {
         self.idl_class.classname()
     }
 }
@@ -175,6 +175,10 @@ impl JsonQueryCompiler {
     /// The alias may also be the classname.
     fn get_alias_classname(&self, alias: &str) -> EgResult<&str> {
         Ok(self.get_alias_class(alias)?.classname())
+    }
+
+    pub fn sources(&self) -> &Vec<SourceDef> {
+        &self.sources
     }
 
     fn get_alias_class(&self, alias: &str) -> EgResult<&Arc<idl::Class>> {
