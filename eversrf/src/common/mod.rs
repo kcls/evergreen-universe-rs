@@ -8,6 +8,7 @@ pub mod circulator;
 pub mod holdings;
 pub mod holds;
 pub mod jq;
+pub mod noncat;
 pub mod org;
 pub mod penalty;
 pub mod settings;
@@ -18,6 +19,5 @@ pub mod user;
 
 /*
 pub mod checkout;
-pub mod noncat;
 pub mod renew;
 */
