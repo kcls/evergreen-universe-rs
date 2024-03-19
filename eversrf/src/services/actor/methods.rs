@@ -1,14 +1,14 @@
-use eversrf as eg;
+use eg::app::ApplicationWorker;
 use eg::common::penalty;
 use eg::common::settings::Settings;
 use eg::common::user;
-use eg::Editor;
-use eg::EgValue;
-use eg::EgResult;
 use eg::message;
-use eg::app::ApplicationWorker;
 use eg::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::session::ServerSession;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
+use eversrf as eg;
 use std::collections::HashMap;
 
 // Import our local app module
@@ -194,10 +194,10 @@ pub fn get_barcodes(
     // Extract the method call parameters.
     // Incorrectly shaped parameters will result in an error
     // response to the caller.
-    let authtoken = method.param(0).to_string_or_err()?;
+    let authtoken = method.param(0).string()?;
     let org_id = method.param(1).int()?;
-    let context = method.param(2).to_string_or_err()?;
-    let barcode = method.param(3).to_string_or_err()?;
+    let context = method.param(2).string()?;
+    let barcode = method.param(3).string()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -264,7 +264,7 @@ pub fn user_has_work_perm_at_batch(
     // Cast our worker instance into something we know how to use.
     let worker = app::RsActorWorker::downcast(worker)?;
 
-    let authtoken = method.param(0).to_string_or_err()?;
+    let authtoken = method.param(0).string()?;
 
     let perm_names: Vec<&str> = method
         .param(1)
@@ -405,7 +405,7 @@ pub fn user_opac_vital_stats(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let authtoken = method.param(0).to_string_or_err()?;
+    let authtoken = method.param(0).string()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -481,8 +481,8 @@ pub fn update_penalties(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let authtoken = method.param(0).to_string_or_err()?;
-    let user_id =method.param(1).int()?;
+    let authtoken = method.param(0).string()?;
+    let user_id = method.param(1).int()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 

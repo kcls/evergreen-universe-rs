@@ -13,9 +13,7 @@ impl Processor<'_> {
         let patron_id = usr.as_int().unwrap_or(usr.id()?);
 
         let home_ou = if usr.is_object() {
-            usr["home_ou"]
-                .as_int()
-                .unwrap_or(usr["home_ou"].id()?)
+            usr["home_ou"].as_int().unwrap_or(usr["home_ou"].id()?)
         } else {
             // Fetch the patron so we can determine the home or unit
             let patron = self

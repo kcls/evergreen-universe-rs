@@ -6,8 +6,8 @@ use eg::common::trigger;
 use eg::constants as C;
 use eg::editor::Editor;
 use eg::event::{EgEvent, Overrides};
-use eg::{EgValue, EgError, EgResult};
 use eg::util;
+use eg::{EgError, EgResult, EgValue};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -227,10 +227,7 @@ impl fmt::Display for Circulator<'_> {
 impl<'a> Circulator<'a> {
     /// Create a new Circulator.
     ///
-    pub fn new(
-        editor: &'a mut Editor,
-        options: HashMap<String, EgValue>,
-    ) -> EgResult<Circulator> {
+    pub fn new(editor: &'a mut Editor, options: HashMap<String, EgValue>) -> EgResult<Circulator> {
         if editor.requestor().is_none() {
             Err(format!("Circulator requires an authenticated requestor"))?;
         }
@@ -355,7 +352,9 @@ impl<'a> Circulator<'a> {
             .as_ref()
             .expect("{self} copy required for copy_status()");
 
-        copy["status"].id().expect("Circulator invalid fleshed copy status value")
+        copy["status"]
+            .id()
+            .expect("Circulator invalid fleshed copy status value")
     }
 
     /// Returns the copy circ lib ID.
@@ -367,7 +366,9 @@ impl<'a> Circulator<'a> {
             .as_ref()
             .expect("{self} copy required for copy_circ_lib()");
 
-        copy["circ_lib"].int().expect("Circulator invalid copy circ lib")
+        copy["circ_lib"]
+            .int()
+            .expect("Circulator invalid copy circ lib")
     }
 
     /// Used for events that stop processing and should result in

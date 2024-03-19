@@ -2,6 +2,7 @@
 
 pub mod bib;
 pub mod billing;
+pub mod checkin;
 pub mod circ;
 pub mod circulator;
 pub mod holdings;
@@ -16,7 +17,6 @@ pub mod trigger;
 pub mod user;
 
 /*
-pub mod checkin;
 pub mod checkout;
 pub mod noncat;
 pub mod renew;

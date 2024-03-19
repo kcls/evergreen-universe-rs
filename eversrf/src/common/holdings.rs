@@ -22,7 +22,6 @@ pub fn copy_status(
             .ok_or_else(|| editor.die_event())?;
 
         copy["status"].int()
-
     } else {
         Err(format!("copy_status() requires a useful parameter").into())
     }

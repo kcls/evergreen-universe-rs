@@ -42,8 +42,7 @@ pub fn calculate_penalties(
         penalties.iter().filter(|p| !p["id"].is_null()).collect();
 
     // Penalties that should be applied do not have a DB ID.
-    let wanted_penalties: Vec<&EgValue> =
-        penalties.iter().filter(|p| p["id"].is_null()).collect();
+    let wanted_penalties: Vec<&EgValue> = penalties.iter().filter(|p| p["id"].is_null()).collect();
 
     let mut trigger_events: Vec<(String, EgValue, i64)> = Vec::new();
 

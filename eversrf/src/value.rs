@@ -584,7 +584,8 @@ impl EgValue {
     /// NOTE if the value may exist a Number, consider .to_string() instead,
     /// which will coerce numbers into strings.
     pub fn str(&self) -> EgResult<&str> {
-        self.as_str().ok_or_else(|| format!("{self} is not a string").into())
+        self.as_str()
+            .ok_or_else(|| format!("{self} is not a string").into())
     }
 
     pub fn as_str(&self) -> Option<&str> {
@@ -607,7 +608,8 @@ impl EgValue {
     }
 
     pub fn string(&self) -> EgResult<String> {
-        self.to_string().ok_or_else(|| format!("{self} cannot be stringified").into())
+        self.to_string()
+            .ok_or_else(|| format!("{self} cannot be stringified").into())
     }
 
     pub fn as_int(&self) -> Option<i64> {
@@ -617,7 +619,8 @@ impl EgValue {
     /// Variant of EgValue::id() that produces an Err if no numeric
     /// ID value is found.
     pub fn int(&self) -> EgResult<i64> {
-        self.as_int().ok_or_else(|| format!("{self} is not an integer").into())
+        self.as_int()
+            .ok_or_else(|| format!("{self} is not an integer").into())
     }
 
     /// Useful for panicing if a value cannot be coerced into an int,
@@ -682,7 +685,8 @@ impl EgValue {
     /// Variant of EgValue::as_float() that produces an Err if no float
     /// value is found.
     pub fn float(&self) -> EgResult<f64> {
-        self.as_float().ok_or_else(|| format!("{self} is not a float").into())
+        self.as_float()
+            .ok_or_else(|| format!("{self} is not a float").into())
     }
 
     /// Returns a float if we can be coerced into one.
@@ -721,11 +725,14 @@ impl EgValue {
         // the index lookup doesn't panic.
         if let EgValue::Blessed(ref o) = self {
             if o.idl_class().has_field("id") {
-                self["id"].as_i64()
+                self["id"]
+                    .as_i64()
                     .ok_or_else(|| format!("{self} has no valid ID"))?;
             }
         }
-        self["id"].as_i64().ok_or_else(|| format!("{self} has no valid ID").into())
+        self["id"]
+            .as_i64()
+            .ok_or_else(|| format!("{self} has no valid ID").into())
     }
 
     /// Variant of self.id() which panics if no valid ID is found.
@@ -1073,6 +1080,15 @@ impl TryFrom<JsonValue> for EgValue {
     type Error = EgError;
     fn try_from(v: JsonValue) -> EgResult<EgValue> {
         EgValue::from_json_value(v)
+    }
+}
+
+impl From<Option<&str>> for EgValue {
+    fn from(v: Option<&str>) -> EgValue {
+        match v {
+            Some(v) => EgValue::from(v),
+            None => EgValue::Null,
+        }
     }
 }
 

@@ -1418,11 +1418,7 @@ impl<'a> HoldTargeter<'a> {
                 .settings
                 .get_value_at_org("circ.holds.org_unit_target_weight", copy.circ_lib)?;
 
-            let weight = if weight.is_null() {
-                1
-            } else {
-                weight.int()?
-            };
+            let weight = if weight.is_null() { 1 } else { weight.int()? };
 
             if let Some(list) = weighted.get_mut(&prox) {
                 for _ in 0..weight {

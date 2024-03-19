@@ -2,9 +2,9 @@
 use crate as eg;
 use eg::db;
 use eg::idl;
+use eg::message;
 use eg::result::EgResult;
 use eg::EgValue;
-use eg::message;
 use std::sync::Arc;
 
 const JOIN_WITH_AND: &str = "AND";
@@ -1410,7 +1410,9 @@ impl JsonQueryCompiler {
     ///
     /// The value parameter Must be a String or Number.
     fn add_param(&mut self, value: &EgValue) -> EgResult<usize> {
-        let s = value.to_string().ok_or_else(|| format!("Cannot stringify: {value}"))?;
+        let s = value
+            .to_string()
+            .ok_or_else(|| format!("Cannot stringify: {value}"))?;
         Ok(self.add_param_string(s))
     }
 

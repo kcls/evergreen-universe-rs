@@ -1,5 +1,5 @@
-use eversrf as eg;
 use eg::server::Server;
+use eversrf as eg;
 pub mod app;
 pub mod methods;
 

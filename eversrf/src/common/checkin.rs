@@ -1,16 +1,16 @@
-use crate::common::billing;
-use crate::common::circulator::{CircOp, Circulator};
-use crate::common::holds;
-use crate::common::penalty;
-use crate::common::targeter;
-use crate::common::transit;
-use crate::constants as C;
-use crate::date;
-use crate::event::EgEvent;
-use crate::result::{EgError, EgResult};
-use crate::util::{json_bool, json_float, json_int, json_string};
-use chrono::{Duration, Local, Timelike};
-use EgValue;
+use crate as eg;
+use chrono::Timelike;
+use eg::common::billing;
+use eg::common::circulator::{CircOp, Circulator};
+use eg::common::holds;
+use eg::common::penalty;
+use eg::common::targeter;
+use eg::common::transit;
+use eg::constants as C;
+use eg::date;
+use eg::event::EgEvent;
+use eg::result::{EgError, EgResult};
+use eg::EgValue;
 use std::collections::HashSet;
 
 /// Performs item checkins
@@ -140,10 +140,14 @@ impl Circulator<'_> {
             None => return Ok(false),
         };
 
-        if !json_bool(self.settings.get_value_at_org(
-            "circ.claim_never_checked_out.mark_missing",
-            json_int(&circ["circ_lib"])?,
-        )?) {
+        if !self
+            .settings
+            .get_value_at_org(
+                "circ.claim_never_checked_out.mark_missing",
+                circ["circ_lib"].int()?,
+            )?
+            .boolish()
+        {
             return Ok(false);
         }
 
@@ -152,7 +156,7 @@ impl Circulator<'_> {
         // checkin instead of a copy id/barcode checkin.
 
         let next_status = match self.options.get("next_copy_status") {
-            Some(s) => json_int(&s)?,
+            Some(s) => s.int()?,
             None => C::COPY_STATUS_MISSING,
         };
 
@@ -229,16 +233,15 @@ impl Circulator<'_> {
         }
 
         // Coerce the interval into a string just in case it arrived as a number.
-        let interval = json_string(&interval)?;
+        let interval = interval.string()?;
 
-        let seconds = date::interval_to_seconds(&interval)?;
         // source_send_time is a known non-null string value.
         let send_time_str = transit["source_send_time"].as_str().unwrap();
-
         let send_time = date::parse_datetime(send_time_str)?;
-        let horizon = send_time + Duration::seconds(seconds);
 
-        if horizon > Local::now() {
+        let horizon = date::add_interval(send_time, &interval)?;
+
+        if horizon > date::now() {
             self.add_event_code("TRANSIT_CHECKIN_INTERVAL_BLOCK");
         }
 
@@ -263,11 +266,11 @@ impl Circulator<'_> {
             || self.get_option_bool("revert_hold_fulfillment")
             || self.capture_state() == "nocapture"
             || self.is_precat_copy()
-            || json_int(&copy["circ_lib"])? != self.circ_lib
-            || json_bool(&copy["deleted"])
-            || !json_bool(&copy["holdable"])
-            || !json_bool(&copy["status"]["holdable"])
-            || !json_bool(&copy["location"]["holdable"])
+            || copy["circ_lib"].int()? != self.circ_lib
+            || copy["deleted"].boolish()
+            || !copy["holdable"].boolish()
+            || !copy["status"]["holdable"].boolish()
+            || !copy["location"]["holdable"].boolish()
         {
             return Ok(());
         }
@@ -281,12 +284,12 @@ impl Circulator<'_> {
         let parts = self.editor().search("acpm", query)?;
         let parts = parts
             .into_iter()
-            .map(|p| json_int(&p["id"]).unwrap())
+            .map(|p| p.id().expect("ID Required"))
             .collect::<HashSet<_>>();
 
         let copy_id = self.copy_id;
         let circ_lib = self.circ_lib;
-        let vol_id = json_int(&self.copy()["call_number"]["id"])?;
+        let vol_id = self.copy()["call_number"].id()?;
 
         let hold_data = holds::related_to_copy(
             self.editor(),
@@ -356,7 +359,7 @@ impl Circulator<'_> {
         }
 
         if let Some(transit) = self.transit.as_ref() {
-            let transit_id = json_int(&transit["id"])?;
+            let transit_id = transit.id()?;
             log::info!(
                 "{self} copy is both checked out and in transit.  Canceling transit {transit_id}"
             );
@@ -381,10 +384,10 @@ impl Circulator<'_> {
         // not the circulation's
         let value = self.settings.get_value_at_org(
             "circ.checkin.lost_zero_balance.do_not_change",
-            json_int(&self.copy()["circ_lib"])?,
+            self.copy()["circ_lib"].int()?,
         )?;
 
-        let mut dont_change = json_bool(&value);
+        let mut dont_change = value.boolish();
 
         if dont_change {
             // Org setting says not to change.
@@ -393,7 +396,7 @@ impl Circulator<'_> {
             if let Some(circ) = self.circ.as_ref() {
                 let circ_id = circ["id"].clone();
                 if let Some(mbts) = self.editor().retrieve("mbts", circ_id)? {
-                    dont_change = json_float(&mbts["balance_owed"])? == 0.0;
+                    dont_change = mbts["balance_owed"].float()? == 0.0;
                 }
             }
         }
@@ -433,7 +436,7 @@ impl Circulator<'_> {
         };
 
         if let Some(resp) = self.editor().json_query(query)?.first() {
-            if json_bool(&resp["evergreen.can_float"]) {
+            if resp["evergreen.can_float"].boolish() {
                 self.set_option_true("can_float");
             }
         }
@@ -453,9 +456,7 @@ impl Circulator<'_> {
             None => return Ok(()),
         };
 
-        if json_int(&self.copy()["circ_lib"])? != self.circ_lib
-            && !self.get_option_bool("can_float")
-        {
+        if self.copy()["circ_lib"].int()? != self.circ_lib && !self.get_option_bool("can_float") {
             // Item is not home and cannot float
             return Ok(());
         }
@@ -509,14 +510,14 @@ impl Circulator<'_> {
             }
         };
 
-        let pickup_lib = json_int(&hold["pickup_lib"])?;
+        let pickup_lib = hold["pickup_lib"].int()?;
 
         log::info!("{self} we found a captured, un-fulfilled hold");
 
         if pickup_lib != self.circ_lib && !self.get_option_bool("hold_as_transit") {
             let suppress_here = self.settings.get_value("circ.transit.suppress_hold")?;
 
-            let suppress_here = match json_string(&suppress_here) {
+            let suppress_here = match suppress_here.string() {
                 Ok(s) => s,
                 Err(_) => String::from(""),
             };
@@ -525,7 +526,7 @@ impl Circulator<'_> {
                 .settings
                 .get_value_at_org("circ.transit.suppress_hold", pickup_lib)?;
 
-            let suppress_there = match json_string(&suppress_there) {
+            let suppress_there = match suppress_there.string() {
                 Ok(s) => s,
                 Err(_) => String::from(""),
             };
@@ -556,7 +557,7 @@ impl Circulator<'_> {
         let status = self.copy_status();
 
         let next_status = match self.options.get("next_copy_status") {
-            Some(s) => json_int(&s)?,
+            Some(s) => s.int()?,
             None => C::COPY_STATUS_RESHELVING,
         };
 
@@ -605,8 +606,8 @@ impl Circulator<'_> {
 
         if void {
             // Caller suggests we void.  Verify settings allow it.
-            if json_bool(self.settings.get_value("circ.void_item_deposit")?) {
-                let bill_id = json_int(&deposit["id"])?;
+            if self.settings.get_value("circ.void_item_deposit")?.boolish() {
+                let bill_id = deposit.id()?;
                 billing::void_bills(self.editor(), &[bill_id], Some("DEPOSIT ITEM RETURNED"))?;
             }
         } else {
@@ -636,11 +637,11 @@ impl Circulator<'_> {
         let copy_status = self.copy_status();
         let copy_circ_lib = self.copy_circ_lib();
 
-        let req_id = self.requestor_id();
+        let req_id = self.requestor_id()?;
         let req_ws_id = self.editor().requestor_ws_id();
 
         let circ = self.circ.as_mut().unwrap();
-        let circ_id = json_int(&circ["id"])?;
+        let circ_id = circ.id()?;
 
         circ["checkin_time"] = self
             .options
@@ -781,17 +782,16 @@ impl Circulator<'_> {
         let copy_circ_lib = self.copy_circ_lib();
         let max_return = self
             .settings
-            .get_value_at_org(ous_max_return, copy_circ_lib)?;
+            .get_value_at_org(ous_max_return, copy_circ_lib)?
+            .clone(); // parallel
         let mut too_late = false;
 
         if let Some(max) = max_return.as_str() {
-            let interval = date::interval_to_seconds(&max)?;
-
             let last_activity = self.circ_last_billing_activity(ous_use_last_activity)?;
             let last_activity = date::parse_datetime(&last_activity)?;
 
-            let last_chance = last_activity + Duration::seconds(interval);
-            too_late = last_chance > Local::now();
+            let last_chance = date::add_interval(last_activity, max)?;
+            too_late = last_chance > date::now();
         }
 
         if too_late {
@@ -821,10 +821,10 @@ impl Circulator<'_> {
         }
 
         // Item is not home.  Does it go right back into rotation?
-        let available_now = json_bool(
-            self.settings
-                .get_value_at_org(ous_immediately_available, copy_circ_lib)?,
-        );
+        let available_now = self
+            .settings
+            .get_value_at_org(ous_immediately_available, copy_circ_lib)?
+            .boolish();
 
         if available_now {
             // Item status does not need to be retained.
@@ -858,7 +858,7 @@ impl Circulator<'_> {
 
         let use_activity = self.settings.get_value_at_org(setting, copy_circ_lib)?;
 
-        if !json_bool(use_activity) {
+        if !use_activity.boolish() {
             return Ok(due_date);
         }
 
@@ -906,7 +906,7 @@ impl Circulator<'_> {
             .with_minute(orig_date.minute())
             .ok_or_else(|| format!("Could not set backdate minutes"))?;
 
-        if new_date > Local::now() {
+        if new_date > date::now() {
             log::info!("{self} ignoring future backdate: {new_date}");
             self.options.remove("backdate");
         } else {
@@ -927,7 +927,11 @@ impl Circulator<'_> {
         if let Some(ops) = self.options.get("lost_or_lo_billing_options") {
             if !self.get_option_bool("void_overdues") {
                 if let Some(setting) = ops["ous_restore_overdue"].as_str() {
-                    if json_bool(self.settings.get_value_at_org(setting, copy_circ_lib)?) {
+                    if self
+                        .settings
+                        .get_value_at_org(setting, copy_circ_lib)?
+                        .boolish()
+                    {
                         self.checkin_handle_lost_or_lo_now_found_restore_od(false)?;
                     }
                 }
@@ -938,10 +942,10 @@ impl Circulator<'_> {
         let xact_id = match self.circ.as_ref() {
             Some(c) => {
                 is_circ = true;
-                json_int(&c["id"])?
+                c.id()?
             }
             None => match self.reservation.as_ref() {
-                Some(r) => json_int(&r["id"])?,
+                Some(r) => r.id()?,
                 None => Err(format!(
                     "{self} we have no transaction to generate fines for"
                 ))?,
@@ -972,7 +976,7 @@ impl Circulator<'_> {
         };
 
         // below was previously called checkin_handle_lost_or_lo_now_found()
-        let tag = if json_bool(&ops["is_longoverdue"]) {
+        let tag = if ops["is_longoverdue"].boolish() {
             "LONGOVERDUE"
         } else {
             "LOST"
@@ -981,14 +985,14 @@ impl Circulator<'_> {
 
         let mut void_cost = 0.0;
         if let Some(set) = ops["ous_void_item_cost"].as_str() {
-            if let Ok(c) = json_float(self.settings.get_value_at_org(set, copy_circ_lib)?) {
+            if let Ok(c) = self.settings.get_value_at_org(set, copy_circ_lib)?.float() {
                 void_cost = c;
             }
         }
 
         let mut void_proc_fee = 0.0;
         if let Some(set) = ops["ous_void_proc_fee"].as_str() {
-            if let Ok(c) = json_float(self.settings.get_value_at_org(set, copy_circ_lib)?) {
+            if let Ok(c) = self.settings.get_value_at_org(set, copy_circ_lib)?.float() {
                 void_proc_fee = c;
             }
         }
@@ -1076,8 +1080,8 @@ impl Circulator<'_> {
         is_longoverdue: bool,
     ) -> EgResult<()> {
         let circ = self.circ.as_ref().unwrap();
-        let circ_id = json_int(&circ["id"])?;
-        let void_max = json_float(&circ["max_fine"])?;
+        let circ_id = circ.id()?;
+        let void_max = circ["max_fine"].float()?;
 
         let query = eg::hash! {xact: circ_id, btype: C::BTYPE_OVERDUE_MATERIALS};
         let ops = eg::hash! {"order_by": {"mb": "billing_ts desc"}};
@@ -1105,13 +1109,13 @@ impl Circulator<'_> {
         if voids.len() > 0 {
             // Overdues adjusted via account adjustment
             for void in voids.iter() {
-                void_amount += json_float(&void["amount"])?;
+                void_amount += void["amount"].float()?;
             }
         } else {
             // Overdues voided the old-fashioned way, i.e. voided.
             for bill in overdues.iter() {
-                if json_bool(&bill["voided"]) {
-                    void_amount += json_float(&bill["amount"])?;
+                if bill["voided"].boolish() {
+                    void_amount += bill["amount"].float()?;
                 }
             }
         }
@@ -1156,9 +1160,9 @@ impl Circulator<'_> {
         log::info!("{self} attempting to receive transit");
 
         let transit = self.transit.as_ref().unwrap();
-        let transit_id = json_int(&transit["id"])?;
-        let transit_dest = json_int(&transit["dest"])?;
-        let transit_copy_status = json_int(&transit["copy_status"])?;
+        let transit_id = transit.id()?;
+        let transit_dest = transit["dest"].int()?;
+        let transit_copy_status = transit["copy_status"].int()?;
 
         let for_hold = transit_copy_status == C::COPY_STATUS_ON_HOLDS_SHELF;
         let suppress_transit = self.should_suppress_transit(transit_dest, for_hold)?;
@@ -1273,7 +1277,7 @@ impl Circulator<'_> {
             self.set_option_true("noop");
 
             let mut hold = self.hold.take().unwrap();
-            let hold_id = json_int(&hold["id"])?;
+            let hold_id = hold.id()?;
             hold["fulfillment_time"] = EgValue::from("now");
             self.editor().update(hold)?;
 
@@ -1340,7 +1344,7 @@ impl Circulator<'_> {
     /// Set hold shelf values and update the hold.
     fn put_hold_on_shelf(&mut self) -> EgResult<()> {
         let mut hold = self.hold.take().unwrap();
-        let hold_id = json_int(&hold["id"])?;
+        let hold_id = hold.id()?;
 
         hold["shelf_time"] = EgValue::from("now");
         hold["current_shelf_lib"] = EgValue::from(self.circ_lib);
@@ -1413,7 +1417,7 @@ impl Circulator<'_> {
 
         if self.capture_state() != "capture" {
             // See if this item is in a hold-capture-verify location.
-            if json_bool(&self.copy()["location"]["hold_verify"]) {
+            if self.copy()["location"]["hold_verify"].boolish() {
                 let mut evt = EgEvent::new("HOLD_CAPTURE_DELAYED");
                 evt.set_ad_hoc_value("copy_location", self.copy()["location"].clone());
                 self.exit_err_on_event(evt)?;
@@ -1424,7 +1428,7 @@ impl Circulator<'_> {
             self.retarget_holds = Some(retarget);
         }
 
-        let pickup_lib = json_int(&hold["pickup_lib"])?;
+        let pickup_lib = hold["pickup_lib"].int()?;
         let suppress_transit = self.should_suppress_transit(pickup_lib, true)?;
 
         hold["hopeless_date"].take();
@@ -1445,7 +1449,7 @@ impl Circulator<'_> {
             // This updates and refreshes the hold.
             self.put_hold_on_shelf()?;
         } else {
-            let hold_id = json_int(&hold["id"])?;
+            let hold_id = hold.id()?;
             self.editor().update(hold)?;
             self.hold = self.editor().retrieve("ahr", hold_id)?;
         }
@@ -1495,7 +1499,7 @@ impl Circulator<'_> {
 
         log::info!("{self} booking capture succeeded");
 
-        if let Ok(stat) = json_int(&evt.payload()["new_copy_status"]) {
+        if let Ok(stat) = evt.payload()["new_copy_status"].int() {
             self.update_copy(eg::hash! {"status": stat})?;
         }
 
@@ -1507,7 +1511,7 @@ impl Circulator<'_> {
         let transit = evt.payload_mut()["transit"].take();
         if transit.is_object() {
             let mut e = EgEvent::new("ROUTE_ITEM");
-            e.set_org(json_int(&transit["dest"])?);
+            e.set_org(transit["dest"].int()?);
             self.add_event(e);
         }
 
@@ -1576,7 +1580,7 @@ impl Circulator<'_> {
         let mut has_remote_hold = false;
         if let Some(hold) = self.options.get("remote_hold") {
             has_remote_hold = true;
-            if let Ok(pl) = json_int(&hold["pickup_lib"]) {
+            if let Ok(pl) = hold["pickup_lib"].int() {
                 dest_lib = pl;
             }
         }
@@ -1592,7 +1596,7 @@ impl Circulator<'_> {
 
         let can_float = self.get_option_bool("can_float");
         let manual_float =
-            self.get_option_bool("manual_float") || json_bool(&self.copy()["floating"]["manual"]);
+            self.get_option_bool("manual_float") || self.copy()["floating"]["manual"].boolish();
 
         if can_float && manual_float && !has_remote_hold {
             // Copy is floating -- make it stick here
@@ -1656,11 +1660,11 @@ impl Circulator<'_> {
         log::info!("{self} transiting copy to {dest_lib}");
 
         if has_remote_hold {
-            let t = self.editor().idl().create_from("ahtc", transit)?;
+            let t = EgValue::create("ahtc", transit)?;
             let t = self.editor().create(t)?;
             self.hold_transit = self.editor().retrieve("ahtc", t["id"].clone())?;
         } else {
-            let t = self.editor().idl().create_from("atc", transit)?;
+            let t = EgValue::create("atc", transit)?;
             let t = self.editor().create(t)?;
             self.transit = self.editor().retrieve("ahtc", t["id"].clone())?;
         }
@@ -1679,7 +1683,7 @@ impl Circulator<'_> {
         };
 
         let circ_id = match self.circ.as_ref() {
-            Some(c) => json_int(&c["id"])?,
+            Some(c) => c.id()?,
             None => return Ok(()),
         };
 
@@ -1711,14 +1715,14 @@ impl Circulator<'_> {
     fn flesh_checkin_events(&mut self) -> EgResult<()> {
         let mut copy = self.copy.take().unwrap().take(); // assumes copy
         let copy_id = self.copy_id;
-        let record_id = json_int(&copy["call_number"]["record"])?;
+        let record_id = copy["call_number"]["record"].int()?;
 
         // Grab the volume before it's de-fleshed.
         let volume = copy["call_number"].take();
         copy["call_number"] = volume["id"].clone();
 
         // De-flesh the copy
-        self.editor().idl().de_flesh_object(&mut copy)?;
+        copy.deflesh()?;
 
         let mut payload = eg::hash! {
             "copy": copy,

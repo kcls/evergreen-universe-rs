@@ -1,14 +1,14 @@
 use crate as eg;
+use chrono::Duration;
 use eg::common::org;
 use eg::common::penalty;
 use eg::common::settings::Settings;
 use eg::constants as C;
 use eg::date;
-use eg::EgValue;
 use eg::editor::Editor;
 use eg::result::EgResult;
 use eg::util;
-use chrono::Duration;
+use eg::EgValue;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
@@ -177,9 +177,12 @@ pub fn void_or_zero_bills_of_type(
 
     // "lost" settings are checked first for backwards compat /
     // consistency with Perl.
-    let prohibit_neg_balance =
-        settings.get_value_at_org("bill.prohibit_negative_balance_on_lost", context_org)?.boolish()
-        || settings.get_value_at_org("bill.prohibit_negative_balance_default", context_org)?.boolish();
+    let prohibit_neg_balance = settings
+        .get_value_at_org("bill.prohibit_negative_balance_on_lost", context_org)?
+        .boolish()
+        || settings
+            .get_value_at_org("bill.prohibit_negative_balance_default", context_org)?
+            .boolish();
 
     let mut neg_balance_interval =
         settings.get_value_at_org("bill.negative_balance_interval_on_lost", context_org)?;
@@ -380,9 +383,7 @@ pub fn bill_payment_map_for_xact(
         let mut my_adjustments: Vec<&mut EgValue> = payments
             .iter_mut()
             .filter(|p| p["payment_type"].as_str().unwrap() == "account_adjustment")
-            .filter(|p| {
-                used_adjustments.contains(&p["account_adjustment"].id().unwrap())
-            })
+            .filter(|p| used_adjustments.contains(&p["account_adjustment"].id().unwrap()))
             .filter(|p| p["account_adjustment"]["billing"] == bill["id"])
             .map(|p| &mut p["account_adjustment"])
             .collect();
@@ -684,11 +685,13 @@ pub fn generate_fines_for_xact(
     recurring_fine *= 100.0;
     max_fine *= 100.0;
 
-    let skip_closed_check =
-        settings.get_value_at_org("circ.fines.charge_when_closed", circ_lib)?.boolish();
+    let skip_closed_check = settings
+        .get_value_at_org("circ.fines.charge_when_closed", circ_lib)?
+        .boolish();
 
-    let truncate_to_max_fine =
-        settings.get_value_at_org("circ.fines.truncate_to_max_fine", circ_lib)?.boolish();
+    let truncate_to_max_fine = settings
+        .get_value_at_org("circ.fines.truncate_to_max_fine", circ_lib)?
+        .boolish();
 
     let timezone = match settings
         .get_value_at_org("lib.timezone", circ_lib)?
@@ -793,15 +796,18 @@ pub fn extend_grace_period(
         }
     };
 
-    let extend = settings.get_value_at_org("circ.grace.extend", context_org)?.boolish();
+    let extend = settings
+        .get_value_at_org("circ.grace.extend", context_org)?
+        .boolish();
 
     if !extend {
         // No extension configured.
         return Ok(grace_period);
     }
 
-    let extend_into_closed =
-        settings.get_value_at_org("circ.grace.extend.into_closed", context_org)?.boolish();
+    let extend_into_closed = settings
+        .get_value_at_org("circ.grace.extend.into_closed", context_org)?
+        .boolish();
 
     if extend_into_closed {
         // Merge closed dates trailing the grace period into the grace period.
@@ -809,15 +815,18 @@ pub fn extend_grace_period(
         due_date = date::add_interval(due_date, "1 day")?;
     }
 
-    let extend_all = settings.get_value_at_org("circ.grace.extend.all", context_org)?.boolish();
+    let extend_all = settings
+        .get_value_at_org("circ.grace.extend.all", context_org)?
+        .boolish();
 
     if extend_all {
         // Start checking the day after the item was due.
         due_date = date::add_interval(due_date, "1 day")?;
     } else {
         // Jump to the end of the grace period.
-        due_date = due_date + Duration::try_seconds(grace_period)
-            .ok_or_else(|| format!("Invalid duration seconds: {grace_period}"))?;
+        due_date = due_date
+            + Duration::try_seconds(grace_period)
+                .ok_or_else(|| format!("Invalid duration seconds: {grace_period}"))?;
     }
 
     let org_open_data = org::next_open_date(editor, context_org, &due_date.into())?;
@@ -881,9 +890,12 @@ pub fn void_or_zero_overdues(
     let bill_ids: Vec<i64> = bills.iter().map(|b| b.id().expect("Has ID")).collect();
 
     let mut settings = Settings::new(&editor);
-    let prohibit_neg_balance =
-        settings.get_value_at_org("bill.prohibit_negative_balance_on_overdue", circ_lib)?.boolish()
-        || settings.get_value_at_org("bill.prohibit_negative_balance_default", circ_lib)?.boolish();
+    let prohibit_neg_balance = settings
+        .get_value_at_org("bill.prohibit_negative_balance_on_overdue", circ_lib)?
+        .boolish()
+        || settings
+            .get_value_at_org("bill.prohibit_negative_balance_default", circ_lib)?
+            .boolish();
 
     let mut neg_balance_interval =
         settings.get_value_at_org("bill.negative_balance_interval_on_overdue", circ_lib)?;
@@ -1023,11 +1035,7 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
     }
 
     // Now we want numbers
-    let mut price = if let Ok(p) = price.float() {
-        p
-    } else {
-        0.00
-    };
+    let mut price = if let Ok(p) = price.float() { p } else { 0.00 };
 
     if let Some(max_price) = settings.get_value("circ.max_item_price")?.as_f64() {
         if price > max_price {
