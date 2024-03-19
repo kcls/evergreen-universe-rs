@@ -1,6 +1,7 @@
 use eg::common::jq::JsonQueryCompiler;
 use eg::idldb::{FleshDef, IdlClassSearch, Translator};
 use eversrf as eg;
+use eg::EgResult;
 use eg::app::ApplicationWorker;
 use eg::message;
 use eg::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
@@ -10,7 +11,7 @@ use postgres as pg;
 use std::sync::Arc;
 
 // Import our local app module
-use eg::app;
+use crate::app;
 
 /// List of method definitions we know at compile time.
 ///
@@ -128,7 +129,7 @@ pub static METHODS: &[StaticMethodDef] = &[
 /// Get the IDL class info from the API call split into parts by ".".
 ///
 /// Also verifies the API name has the correct number of parts.
-fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> Result<String, String> {
+fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> EgResult<String> {
     let api_parts = apiname.split(".").collect::<Vec<&str>>();
 
     let len = api_parts.len();
@@ -149,7 +150,7 @@ fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> Result<String, St
         }
     }
 
-    Err(format!("Not a valid IDL class fieldmapper={fieldmapper}"))
+    Err(format!("Not a valid IDL class fieldmapper={fieldmapper}").into())
 }
 
 // open-ils.rs-store.direct.actor.user.retrieve
@@ -157,7 +158,7 @@ pub fn retrieve(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
     let classname = get_idl_class(&idl, method.method())?;
@@ -169,7 +170,7 @@ pub fn retrieve(
 
     let mut flesh_def = None;
     if let Some(j) = method.params().get(1) {
-        flesh_def = Some(FleshDef::from_json_value(&j)?);
+        flesh_def = Some(FleshDef::from_eg_value(&j)?);
     }
 
     if let Some(obj) = translator.get_idl_object_by_pkey(&classname, pkey, flesh_def)? {
@@ -184,7 +185,7 @@ pub fn search(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
     let classname = get_idl_class(&idl, method.method())?;
@@ -197,7 +198,7 @@ pub fn search(
     search.set_filter(query.clone());
 
     if let Some(j) = method.params().get(1) {
-        search.flesh = Some(FleshDef::from_json_value(&j)?);
+        search.flesh = Some(FleshDef::from_eg_value(&j)?);
     }
 
     for value in translator.idl_class_search(&search)? {
@@ -212,7 +213,7 @@ pub fn delete(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
     let classname = get_idl_class(&idl, method.method())?;
@@ -233,7 +234,7 @@ pub fn create(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
     let obj = method.param(0);
@@ -252,7 +253,7 @@ pub fn update(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
     let obj = method.param(0);
@@ -275,7 +276,7 @@ pub fn manage_xact(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let db = worker.database();
     let api = method.method();
@@ -301,7 +302,7 @@ pub fn json_query(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
     let query = method.param(0);

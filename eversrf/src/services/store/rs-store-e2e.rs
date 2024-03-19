@@ -2,7 +2,7 @@ use eversrf as eg;
 
 const CBT_NAME: &str = "open-ils.rs-store-test";
 
-fn main() -> Result<(), String> {
+fn main() -> EgResult<()> {
     let ctx = eg::init::init().or_else(|e| Err(format!("Cannot init: {e}")))?;
 
     let mut ses = ctx.client().session("open-ils.rs-store");

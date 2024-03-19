@@ -101,13 +101,13 @@ path = "src/services/actor/main.rs"
 name = "eg-service-rs-circ"
 path = "src/services/circ/main.rs"
 
-#[[bin]]
-#name = "eg-service-rs-hold-targeter"
-#path = "src/services/hold-targeter/main.rs"
+[[bin]]
+name = "eg-service-rs-hold-targeter"
+path = "src/services/hold-targeter/main.rs"
 
-#[[bin]]
-#name = "eg-service-rs-store"
-#path = "src/services/store/main.rs"
+[[bin]]
+name = "eg-service-rs-store"
+path = "src/services/store/main.rs"
 
 
 
