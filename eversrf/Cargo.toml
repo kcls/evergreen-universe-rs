@@ -97,9 +97,9 @@ path = "src/bin/parallel-ingest.rs"
 name = "eg-service-rs-actor"
 path = "src/services/actor/main.rs"
 
-#[[bin]]
-#name = "eg-service-rs-circ"
-#path = "src/services/circ/main.rs"
+[[bin]]
+name = "eg-service-rs-circ"
+path = "src/services/circ/main.rs"
 
 #[[bin]]
 #name = "eg-service-rs-hold-targeter"

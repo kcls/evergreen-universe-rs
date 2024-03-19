@@ -1,9 +1,9 @@
+use eversrf as eg;
 use eg::common::circ;
 use eg::common::circulator::Circulator;
 use eg::editor::Editor;
-use eg::util;
-use eversrf as eg;
-use json;
+use eg::EgValue;
+use eg::EgResult;
 use eg::app::ApplicationWorker;
 use eg::message;
 use eg::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
@@ -11,7 +11,7 @@ use eg::session::ServerSession;
 use std::collections::HashMap;
 
 // Import our local app module
-use eg::app;
+use crate::app;
 
 /// List of method definitions we know at compile time.
 ///
@@ -185,11 +185,11 @@ pub fn checkout_renew_checkin(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsCircWorker::downcast(worker)?;
-    let authtoken = util::json_string(method.param(0))?;
+    let authtoken = method.param(0).string()?;
 
-    // Translate the JSON object into a hashmap our circulator can use.
+    // Translate the object into a hashmap our circulator can use.
     let mut options: HashMap<String, EgValue> = HashMap::new();
     let op_params = method.param(1);
     for (k, v) in op_params.entries() {
@@ -216,7 +216,7 @@ pub fn checkout_renew_checkin(
     } else if method.method().contains("renew") {
         circulator.renew()
     } else {
-        return Err(format!("Unhandled method {}", method.method()));
+        return Err(format!("Unhandled method {}", method.method()).into());
     };
 
     if let Err(err) = result {
@@ -227,7 +227,7 @@ pub fn checkout_renew_checkin(
     }
 
     if circulator.is_inspect() {
-        session.respond(circulator.policy_to_json_value())?;
+        session.respond(circulator.policy_to_eg_value())?;
         circulator.rollback()?;
         return Ok(());
     }
@@ -250,10 +250,10 @@ pub fn renewal_chain_summary(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsCircWorker::downcast(worker)?;
-    let authtoken = util::json_string(method.param(0))?;
-    let circ_id = util::json_int(method.param(1))?;
+    let authtoken = method.param(0).string()?;
+    let circ_id = method.param(1).int()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -274,10 +274,10 @@ pub fn prev_renewal_chain_summary(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::RsCircWorker::downcast(worker)?;
-    let authtoken = util::json_string(method.param(0))?;
-    let circ_id = util::json_int(method.param(1))?;
+    let authtoken = method.param(0).string()?;
+    let circ_id = method.param(1).int()?;
 
     let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
 
@@ -296,7 +296,7 @@ pub fn prev_renewal_chain_summary(
     // before the first circ in the latest circ chain.
 
     let query = eg::hash! {
-        target_copy: util::json_int(&first_circ["target_copy"])?,
+        target_copy: first_circ["target_copy"].int()?,
         xact_start: {"<": first_circ["xact_start"].as_str().unwrap()}, // xact_tart required
     };
 
@@ -319,8 +319,5 @@ pub fn prev_renewal_chain_summary(
         return Ok(());
     }
 
-    session.respond(circ::summarize_circ_chain(
-        &mut editor,
-        util::json_int(&prev_circ[0]["id"])?,
-    )?)
+    session.respond(circ::summarize_circ_chain(&mut editor, prev_circ[0].id()?)?)
 }
