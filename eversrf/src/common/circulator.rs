@@ -1,14 +1,13 @@
-use crate::common::holds;
-use crate::common::org;
-use crate::common::settings::Settings;
-use crate::common::trigger;
-use crate::constants as C;
-use crate::editor::Editor;
-use crate::event::{EgEvent, Overrides};
-use crate::result::{EgError, EgResult};
-use crate::util;
-use crate::util::{json_bool, json_bool_op, json_int, json_string};
-use EgValue;
+use crate as eg;
+use eg::common::holds;
+use eg::common::org;
+use eg::common::settings::Settings;
+use eg::common::trigger;
+use eg::constants as C;
+use eg::editor::Editor;
+use eg::event::{EgEvent, Overrides};
+use eg::{EgValue, EgError, EgResult};
+use eg::util;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -104,7 +103,7 @@ pub struct CircPolicy {
 }
 
 impl CircPolicy {
-    pub fn to_json_value(&self) -> EgValue {
+    pub fn to_eg_value(&self) -> EgValue {
         eg::hash! {
             "max_fine": self.max_fine,
             "duration": self.duration.as_str(),
@@ -237,7 +236,7 @@ impl<'a> Circulator<'a> {
         }
 
         let settings = Settings::new(&editor);
-        let circ_lib = editor.requestor_ws_ou();
+        let circ_lib = editor.requestor_ws_ou().expect("Workstation Required");
 
         Ok(Circulator {
             editor,
@@ -282,11 +281,11 @@ impl<'a> Circulator<'a> {
         })
     }
 
-    pub fn policy_to_json_value(&self) -> EgValue {
+    pub fn policy_to_eg_value(&self) -> EgValue {
         let mut value = eg::hash! {};
 
         if let Some(rules) = self.circ_policy_rules.as_ref() {
-            value["rules"] = rules.to_json_value();
+            value["rules"] = rules.to_eg_value();
         }
 
         if let Some(results) = self.circ_policy_results.as_ref() {
@@ -320,8 +319,8 @@ impl<'a> Circulator<'a> {
         self.editor.commit()
     }
 
-    /// Panics unless we have an editor and a requestor.
-    pub fn requestor_id(&self) -> i64 {
+    /// Editor requestor id.
+    pub fn requestor_id(&self) -> EgResult<i64> {
         self.editor.requestor_id()
     }
 
@@ -355,7 +354,8 @@ impl<'a> Circulator<'a> {
             .copy
             .as_ref()
             .expect("{self} copy required for copy_status()");
-        json_int(&copy["status"]["id"]).expect("{self} invalid fleshed copy status value")
+
+        copy["status"].id().expect("Circulator invalid fleshed copy status value")
     }
 
     /// Returns the copy circ lib ID.
@@ -367,7 +367,7 @@ impl<'a> Circulator<'a> {
             .as_ref()
             .expect("{self} copy required for copy_circ_lib()");
 
-        json_int(&copy["circ_lib"]).expect("{self} invlid copy circ lib")
+        copy["circ_lib"].int().expect("Circulator invalid copy circ lib")
     }
 
     /// Used for events that stop processing and should result in
@@ -430,7 +430,7 @@ impl<'a> Circulator<'a> {
         let copy_id = if self.copy_id > 0 {
             self.copy_id
         } else if let Some(id) = self.options.get("copy_id") {
-            json_int(id)?
+            id.int()?
         } else {
             0
         };
@@ -445,7 +445,7 @@ impl<'a> Circulator<'a> {
                 self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
             }
         } else if let Some(copy_barcode) = self.options.get("copy_barcode") {
-            self.copy_barcode = Some(json_string(&copy_barcode)?);
+            self.copy_barcode = Some(copy_barcode.string()?);
 
             let query = eg::hash! {
                 barcode: copy_barcode.clone(),
@@ -467,9 +467,9 @@ impl<'a> Circulator<'a> {
         }
 
         if let Some(c) = self.copy.as_ref() {
-            self.copy_id = json_int(&c["id"])?;
+            self.copy_id = c.id()?;
             if self.copy_barcode.is_none() {
-                self.copy_barcode = Some(json_string(&c["barcode"])?);
+                self.copy_barcode = Some(c["barcode"].string()?);
             }
         }
 
@@ -516,7 +516,7 @@ impl<'a> Circulator<'a> {
 
         // actor.copy_alert_suppress
         let suppressions = self.editor().search("acas", query)?;
-        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
+        let copy_circ_lib = self.copy()["circ_lib"].int()?;
 
         let mut wanted_alerts = Vec::new();
 
@@ -530,7 +530,7 @@ impl<'a> Circulator<'a> {
             let atype = &alert["alert_type"];
 
             // Does this alert type only apply to renewals?
-            let wants_renew = json_bool(&atype["in_renew"]);
+            let wants_renew = atype["in_renew"].boolish();
 
             // Verify the alert type event matches what is currently happening.
             if is_renewal {
@@ -559,10 +559,10 @@ impl<'a> Circulator<'a> {
             // TODO below mimics load_system_copy_alerts - refactor?
 
             // Filter on "only at circ lib"
-            if json_bool(&atype["at_circ"]) {
+            if atype["at_circ"].boolish() {
                 let at_circ_orgs = org::descendants(self.editor(), copy_circ_lib)?;
 
-                if json_bool(&atype["invert_location"]) {
+                if atype["invert_location"].boolish() {
                     if at_circ_orgs.contains(&self.circ_lib) {
                         continue;
                     }
@@ -572,11 +572,11 @@ impl<'a> Circulator<'a> {
             }
 
             // filter on "only at owning lib"
-            if json_bool(&atype["at_owning"]) {
-                let owner = json_int(&self.copy.as_ref().unwrap()["call_number"]["owning_lib"])?;
+            if atype["at_owning"].boolish() {
+                let owner = self.copy.as_ref().unwrap()["call_number"]["owning_lib"].int()?;
                 let at_owner_orgs = org::descendants(self.editor(), owner)?;
 
-                if json_bool(&atype["invert_location"]) {
+                if atype["invert_location"].boolish() {
                     if at_owner_orgs.contains(&self.circ_lib) {
                         continue;
                     }
@@ -630,7 +630,7 @@ impl<'a> Circulator<'a> {
             return Ok(());
         }
 
-        let copy_circ_lib = json_int(&self.copy()["circ_lib"])?;
+        let copy_circ_lib = self.copy()["circ_lib"].int()?;
 
         let query = eg::hash! {
             org: org::full_path(self.editor(), circ_lib, None)?
@@ -657,10 +657,10 @@ impl<'a> Circulator<'a> {
 
         while let Some(atype) = alert_types.pop() {
             // Filter on "only at circ lib"
-            if json_bool(&atype["at_circ"]) {
+            if atype["at_circ"].boolish() {
                 let at_circ_orgs = org::descendants(self.editor(), copy_circ_lib)?;
 
-                if json_bool(&atype["invert_location"]) {
+                if atype["invert_location"].boolish() {
                     if at_circ_orgs.contains(&circ_lib) {
                         continue;
                     }
@@ -670,11 +670,11 @@ impl<'a> Circulator<'a> {
             }
 
             // filter on "only at owning lib"
-            if json_bool(&atype["at_owning"]) {
-                let owner = json_int(&self.copy()["call_number"]["owning_lib"])?;
+            if atype["at_owning"].boolish() {
+                let owner = self.copy()["call_number"]["owning_lib"].int()?;
                 let at_owner_orgs = org::descendants(self.editor(), owner)?;
 
-                if json_bool(&atype["invert_location"]) {
+                if atype["invert_location"].boolish() {
                     if at_owner_orgs.contains(&circ_lib) {
                         continue;
                     }
@@ -709,13 +709,13 @@ impl<'a> Circulator<'a> {
                 alert_type: atype["id"].clone(),
                 copy: self.copy_id,
                 temp: "t",
-                create_staff: self.requestor_id(),
+                create_staff: self.requestor_id()?,
                 create_time: "now",
-                ack_staff: self.requestor_id(),
+                ack_staff: self.requestor_id()?,
                 ack_time: "now",
             };
 
-            let alert = self.editor().idl().create_from("aca", alert)?;
+            let alert = EgValue::create("aca", alert)?;
             let mut alert = self.editor().create(alert)?;
 
             alert["alert_type"] = atype.clone(); // flesh
@@ -774,7 +774,7 @@ impl<'a> Circulator<'a> {
                     _ => continue,
                 };
 
-                if json_bool(self.settings.get_value(setting)?) {
+                if self.settings.get_value(setting)?.boolish() {
                     self.set_option_true("void_overdues");
                 }
 
@@ -909,7 +909,7 @@ impl<'a> Circulator<'a> {
 
         circ["usr"] = patron["id"].clone();
 
-        self.patron_id = json_int(&patron["id"])?;
+        self.patron_id = patron.id()?;
         self.patron = Some(patron);
         self.circ = Some(circ);
 
@@ -939,7 +939,7 @@ impl<'a> Circulator<'a> {
         card["usr"] = patron["id"].clone(); // de-flesh card->user
         patron["card"] = card; // flesh user->card
 
-        self.patron_id = json_int(&patron["id"])?;
+        self.patron_id = patron.id()?;
         self.patron = Some(patron);
 
         return Ok(true);
@@ -959,7 +959,7 @@ impl<'a> Circulator<'a> {
             .retrieve_with_ops("au", patron_id, flesh)?
             .ok_or_else(|| self.editor().die_event())?;
 
-        self.patron_id = json_int(&patron["id"])?;
+        self.patron_id = patron.id()?;
         self.patron = Some(patron);
 
         Ok(true)
@@ -977,11 +977,13 @@ impl<'a> Circulator<'a> {
         self.init_run = true;
 
         if let Some(cl) = self.options.get("circ_lib") {
-            self.circ_lib = json_int(cl)?;
+            self.circ_lib = cl.int()?;
         }
 
         self.settings.set_org_id(self.circ_lib);
-        self.is_noncat = json_bool_op(self.options.get("is_noncat"));
+        if let Some(v) = self.options.get("is_noncat") {
+            self.is_noncat = v.boolish();
+        }
 
         self.load_copy()?;
         self.load_patron()?;
@@ -1008,14 +1010,14 @@ impl<'a> Circulator<'a> {
             None => Err(format!("We have no copy to update"))?,
         };
 
-        copy["editor"] = EgValue::from(self.requestor_id());
+        copy["editor"] = EgValue::from(self.requestor_id()?);
         copy["edit_date"] = EgValue::from("now");
 
         for (k, v) in changes.entries_mut() {
             copy[k] = v.take();
         }
 
-        self.editor().idl().de_flesh_object(&mut copy)?;
+        copy.deflesh()?;
 
         self.editor().update(copy)?;
 
@@ -1040,7 +1042,7 @@ impl<'a> Circulator<'a> {
     /// Returns false if the value is unset or false-ish.
     pub fn get_option_bool(&self, name: &str) -> bool {
         if let Some(op) = self.options.get(name) {
-            json_bool(op)
+            op.boolish()
         } else {
             false
         }
@@ -1150,13 +1152,16 @@ impl<'a> Circulator<'a> {
     /// True if the caller wants us to treat this as a precat circ/item.
     /// item must be a precat due to it using the precat call number.
     pub fn precat_requested(&self) -> bool {
-        json_bool_op(self.options.get("is_precat"))
+        match self.options.get("is_precat") {
+            Some(v) => v.boolish(),
+            None => false,
+        }
     }
 
     /// True if we found a copy to work on and it's a precat item.
     pub fn is_precat_copy(&self) -> bool {
         if let Some(copy) = self.copy.as_ref() {
-            if let Ok(cn) = json_int(&copy["call_number"]) {
+            if let Ok(cn) = copy["call_number"].int() {
                 return cn == C::PRECAT_CALL_NUMBER;
             }
         }
@@ -1247,7 +1252,7 @@ impl<'a> Circulator<'a> {
 
     pub fn handle_deleted_copy(&mut self) {
         if let Some(c) = self.copy.as_ref() {
-            if json_bool(&c["deleted"]) {
+            if c["deleted"].boolish() {
                 self.options
                     .insert(String::from("capture"), EgValue::from("nocapture"));
             }

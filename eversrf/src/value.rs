@@ -606,7 +606,7 @@ impl EgValue {
         }
     }
 
-    pub fn to_string_or_err(&self) -> EgResult<String> {
+    pub fn string(&self) -> EgResult<String> {
         self.to_string().ok_or_else(|| format!("{self} cannot be stringified").into())
     }
 
@@ -857,7 +857,7 @@ impl EgValue {
     /// Replace Object values with the primary key value for each fleshed field.
     /// Replace Array values with empty arrays.
     /// Ignore everything else.
-    pub fn de_flesh(&mut self) -> EgResult<()> {
+    pub fn deflesh(&mut self) -> EgResult<()> {
         let inner = match self {
             EgValue::Blessed(ref mut i) => i,
             _ => return Ok(()),

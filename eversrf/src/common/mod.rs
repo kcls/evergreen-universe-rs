@@ -3,6 +3,7 @@
 pub mod bib;
 pub mod billing;
 pub mod circ;
+pub mod circulator;
 pub mod holdings;
 pub mod holds;
 pub mod jq;
@@ -17,7 +18,6 @@ pub mod user;
 /*
 pub mod checkin;
 pub mod checkout;
-pub mod circulator;
 pub mod noncat;
 pub mod renew;
 */
