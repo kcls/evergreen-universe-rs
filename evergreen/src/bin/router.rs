@@ -21,7 +21,7 @@ use eg::message::{Message, MessageStatus, MessageType, Payload, Status, Transpor
 use eg::util;
 use eg::EgResult;
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 use std::env;
 use std::fmt;
 use std::sync::Arc;

@@ -264,7 +264,7 @@ impl EgValue {
     /// Wrap a JSON object (obj) in {"__c":"classname", "__p": obj}
     ///
     /// ```
-    /// use eversrf::EgValue;
+    /// use evergreen::EgValue;
     ///
     /// let v = json::array! ["one", "two", "three"];
     /// let v = EgValue::add_class_wrapper(v, "foo");
@@ -305,12 +305,12 @@ impl EgValue {
     /// Array, Hash, or BlessedValue.
     ///
     ///
-    /// use eversrf::EgValue;
+    /// use evergreen::EgValue;
     ///
-    /// let v = eversrf::array! ["one", "two", "three"];
+    /// let v = evergreen::array! ["one", "two", "three"];
     /// assert_eq!(v.len(), 3);
     ///
-    /// let v = eversrf::object! {"just":"some","stuff",["fooozle", "fazzle", "frizzle"]};
+    /// let v = evergreen::object! {"just":"some","stuff",["fooozle", "fazzle", "frizzle"]};
     /// assert_eq(v.len(), 2);
     pub fn len(&self) -> usize {
         match self {
@@ -1367,7 +1367,7 @@ impl Index<&str> for EgValue {
 /// DOCS
 ///
 /// ```
-/// use eversrf::value::EgValue;
+/// use evergreen::value::EgValue;
 /// let mut v = EgValue::String("hello".to_string());
 /// v["blarg"] = EgValue::String("b".to_string());
 /// assert_eq!(v["blarg"], EgValue::String("b".to_string()));

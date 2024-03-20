@@ -1,6 +1,6 @@
 use eg::common::jq::JsonQueryCompiler;
 use eg::idldb::{FleshDef, IdlClassSearch, Translator};
-use eversrf as eg;
+use evergreen as eg;
 use eg::EgResult;
 use eg::app::ApplicationWorker;
 use eg::message;

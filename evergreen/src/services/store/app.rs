@@ -2,7 +2,7 @@ use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
 use eg::idl;
 use eg::EgError;
 use eg::EgResult;
-use eversrf as eg;
+use evergreen as eg;
 use eg::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::client::Client;
 use eg::conf;

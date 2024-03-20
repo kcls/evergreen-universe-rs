@@ -1,4 +1,4 @@
-use eversrf as eg;
+use evergreen as eg;
 use eg::EgResult;
 
 fn main() -> EgResult<()> {

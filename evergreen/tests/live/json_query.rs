@@ -5,7 +5,7 @@
 use crate::util;
 use eg::common::jq::JsonQueryCompiler;
 use eg::result::EgResult;
-use eversrf as eg;
+use evergreen as eg;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 

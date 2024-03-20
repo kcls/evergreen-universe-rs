@@ -8,7 +8,7 @@ use eg::session::ServerSession;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 use std::collections::HashMap;
 
 // Import our local app module

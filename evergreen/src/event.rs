@@ -203,7 +203,7 @@ impl EgEvent {
     /// Parses a EgValue and optionally returns an EgEvent.
     ///
     /// ```
-    /// use eversrf as eg;
+    /// use evergreen as eg;
     /// use eg::EgEvent;
     /// use eg::EgValue;
     ///

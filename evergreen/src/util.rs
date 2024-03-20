@@ -38,7 +38,7 @@ pub fn thread_id() -> u64 {
 /// Returns a string of random numbers of the requested length
 ///
 /// ```
-/// use eversrf::util;
+/// use evergreen::util;
 /// let n = util::random_number(12);
 /// assert_eq!(n.len(), 12);
 /// let n = util::random_number(100);
@@ -53,7 +53,7 @@ pub fn random_number(size: usize) -> String {
 /// Converts a JSON number or string to an isize if possible
 ///
 /// ```
-/// use eversrf::util;
+/// use evergreen::util;
 /// use json;
 /// let v = json::from(-123);
 /// assert_eq!(util::json_isize(&v), Some(-123));
@@ -74,7 +74,7 @@ pub fn json_isize(value: &JsonValue) -> Option<isize> {
 
 /// Converts a JSON number or string to an usize if possible
 /// ```
-/// use eversrf::util;
+/// use evergreen::util;
 /// use json;
 /// let v = json::from(-123);
 /// assert_eq!(util::json_usize(&v), None);
@@ -97,7 +97,7 @@ pub fn json_usize(value: &JsonValue) -> Option<usize> {
 
 /// Simple seconds-based countdown timer.
 /// ```
-/// use eversrf::util;
+/// use evergreen::util;
 ///
 /// let t = util::Timer::new(60);
 /// assert!(!t.done());
@@ -159,7 +159,7 @@ pub fn epoch_secs_str() -> String {
 /// methods.
 ///
 /// ```
-/// use eversrf::util;
+/// use evergreen::util;
 /// let method = "opensrf.system.private.stuff";
 /// let log_protect = vec!["opensrf.system.private".to_string()];
 /// let params = vec![];
@@ -188,7 +188,7 @@ pub fn stringify_params(method: &str, params: &Vec<EgValue>, log_protect: &Vec<S
 /// Turns a PG array string (e.g. '{1,23,456}') into a uniq list of ints.
 ///
 /// ```
-/// let mut res = eversrf::util::pg_unpack_int_array("{1,23,NULL,23,456}");
+/// let mut res = evergreen::util::pg_unpack_int_array("{1,23,NULL,23,456}");
 /// res.sort();
 /// assert_eq!(res, vec![1,23,456]);
 /// ```

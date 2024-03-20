@@ -1,4 +1,4 @@
-use eversrf as eg;
+use evergreen as eg;
 use eg::server::Server;
 pub mod app;
 pub mod methods;

@@ -3,7 +3,7 @@ use eg::EgValue;
 use eg::common::circulator::Circulator;
 use eg::constants as C;
 use eg::result::EgResult;
-use eversrf as eg;
+use evergreen as eg;
 use std::collections::HashMap;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {

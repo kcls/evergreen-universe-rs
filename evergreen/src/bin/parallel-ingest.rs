@@ -1,5 +1,5 @@
 use eg::db::DatabaseConnection;
-use eversrf as eg;
+use evergreen as eg;
 use getopts::Options;
 use log::{debug, error, info};
 use postgres as pg;

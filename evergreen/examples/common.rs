@@ -2,7 +2,7 @@ use eg::common::bib;
 use eg::common::holds;
 use eg::editor::Editor;
 use eg::result::EgResult;
-use eversrf as eg;
+use evergreen as eg;
 
 fn main() -> EgResult<()> {
     let ctx = eg::init::init()?;

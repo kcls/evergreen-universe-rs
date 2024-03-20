@@ -4,7 +4,7 @@ use eg::idl;
 use eg::logging::Logger;
 use eg::EgResult;
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 use httparse;
 use mptc;
 use std::any::Any;

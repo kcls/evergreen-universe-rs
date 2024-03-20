@@ -1,4 +1,4 @@
-use eversrf as eg;
+use evergreen as eg;
 
 const CBT_NAME: &str = "open-ils.rs-store-test";
 

@@ -76,8 +76,8 @@ pub enum MessageType {
 /// Create a MessageType from the string that would be found in a message.
 ///
 /// ```
-/// let mt: eversrf::message::MessageType = "REQUEST".into();
-/// assert_eq!(mt, eversrf::message::MessageType::Request);
+/// let mt: evergreen::message::MessageType = "REQUEST".into();
+/// assert_eq!(mt, evergreen::message::MessageType::Request);
 /// ```
 #[rustfmt::skip]
 impl From<&str> for MessageType {
@@ -97,7 +97,7 @@ impl From<&str> for MessageType {
 /// for a given MessageType
 ///
 /// ```
-/// let s: &str = eversrf::message::MessageType::Request.into();
+/// let s: &str = evergreen::message::MessageType::Request.into();
 /// assert_eq!(s, "REQUEST");
 /// ```
 #[rustfmt::skip]
@@ -150,8 +150,8 @@ pub enum MessageStatus {
 /// Translate a code number into a MessageStatus
 ///
 /// ```
-/// let ms: eversrf::message::MessageStatus = 205.into();
-/// assert_eq!(ms, eversrf::message::MessageStatus::Complete);
+/// let ms: evergreen::message::MessageStatus = 205.into();
+/// assert_eq!(ms, evergreen::message::MessageStatus::Complete);
 /// ```
 #[rustfmt::skip]
 impl From<isize> for MessageStatus {
@@ -184,7 +184,7 @@ impl From<isize> for MessageStatus {
 /// Translate a MessageStatus into its display label
 ///
 /// ```
-/// let s: &str = eversrf::message::MessageStatus::Continue.into();
+/// let s: &str = evergreen::message::MessageStatus::Continue.into();
 /// assert_eq!(s, "Continue");
 /// ```
 #[rustfmt::skip]

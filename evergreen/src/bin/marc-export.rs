@@ -1,6 +1,6 @@
 use eg::date;
 use eg::db::DatabaseConnection;
-use eversrf as eg;
+use evergreen as eg;
 use getopts;
 use marc::Record;
 use postgres_cursor::Cursor;

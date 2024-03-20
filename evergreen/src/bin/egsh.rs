@@ -1,5 +1,5 @@
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 use serde_json;
 use std::cell::RefCell;
 use std::io;

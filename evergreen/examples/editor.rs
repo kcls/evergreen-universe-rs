@@ -1,4 +1,4 @@
-use eversrf as eg;
+use evergreen as eg;
 
 fn main() -> Result<(), String> {
     let ctx = eg::init::init()?;

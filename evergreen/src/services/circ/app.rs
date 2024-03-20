@@ -1,4 +1,4 @@
-use eversrf as eg;
+use evergreen as eg;
 use eg::{EgResult, EgError};
 use eg::idl;
 use eg::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};

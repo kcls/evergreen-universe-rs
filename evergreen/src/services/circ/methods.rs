@@ -1,4 +1,4 @@
-use eversrf as eg;
+use evergreen as eg;
 use eg::common::circ;
 use eg::common::circulator::Circulator;
 use eg::editor::Editor;

@@ -1,5 +1,5 @@
 use eg::common::trigger;
-use eversrf as eg;
+use evergreen as eg;
 
 fn main() -> eg::EgResult<()> {
     let ctx = eg::init::init()?;

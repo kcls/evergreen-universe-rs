@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 mptc = { path = "../mptc" }
-opensrf = { path = "../opensrf" }
 evergreen = { path = "../evergreen" }
 sip2 = { path = "../sip2" }
 log = "0.4"

@@ -4,8 +4,8 @@ use std::fmt;
 /// This is a convenient way to set the error type to EgError on common
 /// method/function responses to simplify the declaration of return types.
 /// ```
-/// use eversrf::result::*;
-/// use eversrf::event::*;
+/// use evergreen::result::*;
+/// use evergreen::event::*;
 ///
 /// let res = EgResult::Ok("Hello");
 /// assert_eq!(res.unwrap(), "Hello");
@@ -129,8 +129,8 @@ impl From<EgEvent> for EgError {
 }
 
 /// ```
-/// use eversrf::event::*;
-/// use eversrf::result::*;
+/// use evergreen::event::*;
+/// use evergreen::result::*;
 ///
 /// fn foo() -> Result<(), EgError> {
 ///     let evt = EgEvent::new("PROBLEM");

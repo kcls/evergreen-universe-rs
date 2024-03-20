@@ -7,7 +7,7 @@ use eg::method::MethodDef;
 use eg::sclient::HostSettings;
 use eg::EgError;
 use eg::EgResult;
-use eversrf as eg;
+use evergreen as eg;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;

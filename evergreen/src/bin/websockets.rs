@@ -6,7 +6,7 @@ use eg::logging::Logger;
 use eg::message;
 use eg::EgResult;
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 use mptc;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};

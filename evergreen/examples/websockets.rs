@@ -1,7 +1,7 @@
 use eg::message;
 use eg::util;
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 use std::io::Write;
 use std::thread;
 use std::time::{Duration, Instant};

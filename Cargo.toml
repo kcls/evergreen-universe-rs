@@ -3,9 +3,7 @@ resolver = "2"
 members = [
   "mptc",
   "marc",
-  "eversrf",
-#  "opensrf",
-#  "evergreen",
+  "evergreen",
   "sip2",
   "sip2-server",
 ]

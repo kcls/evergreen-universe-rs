@@ -7,7 +7,7 @@ use eg::db::DatabaseConnection;
 use eg::init;
 use eg::norm::Normalizer;
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 use getopts;
 use std::cell::RefCell;
 use std::collections::HashMap;

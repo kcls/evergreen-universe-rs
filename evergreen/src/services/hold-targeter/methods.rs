@@ -1,6 +1,6 @@
 use eg::common::targeter;
 use eg::editor::Editor;
-use eversrf as eg;
+use evergreen as eg;
 use eg::EgResult;
 use eg::app::ApplicationWorker;
 use eg::message;

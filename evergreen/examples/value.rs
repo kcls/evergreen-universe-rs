@@ -1,6 +1,6 @@
 use eg::EgResult;
 use eg::EgValue;
-use eversrf as eg;
+use evergreen as eg;
 
 pub fn main() -> EgResult<()> {
     // Connect and load the IDL

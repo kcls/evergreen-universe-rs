@@ -2,7 +2,7 @@ use eg::common::targeter;
 use eg::date;
 use eg::editor::Editor;
 use eg::result::EgResult;
-use eversrf as eg;
+use evergreen as eg;
 
 /// Retarget all holds regardless of whether it's time.
 const FULL_RETARGET: bool = true;
