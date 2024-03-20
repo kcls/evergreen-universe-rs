@@ -349,7 +349,7 @@ impl TransportMessage {
     /// Create a TransportMessage from a JSON object, consuming the JSON value.
     ///
     /// Returns None if the JSON value cannot be coerced into a TransportMessage.
-    pub fn from_json_value(mut json_obj: JsonValue) -> EgResult<Self> {
+    pub fn from_json_value(mut json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
         let err = || format!("Invalid TransportMessage");
 
         let to = json_obj["to"].as_str().ok_or_else(err)?;
@@ -378,11 +378,11 @@ impl TransportMessage {
 
         if let JsonValue::Array(arr) = body {
             for body in arr {
-                tmsg.body_mut().push(Message::from_json_value(body)?);
+                tmsg.body_mut().push(Message::from_json_value(body, raw_data_mode)?);
             }
         } else if body.is_object() {
             // Sometimes a transport message body is a single message.
-            tmsg.body_mut().push(Message::from_json_value(body)?);
+            tmsg.body_mut().push(Message::from_json_value(body, raw_data_mode)?);
         }
 
         Ok(tmsg)
@@ -483,7 +483,7 @@ impl Message {
     /// Creates a Message from a JSON value, consuming the JSON value.
     ///
     /// Returns Err if the JSON value cannot be coerced into a Message.
-    pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
+    pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
         let err = || format!("Invalid JSON Message");
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
@@ -499,7 +499,7 @@ impl Message {
         let mtype: MessageType = mtype_str.into();
         let payload = msg_hash["payload"].take();
 
-        let payload = Message::payload_from_json_value(mtype, payload)?;
+        let payload = Message::payload_from_json_value(mtype, payload, raw_data_mode)?;
 
         let mut msg = Message::new(mtype, thread_trace, payload);
 
@@ -524,15 +524,15 @@ impl Message {
         Ok(msg)
     }
 
-    fn payload_from_json_value(mtype: MessageType, payload_obj: JsonValue) -> EgResult<Payload> {
+    fn payload_from_json_value(mtype: MessageType, payload_obj: JsonValue, raw_data_mode: bool) -> EgResult<Payload> {
         match mtype {
             MessageType::Request => {
-                let method = MethodCall::from_json_value(payload_obj)?;
+                let method = MethodCall::from_json_value(payload_obj, raw_data_mode)?;
                 Ok(Payload::Method(method))
             }
 
             MessageType::Result => {
-                let result = Result::from_json_value(payload_obj)?;
+                let result = Result::from_json_value(payload_obj, raw_data_mode)?;
                 Ok(Payload::Result(result))
             }
 
@@ -617,12 +617,16 @@ impl Result {
         &self.status_label
     }
 
-    pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
+    pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
         let err = || format!("Invalid Result message");
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
-        let content = EgValue::from_json_value(msg_hash["content"].take())?;
+        let content = if raw_data_mode {
+            EgValue::from_json_value_plain(msg_hash["content"].take())
+        } else {
+            EgValue::from_json_value(msg_hash["content"].take())?
+        };
 
         let code = util::json_isize(&msg_hash["statusCode"]).ok_or_else(err)?;
         let stat: MessageStatus = code.into();
@@ -722,7 +726,7 @@ impl MethodCall {
     }
 
     /// Create a Method from a JsonValue.
-    pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
+    pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
         let err = || format!("Invalid MethodCall message");
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
@@ -732,7 +736,11 @@ impl MethodCall {
         let mut params = Vec::new();
         if let JsonValue::Array(mut vec) = msg_hash["params"].take() {
             while vec.len() > 0 {
-                params.push(EgValue::from_json_value(vec.remove(0))?);
+                if raw_data_mode {
+                    params.push(EgValue::from_json_value_plain(vec.remove(0)));
+                } else {
+                    params.push(EgValue::from_json_value(vec.remove(0))?);
+                }
             }
         }
 

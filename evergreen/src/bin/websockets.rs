@@ -608,7 +608,10 @@ impl Session {
                 break;
             }
 
-            let mut msg = message::Message::from_json_value(msg_json)?;
+            // false here means "non-raw data mode" which means we
+            // require the IDL.  The IDL is required for HASH-ifying
+            // inputs and outputs.
+            let mut msg = message::Message::from_json_value(msg_json, false)?;
             msg.set_ingress(WEBSOCKET_INGRESS);
 
             match msg.mtype() {

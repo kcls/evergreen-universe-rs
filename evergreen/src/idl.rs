@@ -14,9 +14,10 @@ use std::fmt;
 use std::fs;
 use std::sync::Arc;
 
+// TODO move a lot of the object-specific functions/methods into EgValue.
+
 thread_local! {
     static THREAD_LOCAL_IDL: RefCell<Option<Arc<Parser>>> = RefCell::new(None);
-    static THREAD_LOCAL_DUMMY_IDL: RefCell<Arc<Parser>> = RefCell::new(Arc::new(Parser::new()));
 }
 
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
@@ -28,10 +29,6 @@ const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
 /// Every thread needs its own copy of the Arc<Parser>
 pub fn set_thread_idl(idl: &Arc<Parser>) {
     THREAD_LOCAL_IDL.with(|p| *p.borrow_mut() = Some(idl.clone()));
-}
-
-pub fn set_thread_empty_idl() {
-    THREAD_LOCAL_DUMMY_IDL.with(|p| set_thread_idl(&p.borrow()));
 }
 
 pub fn get_class(classname: &str) -> Option<Arc<Class>> {
@@ -412,10 +409,6 @@ impl fmt::Debug for Parser {
     }
 }
 impl Parser {
-    pub fn new() -> Parser {
-        Parser { classes: HashMap::new() }
-    }
-
     /// All of our IDL classes keyed on classname/hint (e.g. "aou")
     pub fn classes(&self) -> &HashMap<String, Arc<Class>> {
         &self.classes

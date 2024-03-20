@@ -16,6 +16,12 @@ pub struct Bus {
 
     /// Name of the router running on our primary domain.
     router_name: String,
+
+    /// Some clients don't need the IDL and all its classes to function
+    /// (e.g. the router).  Using raw_data_mode allows for transport
+    /// messages to be parsed and serialized without concern for
+    /// IDL-classed information stored in the message.
+    raw_data_mode: bool,
 }
 
 impl Bus {
@@ -37,11 +43,16 @@ impl Bus {
 
         let bus = Bus {
             connection,
+            raw_data_mode: false,
             address: addr,
             router_name: config.router_name().to_string(),
         };
 
         Ok(bus)
+    }
+
+    pub fn set_raw_data_mode(&mut self, on: bool) {
+        self.raw_data_mode = on;
     }
 
     /// Generates the Redis connection Info
@@ -239,7 +250,7 @@ impl Bus {
     ) -> EgResult<Option<TransportMessage>> {
         let json_op = self.recv_json_value(timeout, recipient)?;
         if let Some(jv) = json_op {
-            Ok(Some(TransportMessage::from_json_value(jv)?))
+            Ok(Some(TransportMessage::from_json_value(jv, self.raw_data_mode)?))
         } else {
             Ok(None)
         }

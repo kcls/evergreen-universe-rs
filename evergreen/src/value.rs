@@ -180,11 +180,11 @@ impl EgValue {
     pub fn to_classed_hash(&mut self) {
         let (classname, mut map) = match self {
             Self::Array(ref mut list) => {
-                list.iter_mut().for_each(|v| v.unbless());
+                list.iter_mut().for_each(|v| v.to_classed_hash());
                 return;
             }
             Self::Hash(ref mut h) => {
-                h.values_mut().for_each(|v| v.unbless());
+                h.values_mut().for_each(|v| v.to_classed_hash());
                 return;
             }
             Self::Blessed(ref mut o) => (
@@ -194,7 +194,7 @@ impl EgValue {
             _ => return,
         };
 
-        map.values_mut().for_each(|v| v.unbless());
+        map.values_mut().for_each(|v| v.to_classed_hash());
         map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(classname));
 
         *self = EgValue::Hash(map);
@@ -401,11 +401,11 @@ impl EgValue {
     }
 
     /// Translates a JsonValue into an EgValue treating values which
-    /// appear to be IDL-classed values as vanilla JsonValue::Object's
+    /// appear to be IDL-classed values as vanilla JsonValue::Object's.
     ///
     /// Useful if you know the data you are working with does
-    /// not contain any IDL-classed content and you don't
-    /// want to handle errors that can't happen.
+    /// not contain any IDL-classed content or you're interested
+    /// in the parts of the message that may be Blessed.
     pub fn from_json_value_plain(mut v: JsonValue) -> EgValue {
         match v {
             JsonValue::Null => return EgValue::Null,
