@@ -1,6 +1,7 @@
 use super::session::Session;
 use eg::result::EgResult;
 use evergreen as eg;
+use eg::EgValue;
 
 impl Session {
     /// This one comes up a lot...
@@ -8,11 +9,11 @@ impl Session {
     /// Assumes copy is fleshed out to the bib simple_record.
     pub fn get_copy_title_author(
         &self,
-        copy: &json::JsonValue,
+        copy: &EgValue,
     ) -> EgResult<(Option<String>, Option<String>)> {
         let mut resp = (None, None);
 
-        if eg::util::json_int(&copy["call_number"]["id"])? == -1 {
+        if copy["call_number"].id()? == -1 {
             if let Some(title) = copy["dummy_title"].as_str() {
                 resp.0 = Some(title.to_string());
             }
@@ -35,7 +36,7 @@ impl Session {
         Ok(resp)
     }
 
-    pub fn org_from_id(&mut self, id: i64) -> EgResult<Option<&json::JsonValue>> {
+    pub fn org_from_id(&mut self, id: i64) -> EgResult<Option<&EgValue>> {
         if self.org_cache().contains_key(&id) {
             return Ok(self.org_cache().get(&id));
         }
@@ -48,7 +49,7 @@ impl Session {
         Ok(None)
     }
 
-    pub fn org_from_sn(&mut self, sn: &str) -> EgResult<Option<&json::JsonValue>> {
+    pub fn org_from_sn(&mut self, sn: &str) -> EgResult<Option<&EgValue>> {
         for (id, org) in self.org_cache() {
             if org["shortname"].as_str().unwrap().eq(sn) {
                 return Ok(self.org_cache().get(id));
@@ -57,10 +58,10 @@ impl Session {
 
         let mut orgs = self
             .editor_mut()
-            .search("aou", json::object! {shortname: sn})?;
+            .search("aou", eg::hash! {shortname: sn})?;
 
         if let Some(org) = orgs.pop() {
-            let id = eg::util::json_int(&org["id"])?;
+            let id = org.id()?;
             self.org_cache_mut().insert(id, org);
             return Ok(self.org_cache().get(&id));
         }
@@ -80,11 +81,11 @@ impl Session {
             field = &requestor["home_ou"];
         };
 
-        eg::util::json_int(field)
+        field.int()
     }
 
-    pub fn get_user_and_card(&mut self, user_id: i64) -> EgResult<Option<json::JsonValue>> {
-        let ops = json::object! {
+    pub fn get_user_and_card(&mut self, user_id: i64) -> EgResult<Option<EgValue>> {
+        let ops = eg::hash! {
             flesh: 1,
             flesh_fields: {au: ["card"]}
         };
@@ -92,7 +93,7 @@ impl Session {
         self.editor_mut().retrieve_with_ops("au", user_id, ops)
     }
 
-    pub fn format_user_name(&self, user: &json::JsonValue) -> String {
+    pub fn format_user_name(&self, user: &EgValue) -> String {
         let mut name = String::new();
 
         if let Some(n) = user["first_given_name"].as_str() {
@@ -111,7 +112,7 @@ impl Session {
     }
 
     /// Format an address as a single line value
-    pub fn format_address(&self, address: &json::JsonValue) -> String {
+    pub fn format_address(&self, address: &EgValue) -> String {
         let mut addr = String::new();
         if let Some(v) = address["street1"].as_str() {
             addr += v;

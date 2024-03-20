@@ -3,6 +3,7 @@ use super::patron::Patron;
 use super::session::Session;
 use eg::common::circulator::Circulator;
 use eg::date;
+use eg::EgValue;
 use eg::result::EgResult;
 use evergreen as eg;
 use std::collections::HashMap;
@@ -172,8 +173,8 @@ impl Session {
         ovride: bool,
     ) -> EgResult<CheckoutResult> {
         let params = vec![
-            json::from(self.authtoken()?),
-            json::object! {
+            EgValue::from(self.authtoken()?),
+            eg::hash! {
                 copy_barcode: item_barcode,
                 patron_barcode: patron_barcode,
             },
@@ -217,8 +218,8 @@ impl Session {
             let circ = &evt.payload()["circ"];
 
             if circ.is_object() {
-                result.circ_id = Some(eg::util::json_int(&circ["id"])?);
-                result.renewal_remaining = eg::util::json_int(&circ["renewal_remaining"])?;
+                result.circ_id = Some(circ.id()?);
+                result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
                 if self.account().settings().due_date_use_sip_date_format() {
@@ -275,7 +276,7 @@ impl Session {
         is_renewal: bool,
         ovride: bool,
     ) -> EgResult<CheckoutResult> {
-        let mut options: HashMap<String, json::JsonValue> = HashMap::new();
+        let mut options: HashMap<String, EgValue> = HashMap::new();
 
         options.insert("copy_barcode".to_string(), item_barcode.into());
         options.insert("patron_barcode".to_string(), patron_barcode.into());
@@ -312,7 +313,7 @@ impl Session {
 
         log::debug!(
             "{self} Checkout of {item_barcode} returned: {}",
-            evt.to_json_value().dump()
+            evt.to_value().dump()
         );
 
         let mut result = CheckoutResult::new();
@@ -322,8 +323,8 @@ impl Session {
             let circ = &evt.payload()["circ"];
 
             if circ.is_object() {
-                result.circ_id = Some(eg::util::json_int(&circ["id"])?);
-                result.renewal_remaining = eg::util::json_int(&circ["renewal_remaining"])?;
+                result.circ_id = Some(circ.id()?);
+                result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
                 if self.account().settings().due_date_use_sip_date_format() {

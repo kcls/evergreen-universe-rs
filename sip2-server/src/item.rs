@@ -2,6 +2,7 @@ use super::session::Session;
 use eg::constants as C;
 use eg::date;
 use eg::result::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 
 /// A copy object with SIP-related data collected and attached.
@@ -29,12 +30,12 @@ pub struct Item {
 impl Session {
     /// Collect a pile of data for a copy by barcode
     pub fn get_item_details(&mut self, barcode: &str) -> EgResult<Option<Item>> {
-        let search = json::object! {
+        let search = eg::hash! {
             barcode: barcode,
             deleted: "f",
         };
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             flesh: 3,
             flesh_fields: {
                 acp: ["circ_lib", "call_number",
@@ -53,13 +54,13 @@ impl Session {
         }
 
         let copy = &copies[0]; // should only be one
-        let copy_status = eg::util::json_int(&copy["status"])?;
+        let copy_status = copy["status"].int()?;
 
         let mut circ_patron_id: Option<i64> = None;
         let mut due_date: Option<String> = None;
 
         if let Some(circ) = self.get_copy_circ(&copy, copy_status)? {
-            circ_patron_id = Some(eg::util::json_int(&circ["usr"])?);
+            circ_patron_id = Some(circ["usr"].int()?);
 
             if let Some(iso_date) = circ["due_date"].as_str() {
                 if self.account().settings().due_date_use_sip_date_format() {
@@ -71,7 +72,7 @@ impl Session {
             }
         }
 
-        let circ_lib_id = eg::util::json_int(&copy["circ_lib"]["id"])?;
+        let circ_lib_id = copy["circ_lib"].id()?;
         let circ_lib = copy["circ_lib"]["shortname"].as_str().unwrap(); // required
         let owning_lib = copy["call_number"]["owning_lib"]["shortname"]
             .as_str()
@@ -106,7 +107,7 @@ impl Session {
             }
         }
 
-        let deposit_amount = eg::util::json_float(&copy["deposit_amount"])?;
+        let deposit_amount = copy["deposit_amount"].float()?;
 
         let mut fee_type = "01";
         if copy["deposit"].as_str().unwrap().eq("f") {
@@ -119,7 +120,7 @@ impl Session {
         let media_type = copy["circ_modifier"]["sip2_media_type"]
             .as_str()
             .unwrap_or("001");
-        let magnetic_media = eg::util::json_bool(&copy["circ_modifier"]["magnetic_media"]);
+        let magnetic_media = copy["circ_modifier"]["magnetic_media"].boolish();
 
         let (title, _) = self.get_copy_title_author(&copy)?;
         let title = title.unwrap_or(String::new());
@@ -195,14 +196,14 @@ impl Session {
     /// the holds shelf or in transit to the holds shelf.
     fn get_copy_hold(
         &mut self,
-        copy: &json::JsonValue,
-        transit: &Option<json::JsonValue>,
+        copy: &EgValue,
+        transit: &Option<EgValue>,
         copy_status: i64,
-    ) -> EgResult<Option<json::JsonValue>> {
+    ) -> EgResult<Option<EgValue>> {
         if copy_status != C::COPY_STATUS_ON_HOLDS_SHELF {
             // On Holds Shelf
             if let Some(t) = transit {
-                if eg::util::json_int(&t["copy_status"])? != C::COPY_STATUS_ON_HOLDS_SHELF {
+                if t["copy_status"].int()? != C::COPY_STATUS_ON_HOLDS_SHELF {
                     // Copy in transit for non-hold reasons
                     return Ok(None);
                 }
@@ -212,16 +213,16 @@ impl Session {
             }
         }
 
-        let copy_id = eg::util::json_int(&copy["id"])?;
+        let copy_id = copy.id()?;
 
-        let search = json::object! {
+        let search = eg::hash! {
             current_copy: copy_id,
-            capture_time: {"!=": json::JsonValue::Null},
-            cancel_time: json::JsonValue::Null,
-            fulfillment_time: json::JsonValue::Null,
+            capture_time: {"!=": EgValue::Null},
+            cancel_time: EgValue::Null,
+            fulfillment_time: EgValue::Null,
         };
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             limit: 1,
             flesh: 2,
             flesh_fields: {ahr: ["pickup_lib", "usr"], au: ["card"]},
@@ -235,22 +236,22 @@ impl Session {
     /// Find the active transit for a copy if one exists.
     fn get_copy_transit(
         &mut self,
-        copy: &json::JsonValue,
+        copy: &EgValue,
         copy_status: i64,
-    ) -> EgResult<Option<json::JsonValue>> {
+    ) -> EgResult<Option<EgValue>> {
         if copy_status != C::COPY_STATUS_IN_TRANSIT {
             return Ok(None);
         }
 
-        let copy_id = eg::util::json_int(&copy["id"])?;
+        let copy_id = copy.id()?;
 
-        let search = json::object! {
+        let search = eg::hash! {
             target_copy: copy_id,
-            dest_recv_time: json::JsonValue::Null,
-            cancel_time: json::JsonValue::Null,
+            dest_recv_time: EgValue::Null,
+            cancel_time: EgValue::Null,
         };
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             flesh: 1,
             flesh_fields: {atc: ["dest"]},
         };
@@ -303,21 +304,21 @@ impl Session {
     /// Find an open circulation linked to the copy.
     fn get_copy_circ(
         &mut self,
-        copy: &json::JsonValue,
+        copy: &EgValue,
         copy_status: i64,
-    ) -> EgResult<Option<json::JsonValue>> {
+    ) -> EgResult<Option<EgValue>> {
         if copy_status != C::COPY_STATUS_CHECKED_OUT {
             // Checked Out
             return Ok(None);
         }
 
-        let copy_id = eg::util::json_int(&copy["id"])?;
+        let copy_id = copy.id()?;
 
-        let search = json::object! {
+        let search = eg::hash! {
             target_copy: copy_id,
-            checkin_time: json::JsonValue::Null,
+            checkin_time: EgValue::Null,
             "-or": [
-              {stop_fines: json::JsonValue::Null},
+              {stop_fines: EgValue::Null},
               {stop_fines: ["MAXFINES", "LONGOVERDUE"]}
             ]
         };

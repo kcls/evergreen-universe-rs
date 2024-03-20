@@ -4,6 +4,7 @@ use chrono::NaiveDateTime;
 use eg::common::circulator::Circulator;
 use eg::constants as C;
 use eg::result::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use std::collections::HashMap;
 
@@ -209,13 +210,13 @@ impl Session {
         cancel: bool,
         ovride: bool,
     ) -> EgResult<CheckinResult> {
-        let mut args = json::object! {
+        let mut args = eg::hash! {
             copy_barcode: item.barcode.as_str(),
             hold_as_transit: self.account().settings().checkin_holds_as_transits(),
         };
 
         if cancel {
-            args["revert_hold_fulfillment"] = json::from(cancel);
+            args["revert_hold_fulfillment"] = EgValue::from(cancel);
         }
 
         if return_date.trim().len() == 18 {
@@ -227,7 +228,7 @@ impl Session {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("{self} Checking in with backdate: {iso_date}");
 
-                args["backdate"] = json::from(iso_date);
+                args["backdate"] = EgValue::from(iso_date);
             } else {
                 log::warn!("{self} Invalid checkin return date: {return_date}");
             }
@@ -240,7 +241,7 @@ impl Session {
         }
 
         if !args.has_key("circ_lib") {
-            args["circ_lib"] = json::from(self.get_ws_org_id()?);
+            args["circ_lib"] = EgValue::from(self.get_ws_org_id()?);
         }
 
         let method = match ovride {
@@ -248,7 +249,7 @@ impl Session {
             false => "open-ils.circ.checkin",
         };
 
-        let params = vec![json::from(self.authtoken()?), args];
+        let params = vec![EgValue::from(self.authtoken()?), args];
 
         let mut resp =
             match self
@@ -299,7 +300,7 @@ impl Session {
 
             log::debug!("{self} Checkin of {} returned a copy object", item.barcode);
 
-            if let Ok(circ_lib) = eg::util::json_int(&copy["circ_lib"]) {
+            if let Ok(circ_lib) = copy["circ_lib"].int() {
                 if circ_lib != item.circ_lib {
                     if let Some(org) = self.org_from_id(circ_lib)? {
                         let loc = org["shortname"].as_str().unwrap();
@@ -328,7 +329,7 @@ impl Session {
                 item.barcode
             );
 
-            if let Some(user) = self.get_user_and_card(eg::util::json_int(&circ["usr"])?)? {
+            if let Some(user) = self.get_user_and_card(circ["usr"].int()?)? {
                 if let Some(bc) = user["card"]["barcode"].as_str() {
                     result.patron_barcode = Some(bc.to_string());
                 }
@@ -364,15 +365,15 @@ impl Session {
         cancel: bool,
         ovride: bool,
     ) -> EgResult<CheckinResult> {
-        let mut options: HashMap<String, json::JsonValue> = HashMap::new();
+        let mut options: HashMap<String, EgValue> = HashMap::new();
         options.insert("copy_barcode".to_string(), item.barcode.as_str().into());
 
         if self.account().settings().checkin_holds_as_transits() {
-            options.insert("hold_as_transit".to_string(), json::from(true));
+            options.insert("hold_as_transit".to_string(), EgValue::from(true));
         }
 
         if cancel {
-            options.insert("revert_hold_fulfillment".to_string(), json::from(cancel));
+            options.insert("revert_hold_fulfillment".to_string(), EgValue::from(cancel));
         }
 
         if return_date.trim().len() == 18 {
@@ -384,7 +385,7 @@ impl Session {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("{self} Checking in with backdate: {iso_date}");
 
-                options.insert("backdate".to_string(), json::from(iso_date));
+                options.insert("backdate".to_string(), EgValue::from(iso_date));
             } else {
                 log::warn!("{self} Invalid checkin return date: {return_date}");
             }
@@ -399,7 +400,7 @@ impl Session {
         }
 
         if !options.contains_key("circ_lib") {
-            options.insert("circ_lib".to_string(), json::from(self.get_ws_org_id()?));
+            options.insert("circ_lib".to_string(), EgValue::from(self.get_ws_org_id()?));
         }
 
         log::info!("{self} checkin with params: {:?}", options);
@@ -461,7 +462,7 @@ impl Session {
 
             log::debug!("{self} Checkin of {} returned a copy object", item.barcode);
 
-            if let Ok(circ_lib) = eg::util::json_int(&copy["circ_lib"]) {
+            if let Ok(circ_lib) = copy["circ_lib"].int() {
                 if circ_lib != item.circ_lib {
                     if let Some(org) = self.org_from_id(circ_lib)? {
                         let loc = org["shortname"].as_str().unwrap();
@@ -490,7 +491,7 @@ impl Session {
                 item.barcode
             );
 
-            if let Some(user) = self.get_user_and_card(eg::util::json_int(&circ["usr"])?)? {
+            if let Some(user) = self.get_user_and_card(circ["usr"].int()?)? {
                 if let Some(bc) = user["card"]["barcode"].as_str() {
                     result.patron_barcode = Some(bc.to_string());
                 }
@@ -536,7 +537,7 @@ impl Session {
 
         log::debug!("{self} Checkin returned a hold object id={}", hold["id"]);
 
-        if let Some(user) = self.get_user_and_card(eg::util::json_int(&hold["usr"])?)? {
+        if let Some(user) = self.get_user_and_card(hold["usr"].int()?)? {
             result.hold_patron_name = Some(self.format_user_name(&user));
             if let Some(bc) = user["card"]["barcode"].as_str() {
                 result.hold_patron_barcode = Some(bc.to_string());
@@ -549,9 +550,9 @@ impl Session {
         // hold pickup lib may or may not be fleshed here.
         if pickup_lib.is_object() {
             result.destination_loc = Some(pickup_lib["shortname"].as_str().unwrap().to_string());
-            pickup_lib_id = eg::util::json_int(&pickup_lib["id"])?;
+            pickup_lib_id = pickup_lib.id()?;
         } else {
-            pickup_lib_id = eg::util::json_int(&pickup_lib)?;
+            pickup_lib_id = pickup_lib.int()?;
             if let Some(org) = self.org_from_id(pickup_lib_id)? {
                 if let Some(sn) = org["shortname"].as_str() {
                     result.destination_loc = Some(sn.to_string());

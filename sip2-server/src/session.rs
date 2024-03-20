@@ -2,8 +2,8 @@ use super::conf;
 use eg::auth;
 use eg::auth::AuthSession;
 use eg::result::EgResult;
+use eg::EgValue;
 use evergreen as eg;
-use opensrf as osrf;
 use sip2;
 use std::collections::HashMap;
 use std::fmt;
@@ -44,7 +44,7 @@ pub struct Session {
     sip_config: Arc<conf::Config>,
 
     /// Created in worker_start.
-    osrf_client: osrf::Client,
+    osrf_client: eg::Client,
 
     /// Used for pulling trivial data from Evergreen, i.e. no API required.
     ///
@@ -55,18 +55,18 @@ pub struct Session {
     account: Option<conf::SipAccount>,
 
     /// Cache of org unit shortnames and IDs.
-    org_cache: HashMap<i64, json::JsonValue>,
+    org_cache: HashMap<i64, EgValue>,
 }
 
 impl Session {
     pub fn new(
         sip_config: Arc<conf::Config>,
-        osrf_conf: Arc<osrf::conf::Config>,
-        osrf_bus: osrf::bus::Bus,
+        osrf_conf: Arc<eg::conf::Config>,
+        osrf_bus: eg::bus::Bus,
         idl: Arc<eg::idl::Parser>,
         stream: net::TcpStream,
         shutdown: Arc<AtomicBool>,
-        org_cache: HashMap<i64, json::JsonValue>,
+        org_cache: HashMap<i64, EgValue>,
     ) -> Self {
         if let Ok(a) = stream.peer_addr() {
             log::info!("New SIP connection from {a}");
@@ -75,9 +75,7 @@ impl Session {
         let mut con = sip2::Connection::from_stream(stream);
         con.set_ascii(sip_config.ascii());
 
-        let osrf_client = osrf::Client::from_bus(osrf_bus, osrf_conf);
-
-        osrf_client.set_serializer(eg::idl::Parser::as_serializer(&idl));
+        let osrf_client = eg::Client::from_bus(osrf_bus, osrf_conf);
 
         let editor = eg::Editor::new(&osrf_client, &idl);
 
@@ -94,15 +92,15 @@ impl Session {
 
     /// Panics if our client has no bus.  Use with caution and only
     /// after this Session has completed.
-    pub fn take_bus(&mut self) -> osrf::bus::Bus {
+    pub fn take_bus(&mut self) -> eg::bus::Bus {
         self.osrf_client.take_bus()
     }
 
-    pub fn org_cache(&self) -> &HashMap<i64, json::JsonValue> {
+    pub fn org_cache(&self) -> &HashMap<i64, EgValue> {
         &self.org_cache
     }
 
-    pub fn org_cache_mut(&mut self) -> &mut HashMap<i64, json::JsonValue> {
+    pub fn org_cache_mut(&mut self) -> &mut HashMap<i64, EgValue> {
         &mut self.org_cache
     }
 
@@ -125,7 +123,7 @@ impl Session {
         &self.sip_config
     }
 
-    pub fn osrf_client_mut(&mut self) -> &mut osrf::Client {
+    pub fn osrf_client_mut(&mut self) -> &mut eg::Client {
         &mut self.osrf_client
     }
 
@@ -173,7 +171,7 @@ impl Session {
 
         let ils_username = self.account().ils_username().to_string();
 
-        let search = json::object! {
+        let search = eg::hash! {
             usrname: ils_username.as_str(),
             deleted: "f",
         };
@@ -181,7 +179,7 @@ impl Session {
         let users = self.editor_mut().search("au", search)?;
 
         let user_id = match users.len() > 0 {
-            true => eg::util::json_int(&users[0]["id"])?,
+            true => users[0].id()?,
             false => Err(format!("No such user: {ils_username}"))?,
         };
 

@@ -1,7 +1,7 @@
 use eg::samples::SampleData;
 use evergreen as eg;
 use getopts;
-use json::JsonValue;
+use eg::EgValue;
 use sip2;
 use std::time::SystemTime;
 
@@ -169,7 +169,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
     let acn = tester.samples.create_default_acn(e)?;
     tester
         .samples
-        .create_default_acp(e, eg::util::json_int(&acn["id"])?)?;
+        .create_default_acp(e, acn.id()?)?;
     tester.samples.create_default_au(e)?;
 
     e.commit().map_err(|e| e.to_string())
@@ -558,7 +558,7 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
 
     tester.samples.modify_default_acp(
         &mut tester.editor,
-        json::object! {"circ_lib":  eg::samples::AOU_BR2_ID},
+        eg::hash! {"circ_lib":  eg::samples::AOU_BR2_ID},
     )?;
 
     tester.editor.commit()?;
@@ -596,10 +596,10 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     let copy = tester.samples.get_default_acp(&mut tester.editor)?;
 
     // Verify the transit was created.
-    let query = json::object! {
+    let query = eg::hash! {
         "target_copy": copy["id"].clone(),
-        "dest_recv_time": JsonValue::Null,
-        "cancel_time": JsonValue::Null,
+        "dest_recv_time": EgValue::Null,
+        "cancel_time": EgValue::Null,
     };
 
     let mut results = tester.editor.search("atc", query)?;
