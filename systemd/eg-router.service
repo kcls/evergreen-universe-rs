@@ -1,0 +1,8 @@
+[Unit]
+Description=Evergreen Router
+
+[Service]
+Type=simple
+User=opensrf
+Group=opensrf
+ExecStart=/usr/local/bin/eg-router

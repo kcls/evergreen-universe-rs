@@ -234,11 +234,7 @@ impl Session {
     }
 
     /// Find the active transit for a copy if one exists.
-    fn get_copy_transit(
-        &mut self,
-        copy: &EgValue,
-        copy_status: i64,
-    ) -> EgResult<Option<EgValue>> {
+    fn get_copy_transit(&mut self, copy: &EgValue, copy_status: i64) -> EgResult<Option<EgValue>> {
         if copy_status != C::COPY_STATUS_IN_TRANSIT {
             return Ok(None);
         }
@@ -302,11 +298,7 @@ impl Session {
     }
 
     /// Find an open circulation linked to the copy.
-    fn get_copy_circ(
-        &mut self,
-        copy: &EgValue,
-        copy_status: i64,
-    ) -> EgResult<Option<EgValue>> {
+    fn get_copy_circ(&mut self, copy: &EgValue, copy_status: i64) -> EgResult<Option<EgValue>> {
         if copy_status != C::COPY_STATUS_CHECKED_OUT {
             // Checked Out
             return Ok(None);

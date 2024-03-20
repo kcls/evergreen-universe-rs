@@ -1,8 +1,8 @@
 use super::conf;
 use super::conf::Config;
 use super::session::Session;
-use evergreen as eg;
 use eg::EgValue;
+use evergreen as eg;
 use mptc;
 use std::any::Any;
 use std::collections::HashMap;

@@ -1,13 +1,13 @@
-use eg::idl;
-use evergreen as eg;
-use eg::EgError;
-use eg::EgResult;
 use eg::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::client::Client;
 use eg::conf;
+use eg::idl;
 use eg::message;
 use eg::method::MethodDef;
 use eg::sclient::HostSettings;
+use eg::EgError;
+use eg::EgResult;
+use evergreen as eg;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -1,13 +1,13 @@
-use evergreen as eg;
+use eg::app::ApplicationWorker;
 use eg::common::circ;
 use eg::common::circulator::Circulator;
 use eg::editor::Editor;
-use eg::EgValue;
-use eg::EgResult;
-use eg::app::ApplicationWorker;
 use eg::message;
 use eg::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::session::ServerSession;
+use eg::EgResult;
+use eg::EgValue;
+use evergreen as eg;
 use std::collections::HashMap;
 
 // Import our local app module

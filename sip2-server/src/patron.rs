@@ -2,8 +2,8 @@ use super::conf;
 use super::session::Session;
 use eg::date;
 use eg::result::EgResult;
-use evergreen as eg;
 use eg::EgValue;
+use evergreen as eg;
 
 const EG_NULL: EgValue = EgValue::Null;
 const DEFAULT_LIST_ITEM_SIZE: usize = 10;

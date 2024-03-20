@@ -1,8 +1,8 @@
 use crate::util;
-use eg::EgValue;
 use eg::common::circulator::Circulator;
 use eg::constants as C;
 use eg::result::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use std::collections::HashMap;
 
@@ -41,9 +41,7 @@ fn create_test_assets(tester: &mut util::Tester) -> EgResult<()> {
     e.xact_begin()?;
 
     let acn = tester.samples.create_default_acn(e)?;
-    tester
-        .samples
-        .create_default_acp(e, acn.id()?)?;
+    tester.samples.create_default_acp(e, acn.id()?)?;
     tester.samples.create_default_au(e)?;
 
     e.commit()
@@ -96,10 +94,7 @@ fn checkout(tester: &mut util::Tester) -> EgResult<()> {
         Some(tester.samples.acp_barcode.as_str())
     );
 
-    assert_eq!(
-        copy["status"].int()?,
-        C::COPY_STATUS_CHECKED_OUT
-    );
+    assert_eq!(copy["status"].int()?, C::COPY_STATUS_CHECKED_OUT);
 
     assert_eq!(
         patron["card"]["barcode"].as_str(),
@@ -147,10 +142,7 @@ fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
         Some(tester.samples.acp_barcode.as_str())
     );
 
-    assert_eq!(
-        copy["status"].int()?,
-        C::COPY_STATUS_RESHELVING
-    );
+    assert_eq!(copy["status"].int()?, C::COPY_STATUS_RESHELVING);
 
     assert_eq!(
         patron["card"]["barcode"].as_str(),
@@ -169,7 +161,10 @@ fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
 
     // Tell the circulator we're operating from a different org unit
     // so our item goes into transit on checkin.
-    options.insert("circ_lib".to_string(), EgValue::from(eg::samples::AOU_BR2_ID));
+    options.insert(
+        "circ_lib".to_string(),
+        EgValue::from(eg::samples::AOU_BR2_ID),
+    );
 
     tester.editor.xact_begin()?;
     let mut circulator = Circulator::new(&mut tester.editor, options)?;
@@ -193,10 +188,7 @@ fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
         Some(tester.samples.acp_barcode.as_str())
     );
 
-    assert_eq!(
-        copy["status"].int()?,
-        C::COPY_STATUS_IN_TRANSIT
-    );
+    assert_eq!(copy["status"].int()?, C::COPY_STATUS_IN_TRANSIT);
 
     Ok(())
 }

@@ -118,7 +118,10 @@ impl Circulator<'_> {
         }
 
         let copy_id = self.copy_id;
-        let block_for_holds = self.settings.get_value("circ.block_renews_for_holds")?.boolish();
+        let block_for_holds = self
+            .settings
+            .get_value("circ.block_renews_for_holds")?
+            .boolish();
 
         if block_for_holds {
             let holds = holds::find_nearest_permitted_hold(self.editor(), copy_id, true)?;
@@ -131,9 +134,21 @@ impl Circulator<'_> {
     }
 
     fn set_renewal_circ_lib(&mut self, orig_circ_lib: i64) -> EgResult<i64> {
-        let is_opac = self.options.get("opac_renewal").unwrap_or(&eg::NULL).boolish();
-        let is_auto = self.options.get("auto_renewal").unwrap_or(&eg::NULL).boolish();
-        let is_desk = self.options.get("desk_renewal").unwrap_or(&eg::NULL).boolish();
+        let is_opac = self
+            .options
+            .get("opac_renewal")
+            .unwrap_or(&eg::NULL)
+            .boolish();
+        let is_auto = self
+            .options
+            .get("auto_renewal")
+            .unwrap_or(&eg::NULL)
+            .boolish();
+        let is_desk = self
+            .options
+            .get("desk_renewal")
+            .unwrap_or(&eg::NULL)
+            .boolish();
 
         if is_opac || is_auto {
             if let Some(setting) = self

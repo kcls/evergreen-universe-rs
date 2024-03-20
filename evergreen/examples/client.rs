@@ -1,5 +1,5 @@
-use evergreen as eg;
 use eg::EgResult;
+use evergreen as eg;
 
 fn main() -> EgResult<()> {
     let ctx = eg::init::init()?;
@@ -23,7 +23,8 @@ fn main() -> EgResult<()> {
     // One-off request and we only care about the 1st response.
 
     let value = "Hello, World, Pamplemousse";
-    let response = ctx.client()
+    let response = ctx
+        .client()
         .send_recv_one("opensrf.settings", "opensrf.system.echo", value)?
         .unwrap();
 

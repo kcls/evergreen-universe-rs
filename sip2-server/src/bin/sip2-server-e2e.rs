@@ -1,7 +1,7 @@
 use eg::samples::SampleData;
+use eg::EgValue;
 use evergreen as eg;
 use getopts;
-use eg::EgValue;
 use sip2;
 use std::time::SystemTime;
 
@@ -167,9 +167,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
     e.xact_begin()?;
 
     let acn = tester.samples.create_default_acn(e)?;
-    tester
-        .samples
-        .create_default_acp(e, acn.id()?)?;
+    tester.samples.create_default_acp(e, acn.id()?)?;
     tester.samples.create_default_au(e)?;
 
     e.commit().map_err(|e| e.to_string())

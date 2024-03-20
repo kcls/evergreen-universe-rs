@@ -3,8 +3,8 @@ use super::patron::Patron;
 use super::session::Session;
 use eg::common::circulator::Circulator;
 use eg::date;
-use eg::EgValue;
 use eg::result::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use std::collections::HashMap;
 

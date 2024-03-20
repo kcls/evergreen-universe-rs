@@ -1,7 +1,7 @@
 use super::session::Session;
 use eg::result::EgResult;
-use evergreen as eg;
 use eg::EgValue;
+use evergreen as eg;
 
 impl Session {
     /// This one comes up a lot...
@@ -56,9 +56,7 @@ impl Session {
             }
         }
 
-        let mut orgs = self
-            .editor_mut()
-            .search("aou", eg::hash! {shortname: sn})?;
+        let mut orgs = self.editor_mut().search("aou", eg::hash! {shortname: sn})?;
 
         if let Some(org) = orgs.pop() {
             let id = org.id()?;

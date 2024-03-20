@@ -1,5 +1,5 @@
-use evergreen as eg;
 use eg::server::Server;
+use evergreen as eg;
 pub mod app;
 pub mod methods;
 

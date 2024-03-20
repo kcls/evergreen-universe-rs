@@ -653,7 +653,11 @@ impl Circulator<'_> {
             return Ok((copy_price * rule_amount) / 100.0);
         }
 
-        if self.settings.get_value("circ.max_fine.cap_at_price")?.boolish() {
+        if self
+            .settings
+            .get_value("circ.max_fine.cap_at_price")?
+            .boolish()
+        {
             let copy_price = billing::get_copy_price(self.editor(), copy_id)?;
             let amount = if rule_amount > copy_price {
                 copy_price
@@ -688,16 +692,36 @@ impl Circulator<'_> {
         }
 
         if self.is_renewal() {
-            if self.options.get("opac_renewal").unwrap_or(&eg::NULL).boolish() {
+            if self
+                .options
+                .get("opac_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
                 circ["opac_renewal"] = EgValue::from("t");
             }
-            if self.options.get("phone_renewal").unwrap_or(&eg::NULL).boolish() {
+            if self
+                .options
+                .get("phone_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
                 circ["phone_renewal"] = EgValue::from("t");
             }
-            if self.options.get("desk_renewal").unwrap_or(&eg::NULL).boolish() {
+            if self
+                .options
+                .get("desk_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
                 circ["desk_renewal"] = EgValue::from("t");
             }
-            if self.options.get("auto_renewal").unwrap_or(&eg::NULL).boolish() {
+            if self
+                .options
+                .get("auto_renewal")
+                .unwrap_or(&eg::NULL)
+                .boolish()
+            {
                 circ["auto_renewal"] = EgValue::from("t");
             }
 
@@ -835,9 +859,10 @@ impl Circulator<'_> {
             None => return Ok(false),
         };
 
-        let stop_circ =
-            self.settings
-                .get_value("circ.booking_reservation.stop_circ")?.boolish();
+        let stop_circ = self
+            .settings
+            .get_value("circ.booking_reservation.stop_circ")?
+            .boolish();
 
         let query = eg::hash! {
             "resource": resource["id"].clone(),
@@ -1138,9 +1163,7 @@ impl Circulator<'_> {
         let deposit_amount = self.copy()["deposit_amount"].as_f64().unwrap();
 
         if is_deposit {
-            if self.settings.get_value("skip_deposit_fee")?.boolish()
-                || self.is_deposit_exempt()?
-            {
+            if self.settings.get_value("skip_deposit_fee")?.boolish() || self.is_deposit_exempt()? {
                 return Ok(());
             }
         }
@@ -1324,7 +1347,11 @@ impl Circulator<'_> {
             return Ok(None);
         }
 
-        if !self.settings.get_value("circ.checkout_fills_related_hold")?.boolish() {
+        if !self
+            .settings
+            .get_value("circ.checkout_fills_related_hold")?
+            .boolish()
+        {
             return Ok(None);
         }
 
@@ -1375,7 +1402,11 @@ impl Circulator<'_> {
             return self.editor().retrieve("ahr", hold["id"].clone());
         }
 
-        if self.settings.get_value("circ.checkout_fills_related_hold_exact_match_only")?.boolish() {
+        if self
+            .settings
+            .get_value("circ.checkout_fills_related_hold_exact_match_only")?
+            .boolish()
+        {
             // We only want exact matches and didn't find any.  We're done.
             return Ok(None);
         }

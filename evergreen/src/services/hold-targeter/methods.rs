@@ -1,11 +1,11 @@
+use eg::app::ApplicationWorker;
 use eg::common::targeter;
 use eg::editor::Editor;
-use evergreen as eg;
-use eg::EgResult;
-use eg::app::ApplicationWorker;
 use eg::message;
 use eg::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::session::ServerSession;
+use eg::EgResult;
+use evergreen as eg;
 
 // Import our local app module
 use crate::app;
