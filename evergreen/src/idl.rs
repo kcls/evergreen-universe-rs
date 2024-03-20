@@ -36,13 +36,12 @@ pub fn get_class(classname: &str) -> Option<Arc<Class>> {
 
     THREAD_LOCAL_IDL.with(
         |p| {
-            idl_class = p
-                .borrow()
-                .as_ref()
-                .expect("Thread Local IDL Required")
-                .classes()
-                .get(classname)
-                .map(|c| c.clone())
+            if let Some(idl) = p.borrow().as_ref() {
+                idl_class = idl.classes().get(classname).map(|c| c.clone())
+            } else {
+                log::error!("Thread Local IDL Required");
+                panic!("Thread Local IDL Required")
+            }
         }, // Arc::clone()
     );
 

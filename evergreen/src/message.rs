@@ -684,17 +684,13 @@ impl Status {
         Ok(Status::new(stat, stat_str, &msg_class))
     }
 
-    pub fn into_eg_value(self) -> EgValue {
-        let obj = eg::hash! {
+    pub fn into_json_value(self) -> JsonValue {
+        let obj = json::object! {
             "status": self.status_label(),
             "statusCode": self.status as isize,
         };
 
-        obj
-    }
-
-    pub fn into_json_value(self) -> JsonValue {
-        self.into_eg_value().into_json_value()
+        EgValue::add_class_wrapper(obj, &self.msg_class)
     }
 }
 

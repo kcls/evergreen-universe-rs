@@ -147,6 +147,8 @@ impl SessionInbound {
 /// Listens for responses on the OpenSRF bus and relays each to the
 /// main thread for processing.
 struct SessionOutbound {
+    idl: Arc<idl::Parser>,
+
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
 
@@ -169,6 +171,8 @@ impl fmt::Display for SessionOutbound {
 
 impl SessionOutbound {
     fn run(&mut self) {
+        idl::set_thread_idl(&self.idl);
+
         loop {
             // Check before going back to wait for the next ws message.
             if self.shutdown_session.load(Ordering::Relaxed) {
@@ -261,10 +265,13 @@ impl fmt::Display for Session {
 impl Session {
     fn run(
         conf: Arc<conf::Config>,
+        idl: Arc<idl::Parser>,
         stream: TcpStream,
         max_parallel: usize,
         shutdown: Arc<AtomicBool>,
     ) -> EgResult<()> {
+        idl::set_thread_idl(&idl);
+
         let client_ip = stream
             .peer_addr()
             .or_else(|e| Err(format!("Could not determine client IP address: {e}")))?;
@@ -317,6 +324,7 @@ impl Session {
             client_ip: client_ip.clone(),
             shutdown_session: shutdown_session.clone(),
             osrf_receiver,
+            idl,
         };
 
         let mut session = Session {
@@ -808,6 +816,7 @@ impl mptc::Request for WebsocketRequest {
 
 struct WebsocketHandler {
     osrf_conf: Arc<eg::conf::Config>,
+    idl: Arc<idl::Parser>,
     max_parallel: usize,
     shutdown: Arc<AtomicBool>,
 }
@@ -831,7 +840,13 @@ impl mptc::RequestHandler for WebsocketHandler {
 
         let shutdown = self.shutdown.clone();
 
-        if let Err(e) = Session::run(self.osrf_conf.clone(), stream, self.max_parallel, shutdown) {
+        if let Err(e) = Session::run(
+                self.osrf_conf.clone(),
+                self.idl.clone(),
+                stream,
+                self.max_parallel,
+                shutdown
+        ) {
             log::error!("Websocket session ended with error: {e}");
         }
 
@@ -902,6 +917,7 @@ impl mptc::RequestStream for WebsocketStream {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = WebsocketHandler {
             shutdown: self.shutdown.clone(),
+            idl: self.eg_ctx.idl().clone(),
             osrf_conf: self.eg_ctx.config().clone(),
             max_parallel: self.max_parallel,
         };
