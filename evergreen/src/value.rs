@@ -133,8 +133,8 @@ impl EgValue {
 
         // Pull the map out of the EgValue::Hash so we can inspect
         // it and eventually consume it.
-        let mut map = match self {
-            Self::Hash(ref mut h) => h,
+        let map = match self {
+            Self::Hash(ref mut h) => std::mem::replace(h, HashMap::new()),
             _ => return Err(format!("Only EgValue::Hash's can be blessed").into()),
         };
 
@@ -152,17 +152,32 @@ impl EgValue {
         // existing hashmap.
         *self = EgValue::Blessed(BlessedValue {
             idl_class: idl_class.clone(),
-            values: std::mem::replace(&mut map, HashMap::new()),
+            values: map,
         });
 
         Ok(())
     }
 
-    /// Translates Blessed values into a generic Hash values, recursively,
-    /// retaining the original classname in the HASH_CLASSNAME_KEY key.
+    /// Translates a Blessed value into a generic Hash value, non-recursively.
     ///
     /// NO-OP for non-Blessed values.
     pub fn unbless(&mut self) {
+        let (classname, mut map) = match self {
+            Self::Blessed(ref mut o) => (
+                o.idl_class.classname(),
+                std::mem::replace(&mut o.values, HashMap::new()),
+            ),
+            _ => return,
+        };
+
+        map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(classname));
+
+        *self = EgValue::Hash(map);
+    }
+
+    /// Translates Blessed values into generic Hash values, recursively,
+    /// retaining the original classname in the HASH_CLASSNAME_KEY key.
+    pub fn to_classed_hash(&mut self) {
         let (classname, mut map) = match self {
             Self::Array(ref mut list) => {
                 list.iter_mut().for_each(|v| v.unbless());
@@ -185,10 +200,8 @@ impl EgValue {
         *self = EgValue::Hash(map);
     }
 
-    // TODO make this a method
-
-    /// Create an EgValue from a JsonValue which may have IDL class names
-    /// encoded in the HASH_CLASSNAME_KEY of a hash.
+    /// Translated Hash values containing classnames in the HASH_CLASSNAME_KEY
+    /// into Blessed value, recursively.
     pub fn from_classed_hash(mut v: JsonValue) -> EgResult<EgValue> {
         if v.is_number() || v.is_null() || v.is_boolean() || v.is_string() {
             return Ok(EgValue::from_json_value_plain(v));

@@ -250,7 +250,7 @@ impl GatewayHandler {
                 if format.is_hash() {
                     // JSON replies arrive from opensrf as Fieldmapper-encoded
                     // objects.  Decode them into flat hashes for the caller.
-                    content.unbless();
+                    content.to_classed_hash();
 
                     if format == &idl::DataFormat::Hash {
                         // If the caller specifically requests the Hash

@@ -753,7 +753,7 @@ impl Shell {
                 obj.into_json_value().pretty(self.json_print_depth)
             }
         } else {
-            obj.unbless();
+            obj.to_classed_hash();
             if self.json_hash_slim {
                 obj.scrub_hash_nulls();
             }

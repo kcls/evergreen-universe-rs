@@ -725,7 +725,7 @@ impl Session {
                     if format.is_hash() {
                         // The caller wants result data returned in HASH format
                         let mut content = r.take_content();
-                        content.unbless(); // Hashify
+                        content.to_classed_hash(); // Hashify
                         if format == &idl::DataFormat::Hash {
                             // Caller wants a default slim hash
                             content.scrub_hash_nulls();
