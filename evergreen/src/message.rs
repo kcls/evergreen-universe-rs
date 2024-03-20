@@ -378,11 +378,13 @@ impl TransportMessage {
 
         if let JsonValue::Array(arr) = body {
             for body in arr {
-                tmsg.body_mut().push(Message::from_json_value(body, raw_data_mode)?);
+                tmsg.body_mut()
+                    .push(Message::from_json_value(body, raw_data_mode)?);
             }
         } else if body.is_object() {
             // Sometimes a transport message body is a single message.
-            tmsg.body_mut().push(Message::from_json_value(body, raw_data_mode)?);
+            tmsg.body_mut()
+                .push(Message::from_json_value(body, raw_data_mode)?);
         }
 
         Ok(tmsg)
@@ -524,7 +526,11 @@ impl Message {
         Ok(msg)
     }
 
-    fn payload_from_json_value(mtype: MessageType, payload_obj: JsonValue, raw_data_mode: bool) -> EgResult<Payload> {
+    fn payload_from_json_value(
+        mtype: MessageType,
+        payload_obj: JsonValue,
+        raw_data_mode: bool,
+    ) -> EgResult<Payload> {
         match mtype {
             MessageType::Request => {
                 let method = MethodCall::from_json_value(payload_obj, raw_data_mode)?;
@@ -537,6 +543,8 @@ impl Message {
             }
 
             MessageType::Status => {
+                // re: raw_data_mode, only Requests and Results contain
+                // IDL-classed data (to potentially ignore).
                 let stat = Status::from_json_value(payload_obj)?;
                 Ok(Payload::Status(stat))
             }

@@ -250,7 +250,10 @@ impl Bus {
     ) -> EgResult<Option<TransportMessage>> {
         let json_op = self.recv_json_value(timeout, recipient)?;
         if let Some(jv) = json_op {
-            Ok(Some(TransportMessage::from_json_value(jv, self.raw_data_mode)?))
+            Ok(Some(TransportMessage::from_json_value(
+                jv,
+                self.raw_data_mode,
+            )?))
         } else {
             Ok(None)
         }
