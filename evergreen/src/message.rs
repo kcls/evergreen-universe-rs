@@ -244,7 +244,7 @@ impl Payload {
 
 /// Message envelope containing one or more Messages, routing
 /// details, and other metadata.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TransportMessage {
     to: String,
     from: String,
@@ -380,7 +380,7 @@ impl TransportMessage {
             for body in arr {
                 tmsg.body_mut().push(Message::from_json_value(body)?);
             }
-        } else {
+        } else if body.is_object() {
             // Sometimes a transport message body is a single message.
             tmsg.body_mut().push(Message::from_json_value(body)?);
         }

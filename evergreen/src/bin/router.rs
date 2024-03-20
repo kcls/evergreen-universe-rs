@@ -21,6 +21,7 @@ use eg::message::{Message, MessageStatus, MessageType, Payload, Status, Transpor
 use eg::util;
 use eg::EgResult;
 use eg::EgValue;
+use eg::idl;
 use evergreen as eg;
 use std::env;
 use std::fmt;
@@ -888,6 +889,12 @@ fn main() {
 
 fn start_one_domain(conf: Arc<conf::Config>, domain: String) -> thread::JoinHandle<()> {
     return thread::spawn(move || {
+
+        // The message parsing code uses the IDL to inpack messages, but
+        // the router doesn't need to unpack messages to that degree:
+        // it just routes them.  Apply a dummy/empty IDL parser.
+        idl::set_thread_empty_idl();
+
         loop {
             // A router instance will exit if it encounters a
             // non-recoverable bus error.  This can happen, e.g., when

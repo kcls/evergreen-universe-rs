@@ -32,7 +32,7 @@ build-evergreen-release:
 	cargo build -j ${BUILD_THREADS} --package evergreen --release
 
 install-evergreen: install-evergreen-config
-	#cp ./target/debug/eg-router ${TARGET}/bin
+	cp ./target/debug/eg-router ${TARGET}/bin
 	cp ./target/debug/egsh ${TARGET}/bin
 	cp ./target/debug/eg-http-gateway ${TARGET}/bin
 	cp ./target/debug/eg-websockets ${TARGET}/bin
@@ -40,7 +40,7 @@ install-evergreen: install-evergreen-config
 	cp ./target/debug/eg-service-rs-circ ${TARGET}/bin
 
 install-evergreen-release: install-evergreen-config
-	#cp ./target/release/eg-router ${TARGET}/bin
+	cp ./target/release/eg-router ${TARGET}/bin
 	cp ./target/release/egsh ${TARGET}/bin
 	cp ./target/release/eg-http-gateway ${TARGET}/bin
 	cp ./target/release/eg-websockets ${TARGET}/bin
@@ -48,7 +48,7 @@ install-evergreen-release: install-evergreen-config
 	cp ./target/release/eg-service-rs-circ ${TARGET}/bin
 
 install-evergreen-config:
-	#cp ./systemd/eg-router.service ${SYSTEMD_DIR}/
+	cp ./systemd/eg-router.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-http-gateway.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-websockets.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-service-rs-actor.service ${SYSTEMD_DIR}/

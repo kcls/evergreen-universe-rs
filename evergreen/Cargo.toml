@@ -54,7 +54,9 @@ socket2 = "0.5"
 # For gateway
 url = "2.3"
 
-
+[[bin]]
+name = "eg-router"
+path = "src/bin/router.rs"
 
 [[bin]]
 name = "eg-websockets"
