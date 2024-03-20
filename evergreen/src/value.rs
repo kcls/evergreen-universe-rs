@@ -154,20 +154,24 @@ impl EgValue {
 
     /// Translates a Blessed value into a generic Hash value, retaining
     /// the original classname in the HASH_CLASSNAME_KEY key.
-    pub fn unbless(&mut self) -> EgResult<()> {
+    ///
+    /// NO-OP for other EgValue types.
+    pub fn unbless(&mut self) {
         let (classname, mut map) = match self {
             EgValue::Blessed(ref mut o) => (
                 o.idl_class().classname().to_string(),
                 std::mem::replace(&mut o.values, HashMap::new()),
             ),
-            _ => return Err(format!("Cannot unbless non-blessed value").into()),
+            _ => return,
         };
+
+        for v in map.values_mut() {
+            v.unbless();
+        }
 
         map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(classname));
 
         *self = EgValue::Hash(map);
-
-        Ok(())
     }
 
     // TODO make this a method

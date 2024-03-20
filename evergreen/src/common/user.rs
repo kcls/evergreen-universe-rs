@@ -99,7 +99,7 @@ pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     match e.retrieve("ocirccount", user_id)? {
         Some(mut c) => {
             c["total_out"] = EgValue::from(c["out"].int()? + c["overdue"].int()?);
-            c.unbless()?;
+            c.unbless();
             Ok(c)
         }
         None => {
@@ -121,7 +121,7 @@ pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     let mut fines_list = e.search("mous", eg::hash! {usr: user_id})?;
 
     if let Some(mut fines) = fines_list.pop() {
-        fines.unbless()?;
+        fines.unbless();
         Ok(fines)
     } else {
         // Not all users have a fines summary row in the database.
