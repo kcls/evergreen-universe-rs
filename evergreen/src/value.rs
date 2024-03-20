@@ -120,8 +120,8 @@ impl EgValue {
         Ok(v)
     }
 
-    /// Translate an EgValue::Hash into an EGValue::Blessed using
-    /// the provided class name.
+    /// Translate an EgValue::Hash into an EGValue::Blessed, non-recursively,
+    /// using the provided class name.
     ///
     /// Returns Err of the classname is unknown or the object
     /// contains fields which are not in the IDL.
@@ -158,23 +158,28 @@ impl EgValue {
         Ok(())
     }
 
-    /// Translates a Blessed value into a generic Hash value, retaining
-    /// the original classname in the HASH_CLASSNAME_KEY key.
+    /// Translates Blessed values into a generic Hash values, recursively,
+    /// retaining the original classname in the HASH_CLASSNAME_KEY key.
     ///
-    /// NO-OP for other EgValue types.
+    /// NO-OP for non-Blessed values.
     pub fn unbless(&mut self) {
         let (classname, mut map) = match self {
-            EgValue::Blessed(ref mut o) => (
-                o.idl_class().classname().to_string(),
+            Self::Array(ref mut list) => {
+                list.iter_mut().for_each(|v| v.unbless());
+                return;
+            }
+            Self::Hash(ref mut h) => {
+                h.values_mut().for_each(|v| v.unbless());
+                return;
+            }
+            Self::Blessed(ref mut o) => (
+                o.idl_class.classname(),
                 std::mem::replace(&mut o.values, HashMap::new()),
             ),
             _ => return,
         };
 
-        for v in map.values_mut() {
-            v.unbless();
-        }
-
+        map.values_mut().for_each(|v| v.unbless());
         map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(classname));
 
         *self = EgValue::Hash(map);
