@@ -1,8 +1,9 @@
-use crate::constants as C;
-/// Evergreen sample data tools
-use crate::editor::Editor;
-use crate::result::EgResult;
-use json::JsonValue;
+//! Evergreen sample data and tools
+use crate as eg;
+use eg::constants as C;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 
 // Sample data based on the Evergreen Concerto sample data set.
 
@@ -54,8 +55,8 @@ impl SampleData {
         }
     }
 
-    pub fn create_default_acn(&self, e: &mut Editor) -> EgResult<JsonValue> {
-        let seed = json::object! {
+    pub fn create_default_acn(&self, e: &mut Editor) -> EgResult<EgValue> {
+        let mut acn = eg::hash! {
             creator: self.acn_creator,
             editor: self.acn_creator,
             record: self.acn_record,
@@ -64,13 +65,13 @@ impl SampleData {
             label_class: self.acn_label_class,
         };
 
-        let acn = e.idl().create_from("acn", seed)?;
+        acn.bless("acn")?;
 
         e.create(acn)
     }
 
-    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> EgResult<JsonValue> {
-        let seed = json::object! {
+    pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> EgResult<EgValue> {
+        let mut acp = eg::hash! {
             call_number: acn_id,
             creator: self.acn_creator,
             editor: self.acn_creator,
@@ -81,7 +82,7 @@ impl SampleData {
             barcode: self.acp_barcode.to_string(),
         };
 
-        let acp = e.idl().create_from("acp", seed)?;
+        acp.bless("acp")?;
 
         e.create(acp)
     }
@@ -89,7 +90,7 @@ impl SampleData {
     pub fn delete_default_acn(&self, e: &mut Editor) -> EgResult<()> {
         let mut acns = e.search(
             "acn",
-            json::object! {label: self.acn_label.to_string(), deleted: "f"},
+            eg::hash! {label: self.acn_label.to_string(), deleted: "f"},
         )?;
 
         if let Some(acn) = acns.pop() {
@@ -99,10 +100,10 @@ impl SampleData {
         Ok(())
     }
 
-    pub fn get_default_acp(&self, e: &mut Editor) -> EgResult<JsonValue> {
+    pub fn get_default_acp(&self, e: &mut Editor) -> EgResult<EgValue> {
         e.search(
             "acp",
-            json::object! {barcode: self.acp_barcode.to_string(), deleted: "f"},
+            eg::hash! {barcode: self.acp_barcode.to_string(), deleted: "f"},
         )?
         .pop()
         .ok_or_else(|| format!("Cannot find default copy").into())
@@ -115,7 +116,7 @@ impl SampleData {
         Ok(())
     }
 
-    pub fn modify_default_acp(&self, e: &mut Editor, mut values: JsonValue) -> EgResult<()> {
+    pub fn modify_default_acp(&self, e: &mut Editor, mut values: EgValue) -> EgResult<()> {
         let mut acp = self.get_default_acp(e)?;
         for (k, v) in values.entries_mut() {
             acp[k] = v.take();
@@ -124,8 +125,8 @@ impl SampleData {
     }
 
     /// Create default user with a default card.
-    pub fn create_default_au(&self, e: &mut Editor) -> EgResult<JsonValue> {
-        let seed = json::object! {
+    pub fn create_default_au(&self, e: &mut Editor) -> EgResult<EgValue> {
+        let mut au = eg::hash! {
             profile: self.au_profile,
             usrname: self.au_barcode.to_string(),
             passwd: self.au_barcode.to_string(),
@@ -135,16 +136,16 @@ impl SampleData {
             home_ou: self.aou_id,
         };
 
-        let au = e.idl().create_from("au", seed)?;
+        au.bless("au")?;
 
         let mut au = e.create(au)?;
 
-        let seed = json::object! {
+        let mut ac = eg::hash! {
             barcode: self.au_barcode.to_string(),
             usr: au["id"].clone(),
         };
 
-        let ac = e.idl().create_from("ac", seed)?;
+        ac.bless("ac")?;
 
         let ac = e.create(ac)?;
 
@@ -157,13 +158,13 @@ impl SampleData {
 
     /// Purge the default user, including its linked card, transactions, etc.
     pub fn delete_default_au(&self, e: &mut Editor) -> EgResult<()> {
-        let cards = e.search("ac", json::object! {barcode: self.au_barcode.to_string()})?;
+        let cards = e.search("ac", eg::hash! {barcode: self.au_barcode.to_string()})?;
 
         if let Some(ac) = cards.get(0) {
             // Purge the user, attached card, and any other data
             // linked to the user.
-            let query = json::object! {
-                from: ["actor.usr_delete", ac["usr"].clone(), json::JsonValue::Null]
+            let query = eg::hash! {
+                from: ["actor.usr_delete", ac["usr"].clone(), EgValue::Null]
             };
 
             e.json_query(query)?;

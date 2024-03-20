@@ -1,11 +1,11 @@
 use eg::common::trigger;
-use evergreen as eg;
+use eversrf as eg;
 
 fn main() -> eg::EgResult<()> {
     let ctx = eg::init::init()?;
     let mut editor = eg::Editor::new(ctx.client(), ctx.idl());
 
-    let filter = json::object! {
+    let filter = eg::hash! {
         "checkin_time": json::JsonValue::Null,
         "-or": [
             {"stop_fines" : ["MAXFINES", "LONGOVERDUE"]},

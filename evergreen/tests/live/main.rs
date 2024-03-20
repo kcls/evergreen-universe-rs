@@ -1,4 +1,4 @@
-use evergreen as eg;
+use eversrf as eg;
 mod circ;
 mod json_query;
 mod util;

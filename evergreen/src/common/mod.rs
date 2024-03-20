@@ -1,4 +1,5 @@
 //! Shared, common utility functions
+
 pub mod bib;
 pub mod billing;
 pub mod checkin;

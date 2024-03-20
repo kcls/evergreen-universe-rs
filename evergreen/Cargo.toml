@@ -1,27 +1,27 @@
 [package]
-name = "evergreen"
+name = "eversrf"
 version = "0.1.0"
-authors = ["Bill Erickson <berickxx@gmail.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
-mptc = { path = "../mptc" }
-opensrf = { path = "../opensrf" }
-marc = { path = "../marc" }
+rand = "0.8.5"
+log = "0.4.17"
+syslog = "6.0.1"
+json = "0.12.4"
 roxmltree = "0.18"
+redis = "0.22.1"
+gethostname = "0.4"
+signal-hook = "0.3"
+mptc = { path = "../mptc" }
+marc = { path = "../marc" }
 chrono = "0.4"
 chrono-tz = "0.8"
 yaml-rust = "0.4"
-log = "0.4"
-json = "0.12"
 postgres = { version = "0.19", features = ["with-chrono-0_4"] }
-#regex = "1.7"                                                                
 regex = "1.9"                                                                
 getopts = "0.2"
 md5 = "0.7"
-rand = "0.8.5"
 
 # Used by (at least) the parallel export script
 threadpool = "1.8"
@@ -54,6 +54,8 @@ socket2 = "0.5"
 # For gateway
 url = "2.3"
 
+
+
 [[bin]]
 name = "eg-websockets"
 path = "src/bin/websockets.rs"
@@ -81,10 +83,10 @@ path = "src/bin/parallel-ingest.rs"
 
 # TODO move this into the tests/live directory and make
 # it more test-like instead of just printing stuff.
-[[bin]]
+#[[bin]]
 # End-to-end test for open-ils.rs-store
-name = "rs-store-e2e"
-path = "src/services/store/rs-store-e2e.rs"
+#name = "rs-store-e2e"
+#path = "src/services/store/rs-store-e2e.rs"
 
 
 # --- Services

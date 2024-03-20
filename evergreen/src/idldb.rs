@@ -1,11 +1,11 @@
 ///! Tools for translating between IDL objects and Database rows.
-use crate::db;
-use crate::idl;
-use crate::result::EgResult;
-use crate::util;
-use crate::util::Pager;
+use crate as eg;
 use chrono::prelude::*;
-use json::JsonValue;
+use eg::db;
+use eg::idl;
+use eg::util::Pager;
+use eg::EgResult;
+use eg::EgValue;
 use pg::types::ToSql;
 use postgres as pg;
 use rust_decimal::Decimal;
@@ -56,7 +56,7 @@ pub struct IdlClassCreate {
     pub classname: String,
     // Outer Vec is our list of value collections.
     // Inner list is a single set of values to create.
-    pub values: Vec<Vec<(String, JsonValue)>>,
+    pub values: Vec<Vec<(String, EgValue)>>,
 }
 
 impl IdlClassCreate {
@@ -72,8 +72,8 @@ impl IdlClassCreate {
 /// of a given class.
 pub struct IdlClassUpdate {
     pub classname: String,
-    pub values: Vec<(String, JsonValue)>,
-    pub filter: Option<JsonValue>,
+    pub values: Vec<(String, EgValue)>,
+    pub filter: Option<EgValue>,
 }
 
 impl IdlClassUpdate {
@@ -88,19 +88,19 @@ impl IdlClassUpdate {
         self.values = Vec::new();
         self.filter = None;
     }
-    pub fn values(&self) -> &Vec<(String, JsonValue)> {
+    pub fn values(&self) -> &Vec<(String, EgValue)> {
         &self.values
     }
 
-    pub fn add_value(&mut self, field: &str, value: &JsonValue) {
+    pub fn add_value(&mut self, field: &str, value: &EgValue) {
         self.values.push((field.to_string(), value.clone()));
     }
 
-    pub fn filter(&self) -> &Option<JsonValue> {
+    pub fn filter(&self) -> &Option<EgValue> {
         &self.filter
     }
 
-    pub fn set_filter(&mut self, f: JsonValue) {
+    pub fn set_filter(&mut self, f: EgValue) {
         self.filter = Some(f);
     }
 }
@@ -116,19 +116,20 @@ impl FleshDef {
     /// Creates a FleshDef from a JSON options hash/object.
     ///
     /// ```
-    /// use evergreen::idldb::FleshDef;
+    /// use eversrf as eg;
+    /// use eg::idldb::FleshDef;
     /// use json;
     ///
-    /// let obj = json::object! {
+    /// let obj = eg::hash! {
     ///   "flesh": -1, "flesh_fields": {"au": ["home_ou", "profile"]}
     /// };
     ///
-    /// let flesh_def = FleshDef::from_json_value(&obj).expect("Parsed Flesh");
-    /// assert_eq!(flesh_def.depth, evergreen::idldb::MAX_FLESH_DEPTH);
+    /// let flesh_def = FleshDef::from_eg_value(&obj).expect("Parsed Flesh");
+    /// assert_eq!(flesh_def.depth, eversrf::idldb::MAX_FLESH_DEPTH);
     /// assert_eq!(flesh_def.fields.len(), 1);
     /// assert_eq!(flesh_def.fields.get("au").expect("Has an au").len(), 2);
     /// ```
-    pub fn from_json_value(obj: &JsonValue) -> EgResult<Self> {
+    pub fn from_eg_value(obj: &EgValue) -> EgResult<Self> {
         let mut fields = HashMap::new();
 
         for (classname, field_names) in obj["flesh_fields"].entries() {
@@ -161,7 +162,7 @@ impl FleshDef {
 #[derive(Debug)]
 pub struct IdlClassSearch {
     pub classname: String,
-    pub filter: Option<JsonValue>,
+    pub filter: Option<EgValue>,
     pub order_by: Option<Vec<OrderBy>>,
     pub pager: Option<Pager>,
     pub flesh: Option<FleshDef>,
@@ -186,11 +187,11 @@ impl IdlClassSearch {
         &self.classname
     }
 
-    pub fn filter(&self) -> &Option<JsonValue> {
+    pub fn filter(&self) -> &Option<EgValue> {
         &self.filter
     }
 
-    pub fn set_filter(&mut self, f: JsonValue) {
+    pub fn set_filter(&mut self, f: EgValue) {
         self.filter = Some(f);
     }
 
@@ -248,9 +249,9 @@ impl Translator {
     pub fn get_idl_object_by_pkey(
         &self,
         classname: &str,
-        pkey: &JsonValue,
+        pkey: &EgValue,
         flesh_def: Option<FleshDef>,
-    ) -> EgResult<Option<JsonValue>> {
+    ) -> EgResult<Option<EgValue>> {
         let idl_class = match self.idl().classes().get(classname) {
             Some(c) => c,
             None => return Err(format!("No such IDL class: {classname}").into()),
@@ -261,7 +262,7 @@ impl Translator {
             None => return Err(format!("Class {classname} has no primary key field").into()),
         };
 
-        let mut filter = JsonValue::new_object();
+        let mut filter = EgValue::new_object();
         filter
             .insert(pkey_field.name(), pkey.clone())
             .expect("Is Object");
@@ -284,13 +285,13 @@ impl Translator {
     }
 
     /// Fleshes an IDL object in place based on the flesh_fields definitions.
-    pub fn flesh_idl_object(&self, object: &mut JsonValue, flesh_def: &FleshDef) -> EgResult<()> {
+    pub fn flesh_idl_object(&self, object: &mut EgValue, flesh_def: &FleshDef) -> EgResult<()> {
         if flesh_def.depth == 0 {
             log::warn!("Attempt to flesh beyond flesh depth");
             return Ok(());
         }
 
-        let idl_class = self.get_idl_class_from_object(object)?;
+        let idl_class = self.get_idl_class_from_object(object)?.clone();
         let classname = idl_class.classname();
 
         // Clone these out since flesh_def is mutable.
@@ -306,7 +307,7 @@ impl Translator {
 
         // What fields are we fleshing on this class?
         for fieldname in fieldnames.iter() {
-            self.flesh_idl_object_field(object, flesh_def, fieldname, idl_class)?;
+            self.flesh_idl_object_field(object, flesh_def, fieldname, &idl_class)?;
         }
 
         Ok(())
@@ -315,7 +316,7 @@ impl Translator {
     /// Flesh a single field on an object.
     fn flesh_idl_object_field(
         &self,
-        object: &mut JsonValue,
+        object: &mut EgValue,
         flesh_def: &FleshDef,
         fieldname: &str,
         idl_class: &idl::Class,
@@ -339,9 +340,12 @@ impl Translator {
             // fleshed object back to us, the search value will be
             // this object's primary key.
 
-            search_value = self.idl().get_pkey_value(object)?;
+            search_value = object
+                .pkey_value()
+                .ok_or_else(|| format!("Object has no pkey value: {}", object.dump()))?;
         } else {
-            search_value = object[fieldname].clone();
+            //search_value = object[fieldname].clone();
+            search_value = &object[fieldname];
         }
 
         if !search_value.is_string() && !search_value.is_number() {
@@ -386,8 +390,8 @@ impl Translator {
         let mut class_search = IdlClassSearch::new(idl_link.class());
         class_search.flesh = Some(flesh_def);
 
-        let mut filter = json::object! {};
-        filter[idl_link.key()] = search_value;
+        let mut filter = eg::hash! {};
+        filter[idl_link.key()] = search_value.clone();
         class_search.set_filter(filter);
 
         let mut children = self.idl_class_search(&class_search)?;
@@ -414,29 +418,22 @@ impl Translator {
         }
 
         if reltype == idl::RelType::HasMany {
-            object[fieldname] = json::from(children);
+            object[fieldname] = EgValue::from(children);
         }
 
         Ok(())
     }
 
     /// Get the IDL Class representing to the provided object.
-    pub fn get_idl_class_from_object(&self, obj: &JsonValue) -> EgResult<&Arc<idl::Class>> {
-        let classname = match obj[idl::CLASSNAME_KEY].as_str() {
-            Some(c) => c,
-            None => return Err(format!("Not an IDL object: {}", obj.dump()).into()),
-        };
-
-        self.idl()
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}").into())
+    pub fn get_idl_class_from_object<'a>(&self, obj: &'a EgValue) -> EgResult<&'a Arc<idl::Class>> {
+        obj.idl_class()
+            .ok_or_else(|| format!("Not an IDL object: {}", obj.dump()).into())
     }
 
     /// Create an IDL object in the database
     ///
     /// Returns the created value
-    pub fn create_idl_object(&self, obj: &JsonValue) -> EgResult<JsonValue> {
+    pub fn create_idl_object(&self, obj: &EgValue) -> EgResult<EgValue> {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut create = IdlClassCreate::new(idl_class.classname());
@@ -464,7 +461,7 @@ impl Translator {
     /// Create one or more IDL objects in the database.
     ///
     /// Returns the created rows.
-    pub fn idl_class_create(&self, create: &IdlClassCreate) -> EgResult<Vec<JsonValue>> {
+    pub fn idl_class_create(&self, create: &IdlClassCreate) -> EgResult<Vec<EgValue>> {
         if create.values.len() == 0 {
             Err(format!("No values to create in idl_class_create()"))?;
         }
@@ -530,7 +527,7 @@ impl Translator {
 
         // Use the primary key values reported by PG to find the
         // newly created rows.
-        let mut results: Vec<JsonValue> = Vec::new();
+        let mut results: Vec<EgValue> = Vec::new();
 
         for row in query_res.unwrap() {
             let pkey_value = Translator::col_value_to_json_value(&row, 0)?;
@@ -545,7 +542,7 @@ impl Translator {
     }
 
     /// Update one IDL object in the database.
-    pub fn update_idl_object(&self, obj: &JsonValue) -> EgResult<u64> {
+    pub fn update_idl_object(&self, obj: &EgValue) -> EgResult<u64> {
         let idl_class = self.get_idl_class_from_object(obj)?;
 
         let mut update = IdlClassUpdate::new(idl_class.classname());
@@ -553,12 +550,11 @@ impl Translator {
             update.add_value(name, &obj[name]);
         }
 
-        let (pkey_field, pkey_value) = self
-            .idl
-            .get_pkey_info(obj)
+        let (pkey_field, pkey_value) = obj
+            .pkey_info()
             .ok_or_else(|| format!("Object has no primary key field"))?;
 
-        let mut filter = JsonValue::new_object();
+        let mut filter = EgValue::new_object();
         filter
             .insert(pkey_field.name(), pkey_value.clone())
             .unwrap();
@@ -635,7 +631,7 @@ impl Translator {
     /// Delete one IDL object via its primary key.
     ///
     /// Returns a Result of the number of rows affected.
-    pub fn delete_idl_object_by_pkey(&self, classname: &str, pkey: &JsonValue) -> EgResult<u64> {
+    pub fn delete_idl_object_by_pkey(&self, classname: &str, pkey: &EgValue) -> EgResult<u64> {
         if !self.db.borrow().in_transaction() {
             Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
         }
@@ -679,8 +675,8 @@ impl Translator {
     /// Search for IDL objects in the database.
     ///
     /// Returns a Vec of the found IDL objects.
-    pub fn idl_class_search(&self, search: &IdlClassSearch) -> EgResult<Vec<JsonValue>> {
-        let mut results: Vec<JsonValue> = Vec::new();
+    pub fn idl_class_search(&self, search: &IdlClassSearch) -> EgResult<Vec<EgValue>> {
+        let mut results: Vec<EgValue> = Vec::new();
         let classname = &search.classname;
 
         log::debug!("idl_class_search() {search:?}");
@@ -761,8 +757,7 @@ impl Translator {
         sql
     }
 
-    /// Translate numeric IDL field values from JSON Strings into JSON
-    /// Numbers.
+    /// Translate numeric IDL field values from Strings into Numbers.
     ///
     /// Sometimes numbers are passed as strings in the wild west of JSON,
     /// but the database doesn't want strings for, say, numeric primary key
@@ -772,8 +767,8 @@ impl Translator {
     fn try_translate_numeric(
         &self,
         idl_field: &idl::Field,
-        value: &JsonValue,
-    ) -> EgResult<Option<JsonValue>> {
+        value: &EgValue,
+    ) -> EgResult<Option<EgValue>> {
         if !value.is_string() {
             return Ok(None);
         }
@@ -782,15 +777,12 @@ impl Translator {
             return Ok(None);
         }
 
-        // Try to create a int, then try a float.
-        match util::json_int(&value) {
-            Ok(n) => Ok(Some(json::from(n))),
-            Err(_) => match util::json_float(&value) {
-                Ok(n) => Ok(Some(json::from(n))),
-                Err(_) => Err(format!(
-                    "Numeric value cannot be coerced int a number: {value}"
-                ))?,
-            },
+        if let Some(n) = value.as_int() {
+            Ok(Some(EgValue::from(n)))
+        } else if let Some(n) = value.as_float() {
+            Ok(Some(EgValue::from(n)))
+        } else {
+            Err(format!("Value cannot be coerced int a number: {value}").into())
         }
     }
 
@@ -798,7 +790,7 @@ impl Translator {
     fn compile_class_create(
         &self,
         class: &idl::Class,
-        values: &Vec<(String, JsonValue)>,
+        values: &Vec<(String, EgValue)>,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> EgResult<String> {
@@ -837,7 +829,7 @@ impl Translator {
     fn compile_class_update(
         &self,
         class: &idl::Class,
-        values: &Vec<(String, JsonValue)>,
+        values: &Vec<(String, EgValue)>,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> EgResult<String> {
@@ -879,7 +871,7 @@ impl Translator {
     fn compile_class_filter(
         &self,
         class: &idl::Class,
-        filter: &JsonValue,
+        filter: &EgValue,
         param_index: &mut usize,
         param_list: &mut Vec<String>,
     ) -> EgResult<String> {
@@ -903,26 +895,25 @@ impl Translator {
             })?;
 
             let filter = match subq {
-                JsonValue::Array(_) => self.compile_class_filter_array(
+                EgValue::Array(_) => self.compile_class_filter_array(
                     param_index,
                     param_list,
                     idl_field,
                     &subq,
                     "IN",
                 )?,
-                JsonValue::Object(_) => {
+                EgValue::Hash(_) => {
                     self.compile_class_filter_object(param_index, param_list, idl_field, &subq)?
                 }
-                JsonValue::Number(_) | JsonValue::String(_) | JsonValue::Short(_) => self
-                    .append_json_literal(
-                        param_index,
-                        param_list,
-                        idl_field,
-                        subq,
-                        Some("="),
-                        false,
-                    )?,
-                JsonValue::Boolean(_) | JsonValue::Null => self.append_json_literal(
+                EgValue::Number(_) | EgValue::String(_) => self.append_json_literal(
+                    param_index,
+                    param_list,
+                    idl_field,
+                    subq,
+                    Some("="),
+                    false,
+                )?,
+                EgValue::Boolean(_) | EgValue::Null => self.append_json_literal(
                     param_index,
                     param_list,
                     idl_field,
@@ -930,6 +921,9 @@ impl Translator {
                     Some("IS"),
                     false,
                 )?,
+                EgValue::Blessed(_) => {
+                    return Err(format!("Cannot create JSON filter from a blessed value").into())
+                }
             };
 
             filters.push(format!(" {field} {filter}"));
@@ -948,7 +942,7 @@ impl Translator {
         param_index: &mut usize,
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
-        obj: &JsonValue,
+        obj: &EgValue,
         operand: Option<&str>,
         use_default: bool,
     ) -> EgResult<String> {
@@ -971,12 +965,12 @@ impl Translator {
 
         // Track String parameters so we can use query binding on the
         // them in the final query.  All other types, being derived
-        // from JsonValue, have a known shape and size (number/bool/null),
+        // from EgValue, have a known shape and size (number/bool/null),
         // so query binding is less critical from a sql-injection
         // perspective.
         if obj.is_string() {
             let s = format!("{opstr}${param_index}");
-            param_list.push(obj.to_string());
+            param_list.push(obj.to_string().expect("Is String"));
             *param_index += 1;
             Ok(s)
         } else {
@@ -991,7 +985,7 @@ impl Translator {
         param_index: &mut usize,
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
-        obj: &JsonValue,
+        obj: &EgValue,
     ) -> EgResult<String> {
         // A filter object may only contain a single operand => value combo
         let (key, val) = obj
@@ -1035,7 +1029,7 @@ impl Translator {
         param_index: &mut usize,
         param_list: &mut Vec<String>,
         idl_field: &idl::Field,
-        arr: &JsonValue,
+        arr: &EgValue,
         operand: &str,
     ) -> EgResult<String> {
         let operand = operand.to_uppercase();
@@ -1058,10 +1052,10 @@ impl Translator {
         Ok(format!("{operand} ({})", filters.join(", ")))
     }
 
-    /// Maps a PG row into an IDL-based JsonValue;
-    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> EgResult<JsonValue> {
-        let mut obj = JsonValue::new_object();
-        obj[idl::CLASSNAME_KEY] = json::from(class.classname());
+    /// Maps a PG row into an IDL-based EgValue;
+    fn row_to_idl(&self, class: &idl::Class, row: &pg::Row) -> EgResult<EgValue> {
+        let mut obj = EgValue::new_object();
+        obj.bless(class.classname())?;
 
         let mut index = 0;
 
@@ -1073,72 +1067,72 @@ impl Translator {
         Ok(obj)
     }
 
-    /// Translate a PG-typed row value into a JsonValue
-    pub fn col_value_to_json_value(row: &pg::Row, index: usize) -> EgResult<JsonValue> {
+    /// Translate a PG-typed row value into a EgValue
+    pub fn col_value_to_json_value(row: &pg::Row, index: usize) -> EgResult<EgValue> {
         let col_type = row.columns().get(index).map(|c| c.type_().name()).unwrap();
 
         match col_type {
-            // JsonValue has From<Option<T>>
+            // EgValue has From<Option<T>>
             "bool" => {
                 let v: Option<bool> = row.get(index);
-                Ok(json::from(v))
+                Ok(EgValue::from(v))
             }
             "interval" => {
                 let v: Option<pg_interval::Interval> = row.get(index);
                 let s = match v {
                     Some(val) => val.to_postgres(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(EgValue::Null),
                 };
-                Ok(json::from(s))
+                Ok(EgValue::from(s))
             }
             "varchar" | "char(n)" | "text" | "name" => {
                 let v: Option<String> = row.get(index);
-                Ok(json::from(v))
+                Ok(EgValue::from(v))
             }
             "date" => {
                 let v: Option<chrono::NaiveDate> = row.get(index);
                 let s = match v {
                     Some(val) => val.format("%F").to_string(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(EgValue::Null),
                 };
-                Ok(json::from(s))
+                Ok(EgValue::from(s))
             }
             "timestamp" | "timestamptz" => {
                 let v: Option<chrono::DateTime<Utc>> = row.get(index);
                 let s = match v {
                     Some(val) => val.format("%FT%T%z").to_string(),
-                    None => return Ok(JsonValue::Null),
+                    None => return Ok(EgValue::Null),
                 };
-                Ok(json::from(s))
+                Ok(EgValue::from(s))
             }
             "int2" | "smallserial" | "smallint" => {
                 let v: Option<i16> = row.get(index);
-                Ok(json::from(v))
+                Ok(EgValue::from(v))
             }
             "int" | "int4" | "serial" => {
                 let v: Option<i32> = row.get(index);
-                Ok(json::from(v))
+                Ok(EgValue::from(v))
             }
             "int8" | "bigserial" | "bigint" => {
                 let v: Option<i64> = row.get(index);
-                Ok(json::from(v))
+                Ok(EgValue::from(v))
             }
             "float4" | "real" => {
                 let v: Option<f32> = row.get(index);
-                Ok(json::from(v))
+                Ok(EgValue::from(v))
             }
             "float8" | "double precision" => {
                 let v: Option<f64> = row.get(index);
-                Ok(json::from(v))
+                Ok(EgValue::from(v))
             }
             "numeric" => {
                 let decimal: Option<Decimal> = row.get(index);
                 match decimal {
-                    Some(d) => Ok(json::from(d.to_string())),
-                    None => Ok(JsonValue::Null),
+                    Some(d) => Ok(EgValue::from(d.to_string())),
+                    None => Ok(EgValue::Null),
                 }
             }
-            "tsvector" => Ok(JsonValue::Null),
+            "tsvector" => Ok(EgValue::Null),
             _ => Err(format!("Unsupported column type: {col_type}").into()),
         }
     }

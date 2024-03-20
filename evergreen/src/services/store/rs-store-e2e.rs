@@ -1,8 +1,8 @@
-use evergreen as eg;
+use eversrf as eg;
 
 const CBT_NAME: &str = "open-ils.rs-store-test";
 
-fn main() -> Result<(), String> {
+fn main() -> EgResult<()> {
     let ctx = eg::init::init().or_else(|e| Err(format!("Cannot init: {e}")))?;
 
     let mut ses = ctx.client().session("open-ils.rs-store");
@@ -17,8 +17,8 @@ fn main() -> Result<(), String> {
 
     // Create a new billing type row.
     let mut cbt = ctx.idl().create("cbt").expect("'cbt' is an IDL object");
-    cbt["name"] = json::from(CBT_NAME);
-    cbt["owner"] = json::from(1);
+    cbt["name"] = EgValue::from(CBT_NAME);
+    cbt["owner"] = EgValue::from(1);
 
     req = ses.request("open-ils.rs-store.direct.config.billing_type.create", cbt)?;
     cbt = req
@@ -37,14 +37,14 @@ fn main() -> Result<(), String> {
     println!("Retrieve found: {}", cbt.dump());
 
     // Search for the new billing type by name
-    let query = json::object! {name: CBT_NAME};
+    let query = eg::hash! {name: CBT_NAME};
     req = ses.request("open-ils.rs-store.direct.config.billing_type.search", query)?;
     cbt = req.recv()?.expect("search should return a value");
 
     println!("Search found: {}", cbt.dump());
 
     // Update the billing type
-    cbt["default_price"] = json::from(2.25);
+    cbt["default_price"] = EgValue::from(2.25);
     req = ses.request(
         "open-ils.rs-store.direct.config.billing_type.update",
         cbt.clone(),

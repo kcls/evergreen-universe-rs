@@ -1,7 +1,7 @@
 use eg::samples::SampleData;
 use eg::Editor;
 use eg::EgResult;
-use evergreen as eg;
+use eversrf as eg;
 use std::time::SystemTime;
 
 pub struct Timer {

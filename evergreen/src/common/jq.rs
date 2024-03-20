@@ -1,10 +1,10 @@
 ///! JSON Query Parser
-use crate::db;
-use crate::idl;
-use crate::result::EgResult;
-use crate::util;
-use json::JsonValue;
-use opensrf::message;
+use crate as eg;
+use eg::db;
+use eg::idl;
+use eg::message;
+use eg::result::EgResult;
+use eg::EgValue;
 use std::sync::Arc;
 
 const JOIN_WITH_AND: &str = "AND";
@@ -21,10 +21,10 @@ pub struct SourceDef {
 }
 
 impl SourceDef {
-    fn idl_class(&self) -> &Arc<idl::Class> {
+    pub fn idl_class(&self) -> &Arc<idl::Class> {
         &self.idl_class
     }
-    fn classname(&self) -> &str {
+    pub fn classname(&self) -> &str {
         self.idl_class.classname()
     }
 }
@@ -109,13 +109,13 @@ impl JsonQueryCompiler {
 
     /// Stringified JSON array of parameter indexes and values.
     pub fn debug_params(&self) -> String {
-        let mut array = json::array![];
+        let mut array = eg::array![];
         if let Some(params) = self.params.as_ref() {
             for (idx, value) in params.iter().enumerate() {
-                let mut obj = json::object! {};
+                let mut obj = eg::hash! {};
 
                 // Every parameter should have a value at compile/execute time.
-                obj[format!("${}", idx + 1)] = json::from(value.as_str());
+                obj[&format!("${}", idx + 1)] = EgValue::from(value.as_str());
 
                 array.push(obj).expect("this is an array");
             }
@@ -175,6 +175,10 @@ impl JsonQueryCompiler {
     /// The alias may also be the classname.
     fn get_alias_classname(&self, alias: &str) -> EgResult<&str> {
         Ok(self.get_alias_class(alias)?.classname())
+    }
+
+    pub fn sources(&self) -> &Vec<SourceDef> {
+        &self.sources
     }
 
     fn get_alias_class(&self, alias: &str) -> EgResult<&Arc<idl::Class>> {
@@ -242,16 +246,16 @@ impl JsonQueryCompiler {
     ///
     /// The resulting SQL may be found in self.query_string() and
     /// the resulting query parameters may be found in self.query_params();
-    pub fn compile(&mut self, query: &JsonValue) -> EgResult<()> {
+    pub fn compile(&mut self, query: &EgValue) -> EgResult<()> {
         if !query.is_object() {
             return Err(format!("json_query must be a JSON hash").into());
         }
 
-        if util::json_bool(&query["no_i18n"]) {
+        if query["no_i18n"].boolish() {
             self.disable_i18n = true;
         }
 
-        if util::json_bool(&query["distinct"]) {
+        if query["distinct"].boolish() {
             self.has_aggregate = true;
         }
 
@@ -313,7 +317,7 @@ impl JsonQueryCompiler {
         Ok(())
     }
 
-    fn compile_order_by(&mut self, order_by: &JsonValue) -> EgResult<String> {
+    fn compile_order_by(&mut self, order_by: &EgValue) -> EgResult<String> {
         if order_by.is_array() {
             return self.compile_order_by_array(order_by);
         }
@@ -321,7 +325,7 @@ impl JsonQueryCompiler {
         Ok(String::new())
     }
 
-    fn compile_order_by_array(&mut self, order_by: &JsonValue) -> EgResult<String> {
+    fn compile_order_by_array(&mut self, order_by: &EgValue) -> EgResult<String> {
         let mut order_bys = Vec::new();
 
         for hash in order_by.members() {
@@ -374,8 +378,8 @@ impl JsonQueryCompiler {
     }
 
     /// Compiles a UNION, INTERSECT, or EXCEPT query.
-    fn compile_combo_query(&mut self, query: &JsonValue) -> EgResult<String> {
-        let all = util::json_bool(&query["all"]);
+    fn compile_combo_query(&mut self, query: &EgValue) -> EgResult<String> {
+        let all = query["all"].boolish();
         let qtype;
 
         let query_array = if query["union"].is_array() {
@@ -429,7 +433,7 @@ impl JsonQueryCompiler {
     }
 
     /// Compile a wholly-formed subquery and absorb its parameter values.
-    fn compile_sub_query(&mut self, query: &JsonValue) -> EgResult<String> {
+    fn compile_sub_query(&mut self, query: &EgValue) -> EgResult<String> {
         let mut compiler = self.clone();
 
         compiler.compile(query)?;
@@ -447,7 +451,7 @@ impl JsonQueryCompiler {
         Ok(sub_sql)
     }
 
-    fn compile_selects(&mut self, select_def: &JsonValue) -> EgResult<String> {
+    fn compile_selects(&mut self, select_def: &EgValue) -> EgResult<String> {
         if select_def.is_null() {
             let base_class = self.get_base_class()?.clone();
             let cn = base_class.classname(); // parallel mutes
@@ -470,7 +474,7 @@ impl JsonQueryCompiler {
     fn compile_selects_for_class(
         &mut self,
         class_alias: &str,
-        select_def: &JsonValue,
+        select_def: &EgValue,
     ) -> EgResult<String> {
         if select_def.is_null() {
             return self.build_default_select_list(class_alias, None);
@@ -586,7 +590,7 @@ impl JsonQueryCompiler {
         class_alias: &str,
         field_alias: Option<&str>,
         field_name: &str,
-        field_def: Option<&JsonValue>,
+        field_def: Option<&EgValue>,
         // Fields within a query predicate (e.g. WHERE "aou".id = 1)
         // are not part of the SELECT clause and cannot be grouped on.
         handle_group_by: bool,
@@ -602,7 +606,7 @@ impl JsonQueryCompiler {
             // properties, like a transform or other flags.
 
             // Do we support aggregate functions?  Maybe.
-            is_aggregate = util::json_bool(&fdef["aggregate"]);
+            is_aggregate = fdef["aggregate"].boolish();
 
             if let Some(xform) = fdef["transform"].as_str() {
                 let mut sql = String::new();
@@ -610,7 +614,7 @@ impl JsonQueryCompiler {
                 sql += &self.check_identifier(xform)?;
                 sql += "(";
 
-                if util::json_bool(&fdef["distinct"]) {
+                if fdef["distinct"].boolish() {
                     sql += "DISTINCT ";
                 }
 
@@ -711,20 +715,20 @@ impl JsonQueryCompiler {
     fn compile_joins_for_class(
         &mut self,
         left_alias: &str,
-        joins: &JsonValue,
+        joins: &EgValue,
     ) -> EgResult<Option<String>> {
         let class_to_hash = |c| {
             // Sometimes we JOIN to a class with no additional info beyond
             // the classname.  Put that info into a json object for consistency.
-            let mut hash = json::object! {};
-            hash[c] = JsonValue::Null;
+            let mut hash = eg::hash! {};
+            hash[c] = EgValue::Null;
             hash
         };
 
         let join_binding;
 
-        let join_list = if let JsonValue::Array(list) = joins {
-            list.iter().collect::<Vec<&JsonValue>>()
+        let join_list = if let EgValue::Array(list) = joins {
+            list.iter().collect::<Vec<&EgValue>>()
         } else if let Some(class) = joins.as_str() {
             join_binding = class_to_hash(class);
             vec![&join_binding]
@@ -759,7 +763,7 @@ impl JsonQueryCompiler {
         &mut self,
         left_alias: &str,
         right_alias: &str,
-        join_def: &JsonValue,
+        join_def: &EgValue,
     ) -> EgResult<String> {
         // If there's no "class" in the hash, the alias is the classname
         let right_class = join_def["class"].as_str().unwrap_or(right_alias);
@@ -955,7 +959,7 @@ impl JsonQueryCompiler {
 
     fn compile_where_for_class(
         &mut self,
-        where_def: &JsonValue,
+        where_def: &EgValue,
         class_alias: &str,
         join_op: &str,
     ) -> EgResult<String> {
@@ -1079,7 +1083,7 @@ impl JsonQueryCompiler {
         &mut self,
         class_alias: &str,
         field_name: &str,
-        value_def: &JsonValue,
+        value_def: &EgValue,
     ) -> EgResult<String> {
         // println!("search_predicate {class_alias} {field_name} {}", value_def.dump());
 
@@ -1122,7 +1126,7 @@ impl JsonQueryCompiler {
         operator: &str,
         class_alias: &str,
         field_name: &str,
-        value_def: &JsonValue,
+        value_def: &EgValue,
     ) -> EgResult<String> {
         // println!("search_field_transform_predicate() {class_alias}.{field_name} {}", value_def.dump());
 
@@ -1180,7 +1184,7 @@ impl JsonQueryCompiler {
         operator: &str,
         class_alias: &str,
         field_name: &str,
-        value_def: &JsonValue,
+        value_def: &EgValue,
     ) -> EgResult<String> {
         let func_str = self.compile_function_from(value_def)?;
 
@@ -1199,7 +1203,7 @@ impl JsonQueryCompiler {
         &mut self,
         class_alias: &str,
         field_name: &str,
-        value_def: &JsonValue,
+        value_def: &EgValue,
     ) -> EgResult<String> {
         let value_def = if !value_def["value"].is_null() {
             // Could be a field transformed w/ a function
@@ -1232,7 +1236,7 @@ impl JsonQueryCompiler {
         operator: &str,
         class_alias: &str,
         field_name: &str,
-        value: &JsonValue,
+        value: &EgValue,
     ) -> EgResult<String> {
         if value.is_object() || value.is_array() {
             return Err(format!("Invalid simple search predicate: {}", value.dump()).into());
@@ -1284,7 +1288,7 @@ impl JsonQueryCompiler {
         &mut self,
         class_alias: &str,
         field_name: &str,
-        value: &JsonValue,
+        value: &EgValue,
     ) -> EgResult<String> {
         if !value.is_string() && !value.is_number() {
             return Err(format!("Invalid scalar value for field {field_name}: {value}").into());
@@ -1302,12 +1306,10 @@ impl JsonQueryCompiler {
         if idl_field.datatype().is_numeric() {
             // No need to quote numeric parameters for numeric columns.
 
-            if let Some(num) = value.as_number() {
-                Ok(num.to_string())
-            } else if let Ok(num) = util::json_int(&value) {
+            if let Some(num) = value.as_int() {
                 // Handle cases where we receive numeric values as JSON strings.
                 Ok(num.to_string())
-            } else if let Ok(num) = util::json_float(&value) {
+            } else if let Some(num) = value.as_float() {
                 // Handle cases where we receive numeric values as JSON strings.
                 Ok(num.to_string())
             } else {
@@ -1333,7 +1335,7 @@ impl JsonQueryCompiler {
         &mut self,
         class_alias: &str,
         field_name: &str,
-        value_def: &JsonValue,
+        value_def: &EgValue,
         is_not_in: bool,
     ) -> EgResult<String> {
         let field_str =
@@ -1358,7 +1360,7 @@ impl JsonQueryCompiler {
         &mut self,
         class_alias: &str,
         field_name: &str,
-        value_def: &JsonValue,
+        value_def: &EgValue,
     ) -> EgResult<String> {
         if !value_def.is_object() && !value_def.is_array() {
             return Err(format!("Unexpected IN clause: {value_def}").into());
@@ -1411,8 +1413,10 @@ impl JsonQueryCompiler {
     /// See add_param_string()
     ///
     /// The value parameter Must be a String or Number.
-    fn add_param(&mut self, value: &JsonValue) -> EgResult<usize> {
-        let s = util::json_string(value)?;
+    fn add_param(&mut self, value: &EgValue) -> EgResult<usize> {
+        let s = value
+            .to_string()
+            .ok_or_else(|| format!("Cannot stringify: {value}"))?;
         Ok(self.add_param_string(s))
     }
 
@@ -1439,7 +1443,7 @@ impl JsonQueryCompiler {
     /// Examples:
     ///
     /// {"acp": {"acn": {"join": {"bre": ... }}}
-    fn set_base_source(&mut self, from_blob: &JsonValue) -> EgResult<&SourceDef> {
+    fn set_base_source(&mut self, from_blob: &EgValue) -> EgResult<&SourceDef> {
         let classname = if from_blob.is_object() && from_blob.len() == 1 {
             // "from":{"aou": ...}
             let (class, _) = from_blob.entries().next().unwrap();
@@ -1471,7 +1475,7 @@ impl JsonQueryCompiler {
     /// Examples:
     ///
     /// {"from": ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]}
-    fn compile_function_query(&mut self, from_def: &JsonValue) -> EgResult<String> {
+    fn compile_function_query(&mut self, from_def: &EgValue) -> EgResult<String> {
         let from_str = self.compile_function_from(from_def)?;
 
         // This is verified in compile_function_from().
@@ -1485,7 +1489,7 @@ impl JsonQueryCompiler {
     /// Examples:
     ///
     /// ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]
-    fn compile_function_from(&mut self, from_def: &JsonValue) -> EgResult<String> {
+    fn compile_function_from(&mut self, from_def: &EgValue) -> EgResult<String> {
         if from_def.len() == 0 || !from_def.is_array() {
             return Err(format!("Invalid FROM function spec: {}", from_def.dump()).into());
         }
@@ -1510,8 +1514,8 @@ impl JsonQueryCompiler {
                 } else if value.is_string() {
                     let index = self.add_param(&value)?;
                     params.push(format!("${index}"));
-                } else if let Some(num) = value.as_number() {
-                    params.push(num.to_string());
+                } else if value.is_number() {
+                    params.push(value.to_string().unwrap());
                 } else {
                     return Err(format!("Invalid function parameter: {}", value.dump()).into());
                 };

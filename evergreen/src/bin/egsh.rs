@@ -1,3 +1,5 @@
+use eg::EgValue;
+use eversrf as eg;
 use serde_json;
 use std::cell::RefCell;
 use std::io;
@@ -13,14 +15,11 @@ use eg::db;
 use eg::db::DatabaseConnection;
 use eg::editor;
 use eg::event;
-use eg::idl;
 use eg::idldb;
 use eg::init;
 
+use eg::logging::Logger;
 use eg::util;
-use evergreen as eg;
-use opensrf as osrf;
-use osrf::logging::Logger;
 
 //const PROMPT: &str = "egsh# ";
 const PROMPT: &str = "\x1b[1;32megsh# \x1b[0m";
@@ -412,7 +411,7 @@ impl Shell {
         }
     }
 
-    fn _check_for_event(&mut self, v: &json::JsonValue) -> Result<(), String> {
+    fn _check_for_event(&mut self, v: &EgValue) -> Result<(), String> {
         if let Some(evt) = event::EgEvent::parse(v) {
             if !evt.is_success() {
                 return Err(format!("Non-SUCCESS event returned: {evt}"));
@@ -497,9 +496,9 @@ impl Shell {
         let pref = args[1];
 
         let value = match pref {
-            "json_print_depth" => json::from(self.json_print_depth),
-            "json_as_wire_protocal" => json::from(self.json_as_wire_protocal),
-            "json_hash_slim" => json::from(self.json_hash_slim),
+            "json_print_depth" => EgValue::from(self.json_print_depth),
+            "json_as_wire_protocal" => EgValue::from(self.json_as_wire_protocal),
+            "json_hash_slim" => EgValue::from(self.json_hash_slim),
             _ => return Err(format!("No such pref: {pref}")),
         };
 
@@ -511,7 +510,7 @@ impl Shell {
         self.args_min_length(args, 2)?;
 
         let authtoken = match &self.auth_session {
-            Some(s) => json::from(s.token()).dump(),
+            Some(s) => EgValue::from(s.token()).dump(),
             None => return Err(format!("reqauth requires an auth token")),
         };
 
@@ -553,7 +552,7 @@ impl Shell {
 
         let mut params = vec![];
         if let Some(prefix) = args.get(1) {
-            params.push(json::from(*prefix));
+            params.push(EgValue::from(*prefix));
         }
 
         let method = if wants_summary {
@@ -571,7 +570,7 @@ impl Shell {
             } else if wants_summary {
                 println!("* {}", resp.as_str().unwrap());
             } else {
-                self.print_json_record(&resp)?;
+                self.print_json_record(resp)?;
             }
         }
 
@@ -581,7 +580,7 @@ impl Shell {
     fn send_request(&mut self, args: &[&str]) -> Result<(), String> {
         self.args_min_length(args, 2)?;
 
-        let mut params: Vec<json::JsonValue> = Vec::new();
+        let mut params: Vec<EgValue> = Vec::new();
 
         // Use the serde_json stream parser to read the parameters.
         let data = args[2..].join(" ");
@@ -593,17 +592,13 @@ impl Shell {
                 Err(e) => Err(format!("Cannot parse params: {data} {e}"))?,
             };
 
-            // Translate the serde_json::Value into a json::JsonValue.
+            // Translate the serde_json::Value into a EgValue.
             let p_str = match serde_json::to_string(&p) {
                 Ok(s) => s,
                 Err(e) => Err(format!("Error stringifying: {e}"))?,
             };
 
-            let param = match json::parse(&p_str) {
-                Ok(p) => p,
-                Err(e) => Err(format!("Cannot parse params: {p_str} {e}"))?,
-            };
-
+            let param = EgValue::parse(&p_str)?;
             params.push(param);
         }
 
@@ -614,7 +609,7 @@ impl Shell {
         let mut req = ses.request(args[1], params)?;
 
         while let Some(resp) = req.recv()? {
-            self.print_json_record(&resp)?;
+            self.print_json_record(resp)?;
         }
 
         Ok(())
@@ -683,7 +678,7 @@ impl Shell {
 
         let translator = self.db_translator_mut()?;
 
-        let obj = match translator.get_idl_object_by_pkey(classname, &json::from(pkey), None)? {
+        let obj = match translator.get_idl_object_by_pkey(classname, &EgValue::from(pkey), None)? {
             Some(o) => o,
             None => return Ok(()),
         };
@@ -691,7 +686,7 @@ impl Shell {
         if args[0].eq("idlf") {
             self.print_idl_object(&obj)
         } else {
-            self.print_json_record(&obj)
+            self.print_json_record(obj)
         }
     }
 
@@ -719,8 +714,7 @@ impl Shell {
             Err(format!("Invalid query operator: {operator}"))?;
         }
 
-        let value = json::parse(value)
-            .or_else(|e| Err(format!("Cannot parse query value: {value} : {e}")))?;
+        let value = EgValue::parse(value)?;
 
         let mut search = idldb::IdlClassSearch::new(classname);
 
@@ -729,8 +723,8 @@ impl Shell {
         // TODO: support paging in the UI?
         search.set_pager(util::Pager::new(100, 0));
 
-        let mut filter = json::JsonValue::new_object();
-        let mut subfilter = json::JsonValue::new_object();
+        let mut filter = EgValue::new_object();
+        let mut subfilter = EgValue::new_object();
         subfilter[operator] = value;
         filter[fieldname] = subfilter;
 
@@ -742,52 +736,45 @@ impl Shell {
             if args[0].eq("idlf") {
                 self.print_idl_object(&obj)?;
             } else {
-                self.print_json_record(&obj)?;
+                self.print_json_record(obj)?;
             }
         }
 
         Ok(())
     }
 
-    fn print_json_record(&mut self, obj: &json::JsonValue) -> Result<(), String> {
+    fn print_json_record(&mut self, mut obj: EgValue) -> Result<(), String> {
         self.result_count += 1;
 
-        let mut obj = obj;
-        let wire_val;
-        let scrubbed;
-        if self.json_as_wire_protocal {
-            // If requested, print JSON values as they appear on
-            // the wire, as classed arrays, instead of our internal
-            // hash-based representation.
-            wire_val = Some(idl::Parser::as_serializer(self.ctx().idl()).pack(obj.clone()));
-            obj = wire_val.as_ref().unwrap();
-        } else if self.json_hash_slim {
-            scrubbed = Some(idl::scrub_hash_nulls(obj.clone()));
-            obj = scrubbed.as_ref().unwrap();
-        }
+        let dumped = if self.json_as_wire_protocal {
+            if self.json_print_depth == 0 {
+                obj.into_json_value().dump()
+            } else {
+                obj.into_json_value().pretty(self.json_print_depth)
+            }
+        } else {
+            if self.json_hash_slim {
+                obj.scrub_hash_nulls();
+            }
+            if self.json_print_depth == 0 {
+                obj.dump()
+            } else {
+                obj.pretty(self.json_print_depth)
+            }
+        };
 
         println!("{SEPARATOR}");
-        if self.json_print_depth == 0 {
-            println!("{}", obj.dump());
-        } else {
-            println!("{}", obj.pretty(self.json_print_depth));
-        }
-        Ok(())
+        println!("{dumped}");
+
+        Ok(()) // TODO remove?
     }
 
-    fn print_idl_object(&mut self, obj: &json::JsonValue) -> Result<(), String> {
+    fn print_idl_object(&mut self, obj: &EgValue) -> Result<(), String> {
         self.result_count += 1;
 
-        let classname = obj[idl::CLASSNAME_KEY]
-            .as_str()
-            .ok_or_else(|| format!("Not a valid IDL object value: {}", obj.dump()))?;
-
-        let idl_class = self
-            .ctx()
-            .idl()
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("Object has an invalid class name {classname}"))?;
+        let idl_class = obj
+            .idl_class()
+            .ok_or_else(|| format!("Not an IDL object value: {}", obj.dump()))?;
 
         // Get the max field name length for improved formatting.
         let mut maxlen = 0;

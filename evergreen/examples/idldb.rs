@@ -1,7 +1,8 @@
 use eg::db::DatabaseConnection;
 use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
-use evergreen as eg;
+use eg::EgValue;
+use eversrf as eg;
 use getopts;
 use std::env;
 
@@ -30,19 +31,19 @@ fn main() -> Result<(), String> {
         println!("org: {} {}", org["id"], org["shortname"]);
     }
 
-    search.set_filter(json::object! {id: 1, name: "CONS", opac_visible: false});
+    search.set_filter(eg::hash! {id: 1, name: "CONS", opac_visible: false});
 
     for org in translator.idl_class_search(&search)? {
         println!("org: {} {}", org["id"], org["shortname"]);
     }
 
-    search.set_filter(json::object! {id: json::object! {">": 1}, ou_type: [1, 2, 3]});
+    search.set_filter(eg::hash! {id: eg::hash! {">": 1}, ou_type: [1, 2, 3]});
 
     for org in translator.idl_class_search(&search)? {
         println!("org: {} {}", org["id"], org["shortname"]);
     }
 
-    search.set_filter(json::object! {"id": {"not in": [1, 2]}});
+    search.set_filter(eg::hash! {"id": {"not in": [1, 2]}});
 
     for org in translator.idl_class_search(&search)? {
         println!("org: ID NOT IN: {} {}", org["id"], org["shortname"]);
@@ -61,7 +62,7 @@ fn main() -> Result<(), String> {
     }
 
     // Grab an org unit to update.
-    search.set_filter(json::object! {id: json::object! {">": 0}});
+    search.set_filter(eg::hash! {id: eg::hash! {">": 0}});
     let results = translator.idl_class_search(&search)?;
     let org = results.first().expect("Wanted at least one org unit");
 
@@ -69,13 +70,13 @@ fn main() -> Result<(), String> {
 
     translator.xact_begin()?;
     let mut update = IdlClassUpdate::new("aou");
-    update.set_filter(json::object! {id: org["id"].clone()});
-    update.add_value("shortname", &json::from(format!("{}-TEST", shortname)));
+    update.set_filter(eg::hash! {id: org["id"].clone()});
+    update.add_value("shortname", &EgValue::from(format!("{}-TEST", shortname)));
 
     translator.idl_class_update(&update)?;
     translator.xact_commit()?;
 
-    search.set_filter(json::object! {id: org["id"].clone()});
+    search.set_filter(eg::hash! {id: org["id"].clone()});
     let results = translator.idl_class_search(&search)?;
     let org_updated = results.first().expect("Cannot find org unit");
 
@@ -83,14 +84,14 @@ fn main() -> Result<(), String> {
 
     translator.xact_begin()?;
     update.reset(); // clear filters and values
-    update.set_filter(json::object! {id: org["id"].clone()});
-    update.add_value("shortname", &json::from(shortname));
+    update.set_filter(eg::hash! {id: org["id"].clone()});
+    update.add_value("shortname", &EgValue::from(shortname));
 
     translator.idl_class_update(&update)?;
 
     translator.xact_commit()?;
 
-    search.set_filter(json::object! {id: org["id"].clone()});
+    search.set_filter(eg::hash! {id: org["id"].clone()});
     let results = translator.idl_class_search(&search)?;
     let org_updated = results.first().expect("Cannot find org unit");
     println!("org name updated to: {}", org_updated["shortname"]);
@@ -99,41 +100,40 @@ fn main() -> Result<(), String> {
     let mut org_mod = org_updated.clone();
 
     translator.xact_begin()?;
-    org_mod["shortname"] = json::from("TEST NAME");
+    org_mod["shortname"] = EgValue::from("TEST NAME");
     translator.update_idl_object(&org_mod)?;
     translator.xact_commit()?;
 
-    search.set_filter(json::object! {id: org["id"].clone()});
+    search.set_filter(eg::hash! {id: org["id"].clone()});
     let results = translator.idl_class_search(&search)?;
     let org_updated = results.first().expect("Cannot find org unit");
     println!("org name updated to: {}", org_updated["shortname"]);
 
     translator.xact_begin()?;
-    org_mod["shortname"] = json::from(shortname);
+    org_mod["shortname"] = EgValue::from(shortname);
     translator.update_idl_object(&org_mod)?;
     translator.xact_commit()?;
 
-    search.set_filter(json::object! {id: org["id"].clone()});
+    search.set_filter(eg::hash! {id: org["id"].clone()});
     let results = translator.idl_class_search(&search)?;
     let org_updated = results.first().expect("Cannot find org unit");
     println!("org name updated to: {}", org_updated["shortname"]);
 
     translator.xact_begin()?;
-    let mut cbt = ctx.idl().create("cbt").expect("Invalid IDL class");
-    cbt["name"] = json::from("A Billing Type");
-    cbt["owner"] = json::from(1);
+    let mut cbt = eg::hash! {"name": "A Billing Type", "owner": 1};
+    cbt.bless("cbt")?;
     translator.create_idl_object(&cbt)?;
     translator.xact_rollback()?;
 
     // Give me all rows
     let mut search = IdlClassSearch::new("au");
-    search.set_filter(json::object! {id: [1, 2, 3, 4, 5, 6, 7, 8, 9]});
-    let flesh = json::object! {
+    search.set_filter(eg::hash! {id: [1, 2, 3, 4, 5, 6, 7, 8, 9]});
+    let flesh = eg::hash! {
         "flesh": 2,
         "flesh_fields":{"au": ["addresses", "home_ou", "profile"], "aou": ["ou_type"]}
     };
 
-    search.set_flesh(FleshDef::from_json_value(&flesh)?);
+    search.set_flesh(FleshDef::from_eg_value(&flesh)?);
 
     for user in translator.idl_class_search(&search)? {
         println!(

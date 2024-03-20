@@ -1,19 +1,10 @@
-use crate::common::circulator::{CircOp, Circulator};
-use crate::common::holds;
-use crate::date;
-use crate::event::EgEvent;
-use crate::result::EgResult;
-use crate::util::{json_bool, json_bool_op, json_int};
-use json::JsonValue;
-/*
-use crate::common::bib;
-use crate::common::billing;
-use crate::common::noncat;
-use crate::common::org;
-use crate::common::penalty;
-use crate::constants as C;
-use std::time::Duration;
-*/
+use crate as eg;
+use eg::common::circulator::{CircOp, Circulator};
+use eg::common::holds;
+use eg::date;
+use eg::EgEvent;
+use eg::EgResult;
+use eg::EgValue;
 
 /// Performs item checkins
 impl Circulator<'_> {
@@ -42,18 +33,18 @@ impl Circulator<'_> {
 
     /// Find the circ we're trying to renew and extra the patron info.
     pub fn load_renewal_circ(&mut self) -> EgResult<()> {
-        let mut query = json::object! {
+        let mut query = eg::hash! {
             "target_copy": self.copy_id,
-            "xact_finish": JsonValue::Null,
-            "checkin_time": JsonValue::Null,
+            "xact_finish": EgValue::Null,
+            "checkin_time": EgValue::Null,
         };
 
         if self.patron_id > 0 {
             // Renewal caller does not always pass patron data.
-            query["usr"] = json::from(self.patron_id);
+            query["usr"] = EgValue::from(self.patron_id);
         }
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             "flesh": 2,
             "flesh_fields": {
                 "circ": ["usr"],
@@ -67,13 +58,13 @@ impl Circulator<'_> {
             .pop()
             .ok_or_else(|| self.editor().die_event())?;
 
-        let circ_id = json_int(&circ["id"])?;
+        let circ_id = circ.id()?;
         let patron = circ["usr"].take(); // fleshed
-        self.patron_id = json_int(&patron["id"])?;
+        self.patron_id = patron.id()?;
         self.patron = Some(patron);
 
         // Replace the usr value which was null-ified above w/ take()
-        circ["usr"] = json::from(self.patron_id);
+        circ["usr"] = EgValue::from(self.patron_id);
 
         self.parent_circ = Some(circ_id);
         self.circ = Some(circ);
@@ -87,18 +78,18 @@ impl Circulator<'_> {
         let circ = self.circ.as_ref().unwrap();
         let patron = self.patron.as_ref().unwrap();
 
-        let orig_circ_lib = json_int(&circ["circ_lib"])?;
+        let orig_circ_lib = circ["circ_lib"].int()?;
 
-        let renewal_remaining = json_int(&circ["renewal_remaining"])?;
+        let renewal_remaining = circ["renewal_remaining"].int()?;
         // NULL-able
-        let auto_renewal_remaining = json_int(&circ["auto_renewal_remaining"]);
+        let auto_renewal_remaining = circ["auto_renewal_remaining"].int();
 
         let expire_date = patron["expire_date"].as_str().unwrap(); // required
         let expire_dt = date::parse_datetime(&expire_date)?;
 
         let circ_lib = self.set_renewal_circ_lib(orig_circ_lib)?;
 
-        if self.patron_id != self.requestor_id() {
+        if self.patron_id != self.requestor_id()? {
             if !self.editor().allowed_at("RENEW_CIRC", circ_lib)? {
                 return Err(self.editor().die_event());
             }
@@ -121,13 +112,13 @@ impl Circulator<'_> {
         // See if it's OK to renew items for expired patron accounts.
         if expire_dt < date::now() {
             let allow = self.settings.get_value("circ.renew.expired_patron_allow")?;
-            if !json_bool(allow) {
+            if !allow.boolish() {
                 self.exit_err_on_event_code("PATRON_ACCOUNT_EXPIRED")?;
             }
         }
 
         let copy_id = self.copy_id;
-        let block_for_holds = json_bool(self.settings.get_value("circ.block_renews_for_holds")?);
+        let block_for_holds = self.settings.get_value("circ.block_renews_for_holds")?.boolish();
 
         if block_for_holds {
             let holds = holds::find_nearest_permitted_hold(self.editor(), copy_id, true)?;
@@ -140,9 +131,9 @@ impl Circulator<'_> {
     }
 
     fn set_renewal_circ_lib(&mut self, orig_circ_lib: i64) -> EgResult<i64> {
-        let is_opac = json_bool_op(self.options.get("opac_renewal"));
-        let is_auto = json_bool_op(self.options.get("auto_renewal"));
-        let is_desk = json_bool_op(self.options.get("desk_renewal"));
+        let is_opac = self.options.get("opac_renewal").unwrap_or(&eg::NULL).boolish();
+        let is_auto = self.options.get("auto_renewal").unwrap_or(&eg::NULL).boolish();
+        let is_desk = self.options.get("desk_renewal").unwrap_or(&eg::NULL).boolish();
 
         if is_opac || is_auto {
             if let Some(setting) = self
@@ -150,7 +141,7 @@ impl Circulator<'_> {
                 .retrieve("cgf", "circ.opac_renewal.use_original_circ_lib")?
                 .take()
             {
-                if json_bool(&setting["enabled"]) {
+                if setting["enabled"].boolish() {
                     self.circ_lib = orig_circ_lib;
                     self.settings.set_org_id(orig_circ_lib);
                     return Ok(orig_circ_lib);
@@ -164,7 +155,7 @@ impl Circulator<'_> {
                 .retrieve("cgf", "circ.desk_renewal.use_original_circ_lib")?
                 .take()
             {
-                if json_bool(&setting["enabled"]) {
+                if setting["enabled"].boolish() {
                     self.circ_lib = orig_circ_lib;
                     self.settings.set_org_id(orig_circ_lib);
                     return Ok(orig_circ_lib);

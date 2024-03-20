@@ -1,7 +1,7 @@
-use evergreen::db::DatabaseConnection;
+use eg::db::DatabaseConnection;
+use eversrf as eg;
 use getopts::Options;
 use log::{debug, error, info};
-use opensrf;
 use postgres as pg;
 use std::fs;
 use std::thread;
@@ -59,7 +59,7 @@ fn init() -> Option<(IngestOptions, DatabaseConnection)> {
     DatabaseConnection::append_options(&mut opts);
 
     // We don't need a Client or IDL, so use the OpenSRF init directly.
-    opensrf::init::init().unwrap();
+    eg::init::init().unwrap();
 
     let params = match opts.parse(&args[1..]) {
         Ok(p) => p,

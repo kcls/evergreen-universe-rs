@@ -1,9 +1,10 @@
 use eg::init::InitOptions;
 use eg::result::EgResult;
+use eg::session::MultiSession;
 use eg::util;
-use evergreen as eg;
+use eg::EgValue;
+use eversrf as eg;
 use getopts;
-use opensrf::session::MultiSession;
 use std::thread;
 
 const HELP_TEXT: &str = r#"
@@ -92,7 +93,7 @@ fn main() -> EgResult<()> {
         util::lockfile(&path, "create")?;
     }
 
-    let mut target_options = json::object! {
+    let mut target_options = eg::hash! {
         "return_count": true, // summary counts only
     };
 
@@ -104,11 +105,11 @@ fn main() -> EgResult<()> {
         "return-throttle", // is number, but OK for json
     ] {
         if let Some(val) = params.opt_str(key) {
-            target_options[key.replace("-", "_")] = json::from(val);
+            target_options[&key.replace("-", "_")] = EgValue::from(val);
         }
     }
 
-    let parallel = util::json_int(&target_options["parallel_count"]).unwrap_or(1);
+    let parallel = target_options["parallel_count"].as_int().unwrap_or(1);
 
     let mut sleep = 0;
     if let Some(v) = params.opt_str("parallel-init-sleep") {
@@ -125,7 +126,7 @@ fn main() -> EgResult<()> {
     // 'slot' is 1-based at the API level.
     for slot in 1..(parallel + 1) {
         let mut target_options = target_options.clone();
-        target_options["parallel_slot"] = json::from(slot);
+        target_options["parallel_slot"] = EgValue::from(slot);
 
         multi_ses.request("open-ils.rs-hold-targeter.target", target_options)?;
 

@@ -1,5 +1,6 @@
-use chrono::Local;
-use json::JsonValue;
+use crate as eg;
+use eg::date;
+use eg::EgValue;
 use std::fmt;
 
 /// Common argument to API calls that allow for targeted overrides.
@@ -13,7 +14,7 @@ pub enum Overrides {
 pub struct EgEvent {
     code: isize,
     textcode: String,
-    payload: JsonValue, // JsonValue::Null if empty
+    payload: EgValue, // EgValue::Null if empty
     desc: Option<String>,
     debug: Option<String>,
     note: Option<String>,
@@ -23,7 +24,7 @@ pub struct EgEvent {
     org: Option<i64>,
     /// Some code adds ad-hoc bits to the event proper instead of putting
     /// them into the "payload".
-    ad_hoc: Option<JsonValue>,
+    ad_hoc: Option<EgValue>,
 }
 
 impl fmt::Display for EgEvent {
@@ -46,13 +47,13 @@ impl fmt::Display for EgEvent {
     }
 }
 
-impl From<&EgEvent> for JsonValue {
+impl From<&EgEvent> for EgValue {
     fn from(evt: &EgEvent) -> Self {
-        let mut obj = json::object! {
-            code: evt.code(),
-            textcode: evt.textcode(),
-            payload: evt.payload().clone(),
-            ilspermloc: evt.ilspermloc(),
+        let mut obj: EgValue = eg::hash! {
+            "code": evt.code(),
+            "textcode": evt.textcode(),
+            "payload": evt.payload().clone(),
+            "ilspermloc": evt.ilspermloc(),
         };
 
         if let Some(ad_hoc) = evt.ad_hoc.as_ref() {
@@ -62,22 +63,22 @@ impl From<&EgEvent> for JsonValue {
         }
 
         if let Some(v) = evt.desc() {
-            obj["desc"] = json::from(v);
+            obj["desc"] = EgValue::from(v);
         }
         if let Some(v) = evt.debug() {
-            obj["debug"] = json::from(v);
+            obj["debug"] = EgValue::from(v);
         }
         if let Some(v) = evt.note() {
-            obj["note"] = json::from(v);
+            obj["note"] = EgValue::from(v);
         }
         if let Some(v) = evt.org() {
-            obj["org"] = json::from(*v);
+            obj["org"] = EgValue::from(*v);
         }
         if let Some(v) = evt.servertime() {
-            obj["servertime"] = json::from(v);
+            obj["servertime"] = EgValue::from(v);
         }
         if let Some(v) = evt.ilsperm() {
-            obj["ilsperm"] = json::from(v);
+            obj["ilsperm"] = EgValue::from(v);
         }
 
         obj
@@ -87,12 +88,12 @@ impl From<&EgEvent> for JsonValue {
 impl EgEvent {
     /// Create a new event with the provided code.
     pub fn new(textcode: &str) -> Self {
-        let servertime = Local::now().to_rfc3339();
+        let servertime = date::to_iso(&date::now());
 
         EgEvent {
             code: -1,
             textcode: textcode.to_string(),
-            payload: JsonValue::Null,
+            payload: EgValue::Null,
             desc: None,
             debug: None,
             note: None,
@@ -109,7 +110,7 @@ impl EgEvent {
         EgEvent::new("SUCCESS")
     }
 
-    pub fn to_json_value(&self) -> JsonValue {
+    pub fn to_value(&self) -> EgValue {
         self.into()
     }
 
@@ -129,13 +130,13 @@ impl EgEvent {
         &self.textcode
     }
 
-    pub fn payload(&self) -> &JsonValue {
+    pub fn payload(&self) -> &EgValue {
         &self.payload
     }
-    pub fn payload_mut(&mut self) -> &mut JsonValue {
+    pub fn payload_mut(&mut self) -> &mut EgValue {
         &mut self.payload
     }
-    pub fn set_payload(&mut self, payload: JsonValue) {
+    pub fn set_payload(&mut self, payload: EgValue) {
         self.payload = payload
     }
 
@@ -174,7 +175,7 @@ impl EgEvent {
         self.org = Some(id);
     }
 
-    pub fn ad_hoc(&self) -> Option<&JsonValue> {
+    pub fn ad_hoc(&self) -> Option<&EgValue> {
         self.ad_hoc.as_ref()
     }
 
@@ -190,28 +191,28 @@ impl EgEvent {
         self.note = Some(s.to_string());
     }
 
-    pub fn set_ad_hoc_value(&mut self, key: &str, value: JsonValue) {
+    pub fn set_ad_hoc_value(&mut self, key: &str, value: EgValue) {
         if self.ad_hoc.is_none() {
-            self.ad_hoc = Some(JsonValue::new_object());
+            self.ad_hoc = Some(EgValue::new_object());
         }
 
         let ad_hoc = self.ad_hoc.as_mut().unwrap();
         ad_hoc[key] = value;
     }
 
-    /// Parses a JsonValue and optionally returns an EgEvent.
+    /// Parses a EgValue and optionally returns an EgEvent.
     ///
     /// ```
-    /// use json;
-    /// use evergreen as eg;
-    /// use eg::event::EgEvent;
+    /// use eversrf as eg;
+    /// use eg::EgEvent;
+    /// use eg::EgValue;
     ///
-    /// let jv = json::object! {
-    ///     code: json::from(100),
-    ///     textcode: json::from("SUCCESS"),
-    ///     ilsperm: json::from("STAFF_LOGIN"),
+    /// let jv = eg::hash! {
+    ///     code: EgValue::from(100),
+    ///     textcode: EgValue::from("SUCCESS"),
+    ///     ilsperm: EgValue::from("STAFF_LOGIN"),
     ///     ilspermloc: 1,
-    ///     foo: json::from("bar"),
+    ///     foo: EgValue::from("bar"),
     /// };
     ///
     /// let evt = EgEvent::parse(&jv).expect("Event Parsing Failed");
@@ -220,15 +221,15 @@ impl EgEvent {
     /// assert_eq!(format!("{}", evt), String::from("Event: -1:SUCCESS STAFF_LOGIN@1"));
     /// assert!(evt.ad_hoc().unwrap().has_key("foo"));
     ///
-    /// let jv2 = json::object! {
-    ///     howdy: json::from(123)
+    /// let jv2 = eg::hash! {
+    ///     howdy: EgValue::from(123)
     /// };
     ///
     /// let evt_op = EgEvent::parse(&jv2);
     /// assert!(evt_op.is_none());
     /// ```
-    pub fn parse(jv: &JsonValue) -> Option<EgEvent> {
-        if !jv.is_object() {
+    pub fn parse(jv: &EgValue) -> Option<EgEvent> {
+        if !jv.is_object() || jv.is_blessed() {
             return None;
         }
 
@@ -253,7 +254,7 @@ impl EgEvent {
             evt.org = Some(org);
         }
 
-        let mut ad_hoc = JsonValue::new_object();
+        let mut ad_hoc = EgValue::new_object();
         for (field, value) in jv.entries() {
             match field {
                 "textcode" | "payload" | "ilsevent" | "ilspermloc" | "org" => {

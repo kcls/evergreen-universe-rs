@@ -6,7 +6,8 @@
 use eg::db::DatabaseConnection;
 use eg::init;
 use eg::norm::Normalizer;
-use evergreen as eg;
+use eg::EgValue;
+use eversrf as eg;
 use getopts;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -147,11 +148,11 @@ impl BibLinker {
 
     /// Collect the list of controlled fields from the database.
     fn get_controlled_fields(&mut self) -> Result<Vec<ControlledField>, String> {
-        let search = json::object! {"id": {"<>": json::JsonValue::Null}};
+        let search = eg::hash! {"id": {"<>": EgValue::Null}};
 
-        let flesh = json::object! {
+        let flesh = eg::hash! {
             flesh: 1,
-            flesh_fields: json::object!{
+            flesh_fields: eg::hash!{
                 acsbf: vec!["authority_field"]
             }
         };
@@ -222,7 +223,7 @@ impl BibLinker {
     ) -> Result<Vec<AuthLeader>, String> {
         let mut leaders: Vec<AuthLeader> = Vec::new();
 
-        let params = json::object! {tag: "008", record: auth_ids.clone()};
+        let params = eg::hash! {tag: "008", record: auth_ids.clone()};
         let maybe_leaders = self.editor.search("afr", params)?;
 
         // Sort the auth_leaders list to match the order of the original
@@ -367,11 +368,7 @@ impl BibLinker {
         false
     }
 
-    fn update_bib_record(
-        &mut self,
-        mut bre: json::JsonValue,
-        record: &marc::Record,
-    ) -> Result<(), String> {
+    fn update_bib_record(&mut self, mut bre: EgValue, record: &marc::Record) -> Result<(), String> {
         let xml = record.to_xml()?;
         let bre_id = bre["id"].as_i64().unwrap();
 
@@ -382,9 +379,9 @@ impl BibLinker {
 
         log::info!("Applying updates to bib record {bre_id}");
 
-        bre["marc"] = json::from(xml);
-        bre["edit_date"] = json::from("now");
-        bre["editor"] = json::from(self.staff_account);
+        bre["marc"] = EgValue::from(xml);
+        bre["edit_date"] = EgValue::from("now");
+        bre["editor"] = EgValue::from(self.staff_account);
 
         self.editor.xact_begin()?;
         self.editor.update(bre)?;
@@ -458,9 +455,9 @@ impl BibLinker {
 
             log::debug!("Sub-heading search for: {heading}");
 
-            let search = json::object! {
-                "simple_heading": json::from(heading),
-                "deleted": json::from("f"),
+            let search = eg::hash! {
+                "simple_heading": EgValue::from(heading),
+                "deleted": EgValue::from("f"),
             };
 
             // TODO idlist searches
@@ -543,7 +540,7 @@ impl BibLinker {
     fn link_one_bib(
         &mut self,
         rec_id: i64,
-        bre: json::JsonValue,
+        bre: EgValue,
         control_fields: &Vec<ControlledField>,
         record: &mut marc::Record,
     ) -> Result<(), String> {

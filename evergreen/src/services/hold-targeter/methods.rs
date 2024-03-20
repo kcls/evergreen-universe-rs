@@ -1,11 +1,11 @@
 use eg::common::targeter;
 use eg::editor::Editor;
-use eg::util;
-use evergreen as eg;
-use opensrf::app::ApplicationWorker;
-use opensrf::message;
-use opensrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
-use opensrf::session::ServerSession;
+use eversrf as eg;
+use eg::EgResult;
+use eg::app::ApplicationWorker;
+use eg::message;
+use eg::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
+use eg::session::ServerSession;
 
 // Import our local app module
 use crate::app;
@@ -29,7 +29,7 @@ pub fn target(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: &message::MethodCall,
-) -> Result<(), String> {
+) -> EgResult<()> {
     let worker = app::HoldTargeterWorker::downcast(worker)?;
 
     let mut editor = Editor::new(worker.client(), worker.env().idl());
@@ -41,18 +41,18 @@ pub fn target(
 
     // Apply user-supplied options if we have any.
     if let Some(options) = method.params().get(0) {
-        return_count = util::json_bool(&options["return_count"]);
+        return_count = options["return_count"].boolish();
 
-        if let Ok(t) = util::json_int(&options["return_throttle"]) {
+        if let Ok(t) = options["return_throttle"].int() {
             return_throttle = t;
         }
-        if let Ok(c) = util::json_int(&options["find_copy"]) {
+        if let Ok(c) = options["find_copy"].int() {
             find_copy = Some(c);
         }
-        if let Ok(c) = util::json_int(&options["parallel_count"]) {
+        if let Ok(c) = options["parallel_count"].int() {
             tgtr.set_parallel_count(c as u8);
         }
-        if let Ok(c) = util::json_int(&options["parallel_slot"]) {
+        if let Ok(c) = options["parallel_slot"].int() {
             tgtr.set_parallel_slot(c as u8);
         }
         if let Some(s) = options["retarget_interval"].as_str() {

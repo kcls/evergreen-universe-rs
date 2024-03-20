@@ -1,19 +1,14 @@
-use crate::common::holds;
-use crate::common::settings::Settings;
-use crate::common::trigger;
-use crate::constants as C;
-use crate::date;
-use crate::editor::Editor;
-use crate::result::{EgError, EgResult};
-use crate::util::{json_bool, json_int, json_string};
-use chrono::Duration;
-use json::JsonValue;
+use crate as eg;
+use eg::common::holds;
+use eg::common::settings::Settings;
+use eg::common::trigger;
+use eg::constants as C;
+use eg::date;
+use eg::{Editor, EgError, EgResult, EgValue};
 use rand;
 use rand::seq::SliceRandom;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-
-const JSON_NULL: JsonValue = JsonValue::Null;
 
 const PRECACHE_ORG_SETTINGS: &[&str] = &[
     "circ.pickup_hold_stalling.hard",
@@ -45,7 +40,7 @@ pub struct HoldTargetContext {
     /// Hold ID
     hold_id: i64,
 
-    hold: JsonValue,
+    hold: EgValue,
 
     pickup_lib: i64,
 
@@ -84,9 +79,9 @@ pub struct HoldTargetContext {
 }
 
 impl HoldTargetContext {
-    fn new(hold_id: i64, hold: JsonValue) -> HoldTargetContext {
+    fn new(hold_id: i64, hold: EgValue) -> HoldTargetContext {
         // Required, numeric value.
-        let pickup_lib = json_int(&hold["pickup_lib"]).unwrap();
+        let pickup_lib = hold["pickup_lib"].int().expect("Hold Pickup Lib Required");
 
         HoldTargetContext {
             success: false,
@@ -116,8 +111,8 @@ impl HoldTargetContext {
         self.found_copy
     }
     /// Returns a summary of this context as a JSON object.
-    pub fn to_json(&self) -> JsonValue {
-        json::object! {
+    pub fn to_json(&self) -> EgValue {
+        eg::hash! {
             "hold": self.hold_id,
             "success": self.success,
             "target": self.target,
@@ -243,13 +238,13 @@ impl<'a> HoldTargeter<'a> {
         let retarget_intvl = if let Some(intvl) = self.retarget_interval.as_ref() {
             intvl
         } else {
-            let query = json::object! {
+            let query = eg::hash! {
                 "name": "circ.holds.retarget_interval",
                 "enabled": "t"
             };
 
             if let Some(intvl) = self.editor().search("cgf", query)?.get(0) {
-                retarget_intvl_bind = Some(json_string(&intvl["value"])?);
+                retarget_intvl_bind = intvl["value"].to_string();
                 retarget_intvl_bind.as_ref().unwrap()
             } else {
                 // If all else fails, use a one day retarget interval.
@@ -259,17 +254,16 @@ impl<'a> HoldTargeter<'a> {
 
         log::info!("{self} using retarget interval: {retarget_intvl}");
 
-        let retarget_secs = date::interval_to_seconds(retarget_intvl)?;
-
-        let rt = date::to_iso(&(date::now() - Duration::seconds(retarget_secs)));
+        let retarget_date = date::subtract_interval(date::now(), retarget_intvl)?;
+        let rt = date::to_iso(&retarget_date);
 
         log::info!("{self} using retarget time: {rt}");
 
         self.retarget_time = Some(rt);
 
         if let Some(sri) = self.soft_retarget_interval.as_ref() {
-            let secs = date::interval_to_seconds(sri)?;
-            let srt = date::to_iso(&(date::now() - Duration::seconds(secs)));
+            let rt_date = date::subtract_interval(date::now(), sri)?;
+            let srt = date::to_iso(&rt_date);
 
             log::info!("{self} using soft retarget time: {srt}");
 
@@ -280,19 +274,20 @@ impl<'a> HoldTargeter<'a> {
         // won't be retargeted until the next check date.  If a
         // next_check_interval is provided it overrides the
         // retarget_interval.
-        let next_check_secs = match self.next_check_interval.as_ref() {
-            Some(intvl) => date::interval_to_seconds(intvl)?,
-            None => retarget_secs,
-        };
+        let next_check_intvl = self
+            .next_check_interval
+            .as_ref()
+            .map(|i| i.as_str())
+            .unwrap_or(retarget_intvl);
 
-        let next_check_date = date::now() + Duration::seconds(next_check_secs);
+        let next_check_date = date::add_interval(date::now(), next_check_intvl)?;
         let next_check_time = date::to_iso(&next_check_date);
 
         log::info!("{self} next check time {next_check_time}");
 
         // An org unit is considered closed for retargeting purposes
         // if it's closed both now and at the next re-target date.
-        let query = json::object! {
+        let query = eg::hash! {
             "-and": [{
                 "close_start": {"<=": "now"},
                 "close_end": {">=": "now"}
@@ -305,14 +300,14 @@ impl<'a> HoldTargeter<'a> {
         let closed_orgs = self.editor().search("aoucd", query)?;
 
         for co in closed_orgs {
-            self.closed_orgs.push(json_int(&co["org_unit"])?);
+            self.closed_orgs.push(co["org_unit"].int()?);
         }
 
         for stat in self
             .editor()
-            .search("ccs", json::object! {"hopeless_prone":"t"})?
+            .search("ccs", eg::hash! {"hopeless_prone":"t"})?
         {
-            self.hopeless_prone_statuses.push(json_int(&stat["id"])?);
+            self.hopeless_prone_statuses.push(stat["id"].int()?);
         }
 
         Ok(())
@@ -322,13 +317,13 @@ impl<'a> HoldTargeter<'a> {
     ///
     /// When targeting a known hold ID, this step can be skipped.
     pub fn find_holds_to_target(&mut self) -> EgResult<Vec<i64>> {
-        let mut query = json::object! {
+        let mut query = eg::hash! {
             "select": {"ahr": ["id"]},
             "from": "ahr",
             "where": {
-                "capture_time": JSON_NULL,
-                "fulfillment_time": JSON_NULL,
-                "cancel_time": JSON_NULL,
+                "capture_time": eg::NULL,
+                "fulfillment_time": eg::NULL,
+                "cancel_time": eg::NULL,
                 "frozen": "f"
             },
             "order_by": [
@@ -348,8 +343,8 @@ impl<'a> HoldTargeter<'a> {
             self.retarget_time.as_ref().unwrap().as_str()
         };
 
-        query["where"]["-or"] = json::array! [
-            {"prev_check_time": JSON_NULL},
+        query["where"]["-or"] = eg::array! [
+            {"prev_check_time": eg::NULL},
             {"prev_check_time": {"<=": start_time}},
         ];
 
@@ -361,7 +356,7 @@ impl<'a> HoldTargeter<'a> {
         if parallel > 1 {
             // In parallel mode, we need to also grab the metarecord for each hold.
 
-            query["from"] = json::object! {
+            query["from"] = eg::hash! {
                 "ahr": {
                     "rhrr": {
                         "fkey": "id",
@@ -389,7 +384,7 @@ impl<'a> HoldTargeter<'a> {
             // Slots are 1-based at the API level, but 0-based for modulo.
             let slot = self.parallel_slot - 1;
 
-            query["where"]["+mmrsm"] = json::object! {
+            query["where"]["+mmrsm"] = eg::hash! {
                 "metarecord": {
                     "=": {
                         "transform": "mod",
@@ -402,7 +397,7 @@ impl<'a> HoldTargeter<'a> {
 
         // Newest-first sorting cares only about hold create_time.
         if self.newest_first {
-            query["order_by"] = json::array! [{
+            query["order_by"] = eg::array! [{
                 "class": "ahr",
                 "field": "request_time",
                 "direction": "DESC"
@@ -416,7 +411,7 @@ impl<'a> HoldTargeter<'a> {
 
         log::info!("{self} found {} holds to target", holds.len());
 
-        Ok(holds.iter().map(|h| json_int(&h["id"]).unwrap()).collect())
+        Ok(holds.iter().map(|h| h["id"].int_required()).collect())
     }
 
     pub fn commit(&mut self) -> EgResult<()> {
@@ -437,7 +432,7 @@ impl<'a> HoldTargeter<'a> {
     fn update_hold(
         &mut self,
         context: &mut HoldTargetContext,
-        mut values: JsonValue,
+        mut values: EgValue,
     ) -> EgResult<()> {
         for (k, v) in values.entries_mut() {
             if k == "id" {
@@ -465,7 +460,7 @@ impl<'a> HoldTargeter<'a> {
         if hold["capture_time"].is_null()
             && hold["cancel_time"].is_null()
             && hold["fulfillment_time"].is_null()
-            && !json_bool(&hold["frozen"])
+            && !hold["frozen"].boolish()
         {
             return true;
         }
@@ -493,7 +488,7 @@ impl<'a> HoldTargeter<'a> {
         }
 
         // -- Hold is expired --
-        let values = json::object! {
+        let values = eg::hash! {
             "cancel_time": "now",
             "cancel_cause": 1, // un-targeted expiration
         };
@@ -519,12 +514,12 @@ impl<'a> HoldTargeter<'a> {
     fn get_hold_copies(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         let hold = &context.hold;
 
-        let hold_target = json_int(&hold["target"]).unwrap(); // required.
+        let hold_target = hold["target"].int()?;
         let hold_type = hold["hold_type"].as_str().unwrap(); // required.
-        let org_unit = json_int(&hold["selection_ou"]).unwrap(); // required
-        let org_depth = json_int(&hold["selection_depth"]).unwrap_or(0); // not required
+        let org_unit = hold["selection_ou"].int()?;
+        let org_depth = hold["selection_depth"].as_int().unwrap_or(0); // not required
 
-        let mut query = json::object! {
+        let mut query = eg::hash! {
             "select": {
                 "acp": ["id", "status", "circ_lib"],
                 "ahr": ["current_copy"]
@@ -538,8 +533,8 @@ impl<'a> HoldTargeter<'a> {
                         "fkey": "id", // acp.id
                         "field": "current_copy",
                         "filter": {
-                            "fulfillment_time": JSON_NULL,
-                            "cancel_time": JSON_NULL,
+                            "fulfillment_time": eg::NULL,
+                            "cancel_time": eg::NULL,
                             "id": {"!=": context.hold_id},
                         }
                     }
@@ -571,22 +566,22 @@ impl<'a> HoldTargeter<'a> {
             // we're processing a Recall or Force hold, which bypass most
             // holdability checks.
 
-            query["from"]["acp"]["acpl"] = json::object! {
+            query["from"]["acp"]["acpl"] = eg::hash! {
                 "field": "id",
                 "filter": {"holdable": "t", "deleted": "f"},
                 "fkey": "location",
             };
 
-            query["from"]["acp"]["ccs"] = json::object! {
+            query["from"]["acp"]["ccs"] = eg::hash! {
                 "field": "id",
                 "filter": {"holdable": "t"},
                 "fkey": "status",
             };
 
-            query["where"]["+acp"]["holdable"] = json::from("t");
+            query["where"]["+acp"]["holdable"] = EgValue::from("t");
 
-            if json_bool(&hold["mint_condition"]) {
-                query["where"]["+acp"]["mint_condition"] = json::from("t");
+            if hold["mint_condition"].boolish() {
+                query["where"]["+acp"]["mint_condition"] = EgValue::from("t");
             }
         }
 
@@ -594,34 +589,34 @@ impl<'a> HoldTargeter<'a> {
             // For volume and higher level holds, avoid targeting copies that
             // act as instances of monograph parts.
 
-            query["from"]["acp"]["acpm"] = json::object! {
+            query["from"]["acp"]["acpm"] = eg::hash! {
                 "type": "left",
                 "field": "target_copy",
                 "fkey": "id"
             };
 
-            query["where"]["+acpm"]["id"] = JSON_NULL;
+            query["where"]["+acpm"]["id"] = eg::NULL;
         }
 
         // Add the target filters
         if hold_type == "C" || hold_type == "R" || hold_type == "F" {
-            query["where"]["+acp"]["id"] = json::from(hold_target);
+            query["where"]["+acp"]["id"] = EgValue::from(hold_target);
         } else if hold_type == "V" {
-            query["where"]["+acp"]["call_number"] = json::from(hold_target);
+            query["where"]["+acp"]["call_number"] = EgValue::from(hold_target);
         } else if hold_type == "P" {
-            query["from"]["acp"]["acpm"] = json::object! {
+            query["from"]["acp"]["acpm"] = eg::hash! {
                 "field" : "target_copy",
                 "fkey" : "id",
                 "filter": {"part": hold_target},
             };
         } else if hold_type == "I" {
-            query["from"]["acp"]["sitem"] = json::object! {
+            query["from"]["acp"]["sitem"] = eg::hash! {
                 "field" : "unit",
                 "fkey" : "id",
                 "filter": {"issuance": hold_target},
             };
         } else if hold_type == "T" {
-            query["from"]["acp"]["acn"] = json::object! {
+            query["from"]["acp"]["acn"] = eg::hash! {
                 "field" : "id",
                 "fkey" : "call_number",
                 "join": {
@@ -635,7 +630,7 @@ impl<'a> HoldTargeter<'a> {
         } else {
             // Metarecord hold
 
-            query["from"]["acp"]["acn"] = json::object! {
+            query["from"]["acp"]["acn"] = eg::hash! {
                 "field": "id",
                 "fkey": "call_number",
                 "join": {
@@ -657,7 +652,7 @@ impl<'a> HoldTargeter<'a> {
                 // Compile the JSON-encoded metarecord holdable formats
                 // to an Intarray query_int string.
 
-                let query_ints = self.editor().json_query(json::object! {
+                let query_ints = self.editor().json_query(eg::hash! {
                     "from": ["metabib.compile_composite_attr", formats]
                 })?;
 
@@ -665,7 +660,7 @@ impl<'a> HoldTargeter<'a> {
                     // Only pull potential copies from records that satisfy
                     // the holdable formats query.
                     if let Some(qint) = query_int["metabib.compile_composite_attr"].as_str() {
-                        query["from"]["acp"]["acn"]["join"]["bre"]["join"]["mravl"] = json::object! {
+                        query["from"]["acp"]["acn"]["join"]["bre"]["join"]["mravl"] = eg::hash! {
                             "field": "source",
                             "fkey": "id",
                             "filter": {"vlist": {"@@": qint}}
@@ -684,15 +679,15 @@ impl<'a> HoldTargeter<'a> {
             .map(|c| {
                 // While we're looping, see if we found the copy the
                 // caller was interested in.
-                let id = json_int(&c["id"]).unwrap();
+                let id = c["id"].int_required();
                 if id == context.find_copy {
                     found_copy = true;
                 }
 
                 let copy = PotentialCopy {
                     id,
-                    status: json_int(&c["status"]).unwrap(),
-                    circ_lib: json_int(&c["circ_lib"]).unwrap(),
+                    status: c["status"].int_required(),
+                    circ_lib: c["circ_lib"].int_required(),
                     proximity: -1,
                     already_targeted: !c["current_copy"].is_null(),
                 };
@@ -733,7 +728,7 @@ impl<'a> HoldTargeter<'a> {
         // "{1,2,3}"
         let ints = format!("{{{ints}}}");
 
-        let query = json::object! {
+        let query = eg::hash! {
             "from": [
                 "action.hold_request_regen_copy_maps",
                 context.hold_id,
@@ -756,7 +751,7 @@ impl<'a> HoldTargeter<'a> {
         if context.copies.len() == 0 {
             if !marked_hopeless {
                 log::info!("{self} Marking hold as hopeless");
-                return self.update_hold(context, json::object! {"hopeless_date": "now"});
+                return self.update_hold(context, eg::hash! {"hopeless_date": "now"});
             }
         }
 
@@ -769,11 +764,11 @@ impl<'a> HoldTargeter<'a> {
         if marked_hopeless {
             if we_have_hope {
                 log::info!("{self} Removing hopeless date");
-                return self.update_hold(context, json::object! {"hopeless_date": JSON_NULL});
+                return self.update_hold(context, eg::hash! {"hopeless_date": eg::NULL});
             }
         } else if !we_have_hope {
             log::info!("{self} Marking hold as hopeless");
-            return self.update_hold(context, json::object! {"hopeless_date": "now"});
+            return self.update_hold(context, eg::hash! {"hopeless_date": "now"});
         }
 
         Ok(())
@@ -804,8 +799,8 @@ impl<'a> HoldTargeter<'a> {
             self.process_recalls(context)?;
         }
 
-        let values = json::object! {
-            "current_copy": JSON_NULL,
+        let values = eg::hash! {
+            "current_copy": eg::NULL,
             "prev_check_time": "now"
         };
 
@@ -829,22 +824,19 @@ impl<'a> HoldTargeter<'a> {
             .settings
             .get_value_at_org("circ.holds.recall_threshold", context.pickup_lib)?;
 
-        let recall_threshold = match json_string(&recall_threshold) {
-            Ok(t) => t,
-            Err(_) => return Ok(()), // null / not set
+        let recall_threshold = match recall_threshold.to_string() {
+            Some(t) => t,
+            None => return Ok(()),
         };
 
         let return_interval = self
             .settings
             .get_value_at_org("circ.holds.recall_return_interval", context.pickup_lib)?;
 
-        let return_interval = match json_string(&return_interval) {
-            Ok(t) => t,
-            Err(_) => return Ok(()), // null / not set
+        let return_interval = match return_interval.to_string() {
+            Some(t) => t,
+            None => return Ok(()),
         };
-
-        let thresh_intvl_secs = date::interval_to_seconds(&recall_threshold)?;
-        let return_intvl_secs = date::interval_to_seconds(&return_interval)?;
 
         let copy_ids = context
             .recall_copies
@@ -854,13 +846,13 @@ impl<'a> HoldTargeter<'a> {
 
         // See if we have a circulation linked to our recall copies
         // that we can recall.
-        let query = json::object! {
+        let query = eg::hash! {
             "target_copy": copy_ids,
-            "checkin_time": JSON_NULL,
-            "duration": {">": recall_threshold}
+            "checkin_time": eg::NULL,
+            "duration": {">": recall_threshold.as_str()}
         };
 
-        let ops = json::object! {
+        let ops = eg::hash! {
             "order_by": [{"class": "circ", "field": "due_date"}],
             "limit": 1
         };
@@ -880,8 +872,9 @@ impl<'a> HoldTargeter<'a> {
 
         let old_due_date = date::parse_datetime(circ["due_date"].as_str().unwrap())?;
         let xact_start_date = date::parse_datetime(circ["xact_start"].as_str().unwrap())?;
-        let thresh_date = xact_start_date + Duration::seconds(thresh_intvl_secs);
-        let mut return_date = date::now() + Duration::seconds(return_intvl_secs);
+
+        let thresh_date = date::add_interval(xact_start_date, &recall_threshold)?;
+        let mut return_date = date::add_interval(date::now(), &return_interval)?;
 
         // Give the user a new due date of either a full recall threshold,
         // or the return interval, whichever is further in the future.
@@ -894,8 +887,8 @@ impl<'a> HoldTargeter<'a> {
             return_date = old_due_date;
         }
 
-        circ["due_date"] = json::from(date::to_iso(&return_date));
-        circ["renewal_remaining"] = json::from(0);
+        circ["due_date"] = date::to_iso(&return_date).into();
+        circ["renewal_remaining"] = 0.into();
 
         let mut fine_rules = self
             .settings
@@ -920,7 +913,7 @@ impl<'a> HoldTargeter<'a> {
             self.editor(),
             "circ.recall.target",
             &circ,
-            json_int(&circ["circ_lib"])?,
+            circ["circ_lib"].int()?,
             None,
             None,
             false,
@@ -977,7 +970,7 @@ impl<'a> HoldTargeter<'a> {
 
                 let value = self.settings.get_value_at_org(setting, copy.circ_lib)?;
 
-                if json_bool(&value) {
+                if value.boolish() {
                     log::info!("{self} skipping copy at closed org unit {}", copy.circ_lib);
                     continue;
                 }
@@ -999,11 +992,11 @@ impl<'a> HoldTargeter<'a> {
     ) -> EgResult<bool> {
         let result = holds::test_copy_for_hold(
             self.editor(),
-            json_int(&context.hold["usr"])?,
+            context.hold["usr"].int()?,
             copy_id,
             context.pickup_lib,
-            json_int(&context.hold["request_lib"])?,
-            json_int(&context.hold["requestor"])?,
+            context.hold["request_lib"].int()?,
+            context.hold["requestor"].int()?,
             true, // is_retarget
             None, // overrides
             true, // check_only
@@ -1028,9 +1021,9 @@ impl<'a> HoldTargeter<'a> {
     /// Otherwise, sets aside the previously targeted copy in case in
     /// may be of use later... and returns false.
     fn inspect_previous_target(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
-        let prev_copy = match json_int(&context.hold["current_copy"]) {
-            Ok(c) => c,
-            Err(_) => return Ok(false), // value was null
+        let prev_copy = match context.hold["current_copy"].as_int() {
+            Some(c) => c,
+            None => return Ok(false), // value was null
         };
 
         context.previous_copy_id = prev_copy;
@@ -1101,16 +1094,16 @@ impl<'a> HoldTargeter<'a> {
                 .retrieve("acp", context.previous_copy_id)?
                 .ok_or(format!("Cannot find copy {}", context.previous_copy_id))?;
 
-            json_int(&copy["circ_lib"])?
+            copy["circ_lib"].int()?
         };
 
-        let unful = json::object! {
+        let mut unful = eg::hash! {
             "hold": self.hold_id,
             "circ_lib": circ_lib,
             "current_copy": context.previous_copy_id
         };
 
-        let unful = self.editor().idl().create_from("aufh", unful)?;
+        unful.bless("aufh")?;
         self.editor().create(unful)?;
 
         Ok(())
@@ -1143,7 +1136,7 @@ impl<'a> HoldTargeter<'a> {
             .settings
             .get_value_at_org("circ.holds.max_org_unit_target_loops", context.pickup_lib)?;
 
-        if let Ok(max) = json_int(&max_loops) {
+        if let Some(max) = max_loops.as_int() {
             if let Some(copy_id) = self.target_by_org_loops(context, max)? {
                 context.target = copy_id;
             }
@@ -1260,8 +1253,7 @@ impl<'a> HoldTargeter<'a> {
         let req_time = context.hold["request_time"].as_str().unwrap();
         let req_time = date::parse_datetime(&req_time)?;
 
-        let hard_stall_secs = date::interval_to_seconds(interval)?;
-        let hard_stall_time = req_time.clone() + Duration::seconds(hard_stall_secs);
+        let hard_stall_time = date::add_interval(req_time, interval)?;
 
         log::info!("{self} hard stall deadline is/was {hard_stall_time}");
 
@@ -1285,7 +1277,7 @@ impl<'a> HoldTargeter<'a> {
         context: &mut HoldTargetContext,
         max_loops: i64,
     ) -> EgResult<Option<i64>> {
-        let query = json::object! {
+        let query = eg::hash! {
             "select": {"aufhl": ["circ_lib", "count"]},
             "from": "aufhl",
             "where": {"hold": self.hold_id},
@@ -1297,7 +1289,7 @@ impl<'a> HoldTargeter<'a> {
         // Highest per-lib target attempts
         let mut max_tried = 0;
         for lib in targeted_libs.iter() {
-            let count = json_int(&lib["count"])?;
+            let count = lib["count"].int()?;
             if count > max_tried {
                 max_tried = count;
             }
@@ -1362,7 +1354,7 @@ impl<'a> HoldTargeter<'a> {
 
     /// Cancel the hold and fire the no-target A/T event creator.
     fn handle_exceeds_target_loops(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
-        let values = json::object! {
+        let values = eg::hash! {
             "cancel_time": "now",
             "cancel_cause": 1, // un-targeted expiration
         };
@@ -1390,7 +1382,7 @@ impl<'a> HoldTargeter<'a> {
         // Collect copy proximity info (generated via DB trigger)
         // from our newly create copy maps.
 
-        let query = json::object! {
+        let query = eg::hash! {
             "select": {"ahcm": ["target_copy", "proximity"]},
             "from": "ahcm",
             "where": {"hold": self.hold_id}
@@ -1401,8 +1393,8 @@ impl<'a> HoldTargeter<'a> {
         let mut flat_map: HashMap<i64, i64> = HashMap::new();
 
         for map in copy_maps.iter() {
-            let copy_id = json_int(&map["target_copy"])?;
-            let proximity = json_int(&map["proximity"])?;
+            let copy_id = map["target_copy"].int()?;
+            let proximity = map["proximity"].int()?;
             flat_map.insert(copy_id, proximity);
         }
 
@@ -1426,11 +1418,7 @@ impl<'a> HoldTargeter<'a> {
                 .settings
                 .get_value_at_org("circ.holds.org_unit_target_weight", copy.circ_lib)?;
 
-            let weight = if weight.is_null() {
-                1
-            } else {
-                json_int(&weight)?
-            };
+            let weight = if weight.is_null() { 1 } else { weight.int()? };
 
             if let Some(list) = weighted.get_mut(&prox) {
                 for _ in 0..weight {
@@ -1468,7 +1456,7 @@ impl<'a> HoldTargeter<'a> {
     fn get_copies_at_loop_iter(
         &self,
         context: &mut HoldTargetContext,
-        targeted_libs: &Vec<JsonValue>,
+        targeted_libs: &Vec<EgValue>,
         loop_iter: i64,
     ) -> (Vec<PotentialCopy>, Vec<PotentialCopy>) {
         let mut iter_copies = Vec::new();
@@ -1481,13 +1469,13 @@ impl<'a> HoldTargeter<'a> {
                 // Start with copies at circ libs that have never been targeted.
                 match_found = !targeted_libs
                     .iter()
-                    .any(|l| json_int(&l["circ_lib"]).unwrap() == copy.circ_lib);
+                    .any(|l| l["circ_lib"].int_required() == copy.circ_lib);
             } else {
                 // Find copies at branches whose target count
                 // matches the current (non-zero) loop depth.
                 match_found = targeted_libs.iter().any(|l| {
-                    return json_int(&l["circ_lib"]).unwrap() == copy.circ_lib
-                        && json_int(&l["count"]).unwrap() == loop_iter;
+                    return l["circ_lib"].int_required() == copy.circ_lib
+                        && l["count"].int_required() == loop_iter;
                 });
             }
 
@@ -1532,7 +1520,7 @@ impl<'a> HoldTargeter<'a> {
     fn apply_copy_target(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         log::info!("{self} successfully targeted copy: {}", context.target);
 
-        let values = json::object! {
+        let values = eg::hash! {
             "current_copy": context.target,
             "prev_check_time": "now"
         };

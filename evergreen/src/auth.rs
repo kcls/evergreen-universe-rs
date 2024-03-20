@@ -1,7 +1,8 @@
-use crate::event;
-use crate::result::EgResult;
-use json;
-use opensrf::client::Client;
+use crate as eg;
+use crate::Client;
+use crate::EgEvent;
+use crate::EgResult;
+use crate::EgValue;
 
 const LOGIN_TIMEOUT: i32 = 30;
 
@@ -80,17 +81,17 @@ impl AuthLoginArgs {
         self.workstation.as_deref()
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_eg_value(&self) -> EgValue {
         let lt: &str = self.login_type().into();
 
-        let mut jv = json::object! {
+        let mut jv = eg::hash! {
             username: self.username(),
             password: self.password(),
             "type": lt,
         };
 
         if let Some(w) = &self.workstation {
-            jv["workstation"] = json::from(w.as_str());
+            jv["workstation"] = EgValue::from(w.as_str());
         }
 
         jv
@@ -118,20 +119,20 @@ impl AuthInternalLoginArgs {
         self.org_unit = Some(org_unit);
     }
 
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_eg_value(&self) -> EgValue {
         let lt: &str = (&self.login_type).into();
 
-        let mut jv = json::object! {
+        let mut jv = eg::hash! {
             "login_type": lt,
             "user_id": self.user_id,
         };
 
         if let Some(w) = &self.workstation {
-            jv["workstation"] = json::from(w.as_str());
+            jv["workstation"] = EgValue::from(w.as_str());
         }
 
         if let Some(w) = self.org_unit {
-            jv["org_unit"] = json::from(w);
+            jv["org_unit"] = EgValue::from(w);
         }
 
         jv
@@ -159,16 +160,16 @@ impl AuthSession {
     ///
     /// Returns None on login failure, Err on error.
     pub fn login(client: &Client, args: &AuthLoginArgs) -> EgResult<Option<AuthSession>> {
-        let params = vec![args.to_json_value()];
+        let params = vec![args.to_eg_value()];
         let mut ses = client.session("open-ils.auth");
         let mut req = ses.request("open-ils.auth.login", params)?;
 
-        let json_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
+        let eg_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
             Some(v) => v,
             None => Err(format!("Login Timed Out"))?,
         };
 
-        AuthSession::handle_auth_response(&args.workstation, &json_val)
+        AuthSession::handle_auth_response(&args.workstation, &eg_val)
     }
 
     /// Create an authtoken for an internal auth session.
@@ -178,23 +179,23 @@ impl AuthSession {
         client: &Client,
         args: &AuthInternalLoginArgs,
     ) -> EgResult<Option<AuthSession>> {
-        let params = vec![args.to_json_value()];
+        let params = vec![args.to_eg_value()];
         let mut ses = client.session("open-ils.auth_internal");
         let mut req = ses.request("open-ils.auth_internal.session.create", params)?;
 
-        let json_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
+        let eg_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
             Some(v) => v,
             None => Err(format!("Login Timed Out"))?,
         };
 
-        AuthSession::handle_auth_response(&args.workstation, &json_val)
+        AuthSession::handle_auth_response(&args.workstation, &eg_val)
     }
 
     fn handle_auth_response(
         workstation: &Option<String>,
-        response: &json::JsonValue,
+        response: &EgValue,
     ) -> EgResult<Option<AuthSession>> {
-        let evt = match event::EgEvent::parse(&response) {
+        let evt = match EgEvent::parse(&response) {
             Some(e) => e,
             None => {
                 return Err(format!("Unexpected response: {:?}", response).into());

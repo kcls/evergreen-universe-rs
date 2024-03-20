@@ -1,4 +1,5 @@
-use opensrf::server::Server;
+use eversrf as eg;
+use eg::server::Server;
 pub mod app;
 pub mod methods;
 
