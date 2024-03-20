@@ -59,7 +59,7 @@ pub fn main() -> EgResult<()> {
 
     println!("v = {v}");
 
-    v.unbless()?;
+    v.unbless();
 
     println!("v = {}", v.dump());
 

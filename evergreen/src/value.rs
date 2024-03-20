@@ -16,6 +16,7 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
 
+/// Classname and payload fields for wire-protocol JSON values.
 const JSON_CLASS_KEY: &str = "__c";
 const JSON_PAYLOAD_KEY: &str = "__p";
 
@@ -23,28 +24,33 @@ const JSON_PAYLOAD_KEY: &str = "__p";
 /// into flat hashes.
 const HASH_CLASSNAME_KEY: &str = "_classname";
 
-// ---
-// Create some wrapper macros for JSON value building so that we can
-// build EgValue's without invoking json directly.
-// let h = eg::hash! {"hello": "errbody"};
+/// Macro for build EgValue::Hash's by leveraging the json::object! macro.
+///
+/// Panics if an attempt is made to build an EgValue::Blessed with
+/// an unknown class name or invalid field, however this should never
+/// happen in practice, since EgValue::Blessed are validated well
+/// before they can be included in an eg::hash! {} invocation.
+///
+/// let h = eg::hash! {"hello": "errbody"};
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
-        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
-            Ok(v) => v,
-            Err(e) => panic!("Invalid EgValue: {e}")
-        }
+        eg::value::EgValue::from_json_value(json::object!($($tts)*)).expect("eg::hash!")
     }
 }
 
-// let a = eg::array! ["hello", "errbody"];
+/// Macro for build EgValue's by leveraging the json::object! macro.
+///
+/// Panics if an attempt is made to build an EgValue::Blessed with
+/// an unknown class name or invalid field, however this should never
+/// happen in practice, since EgValue::Blessed's are validated well
+/// before they can be included in an eg::hash! {} invocation.
+///
+/// let a = eg::array! ["hello", "errbody"];
 #[macro_export]
 macro_rules! array {
     ($($tts:tt)*) => {
-        match eg::value::EgValue::from_json_value(json::array!($($tts)*)) {
-            Ok(v) => v,
-            Err(e) => panic!("Invalid EgValue: {e}")
-        }
+        eg::value::EgValue::from_json_value(json::array!($($tts)*)).expect("eg::array!")
     }
 }
 // ---
@@ -1305,7 +1311,7 @@ impl TryFrom<(&str, EgValue)> for EgValue {
 impl Index<usize> for EgValue {
     type Output = EgValue;
 
-    /// Returns the JsonValue stored in the provided index or EgValue::Null;
+    /// Returns the EgValue stored in the provided index or EgValue::Null;
     fn index(&self, index: usize) -> &Self::Output {
         match self {
             Self::Array(ref o) => {
@@ -1345,7 +1351,7 @@ impl IndexMut<usize> for EgValue {
 impl Index<&str> for EgValue {
     type Output = EgValue;
 
-    /// Returns the JsonValue stored in this EgValue at the
+    /// Returns the EgValue stored in this EgValue at the
     /// specified index (field name).
     ///
     /// Panics if the IDL Class for this EgValue does not
