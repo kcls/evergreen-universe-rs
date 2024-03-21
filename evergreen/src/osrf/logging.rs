@@ -1,6 +1,7 @@
 ///! OpenSRF Syslog
 use crate::osrf::conf;
 use crate::util;
+use log;
 use std::cell::RefCell;
 use std::fs;
 use std::io::Write;
@@ -8,7 +9,6 @@ use std::os::unix::net::UnixDatagram;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 use syslog;
-use log;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 

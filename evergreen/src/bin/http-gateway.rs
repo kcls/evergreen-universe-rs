@@ -265,7 +265,8 @@ impl GatewayHandler {
                     eg::osrf::message::MessageStatus::Complete => {
                         *complete = true;
                     }
-                    eg::osrf::message::MessageStatus::Ok | eg::osrf::message::MessageStatus::Continue => {
+                    eg::osrf::message::MessageStatus::Ok
+                    | eg::osrf::message::MessageStatus::Continue => {
                         // Keep reading in case there's more data in the message.
                     }
                     _ => return Err(stat.clone().into_json_value().dump().into()),

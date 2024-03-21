@@ -11,14 +11,14 @@
 //!
 //! Once the initial request is routed, the router is no longer involved
 //! in the conversation.
+use eg::date;
+use eg::init;
 use eg::osrf::addr::BusAddress;
 use eg::osrf::bus::Bus;
 use eg::osrf::conf;
-use eg::init;
 use eg::osrf::logging::Logger;
 use eg::osrf::message;
 use eg::osrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
-use eg::date;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;

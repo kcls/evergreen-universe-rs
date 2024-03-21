@@ -1,8 +1,8 @@
-use crate::Client;
-use crate::osrf::conf;
 use crate::idl;
+use crate::osrf::conf;
 use crate::osrf::logging;
 use crate::osrf::sclient;
+use crate::Client;
 use crate::EgResult;
 use std::env;
 use std::sync::Arc;

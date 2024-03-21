@@ -1,6 +1,6 @@
-use eg::osrf::app::ApplicationWorker;
 use eg::common::targeter;
 use eg::editor::Editor;
+use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;

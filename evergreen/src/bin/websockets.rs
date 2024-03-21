@@ -1,7 +1,7 @@
+use eg::idl;
 use eg::osrf::addr::BusAddress;
 use eg::osrf::bus::Bus;
 use eg::osrf::conf;
-use eg::idl;
 use eg::osrf::logging::Logger;
 use eg::osrf::message;
 use eg::EgResult;
@@ -625,7 +625,8 @@ impl Session {
                     // turned into Fieldmapper objects before they
                     // are relayed to the API.
                     if format_hash {
-                        if let eg::osrf::message::Payload::Method(ref mut meth) = msg.payload_mut() {
+                        if let eg::osrf::message::Payload::Method(ref mut meth) = msg.payload_mut()
+                        {
                             let mut new_params = Vec::new();
                             let mut params = meth.take_params();
                             for mut p in params.drain(..) {
