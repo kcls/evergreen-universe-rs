@@ -1,7 +1,7 @@
-use eg::osrf::app::ApplicationWorker;
 use eg::common::circ;
 use eg::common::circulator::Circulator;
 use eg::editor::Editor;
+use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;

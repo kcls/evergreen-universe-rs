@@ -1,7 +1,7 @@
-use eg::osrf::app::ApplicationWorker;
 use eg::common::penalty;
 use eg::common::settings::Settings;
 use eg::common::user;
+use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;

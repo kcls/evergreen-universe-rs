@@ -1,6 +1,6 @@
-use eg::osrf::app::ApplicationWorker;
 use eg::common::jq::JsonQueryCompiler;
 use eg::idldb::{FleshDef, IdlClassSearch, Translator};
+use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;

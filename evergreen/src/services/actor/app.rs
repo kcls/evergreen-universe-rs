@@ -1,10 +1,10 @@
-use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
-use eg::Client;
-use eg::osrf::conf;
 use eg::idl;
+use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
+use eg::osrf::conf;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::osrf::sclient::HostSettings;
+use eg::Client;
 use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;

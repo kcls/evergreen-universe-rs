@@ -234,8 +234,8 @@ impl EgValue {
             }
         };
 
-        let idl_class = idl::get_class(classname)
-            .ok_or_else(|| format!("Not and IDL class: '{classname}'"))?;
+        let idl_class =
+            idl::get_class(classname).ok_or_else(|| format!("Not and IDL class: '{classname}'"))?;
 
         let mut map = match self {
             Self::Hash(ref mut m) => std::mem::replace(m, HashMap::new()),
@@ -244,9 +244,11 @@ impl EgValue {
 
         for (key, value) in map.iter_mut() {
             if !idl_class.has_field(key) {
-                return Err(
-                    format!("Class '{}' has no field named '{key}'", idl_class.classname()).into(),
-                );
+                return Err(format!(
+                    "Class '{}' has no field named '{key}'",
+                    idl_class.classname()
+                )
+                .into());
             }
 
             value.from_classed_hash()?;
@@ -1142,7 +1144,6 @@ impl From<Vec<i64>> for EgValue {
         EgValue::Array(v.drain(..).map(|n| EgValue::from(n)).collect())
     }
 }
-
 
 impl From<Vec<String>> for EgValue {
     fn from(mut v: Vec<String>) -> EgValue {

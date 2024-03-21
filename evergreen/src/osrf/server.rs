@@ -1,13 +1,13 @@
+use crate::init;
 use crate::osrf::app;
 use crate::osrf::client::Client;
 use crate::osrf::conf;
-use crate::init;
 use crate::osrf::message;
 use crate::osrf::method;
 use crate::osrf::sclient::{HostSettings, SettingsClient};
 use crate::osrf::session;
-use crate::util;
 use crate::osrf::worker::{Worker, WorkerState, WorkerStateEvent};
+use crate::util;
 use crate::EgResult;
 use signal_hook;
 use std::collections::HashMap;
