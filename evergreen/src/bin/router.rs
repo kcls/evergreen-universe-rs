@@ -18,7 +18,7 @@ use eg::init;
 use eg::osrf::logging::Logger;
 use eg::osrf::message;
 use eg::osrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
-use eg::util;
+use eg::date;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
@@ -55,7 +55,7 @@ struct ServiceInstance {
     route_count: usize,
 
     /// When was this instance registered with the router.
-    register_time: f64,
+    register_time: date::EgDate,
 }
 
 impl ServiceInstance {
@@ -65,8 +65,8 @@ impl ServiceInstance {
     fn listen_address(&self) -> &BusAddress {
         &self.listen_address
     }
-    fn register_time(&self) -> f64 {
-        self.register_time
+    fn register_time(&self) -> &date::EgDate {
+        &self.register_time
     }
 
     fn to_json_value(&self) -> json::JsonValue {
@@ -74,7 +74,7 @@ impl ServiceInstance {
             "route_count": self.route_count,
             "address": self.address().as_str(),
             "listen_address": self.listen_address().as_str(),
-            "register_time": self.register_time(),
+            "register_time": date::to_iso(self.register_time()),
         }
     }
 }
@@ -511,7 +511,7 @@ impl Router {
                     address,
                     listen_address,
                     route_count: 0,
-                    register_time: util::epoch_secs(),
+                    register_time: date::now(),
                 });
 
                 return Ok(());
@@ -536,7 +536,7 @@ impl Router {
                 address,
                 listen_address,
                 route_count: 0,
-                register_time: util::epoch_secs(),
+                register_time: date::now(),
             }],
         });
 
