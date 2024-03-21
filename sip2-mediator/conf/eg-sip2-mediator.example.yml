@@ -1,0 +1,29 @@
+# SIP2 Mediator Configuration File
+#
+# This configuration file is not required to run sip2-mediator.  All values 
+# below have matching command line variants.  Command line parameters 
+# override configuration file paramaters.
+
+sip2-mediator:
+
+    # sip2-meditor listens for SIP clients on this address and port.
+    sip-address: 127.0.0.1
+    sip-port: 6001
+
+    # Full URL of the HTTP backend server which processes requests.
+    http-url: http://localhost/sip2-mediator
+
+    syslog-facility: local4
+    syslog-level: debug
+
+    # Maximum number of allowed SIP client connections.  Once reached,
+    # new connection attempts are rejected.
+    max-clients: 128
+
+    # If true, remove non-ASCII characters from SIP response messages, 
+    # i.e. those delivered back to a SIP client in response to a request.
+    ascii: true
+
+    # Turn this on to communicate with an HTTP backend that uses
+    # a self-signed, expired, etc. certificate.
+    ignore-ssl-errors: false

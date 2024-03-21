@@ -1,0 +1,10 @@
+[Unit]
+Description=Evergreen SIP2 Mediator
+
+[Service]
+Type=simple
+User=opensrf
+Group=opensrf
+ExecStart=/usr/local/bin/eg-sip2-mediator
+ExecReload=/bin/kill -HUP $MAINPID
+
