@@ -1,9 +1,9 @@
 use eg::addr::BusAddress;
-use eg::bus::Bus;
-use eg::conf;
+use eg::osrf::bus::Bus;
+use eg::osrf::conf;
 use eg::idl;
-use eg::logging::Logger;
-use eg::message;
+use eg::osrf::logging::Logger;
+use eg::osrf::message;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
@@ -626,7 +626,7 @@ impl Session {
                     // turned into Fieldmapper objects before they
                     // are relayed to the API.
                     if format_hash {
-                        if let eg::message::Payload::Method(ref mut meth) = msg.payload_mut() {
+                        if let eg::osrf::message::Payload::Method(ref mut meth) = msg.payload_mut() {
                             let mut new_params = Vec::new();
                             let mut params = meth.take_params();
                             for p in params.drain(..) {
@@ -694,7 +694,7 @@ impl Session {
         let mut transport_error = false;
 
         for mut msg in msg_list.drain(..) {
-            if let eg::message::Payload::Status(s) = msg.payload() {
+            if let eg::osrf::message::Payload::Status(s) = msg.payload() {
                 let stat = *s.status();
                 match stat {
                     message::MessageStatus::Complete => self.subtract_reqs(),
@@ -717,7 +717,7 @@ impl Session {
                         }
                     }
                 }
-            } else if let eg::message::Payload::Result(ref mut r) = msg.payload_mut() {
+            } else if let eg::osrf::message::Payload::Result(ref mut r) = msg.payload_mut() {
                 // Decode (hashify) the result content instead of the
                 // response message as a whole, because opensrf uses
                 // the same class/payload encoding that the IDL/Fieldmapper
@@ -769,7 +769,7 @@ impl Session {
     /// Log an API call, honoring the log-protect configs.
     fn log_request(&self, service: &str, msg: &message::Message) -> Result<(), String> {
         let request = match msg.payload() {
-            eg::message::Payload::Method(m) => m,
+            eg::osrf::message::Payload::Method(m) => m,
             _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
@@ -818,7 +818,7 @@ impl mptc::Request for WebsocketRequest {
 }
 
 struct WebsocketHandler {
-    osrf_conf: Arc<eg::conf::Config>,
+    osrf_conf: Arc<eg::osrf::conf::Config>,
     idl: Arc<idl::Parser>,
     max_parallel: usize,
     shutdown: Arc<AtomicBool>,
@@ -970,7 +970,7 @@ fn main() {
         .gateway()
         .expect("No gateway configuration found");
 
-    eg::logging::Logger::new(gateway_conf.logging())
+    eg::osrf::logging::Logger::new(gateway_conf.logging())
         .expect("Creating logger")
         .init()
         .expect("Logger Init");

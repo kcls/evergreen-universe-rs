@@ -12,12 +12,12 @@
 //! Once the initial request is routed, the router is no longer involved
 //! in the conversation.
 use eg::addr::BusAddress;
-use eg::bus::Bus;
-use eg::conf;
+use eg::osrf::bus::Bus;
+use eg::osrf::conf;
 use eg::init;
-use eg::logging::Logger;
-use eg::message;
-use eg::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
+use eg::osrf::logging::Logger;
+use eg::osrf::message;
+use eg::osrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use eg::util;
 use eg::EgResult;
 use eg::EgValue;

@@ -1,6 +1,6 @@
 use eg::init::InitOptions;
 use eg::result::EgResult;
-use eg::session::MultiSession;
+use eg::osrf::session::MultiSession;
 use eg::util;
 use eg::EgValue;
 use evergreen as eg;

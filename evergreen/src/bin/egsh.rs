@@ -18,7 +18,7 @@ use eg::event;
 use eg::idldb;
 use eg::init;
 
-use eg::logging::Logger;
+use eg::osrf::logging::Logger;
 use eg::util;
 
 //const PROMPT: &str = "egsh# ";

@@ -1,5 +1,5 @@
-use eg::bus;
-use eg::conf;
+use eg::osrf::bus;
+use eg::osrf::conf;
 use eg::util;
 use eg::EgValue;
 use evergreen as eg;

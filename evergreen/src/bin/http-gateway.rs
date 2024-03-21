@@ -1,7 +1,7 @@
 //! Evergreen HTTP+JSON Gateway
 use eg::date;
 use eg::idl;
-use eg::logging::Logger;
+use eg::osrf::logging::Logger;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
@@ -49,7 +49,7 @@ impl mptc::Request for GatewayRequest {
 #[derive(Debug)]
 struct ParsedGatewayRequest {
     service: String,
-    method: Option<eg::message::MethodCall>,
+    method: Option<eg::osrf::message::MethodCall>,
     format: idl::DataFormat,
     http_method: String,
 }
@@ -63,8 +63,8 @@ struct ParsedHttpRequest {
 }
 
 struct GatewayHandler {
-    bus: Option<eg::bus::Bus>,
-    osrf_conf: Arc<eg::conf::Config>,
+    bus: Option<eg::osrf::bus::Bus>,
+    osrf_conf: Arc<eg::osrf::conf::Config>,
     idl: Arc<idl::Parser>,
     partial_buffer: Option<String>,
 }
@@ -73,11 +73,11 @@ impl GatewayHandler {
     /// Mutable OpenSRF Bus ref
     ///
     /// Panics if the bus is not yet setup, which happens in worker_start()
-    fn bus(&mut self) -> &mut eg::bus::Bus {
+    fn bus(&mut self) -> &mut eg::osrf::bus::Bus {
         self.bus.as_mut().unwrap()
     }
 
-    fn bus_conf(&self) -> &eg::conf::BusClient {
+    fn bus_conf(&self) -> &eg::osrf::conf::BusClient {
         self.osrf_conf.gateway().unwrap()
     }
 
@@ -160,14 +160,14 @@ impl GatewayHandler {
         // We know method is non-None here.
         let method = request.method.take().unwrap();
 
-        let tm = eg::message::TransportMessage::with_body(
+        let tm = eg::osrf::message::TransportMessage::with_body(
             recipient.as_str(),
             self.bus().address().as_str(),
             &eg::util::random_number(16), // thread
-            eg::message::Message::new(
-                eg::message::MessageType::Request,
+            eg::osrf::message::Message::new(
+                eg::osrf::message::MessageType::Request,
                 1, // thread trace
-                eg::message::Payload::Method(method),
+                eg::osrf::message::Payload::Method(method),
             ),
         );
 
@@ -201,15 +201,15 @@ impl GatewayHandler {
         &mut self,
         format: &idl::DataFormat,
         complete: &mut bool,
-        mut tm: eg::message::TransportMessage,
+        mut tm: eg::osrf::message::TransportMessage,
     ) -> EgResult<Vec<EgValue>> {
         let mut replies: Vec<EgValue> = Vec::new();
 
         for mut resp in tm.body_mut().drain(..) {
-            if let eg::message::Payload::Result(result) = resp.payload_mut() {
+            if let eg::osrf::message::Payload::Result(result) = resp.payload_mut() {
                 let mut content = result.take_content();
 
-                if result.status() == &eg::message::MessageStatus::Partial {
+                if result.status() == &eg::osrf::message::MessageStatus::Partial {
                     let buf = match self.partial_buffer.as_mut() {
                         Some(b) => b,
                         None => {
@@ -230,7 +230,7 @@ impl GatewayHandler {
                     // Not enough data yet to create a reply.  Keep reading,
                     // which may involve future calls to extract_osrf_responses()
                     continue;
-                } else if result.status() == &eg::message::MessageStatus::PartialComplete {
+                } else if result.status() == &eg::osrf::message::MessageStatus::PartialComplete {
                     // Take + clear the partial buffer.
                     let mut buf = match self.partial_buffer.take() {
                         Some(b) => b,
@@ -260,12 +260,12 @@ impl GatewayHandler {
                 }
 
                 replies.push(content);
-            } else if let eg::message::Payload::Status(stat) = resp.payload() {
+            } else if let eg::osrf::message::Payload::Status(stat) = resp.payload() {
                 match stat.status() {
-                    eg::message::MessageStatus::Complete => {
+                    eg::osrf::message::MessageStatus::Complete => {
                         *complete = true;
                     }
-                    eg::message::MessageStatus::Ok | eg::message::MessageStatus::Continue => {
+                    eg::osrf::message::MessageStatus::Ok | eg::osrf::message::MessageStatus::Continue => {
                         // Keep reading in case there's more data in the message.
                     }
                     _ => return Err(stat.clone().into_json_value().dump().into()),
@@ -455,7 +455,7 @@ impl GatewayHandler {
 
         let service = service.ok_or(format!("Request contains no service name"))?;
 
-        let osrf_method = eg::message::MethodCall::new(method, params);
+        let osrf_method = eg::osrf::message::MethodCall::new(method, params);
 
         Ok(ParsedGatewayRequest {
             format,
@@ -495,7 +495,7 @@ impl GatewayHandler {
 
 impl mptc::RequestHandler for GatewayHandler {
     fn worker_start(&mut self) -> Result<(), String> {
-        let bus = eg::bus::Bus::new(self.bus_conf())?;
+        let bus = eg::osrf::bus::Bus::new(self.bus_conf())?;
         self.bus = Some(bus);
         idl::set_thread_idl(&self.idl);
         Ok(())
@@ -623,7 +623,7 @@ fn main() {
         .gateway()
         .expect("No gateway configuration found");
 
-    eg::logging::Logger::new(gateway_conf.logging())
+    eg::osrf::logging::Logger::new(gateway_conf.logging())
         .expect("Creating logger")
         .init()
         .expect("Logger Init");
