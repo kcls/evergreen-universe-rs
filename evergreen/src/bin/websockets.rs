@@ -1,4 +1,4 @@
-use eg::addr::BusAddress;
+use eg::osrf::addr::BusAddress;
 use eg::osrf::bus::Bus;
 use eg::osrf::conf;
 use eg::idl;

@@ -148,10 +148,10 @@ impl GatewayHandler {
     }
 
     fn relay_to_osrf(&mut self, request: &mut ParsedGatewayRequest) -> EgResult<Vec<EgValue>> {
-        let recipient = eg::addr::BusAddress::for_bare_service(&request.service);
+        let recipient = eg::osrf::addr::BusAddress::for_bare_service(&request.service);
 
         // Send every request to the router on our gateway domain.
-        let router = eg::addr::BusAddress::for_router(
+        let router = eg::osrf::addr::BusAddress::for_router(
             self.bus_conf().router_name(),
             self.bus_conf().domain().name(),
         );

@@ -11,7 +11,7 @@
 //!
 //! Once the initial request is routed, the router is no longer involved
 //! in the conversation.
-use eg::addr::BusAddress;
+use eg::osrf::addr::BusAddress;
 use eg::osrf::bus::Bus;
 use eg::osrf::conf;
 use eg::init;

@@ -5,7 +5,7 @@ use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
 use eg::idl;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
-use eg::sclient::HostSettings;
+use eg::osrf::sclient::HostSettings;
 use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
