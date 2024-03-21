@@ -63,22 +63,22 @@ impl From<&EgEvent> for EgValue {
         }
 
         if let Some(v) = evt.desc() {
-            obj["desc"] = EgValue::from(v);
+            obj["desc"] = v.into();
         }
         if let Some(v) = evt.debug() {
-            obj["debug"] = EgValue::from(v);
+            obj["debug"] = v.into();
         }
         if let Some(v) = evt.note() {
-            obj["note"] = EgValue::from(v);
+            obj["note"] = v.into();
         }
         if let Some(v) = evt.org() {
-            obj["org"] = EgValue::from(*v);
+            obj["org"] = v.into();
         }
         if let Some(v) = evt.servertime() {
-            obj["servertime"] = EgValue::from(v);
+            obj["servertime"] = v.into();
         }
         if let Some(v) = evt.ilsperm() {
-            obj["ilsperm"] = EgValue::from(v);
+            obj["ilsperm"] = v.into();
         }
 
         obj

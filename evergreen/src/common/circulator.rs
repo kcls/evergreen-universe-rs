@@ -287,7 +287,7 @@ impl<'a> Circulator<'a> {
 
         if let Some(results) = self.circ_policy_results.as_ref() {
             let matches: Vec<EgValue> = results.iter().map(|v| v.clone()).collect();
-            value["matches"] = EgValue::from(matches);
+            value["matches"] = matches.into();
         }
 
         return value;
@@ -702,7 +702,7 @@ impl<'a> Circulator<'a> {
                 {
                     atype["next_status"] = EgValue::new_array();
                 } else {
-                    atype["next_status"] = EgValue::from(util::pg_unpack_int_array(ns));
+                    atype["next_status"] = util::pg_unpack_int_array(ns).into();
                 }
             }
 
@@ -816,7 +816,7 @@ impl<'a> Circulator<'a> {
         if alert_on.len() > 0 {
             // We have new-style alerts to reports.
             let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
-            evt.set_payload(EgValue::from(alert_on));
+            evt.set_payload(alert_on.into());
             self.add_event(evt);
             return Ok(());
         }
@@ -828,7 +828,7 @@ impl<'a> Circulator<'a> {
 
         if let Some(msg) = self.copy()["alert_message"].as_str() {
             let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
-            evt.set_payload(EgValue::from(msg));
+            evt.set_payload(msg.into());
             self.add_event(evt);
         }
 
@@ -1011,8 +1011,8 @@ impl<'a> Circulator<'a> {
             None => Err(format!("We have no copy to update"))?,
         };
 
-        copy["editor"] = EgValue::from(self.requestor_id()?);
-        copy["edit_date"] = EgValue::from("now");
+        copy["editor"] = self.requestor_id()?.into();
+        copy["edit_date"] = "now".into();
 
         for (k, v) in changes.entries_mut() {
             copy[k] = v.take();
@@ -1030,7 +1030,7 @@ impl<'a> Circulator<'a> {
 
     /// Set a free-text option value to true.
     pub fn set_option_true(&mut self, name: &str) {
-        self.options.insert(name.to_string(), EgValue::from(true));
+        self.options.insert(name.to_string(), true.into());
     }
 
     /// Delete an option key and value from our options hash.
@@ -1255,7 +1255,7 @@ impl<'a> Circulator<'a> {
         if let Some(c) = self.copy.as_ref() {
             if c["deleted"].boolish() {
                 self.options
-                    .insert(String::from("capture"), EgValue::from("nocapture"));
+                    .insert(String::from("capture"), "nocapture".into());
             }
         }
     }

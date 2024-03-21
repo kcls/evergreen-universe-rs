@@ -45,16 +45,16 @@ pub fn void_bills(
 
         penalty_users.insert((xact_user, xact_org));
 
-        bill["voided"] = EgValue::Boolean(true);
-        bill["voider"] = EgValue::from(editor.requestor_id()?);
-        bill["void_time"] = EgValue::from("now");
+        bill["voided"] = "t".into();
+        bill["voider"] = editor.requestor_id()?.into();
+        bill["void_time"] = "now".into();
 
         if let Some(orig_note) = bill["note"].as_str() {
             if let Some(new_note) = maybe_note {
-                bill["note"] = EgValue::from(format!("{}\n{}", orig_note, new_note).as_str());
+                bill["note"] = format!("{}\n{}", orig_note, new_note).into();
             }
         } else if let Some(new_note) = maybe_note {
-            bill["note"] = EgValue::from(new_note);
+            bill["note"] = new_note.into();
         }
 
         editor.update(bill)?;
@@ -95,7 +95,7 @@ pub fn check_open_xact(editor: &mut Editor, xact_id: i64) -> EgResult<()> {
             // and this transaction is not an open circulation, close it.
 
             log::info!("Closing completed transaction {xact_id} on zero balance");
-            xact["xact_finish"] = EgValue::from("now");
+            xact["xact_finish"] = "now".into();
             return editor.update(xact);
         }
     } else if !xact_open {
@@ -284,7 +284,7 @@ pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -
 
         // Should come to zero:
         let new_bill_amount = util::fpdiff(bill["amount"].float()?, amount_to_adjust);
-        bill["amount"] = EgValue::from(new_bill_amount);
+        bill["amount"] = new_bill_amount.into();
     }
 
     check_open_xact(editor, xact_id)?;
@@ -401,7 +401,7 @@ pub fn bill_payment_map_for_xact(
             if new_amount >= 0.0 {
                 map.adjustments.push(adjustment.clone());
                 map.adjustment_amount += adjust_amount;
-                bill["amount"] = EgValue::from(new_amount);
+                bill["amount"] = new_amount.into();
                 used_adjustments.insert(adjust_id);
             } else {
                 // It should never happen that we have more adjustment
@@ -414,7 +414,7 @@ pub fn bill_payment_map_for_xact(
                 new_adjustment["amount_collected"] = bill["amount"].clone();
                 map.adjustments.push(new_adjustment.clone());
                 map.adjustment_amount += new_adjustment["amount"].float()?;
-                bill["amount"] = EgValue::from(0.0);
+                bill["amount"] = 0.0.into();
                 adjustment["amount"] = EgValue::from(-new_amount);
             }
 

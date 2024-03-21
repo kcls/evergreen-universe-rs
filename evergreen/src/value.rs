@@ -1143,6 +1143,7 @@ impl From<Vec<i64>> for EgValue {
     }
 }
 
+
 impl From<Vec<String>> for EgValue {
     fn from(mut v: Vec<String>) -> EgValue {
         EgValue::Array(v.drain(..).map(|s| EgValue::from(s)).collect())
@@ -1260,6 +1261,12 @@ impl From<Option<i8>> for EgValue {
 impl From<i64> for EgValue {
     fn from(s: i64) -> EgValue {
         EgValue::Number(s.into())
+    }
+}
+
+impl From<&i64> for EgValue {
+    fn from(s: &i64) -> EgValue {
+        EgValue::Number((*s).into())
     }
 }
 
