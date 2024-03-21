@@ -1,10 +1,10 @@
-use eg::app::ApplicationWorker;
+use eg::osrf::app::ApplicationWorker;
 use eg::common::penalty;
 use eg::common::settings::Settings;
 use eg::common::user;
-use eg::message;
-use eg::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
-use eg::session::ServerSession;
+use eg::osrf::message;
+use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
+use eg::osrf::session::ServerSession;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
