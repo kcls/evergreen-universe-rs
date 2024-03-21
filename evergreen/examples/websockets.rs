@@ -1,4 +1,4 @@
-use eg::message;
+use eg::osrf::message;
 use eg::util;
 use eg::EgValue;
 use evergreen as eg;
@@ -150,7 +150,7 @@ fn unpack_response(text: &str) -> Option<EgValue> {
         panic!("No response from request");
     }
 
-    let mut msg = message::Message::from_json_value(osrf_msg).unwrap();
+    let mut msg = message::Message::from_json_value(osrf_msg, true).unwrap();
 
     if let message::Payload::Result(ref mut res) = msg.payload_mut() {
         Some(res.take_content())
