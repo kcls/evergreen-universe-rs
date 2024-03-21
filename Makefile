@@ -9,7 +9,7 @@ SYSTEMD_DIR = /lib/systemd/system
 TEST_THREADS = 8
 BUILD_THREADS = 8
 
-build: build-evergreen build-sip2server
+build: build-evergreen build-sip2server build-sip2mediator
 
 build-release: build-evergreen-release build-sip2server-release
 
@@ -19,9 +19,9 @@ test:
 test-evergreen:
 	cargo test -j ${BUILD_THREADS} --package evergreen -- --test-threads=${TEST_THREADS}
 
-install: install-evergreen install-sip2server
+install: install-evergreen install-sip2server install-sip2mediator
 
-install-release: install-evergreen-release install-sip2server-release
+install-release: install-evergreen-release install-sip2server-release install-sip2mediator-release
 
 # --- Evergreen ---
 
@@ -72,5 +72,24 @@ install-sip2server-release: install-sip2server-config
 install-sip2server-config:
 	cp ./sip2-server/conf/eg-sip2-server.example.yml ${TARGET}/etc/
 	cp ./systemd/eg-sip2-server.service ${SYSTEMD_DIR}/
+	systemctl daemon-reload
+
+# --- SIP2 Mediator ---
+
+build-sip2mediator:
+	cargo build -j ${BUILD_THREADS} --package sip2mediator
+
+build-sip2mediator-release:
+	cargo build -j ${BUILD_THREADS} --package sip2mediator --release
+
+install-sip2mediator: install-sip2mediator-config
+	cp ./target/debug/eg-sip2-mediator ${TARGET}/bin
+
+install-sip2mediator-release: install-sip2mediator-config
+	cp ./target/release/eg-sip2-mediator ${TARGET}/bin
+
+install-sip2mediator-config:
+	cp ./sip2-mediator/conf/eg-sip2-mediator.example.yml ${TARGET}/etc/
+	cp ./systemd/eg-sip2-mediator.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
