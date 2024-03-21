@@ -11,7 +11,7 @@ sip2-mediator:
     sip-port: 6001
 
     # Full URL of the HTTP backend server which processes requests.
-    http-url: http://localhost/sip2-mediator
+    http-url: https://localhost/sip2-mediator
 
     syslog-facility: local4
     syslog-level: debug
