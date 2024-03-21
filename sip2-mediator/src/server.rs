@@ -1,13 +1,16 @@
 use super::conf::Config;
 use super::session::Session;
-use log::{debug, error, info, warn};
+use evergreen::util as egutil;
 use std::net;
-use std::net::TcpListener;
 use std::net::TcpStream;
 use threadpool::ThreadPool;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-//use signal_hook as sigs; TODO
+use signal_hook as sigs;
+
+/// How often do we wake up from blocking on the main socket to check
+/// for shutdown, etc. signals.
+const SIG_POLL_INTERVAL: u64 = 5;
 
 pub struct Server {
     config: Config,
@@ -23,8 +26,9 @@ impl Server {
         }
     }
 
+    /// Listen on the SIP socket and spawn a handler Session per connection.
     pub fn serve(&mut self) {
-        info!("SIP2Meditor server staring up");
+        log::info!("SIP2Meditor server staring up");
 
         if let Err(e) = self.setup_signal_handlers() {
             log::error!("Cannot setup signal handlers: {e}");
@@ -33,14 +37,37 @@ impl Server {
 
         let pool = ThreadPool::new(self.config.max_clients);
 
-        let bind = format!("{}:{}", self.config.sip_address, self.config.sip_port);
+        let listener_result = egutil::tcp_listener(
+            &self.config.sip_address,
+            self.config.sip_port,
+            SIG_POLL_INTERVAL
+        );
 
-        let listener = TcpListener::bind(bind).expect("Error starting SIP server");
+        let listener = match listener_result {
+            Ok(l) => l,
+            Err(e) => {
+                let msg = format!(
+                    "Cannot listen for connections at {}:{} {e}",
+                    self.config.sip_address,
+                    self.config.sip_port
+                );
+                log::error!("{msg}");
+                panic!("{}", msg);
+            }
+        };
 
         for stream in listener.incoming() {
             match stream {
+                // New stream connected; hand it off.
                 Ok(s) => self.dispatch(&pool, s),
-                Err(e) => error!("Error accepting TCP connection {}", e),
+
+                Err(e) => match e.kind() {
+                    // socket read timeout is OK.
+                    std::io::ErrorKind::WouldBlock => {}
+
+                    // Something went wrong.
+                    _ => log::error!("Error accepting TCP connection {e}"),
+                },
             }
 
             if self.shutdown.load(Ordering::Relaxed) {
@@ -49,14 +76,14 @@ impl Server {
             }
         }
 
-        info!("SIP2Mediator shutting down; waiting for threads to complete");
+        log::info!("SIP2Mediator shutting down; waiting for threads to complete");
 
         pool.join();
     }
 
     /// Pass the new SIP TCP stream off to a thread for processing.
     fn dispatch(&self, pool: &ThreadPool, stream: TcpStream) {
-        debug!(
+        log::debug!(
             "Accepting new SIP connection; active={} pending={}",
             pool.active_count(),
             pool.queued_count()
@@ -65,13 +92,13 @@ impl Server {
         let threads = pool.active_count() + pool.queued_count();
 
         if threads >= self.config.max_clients {
-            warn!(
+            log::warn!(
                 "Max clients={} reached.  Rejecting new connections",
                 self.config.max_clients
             );
 
             if let Err(e) = stream.shutdown(net::Shutdown::Both) {
-                error!("Error shutting down SIP TCP connection: {}", e);
+                log::error!("Error shutting down SIP TCP connection: {}", e);
             }
 
             return;
@@ -83,21 +110,15 @@ impl Server {
         pool.execute(|| Session::run(conf, stream, shutdown));
     }
 
+    /// Handle signals
     fn setup_signal_handlers(&self) -> Result<(), String> {
-        /* Maybe later.
-        if let Err(e) = sigs::flag::register(sigs::consts::SIGHUP, self.reload.clone()) {
-            return Err(format!("Cannot register HUP signal: {e}"));
-        }
-        */
 
-        /* Disabling for now until the tcp stream timeout is in place,
-         * otherwise SIGINT will just hang if no traffic is flowing.
+        // If we receive a SIGINT, set the shutdown flag so
+        // we can gracefully shutdown.
         if let Err(e) = sigs::flag::register(sigs::consts::SIGINT, self.shutdown.clone()) {
             return Err(format!("Cannot register INT signal: {e}"));
         }
-        */
 
         Ok(())
     }
-
 }

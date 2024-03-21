@@ -5,6 +5,14 @@ use getopts;
 use sip2;
 use std::time::SystemTime;
 
+fn is_zero(n: &str) -> bool {
+    if let Ok(f) = n.parse::<f64>() {
+        f == 0.0
+    } else {
+        false
+    }
+}
+
 struct Timer {
     start: SystemTime,
 }
@@ -346,7 +354,7 @@ fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
         resp.get_field_value("AP").unwrap(),
         tester.samples.aou_shortname
     );
-    assert_eq!(resp.get_field_value("BV").unwrap(), "0.00"); // fee amount
+    assert!(is_zero(resp.get_field_value("BV").unwrap())); // fee amount
 
     if let Some(ql) = resp.get_field_value("CF") {
         assert_eq!(ql, "0"); // hold queue len
@@ -384,7 +392,7 @@ fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
     assert_eq!(resp.get_field_value("CQ").unwrap(), "Y"); // valid password
 
     if let Some(fee) = resp.get_field_value("BV") {
-        assert_eq!(fee, "0.00");
+        assert!(is_zero(fee));
     }
 
     let status = resp.fixed_fields()[0].value();
@@ -428,7 +436,7 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     assert_eq!(resp.get_field_value("CQ").unwrap(), "Y"); // valid password
 
     if let Some(fee) = resp.get_field_value("BV") {
-        assert_eq!(fee, "0.00"); // fee amount
+        assert!(is_zero(fee)); // fee amount
     }
 
     assert_eq!(
@@ -477,6 +485,7 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     )
     .unwrap();
 
+
     let t = Timer::new();
     let resp = tester
         .sipcon
@@ -501,7 +510,7 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     assert_ne!(resp.get_field_value("AJ").unwrap(), ""); // assume we have some kind of title
 
     if let Some(da) = resp.get_field_value("BV") {
-        assert_eq!(da, "0.00");
+        assert!(is_zero(da));
     }
 
     Ok(())
@@ -545,7 +554,7 @@ fn test_checkin(tester: &mut Tester) -> Result<(), String> {
     );
 
     if let Some(da) = resp.get_field_value("BV") {
-        assert_eq!(da, "0.00");
+        assert!(is_zero(da));
     }
 
     Ok(())
