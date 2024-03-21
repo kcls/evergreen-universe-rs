@@ -200,57 +200,64 @@ impl EgValue {
         *self = EgValue::Hash(map);
     }
 
-    /// Translated Hash values containing classnames in the HASH_CLASSNAME_KEY
-    /// into Blessed value, recursively.
-    pub fn from_classed_hash(mut v: JsonValue) -> EgResult<EgValue> {
-        if v.is_number() || v.is_null() || v.is_boolean() || v.is_string() {
-            return Ok(EgValue::from_json_value_plain(v));
+    pub fn from_classed_json_hash(v: JsonValue) -> EgResult<EgValue> {
+        let mut value = EgValue::from_json_value(v)?;
+        value.from_classed_hash()?;
+        Ok(value)
+    }
+
+    /// Translate Hash values containing class names in the HASH_CLASSNAME_KEY
+    /// into Blessed values, recursively.
+    pub fn from_classed_hash(&mut self) -> EgResult<()> {
+        if self.is_scalar() || self.is_blessed() {
+            return Ok(());
         }
 
-        if let JsonValue::Array(mut list) = v {
-            let mut val_list = Vec::new();
-            for v in list.drain(..) {
-                val_list.push(EgValue::from_json_value(v)?);
+        if let Self::Array(ref mut list) = self {
+            for val in list.iter_mut() {
+                val.from_classed_hash()?;
             }
-            return Ok(EgValue::Array(val_list));
+            return Ok(());
         }
 
-        // JSON object
-        let mut map = HashMap::new();
-        let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
+        // Only option left is Self::Hash
 
-        let classname = match v[HASH_CLASSNAME_KEY].as_str() {
+        let classname = match self[HASH_CLASSNAME_KEY].as_str() {
             Some(c) => c,
             None => {
-                // Vanilla JSON object
-                while let Some(k) = keys.pop() {
-                    let val = EgValue::from_json_value(v.remove(&k))?;
-                    map.insert(k, val);
+                if let Self::Hash(ref mut m) = self {
+                    for v in m.values_mut() {
+                        v.from_classed_hash()?;
+                    }
                 }
-                return Ok(EgValue::Hash(map));
+                return Ok(());
             }
         };
 
-        let idl_class = idl::get_class(&classname)
+        let idl_class = idl::get_class(classname)
             .ok_or_else(|| format!("Not and IDL class: '{classname}'"))?;
 
-        let mut map = HashMap::new();
-        while let Some(k) = keys.pop() {
-            let val = EgValue::from_json_value(v.remove(&k))?;
-            if !idl_class.fields().contains_key(&k) {
+        let mut map = match self {
+            Self::Hash(ref mut m) => std::mem::replace(m, HashMap::new()),
+            _ => return Ok(()), // can't get here
+        };
+
+        for (key, value) in map.iter_mut() {
+            if !idl_class.has_field(key) {
                 return Err(
-                    format!("Class '{}' has no field named '{k}'", idl_class.classname()).into(),
+                    format!("Class '{}' has no field named '{key}'", idl_class.classname()).into(),
                 );
             }
-            if !val.is_null() {
-                map.insert(k, val);
-            }
+
+            value.from_classed_hash()?;
         }
 
-        Ok(EgValue::Blessed(BlessedValue {
+        *self = EgValue::Blessed(BlessedValue {
             idl_class: idl_class.clone(),
             values: map,
-        }))
+        });
+
+        Ok(())
     }
 
     /// Remove NULL values from EgValue::Hash's contained within
@@ -533,6 +540,10 @@ impl EgValue {
                 Self::add_class_wrapper(array, o.idl_class.classname())
             }
         }
+    }
+
+    pub fn is_scalar(&self) -> bool {
+        self.is_number() || self.is_null() || self.is_boolean() || self.is_string()
     }
 
     pub fn is_null(&self) -> bool {

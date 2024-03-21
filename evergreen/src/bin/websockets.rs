@@ -5,7 +5,6 @@ use eg::idl;
 use eg::osrf::logging::Logger;
 use eg::osrf::message;
 use eg::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 use mptc;
 use std::any::Any;
@@ -629,11 +628,9 @@ impl Session {
                         if let eg::osrf::message::Payload::Method(ref mut meth) = msg.payload_mut() {
                             let mut new_params = Vec::new();
                             let mut params = meth.take_params();
-                            for p in params.drain(..) {
-                                // TODO
-                                // TODO
-                                // TODO Need a from_classed_hash for egvalue directly
-                                new_params.push(EgValue::from_classed_hash(p.into_json_value())?);
+                            for mut p in params.drain(..) {
+                                p.from_classed_hash()?;
+                                new_params.push(p);
                             }
                             meth.set_params(new_params);
                         }

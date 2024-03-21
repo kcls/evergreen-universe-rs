@@ -438,7 +438,7 @@ impl GatewayHandler {
                         // Caller is sending flat-hash parameters.
                         // Translate them into Fieldmapper parameters
                         // before relaying them to opensrf.
-                        val = EgValue::from_classed_hash(jval)?;
+                        val = EgValue::from_classed_json_hash(jval)?;
                     } else {
                         val = EgValue::from_json_value(jval)?;
                     }
