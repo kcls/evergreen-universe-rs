@@ -1,7 +1,8 @@
 ///! Settings Client Module
 ///
-use crate::client::Client;
-use crate::{EgResult, EgValue};
+use crate::Client;
+use crate::EgResult;
+use crate::EgValue;
 use std::sync::Arc;
 
 const SETTINGS_TIMEOUT: i32 = 10;

@@ -1,5 +1,5 @@
-use super::sclient::HostSettings;
-use crate::{EgResult, EgValue};
+use crate::osrf::sclient::HostSettings;
+use crate::osrf::{EgResult, EgValue};
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::collections::HashMap;
 use std::sync::Arc;

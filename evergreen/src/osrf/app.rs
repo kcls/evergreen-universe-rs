@@ -1,10 +1,10 @@
-use crate::client;
-use crate::conf;
-use crate::message;
-use crate::method;
-use crate::sclient;
-use crate::EgError;
-use crate::EgResult;
+use crate::osrf::client;
+use crate::osrf::conf;
+use crate::osrf::message;
+use crate::osrf::method;
+use crate::osrf::sclient;
+use crate::osrf::EgError;
+use crate::osrf::EgResult;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;

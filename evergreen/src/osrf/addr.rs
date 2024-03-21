@@ -1,4 +1,4 @@
-use crate::util;
+use crate::osrf::util;
 use gethostname::gethostname;
 use std::fmt;
 use std::process;

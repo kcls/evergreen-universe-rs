@@ -1,6 +1,6 @@
-use crate::app;
-use crate::message;
-use crate::session;
+use crate::osrf::app;
+use crate::osrf::message;
+use crate::osrf::session;
 use crate::EgResult;
 use crate::EgValue;
 use json::JsonValue;

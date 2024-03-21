@@ -1,6 +1,5 @@
-use crate as eg;
-use eg::util;
-use eg::{EgResult, EgValue};
+use crate::util;
+use crate::{EgResult, EgValue};
 use json::JsonValue;
 use std::cell::RefCell;
 use std::fmt;

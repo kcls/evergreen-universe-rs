@@ -1,7 +1,7 @@
-use crate::addr::BusAddress;
-use crate::conf;
-use crate::logging::Logger;
-use crate::message::TransportMessage;
+use crate::osrf::addr::BusAddress;
+use crate::osrf::conf;
+use crate::osrf::logging::Logger;
+use crate::osrf::message::TransportMessage;
 use crate::util;
 use crate::EgResult;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
