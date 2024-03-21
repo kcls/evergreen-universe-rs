@@ -3,6 +3,7 @@ pub mod app;
 pub mod bus;
 pub mod cache;
 pub mod client;
+pub mod conf;
 pub mod logging;
 pub mod message;
 pub mod method;

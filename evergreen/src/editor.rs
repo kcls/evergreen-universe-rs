@@ -1,7 +1,7 @@
 use crate as eg;
 use eg::event::EgEvent;
 use eg::idl;
-use eg::params::ApiParams;
+use eg::osrf::params::ApiParams;
 use eg::result::{EgError, EgResult};
 use eg::Client;
 use eg::EgValue;

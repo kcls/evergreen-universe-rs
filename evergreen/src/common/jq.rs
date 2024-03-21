@@ -2,7 +2,7 @@
 use crate as eg;
 use eg::db;
 use eg::idl;
-use eg::message;
+use eg::osrf::message;
 use eg::result::EgResult;
 use eg::EgValue;
 use std::sync::Arc;

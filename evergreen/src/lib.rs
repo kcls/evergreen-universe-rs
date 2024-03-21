@@ -13,7 +13,6 @@ pub const NULL: EgValue = EgValue::Null;
 
 pub mod auth;
 pub mod common;
-pub mod conf;
 pub mod constants;
 pub mod date;
 pub mod db;
