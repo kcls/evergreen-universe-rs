@@ -40,10 +40,10 @@ pub struct SessionFactory {
 
     idl: Arc<eg::idl::Parser>,
 
-    osrf_conf: Arc<eg::conf::Config>,
+    osrf_conf: Arc<eg::osrf::conf::Config>,
 
     /// OpenSRF bus.
-    osrf_bus: Option<eg::bus::Bus>,
+    osrf_bus: Option<eg::osrf::bus::Bus>,
 
     /// Cache of org unit shortnames and IDs.
     org_cache: HashMap<i64, EgValue>,
@@ -51,7 +51,7 @@ pub struct SessionFactory {
 
 impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
-        let bus = eg::bus::Bus::new(self.osrf_conf.client())?;
+        let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
         self.osrf_bus = Some(bus);
         eg::idl::set_thread_idl(&self.idl);
 

@@ -61,8 +61,8 @@ pub struct Session {
 impl Session {
     pub fn new(
         sip_config: Arc<conf::Config>,
-        osrf_conf: Arc<eg::conf::Config>,
-        osrf_bus: eg::bus::Bus,
+        osrf_conf: Arc<eg::osrf::conf::Config>,
+        osrf_bus: eg::osrf::bus::Bus,
         idl: Arc<eg::idl::Parser>,
         stream: net::TcpStream,
         shutdown: Arc<AtomicBool>,
@@ -92,7 +92,7 @@ impl Session {
 
     /// Panics if our client has no bus.  Use with caution and only
     /// after this Session has completed.
-    pub fn take_bus(&mut self) -> eg::bus::Bus {
+    pub fn take_bus(&mut self) -> eg::osrf::bus::Bus {
         self.osrf_client.take_bus()
     }
 
