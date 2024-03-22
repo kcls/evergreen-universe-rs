@@ -10,7 +10,8 @@ General purpose threaded server, similar to Perl Net::Server.
 
 ### Evergreen
 
-Evergreen + OpenSRF bindings with nascent services and other binaries.
+Evergreen + OpenSRF bindings with OpenSRF server, nascent services, and 
+other binaries.
 
 [README](./evergreen/README.md)
 
