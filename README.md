@@ -8,13 +8,6 @@ Rust bindings, libs, and binaries for Evergreen and related projects.
 
 General purpose threaded server, similar to Perl Net::Server.
 
-### OpenSRF
-
-OpenSRF bindings for communicating with OpenSRF services and creating
-new OpenSRF services.
-
-[README](./opensrf/README.md)
-
 ### Evergreen
 
 Evergreen + OpenSRF bindings with nascent services and other binaries.
