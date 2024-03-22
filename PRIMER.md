@@ -30,21 +30,6 @@ git clone github.com:kcls/evergreen-universe-rs
 Build and install commands are compiled into a Makefile for convenience
 and documentation.  See the Makefile for individual `cargo` commands.
 
-### Dependency Warning / 2023-10-20
-
-If you get an error that looks more or less like this:
-
-```sh
-error: package `time v0.3.30` cannot be built because it requires rustc 
-1.67.0 or newer, while the currently active rustc version is 1.66.1
-```
-
-Resolve it like so:
-
-```sh
-cargo update -p time@0.3.30 --precise 0.3.23                                   
-```
-
 ### Build and Test
 
 ```sh

@@ -17,7 +17,7 @@ new OpenSRF services.
 
 ### Evergreen
 
-Evergreen bindings for IDL parsing, event handling, cstore editor, and more.
+Evergreen + OpenSRF bindings with nascent services and other binaries.
 
 [README](./evergreen/README.md)
 
@@ -32,6 +32,12 @@ Library for reading/writing MARC Binary, MARC XML, and MARC Breaker.
 SIP2 client library
 
 [README](./sip2/README.md)
+
+### SIP2-Mediator
+
+SIP2 Mediator
+
+[README](./sip2-mediator/README.md)
 
 ### SIP2-Server
 
