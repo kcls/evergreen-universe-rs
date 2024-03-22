@@ -1,38 +1,55 @@
 # sip2-mediator-rs
 
-Rust SIP2 &lt;=> HTTP &lt;=> SIP Mediator
+Rust SIP2 Mediator Direct Evergreen API Interface
 
-SEE: [https://github.com/berick/SIP2Mediator](https://github.com/berick/SIP2Mediator)
+## About
 
-## Setup and Usage (Ubuntu 22.04)
+This is a vairiant of the SIP2 <=> HTTP mediator for Evergreen which 
+bypassses the HTTP layer, opting instead to communicate directly
+with Evergreen via its API.
 
-> **_NOTE:_** The mediator leverages some Rust evergreen utilities.  Building the mediator will also fetch/build deps for evergreen/opensrf.  These may eventually be decoupled.
-  
+Requires Redis.
+
+### See 
+
+* [https://bugs.launchpad.net/evergreen/+bug/1901930](Evergreen_Bug_1901930)
+    * This branch must be running on your Evergreen server.
+* [https://github.com/berick/SIP2Mediator](https://github.com/berick/SIP2Mediator)
+    * The code in this repository effectively replaces the code from 
+      the SIP2Mediator repository.
+
+## The Basics (Ubuntu 22.04)
 
 ```sh
 git clone https://github.com/kcls/evergreen-universe-rs                                  
 cd evergreen-universe-rs
 make build-sip2mediator-release                                                
 sudo make install-sip2mediator-release                                         
-```
 
-### Running
-
-#### Via Systemd
-
-```sh
-sudo cp /usr/local/etc/eg-sip2-mediator.example.yml /usr/local/etc/eg-sip2-mediator.yml
 # Edit as needed: /usr/local/etc/eg-sip2-mediator.yml
 
 sudo systemctl start eg-sip2-mediator
 ```
 
-#### Via Command Line
+## Additional Configuration
+
+The mediator connects to OpenSRF/Evergreen so it can use the same
+Rust-supported environment variables.
+
+For example, create the directory and file: /etc/systemd/system/eg-sip2-mediator.service.d/env.conf
+
+Add to the file:
+
+```conf
+[Service]
+Environment="OSRF_CONFIG=/openils/conf/opensrf_core.xml"
+Environment="OSRF_LOG_FACILITY=LOCAL4"
+```
+
+Followed by:
 
 ```sh
-# See command line options
-/usr/local/bin/eg-sip2-mediator --help
-
-# Run (background as needed)
-/usr/local/bin/eg-sip2-mediator
+sudo systemctl daemon-reload
+sudo systemctl restart eg-sip2-mediator
 ```
+

@@ -14,8 +14,6 @@ use std::fmt;
 use std::fs;
 use std::sync::Arc;
 
-// TODO move a lot of the object-specific functions/methods into EgValue.
-
 thread_local! {
     static THREAD_LOCAL_IDL: RefCell<Option<Arc<Parser>>> = RefCell::new(None);
 }
@@ -29,6 +27,13 @@ const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
 /// Every thread needs its own copy of the Arc<Parser>
 pub fn set_thread_idl(idl: &Arc<Parser>) {
     THREAD_LOCAL_IDL.with(|p| *p.borrow_mut() = Some(idl.clone()));
+}
+
+/// Returns a cloned copy of the Arc<Parser> for the current thread.
+pub fn clone_thread_idl() -> Arc<Parser> {
+    let mut idl: Option<Arc<Parser>> = None;
+    THREAD_LOCAL_IDL.with(|p| idl = Some(p.borrow().as_ref().unwrap().clone()));
+    idl.unwrap()
 }
 
 pub fn get_class(classname: &str) -> Option<Arc<Class>> {

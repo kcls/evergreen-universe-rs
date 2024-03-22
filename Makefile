@@ -70,7 +70,9 @@ install-sip2server-release: install-sip2server-config
 	cp ./target/release/eg-sip2-server ${TARGET}/bin
 
 install-sip2server-config:
-	cp ./sip2-server/conf/eg-sip2-server.example.yml ${TARGET}/etc/
+	@if [ ! -s ${TARGET}/etc/eg-sip2-mediator.yml ]; \
+		then cp ./sip2-mediator/conf/eg-sip2-mediator.yml ${TARGET}/etc/; \
+	fi;
 	cp ./systemd/eg-sip2-server.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
@@ -89,7 +91,9 @@ install-sip2mediator-release: install-sip2mediator-config
 	cp ./target/release/eg-sip2-mediator ${TARGET}/bin
 
 install-sip2mediator-config:
-	cp ./sip2-mediator/conf/eg-sip2-mediator.example.yml ${TARGET}/etc/
-	cp ./systemd/eg-sip2-mediator.service ${SYSTEMD_DIR}/
-	systemctl daemon-reload
+	@if [ ! -s ${TARGET}/etc/eg-sip2-mediator.yml ]; \
+		then cp ./sip2-mediator/conf/eg-sip2-mediator.yml ${TARGET}/etc/; \
+	fi;
+	cp ./systemd/eg-sip2-mediator.service ${SYSTEMD_DIR}/ 
+	systemctl daemon-reload 
 

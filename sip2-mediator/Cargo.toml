@@ -1,22 +1,17 @@
 [package]
 name = "sip2mediator"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
+mptc = { path = "../mptc" }
 evergreen = { path = "../evergreen" }
 sip2 = { path = "../sip2", features = ["json"] }
+json = "0.12"
 log = "0.4"
-syslog = "6.0"
-uuid = { version = "1.1", features = ["v4"] }
-serde_urlencoded = "0.7"
-reqwest = { version = "0.11", features = ["blocking"] }
 getopts = "0.2"
-threadpool = "1.8"
 yaml-rust = "0.4"
-signal-hook = "0.3"
 
 [[bin]]
 name = "eg-sip2-mediator"

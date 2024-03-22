@@ -485,7 +485,6 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     )
     .unwrap();
 
-
     let t = Timer::new();
     let resp = tester
         .sipcon

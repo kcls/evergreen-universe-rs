@@ -201,7 +201,7 @@ impl Worker {
 
             self.request_count += 1;
 
-            if self.request_count == self.max_requests {
+            if self.max_requests > 0 && self.request_count == self.max_requests {
                 // All done
                 // No need to set_as_idle here since we're just
                 // about to set_as_done.
