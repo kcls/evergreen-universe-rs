@@ -6,7 +6,8 @@ SEE: [https://github.com/berick/SIP2Mediator](https://github.com/berick/SIP2Medi
 
 ## Setup and Usage (Ubuntu 22.04)
 
-> **_NOTE:_** NOTE The mediator leverages some Rust evergreen utilities.  Building the mediator will also fetch/build deps for evergreen/opensrf.  These may eventually be decoupled.
+> **_NOTE:_** The mediator leverages some Rust evergreen utilities.  Building the mediator will also fetch/build deps for evergreen/opensrf.  These may eventually be decoupled.
+
 
 ```sh
 git clone https://github.com/kcls/evergreen-universe-rs                                  
