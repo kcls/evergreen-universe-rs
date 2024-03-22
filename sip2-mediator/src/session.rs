@@ -23,6 +23,9 @@ pub struct Session {
     /// Unique session identifier
     key: String,
 
+    /// SIP login; useful or logging.
+    sip_user: Option<String>,
+
     /// E.g. https://localhost/sip2-mediator
     http_url: String,
 
@@ -44,7 +47,7 @@ impl Session {
             }
         }
 
-        let key = Uuid::new_v4().as_simple().to_string()[0..16].to_string();
+        let key = Uuid::new_v4().as_simple().to_string()[..16].to_string();
 
         let http_builder = reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(config.ignore_ssl_errors)
@@ -67,6 +70,7 @@ impl Session {
             http_url: config.http_url.to_string(),
             http_client,
             sip_connection: con,
+            sip_user: None,
         };
 
         ses.start();
@@ -101,6 +105,14 @@ impl Session {
             };
 
             log::trace!("{} Read SIP message: {:?}", self, sip_req);
+
+            if sip_req.spec() == &sip2::spec::M_LOGIN {
+                // If this is a login request, capture the SIP username
+                // for session logging.
+                if let Some(sip_user) = sip_req.get_field_value("CN") {
+                    self.sip_user = Some(sip_user.to_string());
+                }
+            }
 
             // Relay the request to the HTTP backend and wait for a response.
             let sip_resp = match self.http_round_trip(&sip_req) {
@@ -163,6 +175,8 @@ impl Session {
             }
         };
 
+        log::debug!("{self} posting message: {msg_json}");
+
         let values = [("session", &self.key), ("message", &msg_json)];
 
         let body = match urlencoded::to_string(&values) {
@@ -173,7 +187,7 @@ impl Session {
             }
         };
 
-        log::trace!("{} Posting content: {}", self, body);
+        log::trace!("{self} Posting content: {body}");
 
         let request = self
             .http_client
@@ -184,7 +198,7 @@ impl Session {
         let res = match request.send() {
             Ok(v) => v,
             Err(e) => {
-                log::error!("{} HTTP request failed : {}", self, e);
+                log::error!("{self} HTTP request failed : {e}");
                 return Err(());
             }
         };
@@ -199,17 +213,17 @@ impl Session {
             return Err(());
         }
 
-        log::debug!("{} HTTP response status: {}", self, res.status());
+        log::debug!("{self} HTTP response status: {}", res.status());
 
         let msg_json: String = match res.text() {
             Ok(v) => v,
             Err(e) => {
-                log::error!("{} HTTP response failed to ready body text: {}", self, e);
+                log::error!("{self} HTTP response failed to ready body text: {}", e);
                 return Err(());
             }
         };
 
-        log::debug!("{} HTTP response JSON: {}", self, msg_json);
+        log::debug!("{self} HTTP response JSON: {msg_json}");
 
         match sip2::Message::from_json(&msg_json) {
             Ok(m) => Ok(m),
@@ -223,6 +237,10 @@ impl Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session {}", self.key)
+        if let Some(sip_user) = self.sip_user.as_ref() {
+            write!(f, "Ses {} [{sip_user}]", self.key)
+        } else {
+            write!(f, "Ses {}", self.key)
+        }
     }
 }
