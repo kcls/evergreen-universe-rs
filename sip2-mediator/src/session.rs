@@ -1,20 +1,18 @@
+use evergreen as eg;
+use eg::Client;
+use eg::EgResult;
+use eg::EgValue;
 use super::conf;
-use reqwest;
-use serde_urlencoded as urlencoded;
 use sip2;
 use std::fmt;
 use std::net;
 use uuid::Uuid;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 /// How often do we wake up from blocking on our sip socket socket to check
 /// for shutdown, etc. signals.
 const SIG_POLL_INTERVAL: u64 = 5;
-
-/// Max time we'll wait for a response to an HTTP request.
-const DEFAULT_HTTP_REQUEST_TIMEOUT: u64 = 60;
 
 /// Manages the connection between a SIP client and the HTTP backend.
 pub struct Session {
@@ -26,11 +24,6 @@ pub struct Session {
     /// SIP login; useful or logging.
     sip_user: Option<String>,
 
-    /// E.g. https://localhost/sip2-mediator
-    http_url: String,
-
-    http_client: reqwest::blocking::Client,
-
     /// If true, we're shutting down.
     shutdown: Arc<AtomicBool>,
 }
@@ -39,6 +32,30 @@ impl Session {
     /// Our thread starts here.  If anything fails, we just log it and
     /// go away so as not to disrupt the main server thread.
     pub fn run(config: conf::Config, stream: net::TcpStream, shutdown: Arc<AtomicBool>) {
+
+        let options = eg::init::InitOptions {
+            skip_logging: true,
+            skip_host_settings: true,
+            appname: None,
+        };
+
+        // We don't need all the Evergreen stuff.. just a bus connection.
+        let osrf_config = match eg::init::osrf_init(&options) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Cannot init OpenSRF: {e}");
+                return;
+            }
+        };
+
+        let client = match Client::connect(osrf_config.into_shared()) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Cannot connect to Evergreen: {e}");
+                return;
+            }
+        };
+
         match stream.peer_addr() {
             Ok(a) => log::info!("New SIP connection from {a}"),
             Err(e) => {
@@ -49,34 +66,20 @@ impl Session {
 
         let key = Uuid::new_v4().as_simple().to_string()[..16].to_string();
 
-        let http_builder = reqwest::blocking::Client::builder()
-            .danger_accept_invalid_certs(config.ignore_ssl_errors)
-            .timeout(Duration::from_secs(DEFAULT_HTTP_REQUEST_TIMEOUT));
-
-        let http_client = match http_builder.build() {
-            Ok(c) => c,
-            Err(e) => {
-                log::error!("Error building HTTP client: {e}; exiting");
-                return;
-            }
-        };
-
         let mut con = sip2::Connection::from_stream(stream);
         con.set_ascii(config.ascii);
 
         let mut ses = Session {
             key,
             shutdown,
-            http_url: config.http_url.to_string(),
-            http_client,
             sip_connection: con,
             sip_user: None,
         };
 
-        ses.start();
+        ses.start(client);
     }
 
-    fn start(&mut self) {
+    fn start(&mut self, mut client: Client) {
         log::debug!("{} starting", self);
 
         loop {
@@ -115,10 +118,10 @@ impl Session {
             }
 
             // Relay the request to the HTTP backend and wait for a response.
-            let sip_resp = match self.http_round_trip(&sip_req) {
+            let sip_resp = match self.http_round_trip(&mut client, &sip_req) {
                 Ok(r) => r,
-                _ => {
-                    log::error!("{self} Error processing SIP request. Session exiting");
+                Err(e) => {
+                    log::error!("{self} Error processing SIP request. Session exiting: {e}");
                     break;
                 }
             };
@@ -146,91 +149,51 @@ impl Session {
         self.sip_connection.disconnect().ok();
 
         // Tell the HTTP back-end our session is done.
-        self.send_end_session();
+        self.send_end_session(&mut client);
     }
 
     /// Send the final End Session (XS) message to the HTTP backend.
     ///
     /// Response and errors are ignored since this is the final step
     /// in the session shuting down.
-    fn send_end_session(&self) {
+    fn send_end_session(&self, client: &mut Client) {
         log::trace!("{} sending end of session message to HTTP backend", self);
 
         let msg_spec = sip2::spec::Message::from_code("XS").unwrap();
 
         let msg = sip2::Message::new(&msg_spec, vec![], vec![]);
 
-        self.http_round_trip(&msg).ok();
+        self.http_round_trip(client, &msg).ok();
     }
 
     /// Send a SIP client request to the HTTP backend for processing.
     ///
     /// Blocks waiting for a response.
-    fn http_round_trip(&self, msg: &sip2::Message) -> Result<sip2::Message, ()> {
-        let msg_json = match msg.to_json() {
+    fn http_round_trip(&self, client: &mut Client, msg: &sip2::Message) -> EgResult<sip2::Message> {
+        let msg_json = match msg.to_json_value() {
             Ok(m) => m,
-            Err(e) => {
-                log::error!("{} Failed translating SIP message to JSON: {}", self, e);
-                return Err(());
-            }
+            Err(e) => return Err(format!(
+                "{self} Failed translating SIP message to JSON: {e}").into()),
         };
 
         log::debug!("{self} posting message: {msg_json}");
 
-        let values = [("session", &self.key), ("message", &msg_json)];
+        let msg_val = EgValue::from_json_value(msg_json)?;
 
-        let body = match urlencoded::to_string(&values) {
-            Ok(m) => m,
-            Err(e) => {
-                log::error!("{}, Error url-encoding SIP message: {}", self, e);
-                return Err(());
-            }
-        };
+        let params = vec! [
+            EgValue::from(self.key.as_str()),
+            msg_val,
+        ];
 
-        log::trace!("{self} Posting content: {body}");
+        let response = client.send_recv_one(
+            "open-ils.sip2", "open-ils.sip2.request", params
+        )?.ok_or_else(|| format!("{self} no response received"))?;
 
-        let request = self
-            .http_client
-            .post(&self.http_url)
-            .header(reqwest::header::CONNECTION, "keep-alive")
-            .body(body);
+        log::debug!("{self} HTTP response JSON: {response}");
 
-        let res = match request.send() {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!("{self} HTTP request failed : {e}");
-                return Err(());
-            }
-        };
-
-        if res.status() != 200 {
-            log::error!(
-                "{} HTTP server responded with a non-200 status: status={} res={:?}",
-                self,
-                res.status(),
-                res
-            );
-            return Err(());
-        }
-
-        log::debug!("{self} HTTP response status: {}", res.status());
-
-        let msg_json: String = match res.text() {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!("{self} HTTP response failed to ready body text: {}", e);
-                return Err(());
-            }
-        };
-
-        log::debug!("{self} HTTP response JSON: {msg_json}");
-
-        match sip2::Message::from_json(&msg_json) {
+        match sip2::Message::from_json_value(&response.into()) {
             Ok(m) => Ok(m),
-            Err(e) => {
-                log::error!("{} http_round_trip from_json error: {}", self, e);
-                return Err(());
-            }
+            Err(e) => Err(format!("{self} error translating JSON to SIP: {e}").into()),
         }
     }
 }
