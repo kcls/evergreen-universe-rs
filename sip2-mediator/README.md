@@ -14,19 +14,25 @@ git clone https://github.com/kcls/evergreen-universe-rs
 cd evergreen-universe-rs
 make build-sip2mediator-release                                                
 sudo make install-sip2mediator-release                                         
-sudo systemctl start eg-sip2-mediator
 ```
 
-### Configuration
+### Running
 
-#### Configuration File
+#### Via Systemd
 
 ```sh
 sudo cp /usr/local/etc/eg-sip2-mediator.example.yml /usr/local/etc/eg-sip2-mediator.yml
+# Edit as needed: /usr/local/etc/eg-sip2-mediator.yml
+
+sudo systemctl start eg-sip2-mediator
 ```
 
-#### Command Line Options
+#### Via Command Line
 
 ```sh
+# See command line options
 /usr/local/bin/eg-sip2-mediator --help
+
+# Run (background as needed)
+/usr/local/bin/eg-sip2-mediator
 ```
