@@ -14,6 +14,7 @@ pub const DEFAULT_MIN_WORKERS: usize = 5;
 pub const DEFAULT_MAX_WORKERS: usize = 256;
 
 /// Each thread processes this many requests before exiting.
+/// A value of 0 means there is no max.
 pub const DEFAULT_MAX_WORKER_REQS: usize = 10_000;
 
 pub trait Request: Send + std::any::Any {
