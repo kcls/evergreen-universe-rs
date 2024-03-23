@@ -30,9 +30,8 @@ pub struct Session {
 
 impl Session {
     /// Our thread starts here.  If anything fails, we just log it and
-    /// go away so as not to disrupt the main server thread.
+    /// exit.
     pub fn run(config: conf::Config, stream: net::TcpStream, shutdown: Arc<AtomicBool>) {
-
         let options = eg::init::InitOptions {
             skip_logging: true,
             skip_host_settings: true,
@@ -118,7 +117,7 @@ impl Session {
             }
 
             // Relay the request to the HTTP backend and wait for a response.
-            let sip_resp = match self.http_round_trip(&mut client, &sip_req) {
+            let sip_resp = match self.osrf_round_trip(&mut client, &sip_req) {
                 Ok(r) => r,
                 Err(e) => {
                     log::error!("{self} Error processing SIP request. Session exiting: {e}");
@@ -163,13 +162,13 @@ impl Session {
 
         let msg = sip2::Message::new(&msg_spec, vec![], vec![]);
 
-        self.http_round_trip(client, &msg).ok();
+        self.osrf_round_trip(client, &msg).ok();
     }
 
     /// Send a SIP client request to the HTTP backend for processing.
     ///
     /// Blocks waiting for a response.
-    fn http_round_trip(&self, client: &mut Client, msg: &sip2::Message) -> EgResult<sip2::Message> {
+    fn osrf_round_trip(&self, client: &mut Client, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let msg_json = match msg.to_json_value() {
             Ok(m) => m,
             Err(e) => return Err(format!(
