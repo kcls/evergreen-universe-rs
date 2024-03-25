@@ -1,6 +1,7 @@
 use evergreen as eg;
 use eg::EgResult;
 use mptc;
+use std::env;
 use std::path::Path;
 
 mod conf;
@@ -13,26 +14,19 @@ const DEFAULT_CONFIG_3: &str = "/usr/local/etc/eg-sip2-mediator.example.yml";
 const DEFAULT_CONFIG_4: &str = "./sip2-mediator/conf/eg-sip2-mediator.example.yml";
 
 fn load_config() -> EgResult<conf::Config> {
-
-    let file = if let Some(v) = options.opt_str("config") {
-        v
-    } else if let Ok(ref file) = env::var("EG_SIP2_MEDIATOR_CONFIG") {
-        file
+    if let Ok(ref file) = env::var("EG_SIP2_MEDIATOR_CONFIG") {
+        conf::Config::from_yaml(&file)
     } else if Path::new(DEFAULT_CONFIG_1).exists() {
-        DEFAULT_CONFIG_1
+        conf::Config::from_yaml(DEFAULT_CONFIG_1)
     } else if Path::new(DEFAULT_CONFIG_2).exists() {
-        DEFAULT_CONFIG_2
+        conf::Config::from_yaml(DEFAULT_CONFIG_2)
     } else if Path::new(DEFAULT_CONFIG_3).exists() {
-        DEFAULT_CONFIG_3
+        conf::Config::from_yaml(DEFAULT_CONFIG_3)
     } else if Path::new(DEFAULT_CONFIG_4).exists() {
-        DEFAULT_CONFIG_4
+        conf::Config::from_yaml(DEFAULT_CONFIG_4)
     } else {
-        return Err(format!("sip2-mediator requires a configuration file").into());
-    };
-
-    let mut config = conf::Config::new();
-
-    config.read_yaml(&file)
+        Err(format!("sip2-mediator requires a configuration file").into())
+    }
 }
 
 fn main() -> EgResult<()> {
@@ -42,9 +36,15 @@ fn main() -> EgResult<()> {
     let max_workers = conf.max_clients;
     let min_workers = conf.min_workers;
 
-    let ctx = match eg::init::init()?
+    let options = eg::init::InitOptions {
+        skip_logging: false,
+        skip_host_settings: true,
+        appname: Some("sip2-mediator".to_string()),
+    };
 
-    let stream = match server::Server::setup(conf, ctx)?;
+    let ctx = eg::init::init_with_options(&options)?;
+
+    let stream = server::Server::setup(conf, ctx)?;
 
     let mut s = mptc::Server::new(Box::new(stream));
 

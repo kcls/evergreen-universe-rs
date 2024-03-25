@@ -1,15 +1,14 @@
 use super::conf::Config;
 use super::session::Session;
-use eg::EgValue;
 use evergreen as eg;
 use mptc;
 use std::any::Any;
-use std::net;
 use std::net::TcpStream;
+use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-const SIP_SHUTDOWN_POLL_INTERVAL: usize = 5;
+const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 5;
 
 /// Wraps the TCP stream created by the initial connection from a SIP client.
 struct SipConnectRequest {
@@ -34,6 +33,9 @@ pub struct SessionFactory {
     shutdown: Arc<AtomicBool>,
 
     idl: Arc<eg::idl::Parser>,
+
+    /// Parsed config
+    sip_config: Arc<Config>,
 
     osrf_conf: Arc<eg::osrf::conf::Config>,
 
@@ -68,11 +70,14 @@ impl mptc::RequestHandler for SessionFactory {
         // Set in worker_start
         let osrf_bus = self.osrf_bus.take().unwrap();
 
+        let sip_config = self.sip_config.clone();
+        let osrf_config = self.osrf_conf.clone();
+
         // request.stream is set in the call to next() that produced
         // this request.
         let stream = request.stream.take().unwrap();
 
-        let mut session = Session::new(osrf_bus, stream, shutdown);
+        let mut session = Session::new(sip_config, osrf_config, osrf_bus, stream, shutdown)?;
 
         if let Err(e) = session.start() {
             // This is not necessarily an error.  The client may simply
@@ -112,9 +117,6 @@ pub struct Server {
     /// Read by our Sessions
     shutdown: Arc<AtomicBool>,
 
-    /// Cache of org unit shortnames and IDs.
-    org_cache: Option<HashMap<i64, EgValue>>,
-
     /// Inbound SIP connections start here.
     tcp_listener: TcpListener,
 }
@@ -133,7 +135,6 @@ impl mptc::RequestStream for Server {
                     }
                     _ => {
                         log::error!("SIPServer accept() failed {e}");
-                        self.tcp_error_count += 1;
                         return Ok(None);
                     }
                 }
@@ -147,7 +148,9 @@ impl mptc::RequestStream for Server {
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let sf = SessionFactory {
+            idl: self.eg_ctx.idl().clone(),
             shutdown: self.shutdown.clone(),
+            osrf_conf: self.eg_ctx.config().clone(),
             sip_config: self.sip_config.clone(),
             osrf_bus: None, // set in worker_start
         };
@@ -174,15 +177,15 @@ impl mptc::RequestStream for Server {
 impl Server {
     pub fn setup(config: Config, eg_ctx: eg::init::Context) -> Result<Server, String> {
         let tcp_listener = eg::util::tcp_listener(
-            config.sip_address,
+            &config.sip_address,
             config.sip_port,
             SIP_SHUTDOWN_POLL_INTERVAL,
         )?;
 
-        let mut server = Server {
+        let server = Server {
             eg_ctx,
             tcp_listener,
-            sip_config: config,
+            sip_config: Arc::new(config),
             shutdown: Arc::new(AtomicBool::new(false)),
         };
 

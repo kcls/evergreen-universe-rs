@@ -31,12 +31,12 @@ impl Config {
 
         let yaml_text = match fs::read_to_string(filename) {
             Ok(y) => y,
-            Err(e) => return Err(format!("Read YAML configuration file to string").into()),
+            Err(e) => return Err(format!("Error reading SIP config: {e}").into()),
         };
 
         let yaml_docs = match YamlLoader::load_from_str(&yaml_text) {
             Ok(y) => y,
-            Err(e) => return Err(format!("Parsing configuration file as YAML").into()),
+            Err(e) => return Err(format!("Error reading SIP config: {e}").into()),
         };
 
         let root = &yaml_docs[0]["sip2-mediator"];
@@ -60,5 +60,7 @@ impl Config {
         if let Some(v) = root["ascii"].as_bool() {
             conf.ascii = v;
         }
+
+        Ok(conf)
     }
 }

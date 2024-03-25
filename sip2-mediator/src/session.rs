@@ -1,12 +1,10 @@
 use evergreen as eg;
-use eg::Client;
 use eg::EgResult;
 use eg::EgValue;
 use super::conf;
 use sip2;
 use std::fmt;
 use std::net;
-use uuid::Uuid;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -24,6 +22,9 @@ pub struct Session {
     /// SIP login; useful or logging.
     sip_user: Option<String>,
 
+    /// OpenSRF client.
+    client: eg::Client,
+
     /// If true, we're shutting down.
     shutdown: Arc<AtomicBool>,
 }
@@ -31,65 +32,45 @@ pub struct Session {
 impl Session {
     /// Our thread starts here.  If anything fails, we just log it and
     /// exit.
-    pub fn run(config: conf::Config, stream: net::TcpStream, shutdown: Arc<AtomicBool>) {
-        let options = eg::init::InitOptions {
-            skip_logging: true,
-            skip_host_settings: true,
-            appname: None,
-        };
-
-        // We don't need all the Evergreen stuff.. just a bus connection.
-        let osrf_config = match eg::init::osrf_init(&options) {
-            Ok(c) => c,
-            Err(e) => {
-                log::error!("Cannot init OpenSRF: {e}");
-                return;
-            }
-        };
-
-        let client = match Client::connect(osrf_config.into_shared()) {
-            Ok(c) => c,
-            Err(e) => {
-                log::error!("Cannot connect to Evergreen: {e}");
-                return;
-            }
-        };
-
+    pub fn new(
+        sip_config: Arc<conf::Config>,
+        osrf_config: Arc<eg::osrf::conf::Config>,
+        osrf_bus: eg::osrf::bus::Bus,
+        stream: net::TcpStream,
+        shutdown: Arc<AtomicBool>
+    ) -> EgResult<Session> {
         match stream.peer_addr() {
             Ok(a) => log::info!("New SIP connection from {a}"),
-            Err(e) => {
-                log::error!("SIP connection has no peer addr? {e}");
-                return;
-            }
+            Err(e) => return Err(format!("SIP connection has no peer addr? {e}").into()),
         }
 
-        let key = Uuid::new_v4().as_simple().to_string()[..16].to_string();
+        let key = eg::util::random_number(16);
 
         let mut con = sip2::Connection::from_stream(stream);
-        con.set_ascii(config.ascii);
+        con.set_ascii(sip_config.ascii);
 
-        let mut ses = Session {
+        let client = eg::Client::from_bus(osrf_bus, osrf_config);
+
+        let ses = Session {
             key,
             shutdown,
+            client,
             sip_connection: con,
             sip_user: None,
         };
 
-        ses.start(client);
+        Ok(ses)
     }
 
-    fn start(&mut self, mut client: Client) {
-        log::debug!("{} starting", self);
+    pub fn start(&mut self) -> EgResult<()> {
+        log::debug!("{self} starting");
 
         loop {
             // Blocks waiting for a SIP request to arrive or for the
             // poll interval to timeout.
             let sip_req_op = match self.sip_connection.recv_with_timeout(SIG_POLL_INTERVAL) {
                 Ok(msg_op) => msg_op,
-                Err(e) => {
-                    log::error!("{self} SIP receive exited early; ending session: [{e}]");
-                    break;
-                }
+                Err(e) => return Err(format!("{self} SIP receive exited early; ending session: [{e}]").into()),
             };
 
             let sip_req = match sip_req_op {
@@ -117,22 +98,13 @@ impl Session {
             }
 
             // Relay the request to the HTTP backend and wait for a response.
-            let sip_resp = match self.osrf_round_trip(&mut client, &sip_req) {
-                Ok(r) => r,
-                Err(e) => {
-                    log::error!("{self} Error processing SIP request. Session exiting: {e}");
-                    break;
-                }
-            };
+            let sip_resp = self.osrf_round_trip(&sip_req)?;
 
             log::trace!("{self} HTTP server replied with {sip_resp:?}");
 
             // Send the HTTP response back to the SIP client as a SIP message.
             if let Err(e) = self.sip_connection.send(&sip_resp) {
-                log::error!(
-                    "{self} Error relaying response back to SIP client: {e}. shutting down session"
-                );
-                break;
+                return Err(format!("Error sending SIP resonse: {e}").into());
             }
 
             log::debug!("{self} Successfully relayed response back to SIP client");
@@ -147,28 +119,28 @@ impl Session {
 
         self.sip_connection.disconnect().ok();
 
-        // Tell the HTTP back-end our session is done.
-        self.send_end_session(&mut client);
+        // Tell the Evergreen server our session is done.
+        self.send_end_session()
     }
 
     /// Send the final End Session (XS) message to the HTTP backend.
     ///
     /// Response and errors are ignored since this is the final step
     /// in the session shuting down.
-    fn send_end_session(&self, client: &mut Client) {
+    fn send_end_session(&mut self) -> EgResult<()> {
         log::trace!("{} sending end of session message to HTTP backend", self);
 
         let msg_spec = sip2::spec::Message::from_code("XS").unwrap();
 
         let msg = sip2::Message::new(&msg_spec, vec![], vec![]);
 
-        self.osrf_round_trip(client, &msg).ok();
+        self.osrf_round_trip(&msg).map(|_| ())
     }
 
     /// Send a SIP client request to the HTTP backend for processing.
     ///
     /// Blocks waiting for a response.
-    fn osrf_round_trip(&self, client: &mut Client, msg: &sip2::Message) -> EgResult<sip2::Message> {
+    fn osrf_round_trip(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let msg_json = match msg.to_json_value() {
             Ok(m) => m,
             Err(e) => return Err(format!(
@@ -184,7 +156,7 @@ impl Session {
             msg_val,
         ];
 
-        let response = client.send_recv_one(
+        let response = self.client.send_recv_one(
             "open-ils.sip2", "open-ils.sip2.request", params
         )?.ok_or_else(|| format!("{self} no response received"))?;
 
@@ -194,6 +166,12 @@ impl Session {
             Ok(m) => Ok(m),
             Err(e) => Err(format!("{self} error translating JSON to SIP: {e}").into()),
         }
+    }
+
+    /// Gives the bus connection back to the server so it may be
+    /// reused by another session.
+    pub fn take_bus(&mut self) -> eg::osrf::bus::Bus {
+        self.client.take_bus()
     }
 }
 
