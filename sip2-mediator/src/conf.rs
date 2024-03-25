@@ -1,5 +1,5 @@
-use evergreen as eg;
 use eg::EgResult;
+use evergreen as eg;
 use std::fs;
 use yaml_rust::YamlLoader;
 

@@ -1,7 +1,7 @@
-use evergreen as eg;
+use super::conf;
 use eg::EgResult;
 use eg::EgValue;
-use super::conf;
+use evergreen as eg;
 use sip2;
 use std::fmt;
 use std::net;
@@ -37,7 +37,7 @@ impl Session {
         osrf_config: Arc<eg::osrf::conf::Config>,
         osrf_bus: eg::osrf::bus::Bus,
         stream: net::TcpStream,
-        shutdown: Arc<AtomicBool>
+        shutdown: Arc<AtomicBool>,
     ) -> EgResult<Session> {
         match stream.peer_addr() {
             Ok(a) => log::info!("New SIP connection from {a}"),
@@ -70,7 +70,11 @@ impl Session {
             // poll interval to timeout.
             let sip_req_op = match self.sip_connection.recv_with_timeout(SIG_POLL_INTERVAL) {
                 Ok(msg_op) => msg_op,
-                Err(e) => return Err(format!("{self} SIP receive exited early; ending session: [{e}]").into()),
+                Err(e) => {
+                    return Err(
+                        format!("{self} SIP receive exited early; ending session: [{e}]").into(),
+                    )
+                }
             };
 
             let sip_req = match sip_req_op {
@@ -143,22 +147,21 @@ impl Session {
     fn osrf_round_trip(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let msg_json = match msg.to_json_value() {
             Ok(m) => m,
-            Err(e) => return Err(format!(
-                "{self} Failed translating SIP message to JSON: {e}").into()),
+            Err(e) => {
+                return Err(format!("{self} Failed translating SIP message to JSON: {e}").into())
+            }
         };
 
         log::debug!("{self} posting message: {msg_json}");
 
         let msg_val = EgValue::from_json_value(msg_json)?;
 
-        let params = vec! [
-            EgValue::from(self.key.as_str()),
-            msg_val,
-        ];
+        let params = vec![EgValue::from(self.key.as_str()), msg_val];
 
-        let response = self.client.send_recv_one(
-            "open-ils.sip2", "open-ils.sip2.request", params
-        )?.ok_or_else(|| format!("{self} no response received"))?;
+        let response = self
+            .client
+            .send_recv_one("open-ils.sip2", "open-ils.sip2.request", params)?
+            .ok_or_else(|| format!("{self} no response received"))?;
 
         log::debug!("{self} HTTP response JSON: {response}");
 

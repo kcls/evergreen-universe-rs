@@ -3,8 +3,8 @@ use super::session::Session;
 use evergreen as eg;
 use mptc;
 use std::any::Any;
-use std::net::TcpStream;
 use std::net::TcpListener;
+use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -192,5 +192,3 @@ impl Server {
         Ok(server)
     }
 }
-
-

@@ -1,5 +1,5 @@
-use evergreen as eg;
 use eg::EgResult;
+use evergreen as eg;
 use mptc;
 use std::env;
 use std::path::Path;
@@ -59,5 +59,3 @@ fn main() -> EgResult<()> {
 
     Ok(())
 }
-
-
