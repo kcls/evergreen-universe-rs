@@ -127,12 +127,12 @@ impl Session {
         self.send_end_session()
     }
 
-    /// Send the final End Session (XS) message to the HTTP backend.
+    /// Send the final End Session (XS) message to the ILS.
     ///
     /// Response and errors are ignored since this is the final step
     /// in the session shuting down.
     fn send_end_session(&mut self) -> EgResult<()> {
-        log::trace!("{} sending end of session message to HTTP backend", self);
+        log::trace!("{} sending end of session message to the ILS", self);
 
         let msg_spec = sip2::spec::Message::from_code("XS").unwrap();
 
@@ -141,7 +141,7 @@ impl Session {
         self.osrf_round_trip(&msg).map(|_| ())
     }
 
-    /// Send a SIP client request to the HTTP backend for processing.
+    /// Send a SIP client request to the ILS backend for processing.
     ///
     /// Blocks waiting for a response.
     fn osrf_round_trip(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
@@ -163,7 +163,7 @@ impl Session {
             .send_recv_one("open-ils.sip2", "open-ils.sip2.request", params)?
             .ok_or_else(|| format!("{self} no response received"))?;
 
-        log::debug!("{self} HTTP response JSON: {response}");
+        log::debug!("{self} ILS response JSON: {response}");
 
         match sip2::Message::from_json_value(&response.into()) {
             Ok(m) => Ok(m),

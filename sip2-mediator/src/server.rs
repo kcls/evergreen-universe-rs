@@ -8,6 +8,7 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+/// How often do we wake to check for shutdown signals
 const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 5;
 
 /// Wraps the TCP stream created by the initial connection from a SIP client.
@@ -34,9 +35,10 @@ pub struct SessionFactory {
 
     idl: Arc<eg::idl::Parser>,
 
-    /// Parsed config
+    /// Parsed SIP config
     sip_config: Arc<Config>,
 
+    /// OpenSRF config
     osrf_conf: Arc<eg::osrf::conf::Config>,
 
     /// OpenSRF bus.
@@ -45,6 +47,7 @@ pub struct SessionFactory {
 
 impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
+        // Connect to Evergreen when each thread first starts.
         let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
         self.osrf_bus = Some(bus);
         eg::idl::set_thread_idl(&self.idl);
@@ -56,7 +59,7 @@ impl mptc::RequestHandler for SessionFactory {
 
     fn worker_end(&mut self) -> Result<(), String> {
         log::debug!("SessionFactory worker_end()");
-        // OpenSRF bus will disconnect and cleanup once the thread exits
+        // OpenSRF bus will disconnect and cleanup when the thread exits
         Ok(())
     }
 
@@ -148,7 +151,7 @@ impl mptc::RequestStream for Server {
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let sf = SessionFactory {
-            idl: self.eg_ctx.idl().clone(),
+            idl: eg::idl::clone_thread_idl(),
             shutdown: self.shutdown.clone(),
             osrf_conf: self.eg_ctx.config().clone(),
             sip_config: self.sip_config.clone(),

@@ -31,8 +31,6 @@ fn load_config() -> EgResult<conf::Config> {
 
 fn main() -> EgResult<()> {
     let conf = load_config()?;
-
-    // Support env vars as well?
     let max_workers = conf.max_clients;
     let min_workers = conf.min_workers;
 

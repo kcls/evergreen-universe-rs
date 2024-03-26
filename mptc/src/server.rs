@@ -6,6 +6,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime};
+use signal_hook as sig;
 
 pub struct Server {
     worker_id_gen: u64,
@@ -345,15 +346,11 @@ impl Server {
     }
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
-        if let Err(e) =
-            signal_hook::flag::register(signal_hook::consts::SIGHUP, self.reload.clone())
-        {
+        if let Err(e) = sig::flag::register(sig::consts::SIGHUP, self.reload.clone()) {
             return Err(format!("Cannot register HUP signal: {e}"));
         }
 
-        if let Err(e) =
-            signal_hook::flag::register(signal_hook::consts::SIGINT, self.shutdown.clone())
-        {
+        if let Err(e) = sig::flag::register(sig::consts::SIGINT, self.shutdown.clone()) {
             return Err(format!("Cannot register INT signal: {e}"));
         }
 

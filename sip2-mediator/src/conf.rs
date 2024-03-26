@@ -3,6 +3,7 @@ use evergreen as eg;
 use std::fs;
 use yaml_rust::YamlLoader;
 
+/// SIP configuration
 #[derive(Debug, Clone)]
 pub struct Config {
     pub sip_address: String,
@@ -24,8 +25,6 @@ impl Config {
     }
 
     /// Parse a YAML configuration file.
-    ///
-    /// Panics if the file is not formatted correctly
     pub fn from_yaml(filename: &str) -> EgResult<Self> {
         let mut conf = Config::new();
 
@@ -39,7 +38,10 @@ impl Config {
             Err(e) => return Err(format!("Error reading SIP config: {e}").into()),
         };
 
-        let root = &yaml_docs[0]["sip2-mediator"];
+        let root = match yaml_docs.get(0) {
+            Some(v) => &v["sip2-mediator"],
+            None => return Err(format!("Invalid SIP config").into()),
+        };
 
         if let Some(v) = root["sip-address"].as_str() {
             conf.sip_address = String::from(v);

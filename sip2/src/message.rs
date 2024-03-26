@@ -375,14 +375,14 @@ impl fmt::Display for Message {
         write!(f, "{} {}\n", self.spec.code, self.spec.label)?;
 
         for ff in self.fixed_fields.iter() {
-            write!(f, "   {:.<35}{}\n", ff.spec.label, ff.value)?;
+            write!(f, "   {:.<35} {}\n", ff.spec.label, ff.value)?;
         }
 
         for field in self.fields.iter() {
             if let Some(spec) = spec::Field::from_code(&field.code) {
-                write!(f, "{} {:.<35}{}\n", spec.code, spec.label, field.value)?;
+                write!(f, "{} {:.<35} {}\n", spec.code, spec.label, field.value)?;
             } else {
-                write!(f, "{} {:.<35}{}\n", field.code, "custom", field.value)?;
+                write!(f, "{} {:.<35} {}\n", field.code, "custom", field.value)?;
             }
         }
 
