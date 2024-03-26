@@ -36,7 +36,7 @@ sudo systemctl start eg-sip2-mediator
 The mediator connects to OpenSRF/Evergreen so it can use the same
 Rust-supported environment variables.
 
-For example, create the directory and file: /lib/systemd/system/eg-sip2-server.service.d/env.conf 
+For example, create the directory and file: /etc/systemd/system/eg-sip2-mediator.service.d/env.conf
 
 Add to the file:
 
