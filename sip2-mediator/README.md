@@ -8,6 +8,8 @@ This is a vairiant of the SIP2 <=> HTTP mediator for Evergreen which
 bypassses the HTTP layer, opting instead to communicate directly
 with Evergreen via its API.
 
+Requires Redis.
+
 ### See 
 
 * [https://bugs.launchpad.net/evergreen/+bug/1901930](Evergreen_Bug_1901930)
@@ -28,3 +30,24 @@ sudo make install-sip2mediator-release
 
 sudo systemctl start eg-sip2-mediator
 ```
+
+## Additional Configuration
+
+The mediator connects to OpenSRF/Evergreen so it can use the same
+Rust-supported environment variables.
+
+For example, create the file /lib/systemd/system/eg-sip2-server.service.d/env.conf 
+that contains:
+
+```conf
+[Service]
+Environment="OSRF_CONFIG=/openils/conf/opensrf_core.xml"
+Environment="OSRF_LOG_FACILITY=LOCAL4"
+```
+
+Followed by:
+
+```sh
+sudo systemctl daemon-reload
+```
+
