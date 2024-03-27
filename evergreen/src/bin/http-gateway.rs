@@ -575,7 +575,7 @@ impl mptc::RequestStream for GatewayStream {
         let handler = GatewayHandler {
             bus: None,
             osrf_conf: self.eg_ctx.config().clone(),
-            idl: self.eg_ctx.idl().clone(),
+            idl: idl::clone_thread_idl(),
             partial_buffer: None,
         };
 

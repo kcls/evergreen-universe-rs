@@ -68,7 +68,8 @@ impl RsStoreApplication {
 
     /// Register CRUD (and search) methods for classes we control.
     fn register_auto_methods(&self, methods: &mut Vec<MethodDef>) {
-        let classes = self.idl.as_ref().unwrap().classes().values();
+        let idl = eg::idl::clone_thread_idl();
+        let classes = idl.classes().values();
 
         // Filter function to find classes with the wanted controllers.
         // Find classes controlled by our service and (for now) cstore.

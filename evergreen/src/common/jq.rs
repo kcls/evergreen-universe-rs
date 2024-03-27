@@ -31,9 +31,6 @@ impl SourceDef {
 
 #[derive(Debug)]
 pub struct JsonQueryCompiler {
-    /// So we can see how classes relate to each other.
-    idl: Arc<idl::Parser>,
-
     /// Used for oils_i18n_xlate()
     locale: String,
 
@@ -66,7 +63,7 @@ pub struct JsonQueryCompiler {
 
 impl Clone for JsonQueryCompiler {
     fn clone(self: &JsonQueryCompiler) -> JsonQueryCompiler {
-        let mut new = JsonQueryCompiler::new(self.idl.clone());
+        let mut new = JsonQueryCompiler::new();
 
         new.locale = self.locale.clone();
         new.disable_i18n = self.disable_i18n;
@@ -78,9 +75,8 @@ impl Clone for JsonQueryCompiler {
 
 /// Translates JSON-Query into SQL.
 impl JsonQueryCompiler {
-    pub fn new(idl: Arc<idl::Parser>) -> Self {
+    pub fn new() -> Self {
         Self {
-            idl,
             locale: message::thread_locale(),
             controllername: None,
             sources: Vec::new(),
@@ -197,10 +193,8 @@ impl JsonQueryCompiler {
     }
 
     /// Get an IDL Class object from its classname.
-    fn get_idl_class(&self, classname: &str) -> EgResult<&Arc<idl::Class>> {
-        self.idl
-            .classes()
-            .get(classname)
+    fn get_idl_class(&self, classname: &str) -> EgResult<Arc<idl::Class>> {
+        idl::get_class(classname)
             .ok_or_else(|| format!("Invalid IDL class: {classname}").into())
     }
 
@@ -566,7 +560,7 @@ impl JsonQueryCompiler {
         let classname = alias_class.classname();
 
         // If we have an alias it's known to be valid
-        let idl_class = self.get_idl_class(classname)?.clone();
+        let idl_class = self.get_idl_class(classname)?;
 
         let mut fields = Vec::new();
         for field in idl_class.real_fields_sorted().iter() {
@@ -767,7 +761,7 @@ impl JsonQueryCompiler {
     ) -> EgResult<String> {
         // If there's no "class" in the hash, the alias is the classname
         let right_class = join_def["class"].as_str().unwrap_or(right_alias);
-        let right_idl_class = self.get_idl_class(right_class)?.clone(); // Arc
+        let right_idl_class = self.get_idl_class(right_class)?; // Arc
 
         let left_class = self.get_alias_classname(left_alias)?;
         let left_idl_class = self.get_idl_class(left_class)?;
@@ -945,7 +939,7 @@ impl JsonQueryCompiler {
     /// a source definition, it will be source SQL wrappen in parens
     /// for inclusion in a containing query.
     fn class_table_or_source_def(&self, classname: &str) -> EgResult<String> {
-        if let Some(idl_class) = self.idl.classes().get(classname) {
+        if let Some(idl_class) = idl::get_class(classname) {
             if let Some(tablename) = idl_class.tablename() {
                 return Ok(self.check_identifier(&tablename)?.to_string());
             } else if let Some(source_def) = idl_class.source_definition() {
@@ -1455,11 +1449,7 @@ impl JsonQueryCompiler {
             return Err(format!("Invalid FROM clause: {from_blob}").into());
         };
 
-        let idl_class = self
-            .idl
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        let idl_class = self.get_idl_class(classname)?;
 
         // Add our first source
         self.sources.push(SourceDef {

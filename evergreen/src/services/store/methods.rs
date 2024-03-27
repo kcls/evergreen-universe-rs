@@ -8,7 +8,6 @@ use eg::EgResult;
 use evergreen as eg;
 use pg::types::ToSql;
 use postgres as pg;
-use std::sync::Arc;
 
 // Import our local app module
 use crate::app;
@@ -129,7 +128,7 @@ pub static METHODS: &[StaticMethodDef] = &[
 /// Get the IDL class info from the API call split into parts by ".".
 ///
 /// Also verifies the API name has the correct number of parts.
-fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> EgResult<String> {
+fn get_idl_class(apiname: &str) -> EgResult<String> {
     let api_parts = apiname.split(".").collect::<Vec<&str>>();
 
     let len = api_parts.len();
@@ -142,6 +141,7 @@ fn get_idl_class(idl: &Arc<eg::idl::Parser>, apiname: &str) -> EgResult<String> 
 
     let fieldmapper = format!("{}::{}", &api_parts[3], &api_parts[4]);
 
+    let idl = eg::idl::clone_thread_idl();
     for class in idl.classes().values() {
         if let Some(fm) = class.fieldmapper() {
             if fm.eq(fieldmapper.as_str()) {
@@ -161,7 +161,7 @@ pub fn retrieve(
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
-    let classname = get_idl_class(&idl, method.method())?;
+    let classname = get_idl_class(method.method())?;
 
     let pkey = method.param(0); // at least 1 param is guaranteed
 
@@ -188,7 +188,7 @@ pub fn search(
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
-    let classname = get_idl_class(&idl, method.method())?;
+    let classname = get_idl_class(method.method())?;
 
     let db = worker.database().clone();
     let translator = Translator::new(idl, db);
@@ -216,7 +216,7 @@ pub fn delete(
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let idl = worker.env().idl().clone();
-    let classname = get_idl_class(&idl, method.method())?;
+    let classname = get_idl_class(method.method())?;
 
     let pkey = method.param(0);
 
@@ -304,12 +304,11 @@ pub fn json_query(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let idl = worker.env().idl().clone();
     let query = method.param(0);
 
     let db = worker.database().clone();
 
-    let mut jq_compiler = JsonQueryCompiler::new(idl);
+    let mut jq_compiler = JsonQueryCompiler::new();
     jq_compiler.compile(&query)?;
 
     let sql = jq_compiler

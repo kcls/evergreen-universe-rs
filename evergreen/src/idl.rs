@@ -30,9 +30,19 @@ pub fn set_thread_idl(idl: &Arc<Parser>) {
 }
 
 /// Returns a cloned copy of the Arc<Parser> for the current thread.
+/// This does not clone the IDL itself, just the Arc ref.
 pub fn clone_thread_idl() -> Arc<Parser> {
     let mut idl: Option<Arc<Parser>> = None;
-    THREAD_LOCAL_IDL.with(|p| idl = Some(p.borrow().as_ref().unwrap().clone()));
+    THREAD_LOCAL_IDL.with(
+        |p| {
+            if let Some(p2) = p.borrow().as_ref() {
+                idl = Some(p2.clone());
+            } else {
+                log::error!("Thread Local IDL Required");
+                panic!("Thread Local IDL Required")
+            }
+        },
+    );
     idl.unwrap()
 }
 
