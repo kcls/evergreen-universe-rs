@@ -1,12 +1,12 @@
 use super::worker::{Worker, WorkerInstance, WorkerState, WorkerStateEvent};
 use super::{Request, RequestStream};
+use signal_hook as sig;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime};
-use signal_hook as sig;
 
 pub struct Server {
     worker_id_gen: u64,

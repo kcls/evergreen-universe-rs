@@ -1,6 +1,7 @@
 use eg::EgValue;
 use evergreen as eg;
 use serde_json;
+use sip2;
 use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
@@ -21,7 +22,7 @@ use eg::init;
 use eg::osrf::logging::Logger;
 use eg::util;
 
-//const PROMPT: &str = "egsh# ";
+// const PROMPT: &str = "egsh# "; // without color
 const PROMPT: &str = "\x1b[1;32megsh# \x1b[0m";
 const HISTORY_FILE: &str = ".egsh_history";
 const SEPARATOR: &str = "- - - - - - - - - - - - - - - - - - - - - - - - - -";
@@ -107,6 +108,17 @@ Commands
         be impacted by whether the user is logged in and if the user
         logged in with a workstation.
 
+    sip <host> <command> [<arg>, ...]
+        Example:
+            sip localhost:6001 login sip-user sip-pass
+
+        Supported Commands:
+            login <sip-user> <sip-pass>
+            sc-status
+            item-information <item-barcode>
+            patron-information <patron-barcode>
+            patron-status <patron-barcode>
+
     help
         Show this message
 "#;
@@ -131,6 +143,7 @@ struct Shell {
     /// instead of using our internal structure.
     json_as_wire_protocal: bool,
     json_hash_slim: bool,
+    sip_client: Option<sip2::Client>,
     command: String,
 }
 
@@ -167,6 +180,7 @@ impl Shell {
             json_print_depth: DEFAULT_JSON_PRINT_DEPTH,
             json_as_wire_protocal: false,
             json_hash_slim: false,
+            sip_client: None,
         };
 
         if params.opt_present("with-database") {
@@ -358,12 +372,87 @@ impl Shell {
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
             "cstore" => self.handle_cstore(args),
+            "sip" => {
+                let res = self.handle_sip(args);
+                if res.is_err() {
+                    self.sip_client = None;
+                }
+                res
+            }
             "help" => {
                 println!("{HELP_TEXT}");
                 Ok(())
             }
             _ => Err(format!("Unknown command: {}", self.command)),
         }
+    }
+
+    fn handle_sip(&mut self, args: &[&str]) -> Result<(), String> {
+        self.args_min_length(args, 2)?;
+        let hostport = args[0];
+        let command = args[1]; // e.g. login, status
+
+        if self.sip_client.is_none() {
+            if command != "login" {
+                println!(
+                    "\nNOTE: SIP server may require login before other message types are allowed\n"
+                );
+            }
+            let c = sip2::Client::new(hostport).map_err(|e| e.to_string())?;
+            self.sip_client = Some(c);
+        }
+
+        let mut sip_params = sip2::ParamSet::new();
+
+        let response = if command == "login" {
+            self.args_min_length(args, 4)?; // SIP username + password
+            sip_params.set_sip_user(args[2]).set_sip_pass(args[3]);
+
+            self.sip_client
+                .as_mut()
+                .unwrap()
+                .login(&sip_params)
+                .map_err(|e| e.to_string())?
+        } else if command == "sc-status" {
+            self.sip_client
+                .as_mut()
+                .unwrap()
+                .sc_status()
+                .map_err(|e| e.to_string())?
+        } else if command == "item-information" {
+            self.args_min_length(args, 3)?; //  item barcode
+            sip_params.set_item_id(args[2]);
+
+            self.sip_client
+                .as_mut()
+                .unwrap()
+                .item_info(&sip_params)
+                .map_err(|e| e.to_string())?
+        } else if command == "patron-information" {
+            self.args_min_length(args, 3)?; //  patron barcode
+            sip_params.set_patron_id(args[2]);
+
+            self.sip_client
+                .as_mut()
+                .unwrap()
+                .patron_info(&sip_params)
+                .map_err(|e| e.to_string())?
+        } else if command == "patron-status" {
+            self.args_min_length(args, 3)?; //  patron barcode
+            sip_params.set_patron_id(args[2]);
+
+            self.sip_client
+                .as_mut()
+                .unwrap()
+                .patron_status(&sip_params)
+                .map_err(|e| e.to_string())?
+        } else {
+            return Err(format!("Unsupported SIP command {command}"));
+        };
+
+        println!("\n{}", response.msg());
+
+        Ok(())
     }
 
     fn handle_cstore(&mut self, args: &[&str]) -> Result<(), String> {

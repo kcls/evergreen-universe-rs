@@ -194,8 +194,7 @@ impl JsonQueryCompiler {
 
     /// Get an IDL Class object from its classname.
     fn get_idl_class(&self, classname: &str) -> EgResult<Arc<idl::Class>> {
-        idl::get_class(classname)
-            .ok_or_else(|| format!("Invalid IDL class: {classname}").into())
+        idl::get_class(classname).ok_or_else(|| format!("Invalid IDL class: {classname}").into())
     }
 
     /// Returns the base IDL class, i.e. the root class of the FROM clause.

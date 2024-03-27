@@ -1,4 +1,5 @@
 use super::conf;
+use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
@@ -102,6 +103,8 @@ impl Session {
             }
 
             // Relay the request to the HTTP backend and wait for a response.
+            // If an error occurs, all we can do is exit and force a
+            // disconnect since SIP has no concept of an error message.
             let sip_resp = self.osrf_round_trip(&sip_req)?;
 
             log::trace!("{self} HTTP server replied with {sip_resp:?}");
@@ -164,6 +167,10 @@ impl Session {
             .ok_or_else(|| format!("{self} no response received"))?;
 
         log::debug!("{self} ILS response JSON: {response}");
+
+        if let Some(evt) = EgEvent::parse(&response) {
+            return Err(format!("SIP request failed with event: {evt}").into());
+        }
 
         match sip2::Message::from_json_value(&response.into()) {
             Ok(m) => Ok(m),
