@@ -331,6 +331,8 @@ impl ApplicationWorker for RsStoreWorker {
             .downcast_ref::<RsStoreEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
 
+        eg::idl::set_thread_idl(&worker_env.idl);
+
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.config = Some(config);

@@ -368,13 +368,17 @@ impl Shell {
             "db" => self.db_command(args),
             "req" | "request" => self.send_request(args),
             "reqauth" => self.send_reqauth(args),
-            "introspect" | "introspect-names" | "introspect-summary" => self.introspect(args),
+            //"introspect" | "introspect-names" | "introspect-summary" => self.introspect(args),
+            x if x.starts_with("introspect") => self.introspect(args),
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
             "cstore" => self.handle_cstore(args),
             "sip" => {
                 let res = self.handle_sip(args);
                 if res.is_err() {
+                    if let Some(c) = self.sip_client.as_mut() {
+                        c.disconnect().ok();
+                    };
                     self.sip_client = None;
                 }
                 res
