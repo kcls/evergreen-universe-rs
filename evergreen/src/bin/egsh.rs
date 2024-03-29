@@ -515,7 +515,7 @@ impl Shell {
     }
 
     fn get_setting(&mut self, args: &[&str]) -> Result<(), String> {
-        let mut editor = editor::Editor::new(self.ctx().client(), self.ctx().idl());
+        let mut editor = editor::Editor::new(self.ctx().client());
         let mut sc = settings::Settings::new(&editor);
 
         // If the caller requested settings for a specific org unit,

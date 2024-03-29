@@ -18,7 +18,7 @@ mod util;
 #[ignore]
 fn main() -> eg::EgResult<()> {
     let ctx = eg::init::init()?;
-    let editor = eg::Editor::new(ctx.client(), ctx.idl());
+    let editor = eg::Editor::new(ctx.client());
 
     let mut tester = util::Tester {
         ctx,

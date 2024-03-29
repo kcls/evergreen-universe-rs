@@ -72,7 +72,7 @@ pub struct Editor {
 
 impl Clone for Editor {
     fn clone(&self) -> Editor {
-        let mut e = Editor::new(&self.client, &self.idl);
+        let mut e = Editor::new(&self.client);
         e.personality = self.personality().clone();
         e.authtoken = self.authtoken().map(str::to_string);
         e.requestor = self.requestor().map(|r| r.clone());
@@ -82,10 +82,10 @@ impl Clone for Editor {
 
 impl Editor {
     /// Create a new minimal Editor
-    pub fn new(client: &Client, idl: &Arc<idl::Parser>) -> Self {
+    pub fn new(client: &Client) -> Self {
         Editor {
             client: client.clone(),
-            idl: idl.clone(),
+            idl: idl::clone_thread_idl(),
             personality: "".into(),
             timeout: DEFAULT_TIMEOUT,
             xact_wanted: false,
@@ -123,16 +123,16 @@ impl Editor {
     }
 
     /// Create an editor with an existing authtoken
-    pub fn with_auth(client: &Client, idl: &Arc<idl::Parser>, authtoken: &str) -> Self {
-        let mut editor = Editor::new(client, idl);
+    pub fn with_auth(client: &Client, authtoken: &str) -> Self {
+        let mut editor = Editor::new(client);
         editor.authtoken = Some(authtoken.to_string());
         editor
     }
 
     /// Create an editor with an existing authtoken, with the "transaction
     /// wanted" flag set by default.
-    pub fn with_auth_xact(client: &Client, idl: &Arc<idl::Parser>, authtoken: &str) -> Self {
-        let mut editor = Editor::new(client, idl);
+    pub fn with_auth_xact(client: &Client, authtoken: &str) -> Self {
+        let mut editor = Editor::new(client);
         editor.authtoken = Some(authtoken.to_string());
         editor.xact_wanted = true;
         editor

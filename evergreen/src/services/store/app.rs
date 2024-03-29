@@ -158,16 +158,8 @@ impl Application for RsStoreApplication {
         _config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
     ) -> EgResult<()> {
-        let idl_file = host_settings
-            .value("IDL")
-            .as_str()
-            .ok_or_else(|| format!("No IDL path!"))?;
-
-        let idl = idl::Parser::parse_file(idl_file)
-            .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
-
-        self.idl = Some(idl);
-
+        eg::init::load_idl(Some(&host_settings))?;
+        self.idl = Some(idl::clone_thread_idl());
         Ok(())
     }
 

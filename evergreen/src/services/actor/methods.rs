@@ -199,7 +199,7 @@ pub fn get_barcodes(
     let context = method.param(2).string()?;
     let barcode = method.param(3).string()?;
 
-    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), &authtoken);
 
     // Auth check
     if !editor.checkauth()? {
@@ -277,7 +277,7 @@ pub fn user_has_work_perm_at_batch(
         return Ok(());
     }
 
-    let mut editor = Editor::new(worker.client(), worker.env().idl());
+    let mut editor = Editor::new(worker.client());
 
     if !editor.apply_authtoken(&authtoken)? {
         return session.respond(editor.event());
@@ -318,7 +318,7 @@ pub fn retrieve_cascade_settigs(
         return Ok(());
     }
 
-    let mut editor = Editor::new(worker.client(), worker.env().idl());
+    let mut editor = Editor::new(worker.client());
 
     // Authtoken is optional.  If set, verify it's valid and absorb
     // it into our editor so its context info can be picked up by
@@ -369,7 +369,7 @@ pub fn ou_setting_ancestor_default_batch(
         return Ok(());
     }
 
-    let mut editor = Editor::new(worker.client(), worker.env().idl());
+    let mut editor = Editor::new(worker.client());
     let mut settings = Settings::new(&editor);
 
     settings.set_org_id(org_id);
@@ -407,7 +407,7 @@ pub fn user_opac_vital_stats(
     let worker = app::RsActorWorker::downcast(worker)?;
     let authtoken = method.param(0).string()?;
 
-    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), &authtoken);
 
     if !editor.checkauth()? {
         return session.respond(editor.event());
@@ -484,7 +484,7 @@ pub fn update_penalties(
     let authtoken = method.param(0).string()?;
     let user_id = method.param(1).int()?;
 
-    let mut editor = Editor::with_auth(worker.client(), worker.env().idl(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), &authtoken);
 
     if !editor.checkauth()? {
         return session.respond(editor.event());

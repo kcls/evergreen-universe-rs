@@ -146,34 +146,41 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
     // fail if we are not connected to a domain running opensrf.settings
     // (e.g. a public domain).
 
-    let mut idl_file = DEFAULT_IDL_PATH.to_string();
     let mut host_settings: Option<Arc<sclient::HostSettings>> = None;
 
     if !options.skip_host_settings {
         if let Ok(s) = sclient::SettingsClient::get_host_settings(&client, false) {
-            if let Some(fname) = s.value("/IDL").as_str() {
-                idl_file = fname.to_string();
-            }
             host_settings = Some(s.into_shared());
         }
     }
 
-    // Always honor the environment variable if present.
-    if let Ok(v) = env::var("EG_IDL_FILE") {
-        idl_file = v;
-    }
-
-    let idl_parser = idl::Parser::parse_file(&idl_file)
-        .or_else(|e| Err(format!("Cannot parse IDL file: {e}")))?;
-
-    idl::set_thread_idl(&idl_parser);
+    load_idl(host_settings.as_ref())?;
 
     Ok(Context {
         client,
         config,
-        idl: idl_parser,
+        idl: idl::clone_thread_idl(),
         host_settings,
     })
+}
+
+/// Locate and parse the IDL file.
+pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
+    if let Ok(v) = env::var("EG_IDL_FILE") {
+        idl::set_thread_idl(&idl::Parser::parse_file(&v)?);
+        return Ok(());
+    }
+
+    if let Some(s) = settings {
+        if let Some(fname) = s.value("/IDL").as_str() {
+            idl::set_thread_idl(&idl::Parser::parse_file(fname)?);
+            return Ok(());
+        }
+    }
+
+    idl::set_thread_idl(&idl::Parser::parse_file(DEFAULT_IDL_PATH)?);
+
+    return Ok(());
 }
 
 /// Create a new connection using pre-compiled context components.  Useful

@@ -10,7 +10,7 @@ const FULL_RETARGET: bool = true;
 fn main() -> EgResult<()> {
     let ctx = eg::init::init()?;
     let client = ctx.client();
-    let mut editor = Editor::new(client, ctx.idl());
+    let mut editor = Editor::new(client);
 
     let start = date::now();
     let mut tgtr = targeter::HoldTargeter::new(&mut editor);
