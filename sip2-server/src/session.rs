@@ -63,7 +63,6 @@ impl Session {
         sip_config: Arc<conf::Config>,
         osrf_conf: Arc<eg::osrf::conf::Config>,
         osrf_bus: eg::osrf::bus::Bus,
-        idl: Arc<eg::idl::Parser>,
         stream: net::TcpStream,
         shutdown: Arc<AtomicBool>,
         org_cache: HashMap<i64, EgValue>,
@@ -77,7 +76,7 @@ impl Session {
 
         let osrf_client = eg::Client::from_bus(osrf_bus, osrf_conf);
 
-        let editor = eg::Editor::new(&osrf_client, &idl);
+        let editor = eg::Editor::new(&osrf_client);
 
         Session {
             editor,

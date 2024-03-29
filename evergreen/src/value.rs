@@ -96,6 +96,20 @@ pub enum EgValue {
 }
 
 impl EgValue {
+
+    /// Parse a JSON string and turn it into an EgValue
+    ///
+    /// ```
+    /// use evergreen::EgValue;
+    /// let v = EgValue::parse("{\"id\":123}").expect("Parse OK");
+    /// assert!(v.id().is_ok());
+    /// if let EgValue::Hash(h) = v {
+    ///     assert!(h.get("id").is_some());
+    ///     assert!(h.get("id").unwrap().is_number());
+    /// } else {
+    ///     panic!("Should Be Object");
+    /// }
+    /// ```
     pub fn parse(s: &str) -> EgResult<EgValue> {
         match json::parse(s) {
             Ok(v) => EgValue::from_json_value(v),
@@ -200,6 +214,8 @@ impl EgValue {
         *self = EgValue::Hash(map);
     }
 
+    /// Translate a raw JsonValue, which may contain class name keys
+    /// in the HASH_CLASSNAME_KEY field, into an EgValue.
     pub fn from_classed_json_hash(v: JsonValue) -> EgResult<EgValue> {
         let mut value = EgValue::from_json_value(v)?;
         value.from_classed_hash()?;
@@ -291,6 +307,7 @@ impl EgValue {
         }
     }
 
+    /// True if this value is an Array and it contains the provided item.
     pub fn contains(&self, item: impl PartialEq<EgValue>) -> bool {
         match *self {
             EgValue::Array(ref vec) => vec.iter().any(|member| item == *member),
@@ -318,6 +335,8 @@ impl EgValue {
         hash
     }
 
+    /// Un-package a value wrapped in class+payload object and return
+    /// the class name and wrapped object.
     pub fn remove_class_wrapper(mut obj: JsonValue) -> Option<(String, JsonValue)> {
         if let Some(cname) = EgValue::wrapped_classname(&obj) {
             Some((cname.to_string(), obj[JSON_PAYLOAD_KEY].take()))
@@ -326,6 +345,7 @@ impl EgValue {
         }
     }
 
+    /// Return the classname of the wrapped object if one exists.
     pub fn wrapped_classname(obj: &JsonValue) -> Option<&str> {
         if obj.is_object()
             && obj.has_key(JSON_CLASS_KEY)
@@ -372,14 +392,21 @@ impl EgValue {
         std::mem::replace(self, EgValue::Null)
     }
 
+    /// Turn a value into a JSON string.
     pub fn dump(&self) -> String {
+        // into_json_value consumes the value, hence the clone().
         self.clone().into_json_value().dump()
     }
 
+    /// Turn a value into a pretty-printed JSON string using the
+    /// provided level of indentation.
     pub fn pretty(&self, indent: u16) -> String {
         self.clone().into_json_value().pretty(indent)
     }
 
+    /// Push a value onto the end of an Array.
+    ///
+    /// Err if self is not an Array.
     pub fn push(&mut self, v: impl Into<EgValue>) -> EgResult<()> {
         if let EgValue::Array(ref mut list) = self {
             list.push(v.into());
@@ -401,6 +428,14 @@ impl EgValue {
         Ok(())
     }
 
+    /// True if this is a Hash or Blessed value which contains the
+    /// provided key.
+    /// ```
+    /// use evergreen::EgValue;
+    /// let v = EgValue::parse("{\"id\":123}").expect("Parses");
+    /// assert!(v.has_key("id"));
+    /// assert!(!v.has_key("foo"));
+    /// ```
     pub fn has_key(&self, key: &str) -> bool {
         match self {
             EgValue::Hash(ref o) => o.contains_key(key),
@@ -544,6 +579,7 @@ impl EgValue {
         }
     }
 
+    /// True if self is not a Hash, Blessed, or Array.
     pub fn is_scalar(&self) -> bool {
         self.is_number() || self.is_null() || self.is_boolean() || self.is_string()
     }
@@ -588,6 +624,13 @@ impl EgValue {
         }
     }
 
+    pub fn is_hash(&self) -> bool {
+        match self {
+            &EgValue::Hash(_) => true,
+            _ => false,
+        }
+    }
+
     /// True if this is an IDL-classed object
     pub fn is_blessed(&self) -> bool {
         match self {
@@ -613,6 +656,7 @@ impl EgValue {
         }
     }
 
+    /// Same as JsonValue::is_empty()
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Number(n) => *n != 0,
@@ -628,8 +672,8 @@ impl EgValue {
     /// Variant of as_str() that produces an error if this value
     /// is not a string.
     ///
-    /// NOTE if the value may exist a Number, consider .to_string() instead,
-    /// which will coerce numbers into strings.
+    /// NOTE if the value may exist as a Number, consider .to_string()
+    /// instead, which will coerce numbers into strings.
     pub fn str(&self) -> EgResult<&str> {
         self.as_str()
             .ok_or_else(|| format!("{self} is not a string").into())
@@ -654,6 +698,9 @@ impl EgValue {
         }
     }
 
+    /// Translates String and Number values into allocated strings.
+    ///
+    /// Err if self cannot be stringified.
     pub fn string(&self) -> EgResult<String> {
         self.to_string()
             .ok_or_else(|| format!("{self} cannot be stringified").into())
@@ -663,8 +710,8 @@ impl EgValue {
         self.as_i64()
     }
 
-    /// Variant of EgValue::id() that produces an Err if no numeric
-    /// ID value is found.
+    /// Variant of EgValue::as_int() that produces an Err self cannot be
+    /// turned into an int
     pub fn int(&self) -> EgResult<i64> {
         self.as_int()
             .ok_or_else(|| format!("{self} is not an integer").into())
@@ -749,12 +796,10 @@ impl EgValue {
         }
     }
 
-    /// True if this EgValue is a non-scalar or its scalar value is true-ish.
+    /// True if this EgValue is scalar and its value is true-ish.
     ///
     /// Zeros, empty strings, and strings that start with "f" are false
     /// since that's how false values are conveyed by the DB layer.
-    ///
-    /// Non-scalara values are also false.
     pub fn boolish(&self) -> bool {
         match self {
             EgValue::Boolean(b) => *b,
@@ -780,14 +825,6 @@ impl EgValue {
         self["id"]
             .as_i64()
             .ok_or_else(|| format!("{self} has no valid ID").into())
-    }
-
-    /// Variant of self.id() which panics if no valid ID is found.
-    ///
-    /// Useful for iterator filters, etc. where you cannot "?" (try)
-    /// in the closuer.
-    pub fn id_required(&self) -> i64 {
-        self.id().expect("ID Required")
     }
 
     /// Returns the idl::Field for the primary key if present.

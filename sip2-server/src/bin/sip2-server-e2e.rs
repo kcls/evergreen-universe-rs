@@ -83,7 +83,7 @@ fn main() -> Result<(), String> {
         .unwrap();
     let sip_host = format!("{host}:{port}");
 
-    let editor = eg::Editor::new(ctx.client(), ctx.idl());
+    let editor = eg::Editor::new(ctx.client());
 
     let t = Timer::new();
     let sipcon = sip2::Connection::new(&sip_host).expect("Error creating SIP connection");

@@ -17,7 +17,7 @@ fn main() -> Result<(), String> {
 
     println!("Logged in and got authtoken: {}", token);
 
-    let mut editor = eg::Editor::with_auth(client, ctx.idl(), token);
+    let mut editor = eg::Editor::with_auth(client, token);
 
     if editor.checkauth()? {
         println!("Auth Check OK: {}", editor.requestor().unwrap()["usrname"]);

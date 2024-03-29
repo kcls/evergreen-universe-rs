@@ -75,7 +75,6 @@ impl mptc::RequestHandler for SessionFactory {
         let org_cache = self.org_cache.clone();
         let shutdown = self.shutdown.clone();
         let osrf_conf = self.osrf_conf.clone();
-        let idl = self.idl.clone();
 
         // Set in worker_start
         let osrf_bus = self.osrf_bus.take().unwrap();
@@ -85,7 +84,7 @@ impl mptc::RequestHandler for SessionFactory {
         let stream = request.stream.take().unwrap();
 
         let mut session = Session::new(
-            sip_conf, osrf_conf, osrf_bus, idl, stream, shutdown, org_cache,
+            sip_conf, osrf_conf, osrf_bus, stream, shutdown, org_cache,
         );
 
         if let Err(e) = session.start() {
@@ -259,7 +258,7 @@ impl Server {
 
     /// Pre-cache data that's universally useful.
     fn precache(&mut self) -> Result<(), String> {
-        let mut e = eg::Editor::new(self.eg_ctx.client(), self.eg_ctx.idl());
+        let mut e = eg::Editor::new(self.eg_ctx.client());
 
         let search = eg::hash! {
             "id": {"!=": EgValue::Null},
