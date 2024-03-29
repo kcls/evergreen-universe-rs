@@ -875,6 +875,10 @@ impl EgValue {
         }
     }
 
+    /// Remove and return the value found at the specified index.
+    ///
+    /// If the index is not present or self is not an Array,
+    /// returns EgValue::Null.
     pub fn array_remove(&mut self, index: usize) -> EgValue {
         if let Self::Array(ref mut list) = self {
             if list.len() > index {
@@ -1003,6 +1007,8 @@ impl EgValue {
         }
     }
 
+    /// True if self is a Blessed value and has the provided field
+    /// by field name.
     pub fn has_real_field(&self, field: &str) -> bool {
         if let EgValue::Blessed(b) = self {
             b.idl_class().has_real_field(field)
@@ -1400,6 +1406,8 @@ impl Index<usize> for EgValue {
     }
 }
 
+/// Allows mutable numeric access to EgValue::Array's.
+///
 /// Mutably acessing an index that is beyond the size of the list will
 /// cause NULL values to be appended to the list until the list reaches
 /// the needed size to allow editing the specified index.
