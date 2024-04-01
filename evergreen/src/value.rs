@@ -96,7 +96,6 @@ pub enum EgValue {
 }
 
 impl EgValue {
-
     /// Parse a JSON string and turn it into an EgValue
     ///
     /// ```

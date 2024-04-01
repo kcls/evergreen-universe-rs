@@ -31,8 +31,9 @@ pub struct Session {
 }
 
 impl Session {
-    /// Our thread starts here.  If anything fails, we just log it and
-    /// exit.
+    /// Create a new Session
+    ///
+    /// At this point we are already running within our own thread.
     pub fn new(
         sip_config: Arc<conf::Config>,
         osrf_config: Arc<eg::osrf::conf::Config>,
@@ -63,6 +64,8 @@ impl Session {
         Ok(ses)
     }
 
+    /// /// Go into the main listen loop.
+    /// Go into the main listen loop
     pub fn start(&mut self) -> EgResult<()> {
         log::debug!("{self} starting");
 
@@ -96,7 +99,7 @@ impl Session {
 
             if sip_req.spec() == &sip2::spec::M_LOGIN {
                 // If this is a login request, capture the SIP username
-                // for session logging.
+                // for improved session logging.
                 if let Some(sip_user) = sip_req.get_field_value("CN") {
                     self.sip_user = Some(sip_user.to_string());
                 }
@@ -104,12 +107,12 @@ impl Session {
 
             // Relay the request to the HTTP backend and wait for a response.
             // If an error occurs, all we can do is exit and force a
-            // disconnect since SIP has no concept of an error message.
+            // disconnect, since SIP has no concept of an error response.
             let sip_resp = self.osrf_round_trip(&sip_req)?;
 
             log::trace!("{self} HTTP server replied with {sip_resp:?}");
 
-            // Send the HTTP response back to the SIP client as a SIP message.
+            // Send the response back to the SIP client as a SIP message.
             if let Err(e) = self.sip_connection.send(&sip_resp) {
                 return Err(format!("Error sending SIP resonse: {e}").into());
             }
@@ -178,7 +181,7 @@ impl Session {
         }
     }
 
-    /// Gives the bus connection back to the server so it may be
+    /// Gives the bus connection back to the worker thread so it may be
     /// reused by another session.
     pub fn take_bus(&mut self) -> eg::osrf::bus::Bus {
         self.client.take_bus()

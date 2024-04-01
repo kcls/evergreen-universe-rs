@@ -939,8 +939,8 @@ pub const M_BLOCK_PATRON: Message = Message {
 };
 
 // Custom "end session" messages for SIP2Mediator.
-// This differs from "End Patron Session" (35) message in that it's not
-// about a patron but about a SIP client session, which can involve
+// This differs from the "End Patron Session" (35) message in that it's
+// not about a patron but about a SIP client session, which can involve
 // many patrons (or none).
 
 /// SIP2Mediator XS (End Session) Message

@@ -83,9 +83,7 @@ impl mptc::RequestHandler for SessionFactory {
         // this request.
         let stream = request.stream.take().unwrap();
 
-        let mut session = Session::new(
-            sip_conf, osrf_conf, osrf_bus, stream, shutdown, org_cache,
-        );
+        let mut session = Session::new(sip_conf, osrf_conf, osrf_bus, stream, shutdown, org_cache);
 
         if let Err(e) = session.start() {
             // This is not necessarily an error.  The client may simply

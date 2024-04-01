@@ -465,12 +465,9 @@ impl Router {
     fn handle_register(&mut self, address: BusAddress, service: &str) -> EgResult<()> {
         let domain = address.domain(); // Known to be a client addr.
 
-        let mut matches = self
-            .trusted_server_domains
-            .iter()
-            .filter(|d| d.as_str().eq(domain));
+        let trusted = self.trusted_server_domains.iter().any(|d| d == domain);
 
-        if matches.next().is_none() {
+        if !trusted {
             return Err(format!(
                 "Domain {} is not a trusted server domain for this router {} : {}",
                 domain,
@@ -627,12 +624,12 @@ impl Router {
         let client_addr = BusAddress::from_str(tm.from())?;
         let client_domain = client_addr.domain();
 
-        let mut matches = self
+        let trusted = self
             .trusted_client_domains
             .iter()
-            .filter(|d| d.as_str().eq(client_domain));
+            .any(|d| d == client_domain);
 
-        if matches.next().is_none() {
+        if !trusted {
             return Err(format!(
                 r#"Domain {client_domain} is not a trusted client domain for this
                 router {client_addr} : {self}"#
