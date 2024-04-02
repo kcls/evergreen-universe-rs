@@ -18,6 +18,10 @@ fn main() -> Result<(), String> {
 
     let ctx = eg::init::init()?;
 
+    let c = eg::idl::get_class2("aou").unwrap();
+    println!("CLASS IS {c:?}");
+
+
     let mut db = DatabaseConnection::new_from_options(&params);
     db.connect()?;
     let db = db.into_shared();

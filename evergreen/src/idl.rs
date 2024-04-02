@@ -9,6 +9,7 @@ use crate::EgResult;
 use crate::EgValue;
 use roxmltree;
 use std::cell::RefCell;
+use std::sync::OnceLock;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -17,6 +18,8 @@ use std::sync::Arc;
 thread_local! {
     static THREAD_LOCAL_IDL: RefCell<Option<Arc<Parser>>> = RefCell::new(None);
 }
+
+static THREAD_LOCAL_IDL2: OnceLock<Parser> = OnceLock::new();
 
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
 const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
@@ -43,6 +46,16 @@ pub fn clone_thread_idl() -> Arc<Parser> {
     });
     idl.unwrap()
 }
+
+pub fn get_class2(classname: &str) -> Option<&Class> {
+    if let Some(idl) = THREAD_LOCAL_IDL2.get() {
+        idl.classes2.get(classname)
+    } else {
+        log::error!("IDL Required");
+        panic!("IDL Required")
+    }
+}
+
 
 pub fn get_class(classname: &str) -> Option<Arc<Class>> {
     let mut idl_class: Option<Arc<Class>> = None;
@@ -414,6 +427,7 @@ impl fmt::Display for Class {
 
 pub struct Parser {
     classes: HashMap<String, Arc<Class>>,
+    classes2: HashMap<String, Class>,
 }
 
 impl fmt::Debug for Parser {
@@ -434,11 +448,19 @@ impl Parser {
             Err(e) => Err(format!("Cannot parse IDL file '{filename}': {e}"))?,
         };
 
-        Parser::parse_string(&xml)
+        // TODO TODO TODO
+        let p = Parser::parse_string(&xml)?;
+        if THREAD_LOCAL_IDL2.set(p).is_err() {
+            return Err(format!("Cannot initialize IDL multiple times").into());
+        }
+
+        let p = Parser::parse_string(&xml)?;
+
+        Ok(Arc::new(p))
     }
 
     /// Parse the IDL as a string
-    pub fn parse_string(xml: &str) -> EgResult<Arc<Parser>> {
+    pub fn parse_string(xml: &str) -> EgResult<Parser> {
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
             Err(e) => Err(format!("Error parsing XML string for IDL: {e}"))?,
@@ -446,6 +468,7 @@ impl Parser {
 
         let mut parser = Parser {
             classes: HashMap::new(),
+            classes2: HashMap::new(),
         };
 
         for root_node in doc.root().children() {
@@ -460,7 +483,7 @@ impl Parser {
             }
         }
 
-        Ok(Arc::new(parser))
+        Ok(parser)
     }
 
     fn add_class(&mut self, node: &roxmltree::Node) {
@@ -553,6 +576,9 @@ impl Parser {
         }
 
         self.add_auto_fields(&mut class, field_array_pos);
+
+        // TODO
+        self.classes2.insert(class.classname.to_string(), class.clone());
 
         //self.classes.insert(class.classname.to_string(), class.clone());
         self.classes

@@ -6,6 +6,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use syslog;
 
+// TODO move to final compiled config into a OnceLock (see the IDL)
+
 const DEFAULT_BUS_PORT: u16 = 6379;
 
 #[derive(Debug, Clone, PartialEq)]
