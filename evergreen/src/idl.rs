@@ -36,7 +36,7 @@ pub fn get_parser() -> &'static Parser {
 /// Returns a ref to an IDL class by classname.
 ///
 /// Err is returned if no such classes exists.
-pub fn get_class2(classname: &str) -> EgResult<&Arc<Class>> {
+pub fn get_class(classname: &str) -> EgResult<&Arc<Class>> {
     get_parser().classes
         .get(classname)
         .ok_or_else(|| format!("No such IDL class: {classname}").into())

@@ -7,6 +7,7 @@ use eg::osrf::sclient::HostSettings;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
+use eg::idl;
 use evergreen as eg;
 use std::any::Any;
 use std::cell::RefCell;

@@ -467,7 +467,7 @@ impl Translator {
 
         let classname = &create.classname;
 
-        let idl_class = idl::get_class2(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         let tablename = idl_class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")
@@ -569,7 +569,7 @@ impl Translator {
 
         let classname = &update.classname;
 
-        let class = idl::get_class2(classname)?;
+        let class = idl::get_class(classname)?;
 
         let tablename = class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")
@@ -623,7 +623,7 @@ impl Translator {
             Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
         }
 
-        let class = idl::get_class2(classname)?;
+        let class = idl::get_class(classname)?;
 
         let tablename = class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")
@@ -664,7 +664,7 @@ impl Translator {
 
         log::debug!("idl_class_search() {search:?}");
 
-        let class = idl::get_class2(classname)?;
+        let class = idl::get_class(classname)?;
 
         let tablename = class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")

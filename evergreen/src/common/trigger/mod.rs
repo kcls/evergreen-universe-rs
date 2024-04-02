@@ -270,8 +270,8 @@ pub fn create_passive_events_for_def(
     // Make sure we don't create events that are already represented.
 
     let core_type = event_def["hook"]["core_type"].as_str().unwrap(); // required
-    //let idl_class = idl::get_class2(core_type)?.clone();
-    let idl_class = idl::get_class2(core_type)?;
+    //let idl_class = idl::get_class(core_type)?.clone();
+    let idl_class = idl::get_class(core_type)?;
 
     let pkey_field = idl_class
         .pkey()

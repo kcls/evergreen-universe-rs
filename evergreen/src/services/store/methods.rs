@@ -1,5 +1,6 @@
 use eg::common::jq::JsonQueryCompiler;
 use eg::idldb::{FleshDef, IdlClassSearch, Translator};
+use eg::idl;
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
@@ -159,7 +160,7 @@ pub fn retrieve(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let classname = idl::get_class2(method.method())?;
+    let classname = get_idl_class(method.method())?;
 
     let pkey = method.param(0); // at least 1 param is guaranteed
 
@@ -185,7 +186,7 @@ pub fn search(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let classname = idl::get_class2(method.method())?;
+    let classname = get_idl_class(method.method())?;
 
     let db = worker.database().clone();
     let translator = Translator::new(db);
@@ -212,7 +213,7 @@ pub fn delete(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let classname = idl::get_class2(method.method())?;
+    let classname = get_idl_class(method.method())?;
 
     let pkey = method.param(0);
 

@@ -525,7 +525,7 @@ impl Editor {
     }
 
     fn get_fieldmapper_from_classname(&self, classname: &str) -> EgResult<String> {
-        let cls = idl::get_class2(classname)?;
+        let cls = idl::get_class(classname)?;
         if let Some(fm) = cls.fieldmapper() {
             return Ok(fm.replace("::", "."));
         }

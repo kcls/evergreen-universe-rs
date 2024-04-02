@@ -2,6 +2,7 @@ use eg::db::DatabaseConnection;
 use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
 use eg::EgValue;
+use eg::idl;
 use evergreen as eg;
 use getopts;
 use std::env;
@@ -18,7 +19,7 @@ fn main() -> Result<(), String> {
 
     let ctx = eg::init::init()?;
 
-    let c = eg::idl::get_class2("aou").unwrap();
+    let c = eg::idl::get_class("aou").unwrap();
     println!("CLASS IS {c:?}");
 
 
@@ -26,7 +27,7 @@ fn main() -> Result<(), String> {
     db.connect()?;
     let db = db.into_shared();
 
-    let mut translator = Translator::new(ctx.idl().clone(), db.clone());
+    let mut translator = Translator::new(db.clone());
 
     // Give me all rows
     let mut search = IdlClassSearch::new("aou");
@@ -153,7 +154,7 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let flesh = ctx.idl().field_paths_to_flesh(
+    let flesh = idl::get_parser().field_paths_to_flesh(
         "acqpo",
         &[
             "lineitems.lineitem_details.owning_lib",
@@ -163,7 +164,7 @@ fn main() -> Result<(), String> {
 
     println!("FLESH is {}", flesh.dump());
 
-    println!("{:?}", eg::idl::get_class2("aou").expect("Class Exists"));
+    println!("{:?}", eg::idl::get_class("aou").expect("Class Exists"));
 
     Ok(())
 }

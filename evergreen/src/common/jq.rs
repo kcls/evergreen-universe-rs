@@ -196,7 +196,7 @@ impl JsonQueryCompiler {
     ///
     /// If you don't need an owned value, idl::get_class() will sufffice.
     fn get_idl_class(&self, classname: &str) -> EgResult<Arc<idl::Class>> {
-        idl::get_class2(classname).map(|a| a.clone())
+        idl::get_class(classname).map(|a| a.clone())
     }
 
     /// Returns the base IDL class, i.e. the root class of the FROM clause.
@@ -211,9 +211,9 @@ impl JsonQueryCompiler {
     /// Returns option of IDL field if the field is valid exists on the
     /// class, isn't virtual, and may be viewed by this module.
     fn field_may_be_selected(&self, name: &str, class: &str) -> bool {
-        let idl_class = match idl::get_class2(class) {
+        let idl_class = match idl::get_class(class) {
             Ok(c) => c,
-            Err(e) => return false,
+            Err(_) => return false,
         };
 
         let idl_field = match idl_class.fields().get(name) {
@@ -561,7 +561,7 @@ impl JsonQueryCompiler {
         let classname = alias_class.classname();
 
         // If we have an alias it's known to be valid
-        let idl_class = idl::get_class2(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         let mut fields = Vec::new();
         for field in idl_class.real_fields_sorted().iter() {
@@ -665,7 +665,7 @@ impl JsonQueryCompiler {
         let mut sql;
 
         let classname = self.get_alias_classname(class_alias)?;
-        let idl_class = idl::get_class2(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         let idl_field = idl_class
             .fields()
@@ -940,7 +940,7 @@ impl JsonQueryCompiler {
     /// a source definition, it will be source SQL wrappen in parens
     /// for inclusion in a containing query.
     fn class_table_or_source_def(&self, classname: &str) -> EgResult<String> {
-        if let Ok(idl_class) = idl::get_class2(classname) {
+        if let Ok(idl_class) = idl::get_class(classname) {
             if let Some(tablename) = idl_class.tablename() {
                 return Ok(self.check_identifier(&tablename)?.to_string());
             } else if let Some(source_def) = idl_class.source_definition() {
@@ -1001,7 +1001,7 @@ impl JsonQueryCompiler {
                         // {"+aou": "shortname"}
                         // This can happen in order-by clauses.
 
-                        if !idl::get_class2(classname)?.has_real_field(field) {
+                        if !idl::get_class(classname)?.has_real_field(field) {
                             return Err(
                                 format!("Class {classname} has no field named {field}").into()
                             );
@@ -1045,7 +1045,7 @@ impl JsonQueryCompiler {
 
                     // classname verified above.
                     // Make sure it's a valid field name
-                    if !idl::get_class2(classname)?.has_real_field(key) {
+                    if !idl::get_class(classname)?.has_real_field(key) {
                         return Err(format!("Class {classname} has no field called {key}").into());
                     }
 
@@ -1292,7 +1292,7 @@ impl JsonQueryCompiler {
         // If the field in question is non-numeric, then we need
         // to treat it as a replaceable parameter.
         let classname = self.get_alias_classname(class_alias)?;
-        let idl_class = idl::get_class2(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         let idl_field = idl_class
             .get_field(field_name)

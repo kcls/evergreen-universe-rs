@@ -118,7 +118,7 @@ impl EgValue {
 
     /// Create a new empty blessed value using the provided class name.
     pub fn stub(classname: &str) -> EgResult<EgValue> {
-        let idl_class = idl::get_class2(classname)?.clone();
+        let idl_class = idl::get_class(classname)?.clone();
         Ok(EgValue::Blessed(BlessedValue {
             idl_class: idl_class.clone(),
             values: HashMap::new(),
@@ -140,7 +140,7 @@ impl EgValue {
     ///
     /// Having all IDL fields is not required.
     pub fn bless(&mut self, classname: &str) -> EgResult<()> {
-        let idl_class = idl::get_class2(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         // Pull the map out of the EgValue::Hash so we can inspect
         // it and eventually consume it.
@@ -247,7 +247,7 @@ impl EgValue {
             }
         };
 
-        let idl_class = idl::get_class2(classname)?.clone();
+        let idl_class = idl::get_class(classname)?.clone();
 
         let mut map = match self {
             Self::Hash(ref mut m) => std::mem::replace(m, HashMap::new()),
@@ -507,7 +507,7 @@ impl EgValue {
 
         let (classname, mut list) = EgValue::remove_class_wrapper(v).unwrap();
 
-        let idl_class = idl::get_class2(&classname)?;
+        let idl_class = idl::get_class(&classname)?;
 
         let mut map = HashMap::new();
         for field in idl_class.fields().values() {
@@ -955,7 +955,7 @@ impl EgValue {
 
         // This alternate idl_class access allows us to modify ourselves
         // in the loop below w/o a parallel borrow
-        let idl_class = idl::get_class2(inner.idl_class.classname())?.clone();
+        let idl_class = idl::get_class(inner.idl_class.classname())?.clone();
 
         for (name, field) in idl_class.fields().iter() {
             if self[name].is_array() {

@@ -104,7 +104,7 @@ pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<EgValue> {
 
     let mut mvr = eg::hash! {"doc_id": bib_id};
 
-    let idl_class = idl::get_class2("mvr")?;
+    let idl_class = idl::get_class("mvr")?;
 
     // Dynamically copy values from the display attribute set
     // into an mvr JSON object.
