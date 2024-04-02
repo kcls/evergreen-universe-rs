@@ -1,6 +1,7 @@
 use super::conf;
 use super::conf::Config;
 use super::session::Session;
+use eg::osrf;
 use eg::EgValue;
 use evergreen as eg;
 use mptc;
@@ -38,8 +39,6 @@ pub struct SessionFactory {
 
     sip_config: Arc<Config>,
 
-    osrf_conf: Arc<eg::osrf::conf::Config>,
-
     /// OpenSRF bus.
     osrf_bus: Option<eg::osrf::bus::Bus>,
 
@@ -49,7 +48,7 @@ pub struct SessionFactory {
 
 impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
-        let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
+        let bus = eg::osrf::bus::Bus::new(osrf::conf::get_config().client())?;
         self.osrf_bus = Some(bus);
 
         log::debug!("SessionFactory connected OK to opensrf");
@@ -71,7 +70,6 @@ impl mptc::RequestHandler for SessionFactory {
         let sip_conf = self.sip_config.clone();
         let org_cache = self.org_cache.clone();
         let shutdown = self.shutdown.clone();
-        let osrf_conf = self.osrf_conf.clone();
 
         // Set in worker_start
         let osrf_bus = self.osrf_bus.take().unwrap();
@@ -80,7 +78,7 @@ impl mptc::RequestHandler for SessionFactory {
         // this request.
         let stream = request.stream.take().unwrap();
 
-        let mut session = Session::new(sip_conf, osrf_conf, osrf_bus, stream, shutdown, org_cache);
+        let mut session = Session::new(sip_conf, osrf_bus, stream, shutdown, org_cache);
 
         if let Err(e) = session.start() {
             // This is not necessarily an error.  The client may simply
@@ -179,7 +177,6 @@ impl mptc::RequestStream for Server {
         let sf = SessionFactory {
             shutdown: self.shutdown.clone(),
             sip_config: self.sip_config.clone(),
-            osrf_conf: self.eg_ctx.config().clone(),
             osrf_bus: None, // set in worker_start
             org_cache: self.org_cache.as_ref().unwrap().clone(),
         };

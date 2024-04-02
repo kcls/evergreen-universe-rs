@@ -3,10 +3,22 @@ use roxmltree;
 use std::fmt;
 use std::fs;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::OnceLock;
 use syslog;
 
-// TODO move to final compiled config into a OnceLock (see the IDL)
+static GLOBAL_OSRF_CONFIG: OnceLock<Config> = OnceLock::new();
+
+/// Returns a ref to the globab OpenSRF config.
+///
+/// Panics if no configuration has been loaded.
+pub fn get_config() -> &'static Config {
+    if let Some(conf) = GLOBAL_OSRF_CONFIG.get() {
+        conf
+    } else {
+        log::error!("OpenSRF Config Required");
+        panic!("OpenSRF Config Required")
+    }
+}
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
@@ -516,8 +528,15 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn into_shared(self) -> Arc<Config> {
-        Arc::new(self)
+    /// Put this Config into the global GLOBAL_OSRF_CONFIG.
+    ///
+    /// Returns Err if the Config has already been stored.
+    pub fn store(self) -> Result<(), String> {
+        if GLOBAL_OSRF_CONFIG.set(self).is_err() {
+            Err(format!("Cannot initialize OpenSRF Config more than once").into())
+        } else {
+            Ok(())
+        }
     }
 
     pub fn routers(&self) -> &Vec<Router> {

@@ -24,7 +24,6 @@ use eg::EgValue;
 use evergreen as eg;
 use std::env;
 use std::fmt;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -316,8 +315,6 @@ struct Router {
     /// registrations arrive from other domains.
     remote_domains: Vec<RouterDomain>,
 
-    config: Arc<conf::Config>,
-
     /// Which domains can register services with us
     trusted_server_domains: Vec<String>,
 
@@ -335,10 +332,10 @@ impl Router {
     /// Create a new router instance.
     ///
     /// * `domain` - Primary domain for this router instance.
-    pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
+    pub fn new(domain: &str) -> Self {
         log::info!("Starting router on domain: {domain}");
 
-        let router_conf = match config.get_router_conf(domain) {
+        let router_conf = match conf::get_config().get_router_conf(domain) {
             Some(rc) => rc,
             None => panic!("No router config for domain {}", domain),
         };
@@ -352,7 +349,6 @@ impl Router {
         let primary_domain = RouterDomain::new(&busconf);
 
         Router {
-            config,
             primary_domain,
             trusted_server_domains: tsd,
             trusted_client_domains: tcd,
@@ -399,7 +395,7 @@ impl Router {
             log::debug!("Adding new RouterDomain for domain={}", domain);
 
             // Primary connection is required at this point.
-            let mut busconf = self.config.client().clone();
+            let mut busconf = conf::get_config().client().clone();
             busconf.set_domain(domain);
 
             self.remote_domains.push(RouterDomain::new(&busconf));
@@ -839,9 +835,9 @@ fn main() {
         appname: Some(String::from("router")),
     };
 
-    let ctx = init::init_with_options(&init_ops).unwrap();
+    init::init_with_options(&init_ops).unwrap();
 
-    let config = ctx.config();
+    let config = conf::get_config();
 
     let mut domains = match env::var("OSRF_ROUTER_DOMAIN") {
         Ok(v) => v.split(",").map(str::to_string).collect(),
@@ -878,7 +874,7 @@ fn main() {
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for domain in domains.iter() {
-        threads.push(start_one_domain(config.clone(), domain.to_string()));
+        threads.push(start_one_domain(domain.to_string()));
     }
 
     // Block here while the routers are running.
@@ -887,7 +883,7 @@ fn main() {
     }
 }
 
-fn start_one_domain(conf: Arc<conf::Config>, domain: String) -> thread::JoinHandle<()> {
+fn start_one_domain(domain: String) -> thread::JoinHandle<()> {
     return thread::spawn(move || {
         loop {
             // A router instance will exit if it encounters a
@@ -896,7 +892,7 @@ fn start_one_domain(conf: Arc<conf::Config>, domain: String) -> thread::JoinHand
             // to reconnect.  The sleep has a secondary benefit of
             // preventing a flood of repeating error logs.
 
-            let mut router = Router::new(conf.clone(), &domain);
+            let mut router = Router::new(&domain);
 
             // If init() fails, we're done for.  Let it panic.
             router.init().unwrap();

@@ -1,6 +1,7 @@
 //! Evergreen HTTP+JSON Gateway
 use eg::date;
 use eg::idl;
+use eg::osrf::conf;
 use eg::osrf::logging::Logger;
 use eg::EgResult;
 use eg::EgValue;
@@ -11,7 +12,6 @@ use std::any::Any;
 use std::env;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::Arc;
 use url::Url;
 
 const BUFSIZE: usize = 1024;
@@ -64,7 +64,6 @@ struct ParsedHttpRequest {
 
 struct GatewayHandler {
     bus: Option<eg::osrf::bus::Bus>,
-    osrf_conf: Arc<eg::osrf::conf::Config>,
     partial_buffer: Option<String>,
 }
 
@@ -74,10 +73,6 @@ impl GatewayHandler {
     /// Panics if the bus is not yet setup, which happens in worker_start()
     fn bus(&mut self) -> &mut eg::osrf::bus::Bus {
         self.bus.as_mut().unwrap()
-    }
-
-    fn bus_conf(&self) -> &eg::osrf::conf::BusClient {
-        self.osrf_conf.gateway().unwrap()
     }
 
     fn handle_request(&mut self, request: &mut GatewayRequest) -> EgResult<()> {
@@ -151,8 +146,8 @@ impl GatewayHandler {
 
         // Send every request to the router on our gateway domain.
         let router = eg::osrf::addr::BusAddress::for_router(
-            self.bus_conf().router_name(),
-            self.bus_conf().domain().name(),
+            conf::get_config().gateway().unwrap().router_name(),
+            conf::get_config().gateway().unwrap().domain().name(),
         );
 
         // Avoid cloning the method which could be a big pile o' JSON.
@@ -471,7 +466,7 @@ impl GatewayHandler {
         let log_params = eg::util::stringify_params(
             method.method(),
             method.params(),
-            self.osrf_conf.log_protect(),
+            conf::get_config().log_protect(),
         );
 
         log::info!(
@@ -495,7 +490,10 @@ impl GatewayHandler {
 
 impl mptc::RequestHandler for GatewayHandler {
     fn worker_start(&mut self) -> Result<(), String> {
-        let bus = eg::osrf::bus::Bus::new(self.bus_conf())?;
+        let gconf = conf::get_config()
+            .gateway()
+            .expect("Gateway Config Required");
+        let bus = eg::osrf::bus::Bus::new(gconf)?;
         self.bus = Some(bus);
         Ok(())
     }
@@ -525,11 +523,10 @@ impl mptc::RequestHandler for GatewayHandler {
 
 struct GatewayStream {
     listener: TcpListener,
-    eg_ctx: eg::init::Context,
 }
 
 impl GatewayStream {
-    fn new(eg_ctx: eg::init::Context, address: &str, port: u16) -> EgResult<Self> {
+    fn new(address: &str, port: u16) -> EgResult<Self> {
         log::info!("EG Gateway listening at {address}:{port}");
 
         let listener =
@@ -539,7 +536,7 @@ impl GatewayStream {
                 ))
             })?;
 
-        let stream = GatewayStream { listener, eg_ctx };
+        let stream = GatewayStream { listener };
 
         Ok(stream)
     }
@@ -572,7 +569,6 @@ impl mptc::RequestStream for GatewayStream {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = GatewayHandler {
             bus: None,
-            osrf_conf: self.eg_ctx.config().clone(),
             partial_buffer: None,
         };
 
@@ -613,20 +609,19 @@ fn main() {
     // NOTE: Since we are not fetching host settings, we use
     // the default IDL path unless it's overridden with the
     // EG_IDL_FILE environment variable.
-    let eg_ctx = eg::init::init_with_options(&init_ops).expect("Evergreen init");
+    eg::init::init_with_options(&init_ops).expect("Evergreen init");
 
     // Setup logging with the gateway config
-    let gateway_conf = eg_ctx
-        .config()
+    let gateway_conf = conf::get_config()
         .gateway()
-        .expect("No gateway configuration found");
+        .expect("Gateway config Required");
 
     eg::osrf::logging::Logger::new(gateway_conf.logging())
         .expect("Creating logger")
         .init()
         .expect("Logger Init");
 
-    let stream = GatewayStream::new(eg_ctx, &address, port).expect("Build stream");
+    let stream = GatewayStream::new(&address, port).expect("Build stream");
     let mut server = mptc::Server::new(Box::new(stream));
 
     if let Ok(n) = env::var("EG_HTTP_GATEWAY_MAX_WORKERS") {

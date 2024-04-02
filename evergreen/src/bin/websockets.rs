@@ -205,9 +205,6 @@ impl SessionOutbound {
 /// Manages a single websocket client connection.  Sessions run in the
 /// main thread for each websocket connection.
 struct Session {
-    /// OpenSRF config
-    conf: Arc<conf::Config>,
-
     /// All messages flow to the main thread via this channel.
     to_main_rx: mpsc::Receiver<ChannelMessage>,
 
@@ -258,12 +255,7 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn run(
-        conf: Arc<conf::Config>,
-        stream: TcpStream,
-        max_parallel: usize,
-        shutdown: Arc<AtomicBool>,
-    ) -> EgResult<()> {
+    fn run(stream: TcpStream, max_parallel: usize, shutdown: Arc<AtomicBool>) -> EgResult<()> {
         let client_ip = stream
             .peer_addr()
             .or_else(|e| Err(format!("Could not determine client IP address: {e}")))?;
@@ -285,7 +277,7 @@ impl Session {
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let gateway = conf.gateway();
+        let gateway = conf::get_config().gateway();
         let busconf = gateway.as_ref().unwrap(); // previously verified
 
         let osrf_sender = Bus::new(busconf)?;
@@ -322,7 +314,6 @@ impl Session {
             client_ip,
             to_main_rx,
             sender,
-            conf,
             osrf_sender,
             max_parallel,
             reqs_in_flight: 0,
@@ -763,8 +754,11 @@ impl Session {
             _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
-        let log_params =
-            eg::util::stringify_params(request.method(), request.params(), self.conf.log_protect());
+        let log_params = eg::util::stringify_params(
+            request.method(),
+            request.params(),
+            conf::get_config().log_protect(),
+        );
 
         log::info!(
             "ACT:[{}] {} {} {}",
@@ -808,7 +802,6 @@ impl mptc::Request for WebsocketRequest {
 }
 
 struct WebsocketHandler {
-    osrf_conf: Arc<eg::osrf::conf::Config>,
     max_parallel: usize,
     shutdown: Arc<AtomicBool>,
 }
@@ -832,7 +825,7 @@ impl mptc::RequestHandler for WebsocketHandler {
 
         let shutdown = self.shutdown.clone();
 
-        if let Err(e) = Session::run(self.osrf_conf.clone(), stream, self.max_parallel, shutdown) {
+        if let Err(e) = Session::run(stream, self.max_parallel, shutdown) {
             log::error!("Websocket session ended with error: {e}");
         }
 
@@ -903,7 +896,6 @@ impl mptc::RequestStream for WebsocketStream {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = WebsocketHandler {
             shutdown: self.shutdown.clone(),
-            osrf_conf: self.eg_ctx.config().clone(),
             max_parallel: self.max_parallel,
         };
 
@@ -947,10 +939,9 @@ fn main() {
     let eg_ctx = eg::init::init_with_options(&init_ops).expect("Evergreen init");
 
     // Setup logging with the gateway config
-    let gateway_conf = eg_ctx
-        .config()
+    let gateway_conf = conf::get_config()
         .gateway()
-        .expect("No gateway configuration found");
+        .expect("Gateway config required");
 
     eg::osrf::logging::Logger::new(gateway_conf.logging())
         .expect("Creating logger")

@@ -12,7 +12,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-use std::sync::Arc;
 
 /// Generally speaking, we only need 1 ClientSingleton per thread (hence
 /// the name).  This manages one bus connection per domain and stores
@@ -29,27 +28,23 @@ pub struct ClientSingleton {
     /// Connections to remote domains
     remote_bus_map: HashMap<String, bus::Bus>,
 
-    /// Our OpenSRF config.
-    config: Arc<conf::Config>,
-
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
     backlog: Vec<message::TransportMessage>,
 }
 
 impl ClientSingleton {
-    fn new(config: Arc<conf::Config>) -> EgResult<ClientSingleton> {
-        let bus = bus::Bus::new(config.client())?;
-        Ok(ClientSingleton::from_bus(bus, config))
+    fn new() -> EgResult<ClientSingleton> {
+        let bus = bus::Bus::new(conf::get_config().client())?;
+        Ok(ClientSingleton::from_bus(bus))
     }
 
     /// Create a new singleton instance from a previously setup Bus.
-    fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> ClientSingleton {
-        let domain = config.client().domain().name().to_string();
+    fn from_bus(bus: bus::Bus) -> ClientSingleton {
+        let domain = conf::get_config().client().domain().name();
 
         ClientSingleton {
-            config,
-            domain,
+            domain: domain.to_string(),
             bus: Some(bus),
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
@@ -131,7 +126,7 @@ impl ClientSingleton {
     fn add_connection(&mut self, domain: &str) -> EgResult<&mut bus::Bus> {
         // When adding a connection to a remote domain, assume the same
         // connection type, etc. is used and just change the domain.
-        let mut conf = self.config.client().clone();
+        let mut conf = conf::get_config().client().clone();
 
         conf.set_domain(domain);
 
@@ -261,9 +256,9 @@ impl Client {
     /// preferred approach, since that guarantees you are
     /// using an existing Bus connection, instead of creating
     /// a new one, which is generally unnecessary.
-    pub fn connect(config: Arc<conf::Config>) -> EgResult<Client> {
+    pub fn connect() -> EgResult<Client> {
         // This performs the actual bus-level connection.
-        let singleton = ClientSingleton::new(config)?;
+        let singleton = ClientSingleton::new()?;
 
         let address = singleton.bus().address().clone();
         let domain = singleton.domain().to_string();
@@ -278,9 +273,9 @@ impl Client {
     /// Create a new Client from an existing Bus connection.
     ///
     /// This can be handy because a Bus is Send-able, but a Client is not.
-    pub fn from_bus(bus: bus::Bus, config: Arc<conf::Config>) -> Client {
+    pub fn from_bus(bus: bus::Bus) -> Client {
         // This performs the actual bus-level connection.
-        let singleton = ClientSingleton::from_bus(bus, config);
+        let singleton = ClientSingleton::from_bus(bus);
 
         let address = singleton.bus().address().clone();
         let domain = singleton.domain().to_string();
@@ -368,10 +363,6 @@ impl Client {
         Ok(ResponseIterator::new(
             self.session(service).request(method, params)?,
         ))
-    }
-
-    pub fn config(&self) -> Arc<conf::Config> {
-        self.singleton().borrow().config.clone()
     }
 
     /// Wrapper for ClientSingleton::wait()

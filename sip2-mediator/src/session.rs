@@ -36,7 +36,6 @@ impl Session {
     /// At this point we are already running within our own thread.
     pub fn new(
         sip_config: Arc<conf::Config>,
-        osrf_config: Arc<eg::osrf::conf::Config>,
         osrf_bus: eg::osrf::bus::Bus,
         stream: net::TcpStream,
         shutdown: Arc<AtomicBool>,
@@ -51,7 +50,7 @@ impl Session {
         let mut con = sip2::Connection::from_stream(stream);
         con.set_ascii(sip_config.ascii);
 
-        let client = eg::Client::from_bus(osrf_bus, osrf_config);
+        let client = eg::Client::from_bus(osrf_bus);
 
         let ses = Session {
             key,

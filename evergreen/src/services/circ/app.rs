@@ -1,5 +1,4 @@
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
-use eg::osrf::conf;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::osrf::sclient::HostSettings;
@@ -54,12 +53,7 @@ impl Application for RsCircApplication {
     }
 
     /// Load the IDL and perform any other needed global startup work.
-    fn init(
-        &mut self,
-        _client: Client,
-        _config: Arc<conf::Config>,
-        host_settings: Arc<HostSettings>,
-    ) -> EgResult<()> {
+    fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
         Ok(())
     }
@@ -68,7 +62,6 @@ impl Application for RsCircApplication {
     fn register_methods(
         &self,
         _client: Client,
-        _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
     ) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
@@ -91,7 +84,6 @@ impl Application for RsCircApplication {
 pub struct RsCircWorker {
     env: Option<RsCircEnv>,
     client: Option<Client>,
-    config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
@@ -101,7 +93,6 @@ impl RsCircWorker {
         RsCircWorker {
             env: None,
             client: None,
-            config: None,
             methods: None,
             host_settings: None,
         }
@@ -147,7 +138,6 @@ impl ApplicationWorker for RsCircWorker {
     fn absorb_env(
         &mut self,
         client: Client,
-        config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
@@ -159,7 +149,6 @@ impl ApplicationWorker for RsCircWorker {
 
         self.env = Some(worker_env.clone());
         self.client = Some(client);
-        self.config = Some(config);
         self.methods = Some(methods);
         self.host_settings = Some(host_settings);
 

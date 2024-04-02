@@ -17,7 +17,7 @@ fn main() -> Result<(), String> {
         Err(e) => panic!("Error parsing options: {}", e),
     };
 
-    let _ = eg::init::init()?;
+    eg::init::init()?;
 
     let c = eg::idl::get_class("aou").unwrap();
     println!("CLASS IS {c:?}");

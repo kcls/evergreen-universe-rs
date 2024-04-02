@@ -54,8 +54,6 @@ impl WorkerStateEvent {
 pub struct Worker {
     service: String,
 
-    config: Arc<conf::Config>,
-
     /// Has our server asked us to clean up and exit?
     stopping: Arc<AtomicBool>,
 
@@ -93,16 +91,14 @@ impl Worker {
     pub fn new(
         service: String,
         worker_id: u64,
-        config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
         stopping: Arc<AtomicBool>,
         methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> EgResult<Worker> {
-        let client = Client::connect(config.clone())?;
+        let client = Client::connect()?;
 
         Ok(Worker {
-            config,
             host_settings,
             stopping,
             service,
@@ -145,7 +141,6 @@ impl Worker {
         let mut app_worker = (factory)();
         app_worker.absorb_env(
             self.client.clone(),
-            self.config.clone(),
             self.host_settings.clone(),
             self.methods.clone(),
             env,
@@ -477,8 +472,11 @@ impl Worker {
         let param_count = method_call.params().len();
         let api_name = method_call.method();
 
-        let log_params =
-            util::stringify_params(api_name, method_call.params(), self.config.log_protect());
+        let log_params = util::stringify_params(
+            api_name,
+            method_call.params(),
+            conf::get_config().log_protect(),
+        );
 
         // Log the API call
         log::info!("CALL: {} {}", api_name, log_params);

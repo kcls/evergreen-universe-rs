@@ -13,16 +13,12 @@ const DEFAULT_IDL_PATH: &str = "/openils/conf/fm_IDL.xml";
 #[derive(Clone)]
 pub struct Context {
     client: Client,
-    config: Arc<conf::Config>,
     host_settings: Option<Arc<sclient::HostSettings>>,
 }
 
 impl Context {
     pub fn client(&self) -> &Client {
         &self.client
-    }
-    pub fn config(&self) -> &Arc<conf::Config> {
-        &self.config
     }
     pub fn host_settings(&self) -> Option<&Arc<sclient::HostSettings>> {
         self.host_settings.as_ref()
@@ -53,7 +49,7 @@ pub fn init() -> EgResult<Context> {
     init_with_options(&InitOptions::new())
 }
 
-pub fn osrf_init(options: &InitOptions) -> EgResult<conf::Config> {
+pub fn osrf_init(options: &InitOptions) -> EgResult<()> {
     let builder = if let Ok(fname) = env::var("OSRF_CONFIG") {
         conf::ConfigBuilder::from_file(&fname)?
     } else {
@@ -128,15 +124,16 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<conf::Config> {
             .or_else(|e| Err(format!("Error initializing logger: {e}")))?;
     }
 
-    Ok(config)
+    // Save the config as the one-true-global-osrf-config
+    config.store()?;
+
+    Ok(())
 }
 
 pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
-    let config = osrf_init(&options)?;
-    let config = config.into_shared();
+    osrf_init(&options)?;
 
-    let client = Client::connect(config.clone())
-        .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
+    let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
     // We try to get the IDL path from opensrf.settings, but that will
     // fail if we are not connected to a domain running opensrf.settings
@@ -154,7 +151,6 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
 
     Ok(Context {
         client,
-        config,
         host_settings,
     })
 }
@@ -179,16 +175,11 @@ pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
 /// connect time.
 ///
 /// The only part that must happen in its own thread is the opensrf connect.
-pub fn init_from_parts(
-    config: Arc<conf::Config>,
-    host_settings: Option<Arc<sclient::HostSettings>>,
-) -> EgResult<Context> {
-    let client = Client::connect(config.clone())
-        .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
+pub fn init_from_parts(host_settings: Option<Arc<sclient::HostSettings>>) -> EgResult<Context> {
+    let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
     Ok(Context {
         client,
-        config,
         host_settings,
     })
 }
