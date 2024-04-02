@@ -1,4 +1,5 @@
 use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
+use eg::idl;
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
 use eg::osrf::message;
@@ -7,7 +8,6 @@ use eg::osrf::sclient::HostSettings;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
-use eg::idl;
 use evergreen as eg;
 use std::any::Any;
 use std::cell::RefCell;
@@ -33,11 +33,11 @@ const DIRECT_METHODS: &[&str] = &["create", "retrieve", "search", "update", "del
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsStoreEnv { }
+pub struct RsStoreEnv {}
 
 impl RsStoreEnv {
     pub fn new() -> Self {
-        RsStoreEnv { }
+        RsStoreEnv {}
     }
 }
 
@@ -49,12 +49,11 @@ impl ApplicationEnv for RsStoreEnv {
 }
 
 /// Our main application class.
-pub struct RsStoreApplication {
-}
+pub struct RsStoreApplication {}
 
 impl RsStoreApplication {
     pub fn new() -> Self {
-        RsStoreApplication { }
+        RsStoreApplication {}
     }
 
     /// Register CRUD (and search) methods for classes we control.

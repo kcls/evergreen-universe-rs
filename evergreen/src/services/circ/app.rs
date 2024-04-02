@@ -20,11 +20,11 @@ const APPNAME: &str = "open-ils.rs-circ";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsCircEnv { }
+pub struct RsCircEnv {}
 
 impl RsCircEnv {
     pub fn new() -> Self {
-        RsCircEnv { }
+        RsCircEnv {}
     }
 }
 
@@ -36,12 +36,11 @@ impl ApplicationEnv for RsCircEnv {
 }
 
 /// Our main application class.
-pub struct RsCircApplication {
-}
+pub struct RsCircApplication {}
 
 impl RsCircApplication {
     pub fn new() -> Self {
-        RsCircApplication { }
+        RsCircApplication {}
     }
 }
 

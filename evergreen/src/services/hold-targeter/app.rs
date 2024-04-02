@@ -21,12 +21,11 @@ const APPNAME: &str = "open-ils.rs-hold-targeter";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct HoldTargeterEnv {
-}
+pub struct HoldTargeterEnv {}
 
 impl HoldTargeterEnv {
     pub fn new() -> Self {
-        HoldTargeterEnv { }
+        HoldTargeterEnv {}
     }
 }
 
@@ -38,12 +37,11 @@ impl ApplicationEnv for HoldTargeterEnv {
 }
 
 /// Our main application class.
-pub struct HoldTargeterApplication {
-}
+pub struct HoldTargeterApplication {}
 
 impl HoldTargeterApplication {
     pub fn new() -> Self {
-        HoldTargeterApplication { }
+        HoldTargeterApplication {}
     }
 }
 

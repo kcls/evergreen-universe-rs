@@ -1,6 +1,6 @@
 use eg::common::jq::JsonQueryCompiler;
-use eg::idldb::{FleshDef, IdlClassSearch, Translator};
 use eg::idl;
+use eg::idldb::{FleshDef, IdlClassSearch, Translator};
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};

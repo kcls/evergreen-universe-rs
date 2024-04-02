@@ -8,11 +8,11 @@ use crate as eg;
 use crate::EgResult;
 use crate::EgValue;
 use roxmltree;
-use std::sync::OnceLock;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 /// Parse the IDL once and store it here, making it accessible to all
 /// threads as a read-only value.
@@ -37,11 +37,11 @@ pub fn get_parser() -> &'static Parser {
 ///
 /// Err is returned if no such classes exists.
 pub fn get_class(classname: &str) -> EgResult<&Arc<Class>> {
-    get_parser().classes
+    get_parser()
+        .classes
         .get(classname)
         .ok_or_else(|| format!("No such IDL class: {classname}").into())
 }
-
 
 /// Various forms an IDL-classed object can take internally and on
 /// the wire.
@@ -412,7 +412,10 @@ impl Parser {
         &self.classes
     }
 
-    /// Parse the IDL from a file
+    /// Load the IDL from a file.
+    ///
+    /// Returns an Err if the IDL has already been parsed and loaded, in
+    /// part to discourage unnecessary reparsing, which is a heavy job.
     pub fn load_file(filename: &str) -> EgResult<()> {
         let xml = match fs::read_to_string(filename) {
             Ok(x) => x,
@@ -429,7 +432,7 @@ impl Parser {
     }
 
     /// Parse the IDL as a string
-    pub fn parse_string(xml: &str) -> EgResult<Parser> {
+    fn parse_string(xml: &str) -> EgResult<Parser> {
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
             Err(e) => Err(format!("Error parsing XML string for IDL: {e}"))?,
@@ -545,7 +548,8 @@ impl Parser {
 
         self.add_auto_fields(&mut class, field_array_pos);
 
-        self.classes.insert(class.classname.to_string(), Arc::new(class));
+        self.classes
+            .insert(class.classname.to_string(), Arc::new(class));
     }
 
     fn add_auto_fields(&self, class: &mut Class, mut pos: usize) {

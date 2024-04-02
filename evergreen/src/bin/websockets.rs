@@ -832,12 +832,7 @@ impl mptc::RequestHandler for WebsocketHandler {
 
         let shutdown = self.shutdown.clone();
 
-        if let Err(e) = Session::run(
-            self.osrf_conf.clone(),
-            stream,
-            self.max_parallel,
-            shutdown,
-        ) {
+        if let Err(e) = Session::run(self.osrf_conf.clone(), stream, self.max_parallel, shutdown) {
             log::error!("Websocket session ended with error: {e}");
         }
 

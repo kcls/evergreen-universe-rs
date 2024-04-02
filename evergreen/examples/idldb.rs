@@ -1,8 +1,8 @@
 use eg::db::DatabaseConnection;
+use eg::idl;
 use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
 use eg::EgValue;
-use eg::idl;
 use evergreen as eg;
 use getopts;
 use std::env;
@@ -17,11 +17,10 @@ fn main() -> Result<(), String> {
         Err(e) => panic!("Error parsing options: {}", e),
     };
 
-    let ctx = eg::init::init()?;
+    let _ = eg::init::init()?;
 
     let c = eg::idl::get_class("aou").unwrap();
     println!("CLASS IS {c:?}");
-
 
     let mut db = DatabaseConnection::new_from_options(&params);
     db.connect()?;

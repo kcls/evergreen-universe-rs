@@ -21,11 +21,11 @@ const APPNAME: &str = "open-ils.rs-actor";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsActorEnv { }
+pub struct RsActorEnv {}
 
 impl RsActorEnv {
     pub fn new() -> Self {
-        RsActorEnv { }
+        RsActorEnv {}
     }
 }
 
@@ -37,12 +37,11 @@ impl ApplicationEnv for RsActorEnv {
 }
 
 /// Our main application class.
-pub struct RsActorApplication {
-}
+pub struct RsActorApplication {}
 
 impl RsActorApplication {
     pub fn new() -> Self {
-        RsActorApplication { }
+        RsActorApplication {}
     }
 }
 
