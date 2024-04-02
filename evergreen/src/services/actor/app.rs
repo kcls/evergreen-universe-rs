@@ -1,4 +1,3 @@
-use eg::idl;
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
 use eg::osrf::message;
@@ -22,18 +21,11 @@ const APPNAME: &str = "open-ils.rs-actor";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsActorEnv {
-    /// Global / shared IDL ref
-    idl: Arc<idl::Parser>,
-}
+pub struct RsActorEnv { }
 
 impl RsActorEnv {
-    pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        RsActorEnv { idl: idl.clone() }
-    }
-
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
+    pub fn new() -> Self {
+        RsActorEnv { }
     }
 }
 
@@ -46,13 +38,11 @@ impl ApplicationEnv for RsActorEnv {
 
 /// Our main application class.
 pub struct RsActorApplication {
-    /// We load the IDL during service init.
-    idl: Option<Arc<idl::Parser>>,
 }
 
 impl RsActorApplication {
     pub fn new() -> Self {
-        RsActorApplication { idl: None }
+        RsActorApplication { }
     }
 }
 
@@ -62,7 +52,7 @@ impl Application for RsActorApplication {
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsActorEnv::new(self.idl.as_ref().unwrap()))
+        Box::new(RsActorEnv::new())
     }
 
     /// Load the IDL and perform any other needed global startup work.
@@ -73,7 +63,6 @@ impl Application for RsActorApplication {
         host_settings: Arc<HostSettings>,
     ) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
-        self.idl = Some(idl::clone_thread_idl());
         Ok(())
     }
 
@@ -176,8 +165,6 @@ impl ApplicationWorker for RsActorWorker {
             .as_any()
             .downcast_ref::<RsActorEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
-
-        eg::idl::set_thread_idl(&worker_env.idl);
 
         self.env = Some(worker_env.clone());
         self.client = Some(client);

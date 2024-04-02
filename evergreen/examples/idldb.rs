@@ -163,7 +163,7 @@ fn main() -> Result<(), String> {
 
     println!("FLESH is {}", flesh.dump());
 
-    println!("{:?}", eg::idl::get_class("aou").expect("Class Exists"));
+    println!("{:?}", eg::idl::get_class2("aou").expect("Class Exists"));
 
     Ok(())
 }

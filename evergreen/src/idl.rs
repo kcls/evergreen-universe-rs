@@ -8,18 +8,15 @@ use crate as eg;
 use crate::EgResult;
 use crate::EgValue;
 use roxmltree;
-use std::cell::RefCell;
 use std::sync::OnceLock;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
 
-thread_local! {
-    static THREAD_LOCAL_IDL: RefCell<Option<Arc<Parser>>> = RefCell::new(None);
-}
-
-static THREAD_LOCAL_IDL2: OnceLock<Parser> = OnceLock::new();
+/// Parse the IDL once and store it here, making it accessible to all
+/// threads as a read-only value.
+static GLOBAL_IDL: OnceLock<Parser> = OnceLock::new();
 
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
 const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
@@ -27,52 +24,24 @@ const OILS_NS_PERSIST: &str = "http://open-ils.org/spec/opensrf/IDL/persistence/
 const OILS_NS_REPORTER: &str = "http://open-ils.org/spec/opensrf/IDL/reporter/v1";
 const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
 
-/// Every thread needs its own copy of the Arc<Parser>
-pub fn set_thread_idl(idl: &Arc<Parser>) {
-    THREAD_LOCAL_IDL.with(|p| *p.borrow_mut() = Some(idl.clone()));
-}
-
-/// Returns a cloned copy of the Arc<Parser> for the current thread.
-/// This does not clone the IDL itself, just the Arc ref.
-pub fn clone_thread_idl() -> Arc<Parser> {
-    let mut idl: Option<Arc<Parser>> = None;
-    THREAD_LOCAL_IDL.with(|p| {
-        if let Some(p2) = p.borrow().as_ref() {
-            idl = Some(p2.clone());
-        } else {
-            log::error!("Thread Local IDL Required");
-            panic!("Thread Local IDL Required")
-        }
-    });
-    idl.unwrap()
-}
-
-pub fn get_class2(classname: &str) -> Option<&Class> {
-    if let Some(idl) = THREAD_LOCAL_IDL2.get() {
-        idl.classes2.get(classname)
+pub fn get_parser() -> &'static Parser {
+    if let Some(idl) = GLOBAL_IDL.get() {
+        idl
     } else {
         log::error!("IDL Required");
         panic!("IDL Required")
     }
 }
 
-
-pub fn get_class(classname: &str) -> Option<Arc<Class>> {
-    let mut idl_class: Option<Arc<Class>> = None;
-
-    THREAD_LOCAL_IDL.with(
-        |p| {
-            if let Some(idl) = p.borrow().as_ref() {
-                idl_class = idl.classes().get(classname).map(|c| c.clone())
-            } else {
-                log::error!("Thread Local IDL Required");
-                panic!("Thread Local IDL Required")
-            }
-        }, // Arc::clone()
-    );
-
-    idl_class
+/// Returns a ref to an IDL class by classname.
+///
+/// Err is returned if no such classes exists.
+pub fn get_class2(classname: &str) -> EgResult<&Arc<Class>> {
+    get_parser().classes2
+        .get(classname)
+        .ok_or_else(|| format!("No such IDL class: {classname}").into())
 }
+
 
 /// Various forms an IDL-classed object can take internally and on
 /// the wire.
@@ -427,7 +396,7 @@ impl fmt::Display for Class {
 
 pub struct Parser {
     classes: HashMap<String, Arc<Class>>,
-    classes2: HashMap<String, Class>,
+    classes2: HashMap<String, Arc<Class>>,
 }
 
 impl fmt::Debug for Parser {
@@ -442,21 +411,19 @@ impl Parser {
     }
 
     /// Parse the IDL from a file
-    pub fn parse_file(filename: &str) -> EgResult<Arc<Parser>> {
+    pub fn load_file(filename: &str) -> EgResult<()> {
         let xml = match fs::read_to_string(filename) {
             Ok(x) => x,
             Err(e) => Err(format!("Cannot parse IDL file '{filename}': {e}"))?,
         };
 
-        // TODO TODO TODO
         let p = Parser::parse_string(&xml)?;
-        if THREAD_LOCAL_IDL2.set(p).is_err() {
-            return Err(format!("Cannot initialize IDL multiple times").into());
+
+        if GLOBAL_IDL.set(p).is_err() {
+            return Err(format!("Cannot initialize IDL more than once").into());
         }
 
-        let p = Parser::parse_string(&xml)?;
-
-        Ok(Arc::new(p))
+        Ok(())
     }
 
     /// Parse the IDL as a string
@@ -578,7 +545,7 @@ impl Parser {
         self.add_auto_fields(&mut class, field_array_pos);
 
         // TODO
-        self.classes2.insert(class.classname.to_string(), class.clone());
+        self.classes2.insert(class.classname.to_string(), Arc::new(class.clone()));
 
         //self.classes.insert(class.classname.to_string(), class.clone());
         self.classes

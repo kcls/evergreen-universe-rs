@@ -50,7 +50,7 @@ impl mptc::RequestHandler for SessionFactory {
         // Connect to Evergreen when each thread first starts.
         let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
         self.osrf_bus = Some(bus);
-        eg::idl::set_thread_idl(&self.idl);
+        eg::idl::set_thread_idl_legacy(&self.idl);
 
         log::debug!("SessionFactory connected OK to opensrf");
 
@@ -151,7 +151,7 @@ impl mptc::RequestStream for Server {
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let sf = SessionFactory {
-            idl: eg::idl::clone_thread_idl(),
+            idl: eg::idl::clone_thread_idl_legacy(),
             shutdown: self.shutdown.clone(),
             osrf_conf: self.eg_ctx.config().clone(),
             sip_config: self.sip_config.clone(),

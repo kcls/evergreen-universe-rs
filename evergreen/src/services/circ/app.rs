@@ -1,4 +1,3 @@
-use eg::idl;
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
 use eg::osrf::message;
@@ -21,18 +20,11 @@ const APPNAME: &str = "open-ils.rs-circ";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsCircEnv {
-    /// Global / shared IDL ref
-    idl: Arc<idl::Parser>,
-}
+pub struct RsCircEnv { }
 
 impl RsCircEnv {
-    pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        RsCircEnv { idl: idl.clone() }
-    }
-
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
+    pub fn new() -> Self {
+        RsCircEnv { }
     }
 }
 
@@ -45,13 +37,11 @@ impl ApplicationEnv for RsCircEnv {
 
 /// Our main application class.
 pub struct RsCircApplication {
-    /// We load the IDL during service init.
-    idl: Option<Arc<idl::Parser>>,
 }
 
 impl RsCircApplication {
     pub fn new() -> Self {
-        RsCircApplication { idl: None }
+        RsCircApplication { }
     }
 }
 
@@ -61,7 +51,7 @@ impl Application for RsCircApplication {
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsCircEnv::new(self.idl.as_ref().unwrap()))
+        Box::new(RsCircEnv::new())
     }
 
     /// Load the IDL and perform any other needed global startup work.
@@ -72,7 +62,6 @@ impl Application for RsCircApplication {
         host_settings: Arc<HostSettings>,
     ) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
-        self.idl = Some(idl::clone_thread_idl());
         Ok(())
     }
 
@@ -168,8 +157,6 @@ impl ApplicationWorker for RsCircWorker {
             .as_any()
             .downcast_ref::<RsCircEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
-
-        eg::idl::set_thread_idl(&worker_env.idl);
 
         self.env = Some(worker_env.clone());
         self.client = Some(client);

@@ -141,8 +141,7 @@ fn get_idl_class(apiname: &str) -> EgResult<String> {
 
     let fieldmapper = format!("{}::{}", &api_parts[3], &api_parts[4]);
 
-    let idl = eg::idl::clone_thread_idl();
-    for class in idl.classes().values() {
+    for class in idl::get_parser().classes().values() {
         if let Some(fm) = class.fieldmapper() {
             if fm.eq(fieldmapper.as_str()) {
                 return Ok(class.classname().to_string());
@@ -160,13 +159,12 @@ pub fn retrieve(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let idl = worker.env().idl().clone();
-    let classname = get_idl_class(method.method())?;
+    let classname = idl::get_class2(method.method())?;
 
     let pkey = method.param(0); // at least 1 param is guaranteed
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl, db);
+    let translator = Translator::new(db);
 
     let mut flesh_def = None;
     if let Some(j) = method.params().get(1) {
@@ -187,11 +185,10 @@ pub fn search(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let idl = worker.env().idl().clone();
-    let classname = get_idl_class(method.method())?;
+    let classname = idl::get_class2(method.method())?;
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl, db);
+    let translator = Translator::new(db);
 
     let query = method.param(0);
     let mut search = IdlClassSearch::new(&classname);
@@ -215,13 +212,12 @@ pub fn delete(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let idl = worker.env().idl().clone();
-    let classname = get_idl_class(method.method())?;
+    let classname = idl::get_class2(method.method())?;
 
     let pkey = method.param(0);
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl, db);
+    let translator = Translator::new(db);
 
     // This will fail if our database connection is not already
     // inside a transaction.
@@ -236,11 +232,10 @@ pub fn create(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let idl = worker.env().idl().clone();
     let obj = method.param(0);
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl, db);
+    let translator = Translator::new(db);
 
     // This will fail if our database connection is not already
     // inside a transaction.
@@ -255,11 +250,10 @@ pub fn update(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
-    let idl = worker.env().idl().clone();
     let obj = method.param(0);
 
     let db = worker.database().clone();
-    let translator = Translator::new(idl, db);
+    let translator = Translator::new(db);
 
     // This will fail if our database connection is not already
     // inside a transaction.

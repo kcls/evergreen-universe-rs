@@ -1,5 +1,4 @@
 use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
-use eg::idl;
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
 use eg::osrf::message;
@@ -33,18 +32,11 @@ const DIRECT_METHODS: &[&str] = &["create", "retrieve", "search", "update", "del
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsStoreEnv {
-    /// Global / shared IDL ref
-    idl: Arc<idl::Parser>,
-}
+pub struct RsStoreEnv { }
 
 impl RsStoreEnv {
-    pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        RsStoreEnv { idl: idl.clone() }
-    }
-
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
+    pub fn new() -> Self {
+        RsStoreEnv { }
     }
 }
 
@@ -57,19 +49,16 @@ impl ApplicationEnv for RsStoreEnv {
 
 /// Our main application class.
 pub struct RsStoreApplication {
-    /// We load the IDL during service init.
-    idl: Option<Arc<idl::Parser>>,
 }
 
 impl RsStoreApplication {
     pub fn new() -> Self {
-        RsStoreApplication { idl: None }
+        RsStoreApplication { }
     }
 
     /// Register CRUD (and search) methods for classes we control.
     fn register_auto_methods(&self, methods: &mut Vec<MethodDef>) {
-        let idl = eg::idl::clone_thread_idl();
-        let classes = idl.classes().values();
+        let classes = idl::get_parser().classes().values();
 
         // Filter function to find classes with the wanted controllers.
         // Find classes controlled by our service and (for now) cstore.
@@ -148,7 +137,7 @@ impl Application for RsStoreApplication {
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsStoreEnv::new(self.idl.as_ref().unwrap()))
+        Box::new(RsStoreEnv::new())
     }
 
     /// Load the IDL and perform any other needed global startup work.
@@ -159,7 +148,6 @@ impl Application for RsStoreApplication {
         host_settings: Arc<HostSettings>,
     ) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
-        self.idl = Some(idl::clone_thread_idl());
         Ok(())
     }
 
@@ -323,8 +311,6 @@ impl ApplicationWorker for RsStoreWorker {
             .downcast_ref::<RsStoreEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
 
-        eg::idl::set_thread_idl(&worker_env.idl);
-
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.config = Some(config);
@@ -372,7 +358,7 @@ impl ApplicationWorker for RsStoreWorker {
     }
 
     fn keepalive_timeout(&mut self) -> EgResult<()> {
-        log::debug!("IDL worker timed out in keepalive");
+        log::debug!("Idle worker timed out in keepalive");
         self.end_session()
     }
 

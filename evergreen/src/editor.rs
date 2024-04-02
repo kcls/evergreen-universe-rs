@@ -6,7 +6,6 @@ use eg::result::{EgError, EgResult};
 use eg::Client;
 use eg::EgValue;
 use eg::SessionHandle;
-use std::sync::Arc;
 
 const DEFAULT_TIMEOUT: i32 = 60;
 
@@ -49,7 +48,6 @@ pub struct QueryOps {
 pub struct Editor {
     client: Client,
     session: Option<SessionHandle>,
-    idl: Arc<idl::Parser>,
 
     personality: Personality,
     authtoken: Option<String>,
@@ -85,7 +83,6 @@ impl Editor {
     pub fn new(client: &Client) -> Self {
         Editor {
             client: client.clone(),
-            idl: idl::clone_thread_idl(),
             personality: "".into(),
             timeout: DEFAULT_TIMEOUT,
             xact_wanted: false,
@@ -136,12 +133,6 @@ impl Editor {
         editor.authtoken = Some(authtoken.to_string());
         editor.xact_wanted = true;
         editor
-    }
-
-    /// Offer a read-only version of the IDL to anyone who needs it.
-    /// DEPRECATE
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
     }
 
     /// Verify our authtoken is still valid.
@@ -534,10 +525,9 @@ impl Editor {
     }
 
     fn get_fieldmapper_from_classname(&self, classname: &str) -> EgResult<String> {
-        if let Some(cls) = idl::get_class(classname) {
-            if let Some(fm) = cls.fieldmapper() {
-                return Ok(fm.replace("::", "."));
-            }
+        let cls = idl::get_class2(classname)?;
+        if let Some(fm) = cls.fieldmapper() {
+            return Ok(fm.replace("::", "."));
         }
         Err(format!("Cannot determine fieldmapper from {classname}").into())
     }

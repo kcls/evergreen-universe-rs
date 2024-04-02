@@ -53,7 +53,7 @@ impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
         let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
         self.osrf_bus = Some(bus);
-        eg::idl::set_thread_idl(&self.idl);
+        eg::idl::set_thread_idl_legacy(&self.idl);
 
         log::debug!("SessionFactory connected OK to opensrf");
 

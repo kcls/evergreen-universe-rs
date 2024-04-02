@@ -23,17 +23,11 @@ const APPNAME: &str = "open-ils.rs-hold-targeter";
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
 pub struct HoldTargeterEnv {
-    /// Global / shared IDL ref
-    idl: Arc<idl::Parser>,
 }
 
 impl HoldTargeterEnv {
-    pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        HoldTargeterEnv { idl: idl.clone() }
-    }
-
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
+    pub fn new() -> Self {
+        HoldTargeterEnv { }
     }
 }
 
@@ -46,13 +40,11 @@ impl ApplicationEnv for HoldTargeterEnv {
 
 /// Our main application class.
 pub struct HoldTargeterApplication {
-    /// We load the IDL during service init.
-    idl: Option<Arc<idl::Parser>>,
 }
 
 impl HoldTargeterApplication {
     pub fn new() -> Self {
-        HoldTargeterApplication { idl: None }
+        HoldTargeterApplication { }
     }
 }
 
@@ -62,7 +54,7 @@ impl Application for HoldTargeterApplication {
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(HoldTargeterEnv::new(self.idl.as_ref().unwrap()))
+        Box::new(HoldTargeterEnv::new())
     }
 
     /// Load the IDL and perform any other needed global startup work.
@@ -73,7 +65,6 @@ impl Application for HoldTargeterApplication {
         host_settings: Arc<HostSettings>,
     ) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
-        self.idl = Some(idl::clone_thread_idl());
         Ok(())
     }
 
@@ -169,8 +160,6 @@ impl ApplicationWorker for HoldTargeterWorker {
             .as_any()
             .downcast_ref::<HoldTargeterEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
-
-        eg::idl::set_thread_idl(&worker_env.idl);
 
         self.env = Some(worker_env.clone());
         self.client = Some(client);

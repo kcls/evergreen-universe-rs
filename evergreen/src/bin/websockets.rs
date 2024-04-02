@@ -170,7 +170,7 @@ impl fmt::Display for SessionOutbound {
 
 impl SessionOutbound {
     fn run(&mut self) {
-        idl::set_thread_idl(&self.idl);
+        idl::set_thread_idl_legacy(&self.idl);
 
         loop {
             // Check before going back to wait for the next ws message.
@@ -269,7 +269,7 @@ impl Session {
         max_parallel: usize,
         shutdown: Arc<AtomicBool>,
     ) -> EgResult<()> {
-        idl::set_thread_idl(&idl);
+        idl::set_thread_idl_legacy(&idl);
 
         let client_ip = stream
             .peer_addr()

@@ -14,7 +14,6 @@ const DEFAULT_IDL_PATH: &str = "/openils/conf/fm_IDL.xml";
 pub struct Context {
     client: Client,
     config: Arc<conf::Config>,
-    idl: Arc<idl::Parser>,
     host_settings: Option<Arc<sclient::HostSettings>>,
 }
 
@@ -24,9 +23,6 @@ impl Context {
     }
     pub fn config(&self) -> &Arc<conf::Config> {
         &self.config
-    }
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
     }
     pub fn host_settings(&self) -> Option<&Arc<sclient::HostSettings>> {
         self.host_settings.as_ref()
@@ -159,7 +155,6 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
     Ok(Context {
         client,
         config,
-        idl: idl::clone_thread_idl(),
         host_settings,
     })
 }
@@ -167,20 +162,16 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
 /// Locate and parse the IDL file.
 pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
     if let Ok(v) = env::var("EG_IDL_FILE") {
-        idl::set_thread_idl(&idl::Parser::parse_file(&v)?);
-        return Ok(());
+        return idl::Parser::load_file(&v);
     }
 
     if let Some(s) = settings {
         if let Some(fname) = s.value("/IDL").as_str() {
-            idl::set_thread_idl(&idl::Parser::parse_file(fname)?);
-            return Ok(());
+            return idl::Parser::load_file(fname);
         }
     }
 
-    idl::set_thread_idl(&idl::Parser::parse_file(DEFAULT_IDL_PATH)?);
-
-    return Ok(());
+    idl::Parser::load_file(DEFAULT_IDL_PATH)
 }
 
 /// Create a new connection using pre-compiled context components.  Useful
@@ -190,7 +181,6 @@ pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
 /// The only part that must happen in its own thread is the opensrf connect.
 pub fn init_from_parts(
     config: Arc<conf::Config>,
-    idl: Arc<idl::Parser>,
     host_settings: Option<Arc<sclient::HostSettings>>,
 ) -> EgResult<Context> {
     let client = Client::connect(config.clone())
@@ -199,7 +189,6 @@ pub fn init_from_parts(
     Ok(Context {
         client,
         config,
-        idl,
         host_settings,
     })
 }
