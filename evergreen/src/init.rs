@@ -13,20 +13,12 @@ const DEFAULT_IDL_PATH: &str = "/openils/conf/fm_IDL.xml";
 #[derive(Clone)]
 pub struct Context {
     client: Client,
-    config: Arc<conf::Config>,
-    idl: Arc<idl::Parser>,
     host_settings: Option<Arc<sclient::HostSettings>>,
 }
 
 impl Context {
     pub fn client(&self) -> &Client {
         &self.client
-    }
-    pub fn config(&self) -> &Arc<conf::Config> {
-        &self.config
-    }
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
     }
     pub fn host_settings(&self) -> Option<&Arc<sclient::HostSettings>> {
         self.host_settings.as_ref()
@@ -54,10 +46,10 @@ impl InitOptions {
 ///
 /// This does not connect to the bus.
 pub fn init() -> EgResult<Context> {
-    init_with_options(&InitOptions::new())
+    with_options(&InitOptions::new())
 }
 
-pub fn osrf_init(options: &InitOptions) -> EgResult<conf::Config> {
+pub fn osrf_init(options: &InitOptions) -> EgResult<()> {
     let builder = if let Ok(fname) = env::var("OSRF_CONFIG") {
         conf::ConfigBuilder::from_file(&fname)?
     } else {
@@ -132,15 +124,16 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<conf::Config> {
             .or_else(|e| Err(format!("Error initializing logger: {e}")))?;
     }
 
-    Ok(config)
+    // Save the config as the one-true-global-osrf-config
+    config.store()?;
+
+    Ok(())
 }
 
-pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
-    let config = osrf_init(&options)?;
-    let config = config.into_shared();
+pub fn with_options(options: &InitOptions) -> EgResult<Context> {
+    osrf_init(&options)?;
 
-    let client = Client::connect(config.clone())
-        .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
+    let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
     // We try to get the IDL path from opensrf.settings, but that will
     // fail if we are not connected to a domain running opensrf.settings
@@ -158,8 +151,6 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
 
     Ok(Context {
         client,
-        config,
-        idl: idl::clone_thread_idl(),
         host_settings,
     })
 }
@@ -167,20 +158,16 @@ pub fn init_with_options(options: &InitOptions) -> EgResult<Context> {
 /// Locate and parse the IDL file.
 pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
     if let Ok(v) = env::var("EG_IDL_FILE") {
-        idl::set_thread_idl(&idl::Parser::parse_file(&v)?);
-        return Ok(());
+        return idl::Parser::load_file(&v);
     }
 
     if let Some(s) = settings {
         if let Some(fname) = s.value("/IDL").as_str() {
-            idl::set_thread_idl(&idl::Parser::parse_file(fname)?);
-            return Ok(());
+            return idl::Parser::load_file(fname);
         }
     }
 
-    idl::set_thread_idl(&idl::Parser::parse_file(DEFAULT_IDL_PATH)?);
-
-    return Ok(());
+    idl::Parser::load_file(DEFAULT_IDL_PATH)
 }
 
 /// Create a new connection using pre-compiled context components.  Useful
@@ -188,18 +175,11 @@ pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
 /// connect time.
 ///
 /// The only part that must happen in its own thread is the opensrf connect.
-pub fn init_from_parts(
-    config: Arc<conf::Config>,
-    idl: Arc<idl::Parser>,
-    host_settings: Option<Arc<sclient::HostSettings>>,
-) -> EgResult<Context> {
-    let client = Client::connect(config.clone())
-        .or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
+pub fn init_from_parts(host_settings: Option<Arc<sclient::HostSettings>>) -> EgResult<Context> {
+    let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
     Ok(Context {
         client,
-        config,
-        idl,
         host_settings,
     })
 }

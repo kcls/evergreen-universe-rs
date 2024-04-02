@@ -8,15 +8,15 @@ use crate as eg;
 use crate::EgResult;
 use crate::EgValue;
 use roxmltree;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
-thread_local! {
-    static THREAD_LOCAL_IDL: RefCell<Option<Arc<Parser>>> = RefCell::new(None);
-}
+/// Parse the IDL once and store it here, making it accessible to all
+/// threads as a read-only value.
+static GLOBAL_IDL: OnceLock<Parser> = OnceLock::new();
 
 const _OILS_NS_BASE: &str = "http://opensrf.org/spec/IDL/base/v1";
 const OILS_NS_OBJ: &str = "http://open-ils.org/spec/opensrf/IDL/objects/v1";
@@ -24,41 +24,24 @@ const OILS_NS_PERSIST: &str = "http://open-ils.org/spec/opensrf/IDL/persistence/
 const OILS_NS_REPORTER: &str = "http://open-ils.org/spec/opensrf/IDL/reporter/v1";
 const AUTO_FIELDS: [&str; 3] = ["isnew", "ischanged", "isdeleted"];
 
-/// Every thread needs its own copy of the Arc<Parser>
-pub fn set_thread_idl(idl: &Arc<Parser>) {
-    THREAD_LOCAL_IDL.with(|p| *p.borrow_mut() = Some(idl.clone()));
+/// Returns a ref to the global IDL parser instance
+pub fn parser() -> &'static Parser {
+    if let Some(idl) = GLOBAL_IDL.get() {
+        idl
+    } else {
+        log::error!("IDL Required");
+        panic!("IDL Required")
+    }
 }
 
-/// Returns a cloned copy of the Arc<Parser> for the current thread.
-/// This does not clone the IDL itself, just the Arc ref.
-pub fn clone_thread_idl() -> Arc<Parser> {
-    let mut idl: Option<Arc<Parser>> = None;
-    THREAD_LOCAL_IDL.with(|p| {
-        if let Some(p2) = p.borrow().as_ref() {
-            idl = Some(p2.clone());
-        } else {
-            log::error!("Thread Local IDL Required");
-            panic!("Thread Local IDL Required")
-        }
-    });
-    idl.unwrap()
-}
-
-pub fn get_class(classname: &str) -> Option<Arc<Class>> {
-    let mut idl_class: Option<Arc<Class>> = None;
-
-    THREAD_LOCAL_IDL.with(
-        |p| {
-            if let Some(idl) = p.borrow().as_ref() {
-                idl_class = idl.classes().get(classname).map(|c| c.clone())
-            } else {
-                log::error!("Thread Local IDL Required");
-                panic!("Thread Local IDL Required")
-            }
-        }, // Arc::clone()
-    );
-
-    idl_class
+/// Returns a ref to an IDL class by classname.
+///
+/// Err is returned if no such classes exists.
+pub fn get_class(classname: &str) -> EgResult<&Arc<Class>> {
+    parser()
+        .classes
+        .get(classname)
+        .ok_or_else(|| format!("No such IDL class: {classname}").into())
 }
 
 /// Various forms an IDL-classed object can take internally and on
@@ -413,6 +396,9 @@ impl fmt::Display for Class {
 }
 
 pub struct Parser {
+    /// Store each class in an Arc so it's easier for components
+    /// to have an owned ref to the Class, which comes in handy quite
+    /// a bit.
     classes: HashMap<String, Arc<Class>>,
 }
 
@@ -427,18 +413,27 @@ impl Parser {
         &self.classes
     }
 
-    /// Parse the IDL from a file
-    pub fn parse_file(filename: &str) -> EgResult<Arc<Parser>> {
+    /// Load the IDL from a file.
+    ///
+    /// Returns an Err if the IDL has already been parsed and loaded, in
+    /// part to discourage unnecessary reparsing, which is a heavy job.
+    pub fn load_file(filename: &str) -> EgResult<()> {
         let xml = match fs::read_to_string(filename) {
             Ok(x) => x,
             Err(e) => Err(format!("Cannot parse IDL file '{filename}': {e}"))?,
         };
 
-        Parser::parse_string(&xml)
+        let p = Parser::parse_string(&xml)?;
+
+        if GLOBAL_IDL.set(p).is_err() {
+            return Err(format!("Cannot initialize IDL more than once").into());
+        }
+
+        Ok(())
     }
 
     /// Parse the IDL as a string
-    pub fn parse_string(xml: &str) -> EgResult<Arc<Parser>> {
+    fn parse_string(xml: &str) -> EgResult<Parser> {
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
             Err(e) => Err(format!("Error parsing XML string for IDL: {e}"))?,
@@ -460,7 +455,7 @@ impl Parser {
             }
         }
 
-        Ok(Arc::new(parser))
+        Ok(parser)
     }
 
     fn add_class(&mut self, node: &roxmltree::Node) {
@@ -554,7 +549,6 @@ impl Parser {
 
         self.add_auto_fields(&mut class, field_array_pos);
 
-        //self.classes.insert(class.classname.to_string(), class.clone());
         self.classes
             .insert(class.classname.to_string(), Arc::new(class));
     }

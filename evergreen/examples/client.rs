@@ -2,7 +2,7 @@ use eg::EgResult;
 use evergreen as eg;
 
 fn main() -> EgResult<()> {
-    let ctx = eg::init::init()?;
+    let ctx = eg::init()?;
 
     let mut ses = ctx.client().session("opensrf.settings");
 

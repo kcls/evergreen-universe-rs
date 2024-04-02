@@ -35,7 +35,7 @@ fn main() {
         panic!("No viable SIP2 Server Configuration Found");
     };
 
-    let ctx = eg::init::init().expect("Evergreen Init");
+    let ctx = eg::init().expect("Evergreen Init");
 
     log::info!("SIP2 Server starting with config {config_file}");
 

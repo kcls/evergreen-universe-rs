@@ -1,9 +1,10 @@
 use evergreen as eg;
+use eg::EgValue;
 
 const CBT_NAME: &str = "open-ils.rs-store-test";
 
 fn main() -> EgResult<()> {
-    let ctx = eg::init::init().or_else(|e| Err(format!("Cannot init: {e}")))?;
+    let ctx = eg::init().or_else(|e| Err(format!("Cannot init: {e}")))?;
 
     let mut ses = ctx.client().session("open-ils.rs-store");
 
@@ -16,7 +17,7 @@ fn main() -> EgResult<()> {
         .expect("transaction.begin should return a value");
 
     // Create a new billing type row.
-    let mut cbt = ctx.idl().create("cbt").expect("'cbt' is an IDL object");
+    let mut cbt = EgValue::stub("cbt")?;
     cbt["name"] = EgValue::from(CBT_NAME);
     cbt["owner"] = EgValue::from(1);
 

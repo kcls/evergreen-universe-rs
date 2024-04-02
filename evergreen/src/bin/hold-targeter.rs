@@ -119,7 +119,7 @@ fn main() -> EgResult<()> {
     let mut init_ops = InitOptions::new();
     init_ops.skip_host_settings = true; // we don't need it.
 
-    let context = eg::init::init_with_options(&init_ops)?;
+    let context = eg::init::with_options(&init_ops)?;
 
     let mut multi_ses = MultiSession::new(context.client().clone(), "open-ils.rs-hold-targeter");
 

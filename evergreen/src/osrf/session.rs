@@ -1,5 +1,6 @@
 use crate::osrf::addr::BusAddress;
 use crate::osrf::client::{Client, ClientSingleton};
+use crate::osrf::conf;
 use crate::osrf::message;
 use crate::osrf::message::Message;
 use crate::osrf::message::MessageStatus;
@@ -201,7 +202,7 @@ impl fmt::Display for Session {
 impl Session {
     fn new(client: Client, service: &str) -> Session {
         let router_addr =
-            BusAddress::for_router(client.config().client().router_name(), client.domain());
+            BusAddress::for_router(conf::config().client().router_name(), client.domain());
 
         let service_addr = BusAddress::for_bare_service(service);
 

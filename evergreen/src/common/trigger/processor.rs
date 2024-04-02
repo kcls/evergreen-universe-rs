@@ -2,6 +2,7 @@
 /// given event definition.
 use crate as eg;
 use eg::common::trigger::{Event, EventState};
+use eg::idl;
 use eg::util::thread_id;
 use eg::Editor;
 use eg::EgResult;
@@ -186,10 +187,8 @@ impl<'a> Processor<'a> {
             }
         }
 
-        self.target_flesh = self
-            .editor
-            .idl()
-            .field_paths_to_flesh(self.core_type(), paths.as_slice())?;
+        self.target_flesh =
+            idl::parser().field_paths_to_flesh(self.core_type(), paths.as_slice())?;
 
         Ok(())
     }

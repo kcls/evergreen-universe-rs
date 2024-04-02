@@ -1,6 +1,4 @@
-use eg::idl;
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
-use eg::osrf::conf;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::osrf::sclient::HostSettings;
@@ -22,18 +20,11 @@ const APPNAME: &str = "open-ils.rs-hold-targeter";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct HoldTargeterEnv {
-    /// Global / shared IDL ref
-    idl: Arc<idl::Parser>,
-}
+pub struct HoldTargeterEnv {}
 
 impl HoldTargeterEnv {
-    pub fn new(idl: &Arc<idl::Parser>) -> Self {
-        HoldTargeterEnv { idl: idl.clone() }
-    }
-
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
+    pub fn new() -> Self {
+        HoldTargeterEnv {}
     }
 }
 
@@ -45,14 +36,11 @@ impl ApplicationEnv for HoldTargeterEnv {
 }
 
 /// Our main application class.
-pub struct HoldTargeterApplication {
-    /// We load the IDL during service init.
-    idl: Option<Arc<idl::Parser>>,
-}
+pub struct HoldTargeterApplication {}
 
 impl HoldTargeterApplication {
     pub fn new() -> Self {
-        HoldTargeterApplication { idl: None }
+        HoldTargeterApplication {}
     }
 }
 
@@ -62,18 +50,12 @@ impl Application for HoldTargeterApplication {
     }
 
     fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(HoldTargeterEnv::new(self.idl.as_ref().unwrap()))
+        Box::new(HoldTargeterEnv::new())
     }
 
     /// Load the IDL and perform any other needed global startup work.
-    fn init(
-        &mut self,
-        _client: Client,
-        _config: Arc<conf::Config>,
-        host_settings: Arc<HostSettings>,
-    ) -> EgResult<()> {
+    fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
-        self.idl = Some(idl::clone_thread_idl());
         Ok(())
     }
 
@@ -81,7 +63,6 @@ impl Application for HoldTargeterApplication {
     fn register_methods(
         &self,
         _client: Client,
-        _config: Arc<conf::Config>,
         _host_settings: Arc<HostSettings>,
     ) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
@@ -104,7 +85,6 @@ impl Application for HoldTargeterApplication {
 pub struct HoldTargeterWorker {
     env: Option<HoldTargeterEnv>,
     client: Option<Client>,
-    config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
@@ -114,7 +94,6 @@ impl HoldTargeterWorker {
         HoldTargeterWorker {
             env: None,
             client: None,
-            config: None,
             methods: None,
             host_settings: None,
         }
@@ -160,7 +139,6 @@ impl ApplicationWorker for HoldTargeterWorker {
     fn absorb_env(
         &mut self,
         client: Client,
-        config: Arc<conf::Config>,
         host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
@@ -170,11 +148,8 @@ impl ApplicationWorker for HoldTargeterWorker {
             .downcast_ref::<HoldTargeterEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
 
-        eg::idl::set_thread_idl(&worker_env.idl);
-
         self.env = Some(worker_env.clone());
         self.client = Some(client);
-        self.config = Some(config);
         self.methods = Some(methods);
         self.host_settings = Some(host_settings);
 

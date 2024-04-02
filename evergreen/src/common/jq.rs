@@ -192,9 +192,11 @@ impl JsonQueryCompiler {
             .ok_or_else(|| format!("No such class alias: {alias}").into())
     }
 
-    /// Get an IDL Class object from its classname.
+    /// Get an IDL Class object from its classname as an owned/cloned Arc.
+    ///
+    /// If you don't need an owned value, idl::get_class() will sufffice.
     fn get_idl_class(&self, classname: &str) -> EgResult<Arc<idl::Class>> {
-        idl::get_class(classname).ok_or_else(|| format!("Invalid IDL class: {classname}").into())
+        idl::get_class(classname).map(|a| a.clone())
     }
 
     /// Returns the base IDL class, i.e. the root class of the FROM clause.
@@ -209,7 +211,7 @@ impl JsonQueryCompiler {
     /// Returns option of IDL field if the field is valid exists on the
     /// class, isn't virtual, and may be viewed by this module.
     fn field_may_be_selected(&self, name: &str, class: &str) -> bool {
-        let idl_class = match self.get_idl_class(class) {
+        let idl_class = match idl::get_class(class) {
             Ok(c) => c,
             Err(_) => return false,
         };
@@ -559,7 +561,7 @@ impl JsonQueryCompiler {
         let classname = alias_class.classname();
 
         // If we have an alias it's known to be valid
-        let idl_class = self.get_idl_class(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         let mut fields = Vec::new();
         for field in idl_class.real_fields_sorted().iter() {
@@ -663,7 +665,7 @@ impl JsonQueryCompiler {
         let mut sql;
 
         let classname = self.get_alias_classname(class_alias)?;
-        let idl_class = self.get_idl_class(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         let idl_field = idl_class
             .fields()
@@ -760,7 +762,7 @@ impl JsonQueryCompiler {
     ) -> EgResult<String> {
         // If there's no "class" in the hash, the alias is the classname
         let right_class = join_def["class"].as_str().unwrap_or(right_alias);
-        let right_idl_class = self.get_idl_class(right_class)?; // Arc
+        let right_idl_class = self.get_idl_class(right_class)?;
 
         let left_class = self.get_alias_classname(left_alias)?;
         let left_idl_class = self.get_idl_class(left_class)?;
@@ -938,7 +940,7 @@ impl JsonQueryCompiler {
     /// a source definition, it will be source SQL wrappen in parens
     /// for inclusion in a containing query.
     fn class_table_or_source_def(&self, classname: &str) -> EgResult<String> {
-        if let Some(idl_class) = idl::get_class(classname) {
+        if let Ok(idl_class) = idl::get_class(classname) {
             if let Some(tablename) = idl_class.tablename() {
                 return Ok(self.check_identifier(&tablename)?.to_string());
             } else if let Some(source_def) = idl_class.source_definition() {
@@ -999,7 +1001,7 @@ impl JsonQueryCompiler {
                         // {"+aou": "shortname"}
                         // This can happen in order-by clauses.
 
-                        if !self.get_idl_class(classname)?.has_real_field(field) {
+                        if !idl::get_class(classname)?.has_real_field(field) {
                             return Err(
                                 format!("Class {classname} has no field named {field}").into()
                             );
@@ -1043,7 +1045,7 @@ impl JsonQueryCompiler {
 
                     // classname verified above.
                     // Make sure it's a valid field name
-                    if !self.get_idl_class(classname)?.has_real_field(key) {
+                    if !idl::get_class(classname)?.has_real_field(key) {
                         return Err(format!("Class {classname} has no field called {key}").into());
                     }
 
@@ -1290,7 +1292,7 @@ impl JsonQueryCompiler {
         // If the field in question is non-numeric, then we need
         // to treat it as a replaceable parameter.
         let classname = self.get_alias_classname(class_alias)?;
-        let idl_class = self.get_idl_class(classname)?;
+        let idl_class = idl::get_class(classname)?;
 
         let idl_field = idl_class
             .get_field(field_name)

@@ -40,7 +40,7 @@ fn main() -> EgResult<()> {
         appname: Some("sip2-mediator".to_string()),
     };
 
-    let ctx = eg::init::init_with_options(&options)?;
+    let ctx = eg::init::with_options(&options)?;
 
     let stream = server::Server::setup(conf, ctx)?;
 

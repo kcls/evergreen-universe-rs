@@ -168,7 +168,7 @@ fn unpack_response(text: &str) -> Option<EgValue> {
 fn _test_formats() {
     println!("EG init");
 
-    let ctx = eg::init::init().expect("EG init");
+    let ctx = eg::init().expect("EG init");
     let client = ctx.client();
 
     println!("Logging in");

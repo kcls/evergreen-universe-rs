@@ -1,3 +1,4 @@
+use crate::osrf::conf;
 ///! Settings Client Module
 ///
 use crate::Client;
@@ -20,7 +21,7 @@ impl SettingsClient {
         let mut req = ses.request(
             "opensrf.settings.host_config.get",
             vec![
-                EgValue::from(client.config().hostname()),
+                EgValue::from(conf::config().hostname()),
                 EgValue::from(force),
             ],
         )?;

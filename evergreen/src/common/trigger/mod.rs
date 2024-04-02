@@ -2,6 +2,7 @@
 use crate as eg;
 use eg::common::org;
 use eg::date;
+use eg::idl;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
@@ -269,12 +270,8 @@ pub fn create_passive_events_for_def(
     // Make sure we don't create events that are already represented.
 
     let core_type = event_def["hook"]["core_type"].as_str().unwrap(); // required
-    let idl_class = editor
-        .idl()
-        .classes()
-        .get(core_type)
-        .ok_or_else(|| format!("No such IDL class: {core_type}"))?
-        .clone(); // Arc; mut's
+                                                                      //let idl_class = idl::get_class(core_type)?.clone();
+    let idl_class = idl::get_class(core_type)?;
 
     let pkey_field = idl_class
         .pkey()

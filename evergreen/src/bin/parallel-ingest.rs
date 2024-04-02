@@ -59,7 +59,7 @@ fn init() -> Option<(IngestOptions, DatabaseConnection)> {
     DatabaseConnection::append_options(&mut opts);
 
     // We don't need a Client or IDL, so use the OpenSRF init directly.
-    eg::init::init().unwrap();
+    eg::init().unwrap();
 
     let params = match opts.parse(&args[1..]) {
         Ok(p) => p,

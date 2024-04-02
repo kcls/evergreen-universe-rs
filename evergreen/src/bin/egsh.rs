@@ -16,6 +16,7 @@ use eg::db;
 use eg::db::DatabaseConnection;
 use eg::editor;
 use eg::event;
+use eg::idl;
 use eg::idldb;
 use eg::init;
 
@@ -164,7 +165,7 @@ impl Shell {
             Err(e) => panic!("Error parsing options: {}", e),
         };
 
-        let context = match eg::init::init() {
+        let context = match eg::init() {
             Ok(c) => c,
             Err(e) => panic!("Cannot init to OpenSRF: {}", e),
         };
@@ -203,7 +204,7 @@ impl Shell {
         }
 
         let db = db.into_shared();
-        let translator = idldb::Translator::new(self.ctx().idl().clone(), db.clone());
+        let translator = idldb::Translator::new(db.clone());
 
         self.db = Some(db);
         self.db_translator = Some(translator);
@@ -473,7 +474,7 @@ impl Shell {
             // Caller provided a class hint.  Translate that into
             // the fieldmapper string used by cstore APIs.
 
-            if let Some(idl_class) = self.ctx().idl().classes().get(&class) {
+            if let Ok(idl_class) = idl::get_class(&class) {
                 if let Some(fm) = idl_class.fieldmapper() {
                     class = fm.replace("::", ".");
                 } else {
@@ -792,12 +793,7 @@ impl Shell {
         let operator = args[4];
         let value = args[5];
 
-        let idl_class = self
-            .ctx()
-            .idl()
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        let idl_class = idl::get_class(classname)?;
 
         if idl_class.fields().get(fieldname).is_none() {
             Err(format!("No such IDL field: {fieldname}"))?;

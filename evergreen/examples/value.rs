@@ -4,7 +4,7 @@ use evergreen as eg;
 
 pub fn main() -> EgResult<()> {
     // Connect and load the IDL
-    let ctx = eg::init::init()?;
+    let ctx = eg::init()?;
 
     let mut v = eg::hash! {
         "shortname": "BR1",

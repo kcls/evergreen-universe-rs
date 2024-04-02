@@ -1,5 +1,6 @@
 pub use editor::Editor;
 pub use event::EgEvent;
+pub use init::init;
 pub use osrf::client::Client;
 pub use osrf::conf::Config;
 pub use osrf::logging::Logger;

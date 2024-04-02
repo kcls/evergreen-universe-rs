@@ -3,7 +3,7 @@ use evergreen as eg;
 
 fn main() {
     // Standard setup + connect routines.
-    let ctx = eg::init::init().expect("Init OK");
+    let ctx = eg::init().expect("Init OK");
     let hsettings = ctx.host_settings().unwrap();
     let mut cache = cache::Cache::init(hsettings.clone()).expect("Cache Connected");
 

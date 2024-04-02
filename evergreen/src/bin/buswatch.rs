@@ -5,7 +5,6 @@ use eg::EgValue;
 use evergreen as eg;
 use std::env;
 use std::fmt;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -22,19 +21,18 @@ const DEFAULT_KEY_EXPIRE_SECS: u64 = 1800; // 30 minutes
 struct BusWatch {
     bus: bus::Bus,
     wait_time: u64,
-    config: Arc<conf::Config>,
     ttl: u64,
 }
 
 impl fmt::Display for BusWatch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Buswatch {}", self.config.client().domain())
+        write!(f, "Buswatch {}", conf::config().client().domain())
     }
 }
 
 impl BusWatch {
-    pub fn new(config: Arc<conf::Config>) -> Self {
-        let bus = match bus::Bus::new(config.client()) {
+    pub fn new() -> Self {
+        let bus = match bus::Bus::new(conf::config().client()) {
             Ok(b) => b,
             Err(e) => panic!("Cannot connect bus: {}", e),
         };
@@ -43,7 +41,6 @@ impl BusWatch {
 
         BusWatch {
             bus,
-            config,
             wait_time,
             ttl: DEFAULT_KEY_EXPIRE_SECS,
         }
@@ -121,11 +118,12 @@ impl BusWatch {
 }
 
 fn main() {
-    let ctx = eg::init::init().unwrap();
+    eg::init().unwrap();
+    let config = conf::config();
 
-    log::info!("Starting buswatch at {}", ctx.config().client().domain());
+    log::info!("Starting buswatch at {}", config.client().domain());
 
-    let mut watcher = BusWatch::new(ctx.config().clone());
+    let mut watcher = BusWatch::new();
 
     if let Ok(v) = env::var("OSRF_BUSWATCH_TTL") {
         if let Ok(v2) = v.parse::<u64>() {

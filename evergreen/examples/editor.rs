@@ -1,7 +1,7 @@
 use evergreen as eg;
 
 fn main() -> Result<(), String> {
-    let ctx = eg::init::init()?;
+    let ctx = eg::init()?;
     let client = ctx.client();
 
     println!("Logging in...");

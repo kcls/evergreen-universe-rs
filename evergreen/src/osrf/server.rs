@@ -38,7 +38,6 @@ pub struct WorkerThread {
 pub struct Server {
     application: Box<dyn app::Application>,
     methods: Option<Arc<HashMap<String, method::MethodDef>>>,
-    config: Arc<conf::Config>,
     client: Client,
     // Worker threads are tracked via their bus address.
     workers: HashMap<u64, WorkerThread>,
@@ -67,12 +66,9 @@ impl Server {
         let mut options = init::InitOptions::new();
         options.appname = Some(service.to_string());
 
-        let ctx = init::init_with_options(&options)?;
+        init::with_options(&options)?;
 
-        // We're done editing our Config. Wrap it in an Arc.
-        let config = ctx.config();
-
-        let mut client = match Client::connect(config.clone()) {
+        let mut client = match Client::connect() {
             Ok(c) => c,
             Err(e) => Err(format!("Server cannot connect to bus: {e}"))?,
         };
@@ -109,7 +105,6 @@ impl Server {
         ) = mpsc::sync_channel(0);
 
         let mut server = Server {
-            config: config.clone(),
             client,
             application,
             min_workers,
@@ -125,10 +120,6 @@ impl Server {
         };
 
         server.listen()
-    }
-
-    fn config(&self) -> &Arc<conf::Config> {
-        &self.config
     }
 
     fn host_settings(&self) -> &Arc<HostSettings> {
@@ -164,7 +155,6 @@ impl Server {
     fn spawn_one_thread(&mut self) {
         let worker_id = self.next_worker_id();
         let methods = self.methods.as_ref().unwrap().clone();
-        let confref = self.config().clone();
         let to_parent_tx = self.to_parent_tx.clone();
         let service = self.service().to_string();
         let factory = self.app().worker_factory();
@@ -182,7 +172,6 @@ impl Server {
                 factory,
                 service,
                 worker_id,
-                confref,
                 methods,
                 to_parent_tx,
             );
@@ -204,7 +193,6 @@ impl Server {
         factory: app::ApplicationWorkerFactory,
         service: String,
         worker_id: u64,
-        config: Arc<conf::Config>,
         methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) {
@@ -213,7 +201,6 @@ impl Server {
         let mut worker = match Worker::new(
             service,
             worker_id,
-            config,
             host_settings,
             stopping,
             methods,
@@ -246,7 +233,7 @@ impl Server {
     /// therefore whose routers with whom our presence should be registered.
     fn hosting_domains(&self) -> Vec<(String, String)> {
         let mut domains: Vec<(String, String)> = Vec::new();
-        for router in self.config().client().routers() {
+        for router in conf::config().client().routers() {
             match router.services() {
                 Some(services) => {
                     if services.iter().any(|s| s.eq(self.service())) {
@@ -302,18 +289,14 @@ impl Server {
 
     fn service_init(&mut self) -> EgResult<()> {
         let client = self.client.clone();
-        let config = self.config().clone();
         let host_settings = self.host_settings().clone();
-        self.app_mut().init(client, config, host_settings)
+        self.app_mut().init(client, host_settings)
     }
 
     fn register_methods(&mut self) -> EgResult<()> {
         let client = self.client.clone();
-        let config = self.config().clone();
         let host_settings = self.host_settings().clone();
-        let list = self
-            .app_mut()
-            .register_methods(client, config, host_settings)?;
+        let list = self.app_mut().register_methods(client, host_settings)?;
         let mut hash: HashMap<String, method::MethodDef> = HashMap::new();
         for m in list {
             hash.insert(m.name().to_string(), m);

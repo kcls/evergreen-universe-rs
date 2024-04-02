@@ -146,8 +146,6 @@ impl SessionInbound {
 /// Listens for responses on the OpenSRF bus and relays each to the
 /// main thread for processing.
 struct SessionOutbound {
-    idl: Arc<idl::Parser>,
-
     /// Relays messages to the main session thread.
     to_main_tx: mpsc::Sender<ChannelMessage>,
 
@@ -170,8 +168,6 @@ impl fmt::Display for SessionOutbound {
 
 impl SessionOutbound {
     fn run(&mut self) {
-        idl::set_thread_idl(&self.idl);
-
         loop {
             // Check before going back to wait for the next ws message.
             if self.shutdown_session.load(Ordering::Relaxed) {
@@ -209,9 +205,6 @@ impl SessionOutbound {
 /// Manages a single websocket client connection.  Sessions run in the
 /// main thread for each websocket connection.
 struct Session {
-    /// OpenSRF config
-    conf: Arc<conf::Config>,
-
     /// All messages flow to the main thread via this channel.
     to_main_rx: mpsc::Receiver<ChannelMessage>,
 
@@ -262,15 +255,7 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn run(
-        conf: Arc<conf::Config>,
-        idl: Arc<idl::Parser>,
-        stream: TcpStream,
-        max_parallel: usize,
-        shutdown: Arc<AtomicBool>,
-    ) -> EgResult<()> {
-        idl::set_thread_idl(&idl);
-
+    fn run(stream: TcpStream, max_parallel: usize, shutdown: Arc<AtomicBool>) -> EgResult<()> {
         let client_ip = stream
             .peer_addr()
             .or_else(|e| Err(format!("Could not determine client IP address: {e}")))?;
@@ -292,7 +277,7 @@ impl Session {
 
         let (to_main_tx, to_main_rx) = mpsc::channel();
 
-        let gateway = conf.gateway();
+        let gateway = conf::config().gateway();
         let busconf = gateway.as_ref().unwrap(); // previously verified
 
         let osrf_sender = Bus::new(busconf)?;
@@ -323,14 +308,12 @@ impl Session {
             client_ip: client_ip.clone(),
             shutdown_session: shutdown_session.clone(),
             osrf_receiver,
-            idl,
         };
 
         let mut session = Session {
             client_ip,
             to_main_rx,
             sender,
-            conf,
             osrf_sender,
             max_parallel,
             reqs_in_flight: 0,
@@ -771,8 +754,11 @@ impl Session {
             _ => Err(format!("{self} WS received Request with no payload"))?,
         };
 
-        let log_params =
-            eg::util::stringify_params(request.method(), request.params(), self.conf.log_protect());
+        let log_params = eg::util::stringify_params(
+            request.method(),
+            request.params(),
+            conf::config().log_protect(),
+        );
 
         log::info!(
             "ACT:[{}] {} {} {}",
@@ -816,8 +802,6 @@ impl mptc::Request for WebsocketRequest {
 }
 
 struct WebsocketHandler {
-    osrf_conf: Arc<eg::osrf::conf::Config>,
-    idl: Arc<idl::Parser>,
     max_parallel: usize,
     shutdown: Arc<AtomicBool>,
 }
@@ -841,13 +825,7 @@ impl mptc::RequestHandler for WebsocketHandler {
 
         let shutdown = self.shutdown.clone();
 
-        if let Err(e) = Session::run(
-            self.osrf_conf.clone(),
-            self.idl.clone(),
-            stream,
-            self.max_parallel,
-            shutdown,
-        ) {
+        if let Err(e) = Session::run(stream, self.max_parallel, shutdown) {
             log::error!("Websocket session ended with error: {e}");
         }
 
@@ -918,8 +896,6 @@ impl mptc::RequestStream for WebsocketStream {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let handler = WebsocketHandler {
             shutdown: self.shutdown.clone(),
-            idl: self.eg_ctx.idl().clone(),
-            osrf_conf: self.eg_ctx.config().clone(),
             max_parallel: self.max_parallel,
         };
 
@@ -960,13 +936,10 @@ fn main() {
     // NOTE: Since we are not fetching host settings, we use
     // the default IDL path unless it's overridden with the
     // EG_IDL_FILE environment variable.
-    let eg_ctx = eg::init::init_with_options(&init_ops).expect("Evergreen init");
+    let eg_ctx = eg::init::with_options(&init_ops).expect("Evergreen init");
 
     // Setup logging with the gateway config
-    let gateway_conf = eg_ctx
-        .config()
-        .gateway()
-        .expect("No gateway configuration found");
+    let gateway_conf = conf::config().gateway().expect("Gateway config required");
 
     eg::osrf::logging::Logger::new(gateway_conf.logging())
         .expect("Creating logger")

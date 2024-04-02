@@ -1,4 +1,5 @@
 use crate as eg;
+use eg::idl;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
@@ -103,11 +104,7 @@ pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<EgValue> {
 
     let mut mvr = eg::hash! {"doc_id": bib_id};
 
-    let idl_class = editor
-        .idl()
-        .classes()
-        .get("mvr")
-        .ok_or_else(|| format!("IDL missing class 'mvr'"))?;
+    let idl_class = idl::get_class("mvr")?;
 
     // Dynamically copy values from the display attribute set
     // into an mvr JSON object.

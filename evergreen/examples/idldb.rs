@@ -1,4 +1,5 @@
 use eg::db::DatabaseConnection;
+use eg::idl;
 use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
 use eg::EgValue;
@@ -16,13 +17,16 @@ fn main() -> Result<(), String> {
         Err(e) => panic!("Error parsing options: {}", e),
     };
 
-    let ctx = eg::init::init()?;
+    eg::init()?;
+
+    let c = eg::idl::get_class("aou").unwrap();
+    println!("CLASS IS {c:?}");
 
     let mut db = DatabaseConnection::new_from_options(&params);
     db.connect()?;
     let db = db.into_shared();
 
-    let mut translator = Translator::new(ctx.idl().clone(), db.clone());
+    let mut translator = Translator::new(db.clone());
 
     // Give me all rows
     let mut search = IdlClassSearch::new("aou");
@@ -149,7 +153,7 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let flesh = ctx.idl().field_paths_to_flesh(
+    let flesh = idl::parser().field_paths_to_flesh(
         "acqpo",
         &[
             "lineitems.lineitem_details.owning_lib",

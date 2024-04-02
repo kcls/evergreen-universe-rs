@@ -214,17 +214,12 @@ impl IdlClassSearch {
 
 /// Manages the translation to / from IDL objects and database queries.
 pub struct Translator {
-    idl: Arc<idl::Parser>,
     db: Rc<RefCell<db::DatabaseConnection>>,
 }
 
 impl Translator {
-    pub fn new(idl: Arc<idl::Parser>, db: Rc<RefCell<db::DatabaseConnection>>) -> Self {
-        Translator { idl, db }
-    }
-
-    pub fn idl(&self) -> &Arc<idl::Parser> {
-        &self.idl
+    pub fn new(db: Rc<RefCell<db::DatabaseConnection>>) -> Self {
+        Translator { db }
     }
 
     /// Start a new database transaction
@@ -252,10 +247,7 @@ impl Translator {
         pkey: &EgValue,
         flesh_def: Option<FleshDef>,
     ) -> EgResult<Option<EgValue>> {
-        let idl_class = match self.idl().classes().get(classname) {
-            Some(c) => c,
-            None => return Err(format!("No such IDL class: {classname}").into()),
-        };
+        let idl_class = idl::get_class(classname)?;
 
         let pkey_field = match idl_class.pkey_field() {
             Some(f) => f,
@@ -472,11 +464,7 @@ impl Translator {
 
         let classname = &create.classname;
 
-        let idl_class = self
-            .idl()
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        let idl_class = idl::get_class(classname)?;
 
         let tablename = idl_class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")
@@ -578,11 +566,7 @@ impl Translator {
 
         let classname = &update.classname;
 
-        let class = self
-            .idl()
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        let class = idl::get_class(classname)?;
 
         let tablename = class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")
@@ -636,11 +620,7 @@ impl Translator {
             Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
         }
 
-        let class = self
-            .idl()
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        let class = idl::get_class(classname)?;
 
         let tablename = class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")
@@ -681,11 +661,7 @@ impl Translator {
 
         log::debug!("idl_class_search() {search:?}");
 
-        let class = self
-            .idl()
-            .classes()
-            .get(classname)
-            .ok_or_else(|| format!("No such IDL class: {classname}"))?;
+        let class = idl::get_class(classname)?;
 
         let tablename = class.tablename().ok_or_else(|| {
             format!("Cannot query an IDL class that has no tablename: {classname}")

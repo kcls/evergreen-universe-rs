@@ -1,5 +1,6 @@
 use super::conf::Config;
 use super::session::Session;
+use eg::osrf;
 use evergreen as eg;
 use mptc;
 use std::any::Any;
@@ -33,13 +34,8 @@ impl mptc::Request for SipConnectRequest {
 pub struct SessionFactory {
     shutdown: Arc<AtomicBool>,
 
-    idl: Arc<eg::idl::Parser>,
-
     /// Parsed SIP config
     sip_config: Arc<Config>,
-
-    /// OpenSRF config
-    osrf_conf: Arc<eg::osrf::conf::Config>,
 
     /// OpenSRF bus.
     osrf_bus: Option<eg::osrf::bus::Bus>,
@@ -48,9 +44,8 @@ pub struct SessionFactory {
 impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
         // Connect to Evergreen when each thread first starts.
-        let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
+        let bus = eg::osrf::bus::Bus::new(osrf::conf::config().client())?;
         self.osrf_bus = Some(bus);
-        eg::idl::set_thread_idl(&self.idl);
 
         log::debug!("SessionFactory connected OK to opensrf");
 
@@ -74,13 +69,12 @@ impl mptc::RequestHandler for SessionFactory {
         let osrf_bus = self.osrf_bus.take().unwrap();
 
         let sip_config = self.sip_config.clone();
-        let osrf_config = self.osrf_conf.clone();
 
         // request.stream is set in the call to next() that produced
         // this request.
         let stream = request.stream.take().unwrap();
 
-        let mut session = Session::new(sip_config, osrf_config, osrf_bus, stream, shutdown)?;
+        let mut session = Session::new(sip_config, osrf_bus, stream, shutdown)?;
 
         if let Err(e) = session.start() {
             // This is not necessarily an error.  The client may simply
@@ -151,9 +145,7 @@ impl mptc::RequestStream for Server {
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let sf = SessionFactory {
-            idl: eg::idl::clone_thread_idl(),
             shutdown: self.shutdown.clone(),
-            osrf_conf: self.eg_ctx.config().clone(),
             sip_config: self.sip_config.clone(),
             osrf_bus: None, // set in worker_start
         };

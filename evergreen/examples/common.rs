@@ -5,7 +5,7 @@ use eg::result::EgResult;
 use evergreen as eg;
 
 fn main() -> EgResult<()> {
-    let ctx = eg::init::init()?;
+    let ctx = eg::init()?;
     let client = ctx.client();
     let mut editor = Editor::new(client);
 

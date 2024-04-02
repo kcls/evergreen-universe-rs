@@ -67,7 +67,7 @@ fn main() -> Result<(), String> {
 
     // OpenSRF connect, get host settings, parse IDL, etc.
     let t = Timer::new();
-    let ctx = eg::init::init().expect("Evergreen Init");
+    let ctx = eg::init().expect("Evergreen Init");
     t.done("EG Init");
 
     if params.opt_present("help") {
