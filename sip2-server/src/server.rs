@@ -38,8 +38,6 @@ pub struct SessionFactory {
 
     sip_config: Arc<Config>,
 
-    idl: Arc<eg::idl::Parser>,
-
     osrf_conf: Arc<eg::osrf::conf::Config>,
 
     /// OpenSRF bus.
@@ -53,7 +51,6 @@ impl mptc::RequestHandler for SessionFactory {
     fn worker_start(&mut self) -> Result<(), String> {
         let bus = eg::osrf::bus::Bus::new(self.osrf_conf.client())?;
         self.osrf_bus = Some(bus);
-        eg::idl::set_thread_idl_legacy(&self.idl);
 
         log::debug!("SessionFactory connected OK to opensrf");
 
@@ -182,7 +179,6 @@ impl mptc::RequestStream for Server {
         let sf = SessionFactory {
             shutdown: self.shutdown.clone(),
             sip_config: self.sip_config.clone(),
-            idl: self.eg_ctx.idl().clone(),
             osrf_conf: self.eg_ctx.config().clone(),
             osrf_bus: None, // set in worker_start
             org_cache: self.org_cache.as_ref().unwrap().clone(),
