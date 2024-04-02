@@ -37,7 +37,7 @@ pub fn get_parser() -> &'static Parser {
 ///
 /// Err is returned if no such classes exists.
 pub fn get_class2(classname: &str) -> EgResult<&Arc<Class>> {
-    get_parser().classes2
+    get_parser().classes
         .get(classname)
         .ok_or_else(|| format!("No such IDL class: {classname}").into())
 }
@@ -395,8 +395,10 @@ impl fmt::Display for Class {
 }
 
 pub struct Parser {
+    /// Store each class in an Arc so it's easier for components
+    /// to have an owned ref to the Class, which comes in handy quite
+    /// a bit.
     classes: HashMap<String, Arc<Class>>,
-    classes2: HashMap<String, Arc<Class>>,
 }
 
 impl fmt::Debug for Parser {
@@ -435,7 +437,6 @@ impl Parser {
 
         let mut parser = Parser {
             classes: HashMap::new(),
-            classes2: HashMap::new(),
         };
 
         for root_node in doc.root().children() {
@@ -544,12 +545,7 @@ impl Parser {
 
         self.add_auto_fields(&mut class, field_array_pos);
 
-        // TODO
-        self.classes2.insert(class.classname.to_string(), Arc::new(class.clone()));
-
-        //self.classes.insert(class.classname.to_string(), class.clone());
-        self.classes
-            .insert(class.classname.to_string(), Arc::new(class));
+        self.classes.insert(class.classname.to_string(), Arc::new(class));
     }
 
     fn add_auto_fields(&self, class: &mut Class, mut pos: usize) {
