@@ -19,8 +19,8 @@ const CONNECT_TCP_BACKLOG: i32 = 128;
 /// Current thread ID as u64.
 ///
 /// Eventually this will not be needed.
-/// https://doc.rust-lang.org/stable/std/thread/struct.ThreadId.html#method.as_u64
-/// https://github.com/rust-lang/rust/pull/110738
+/// <https://doc.rust-lang.org/stable/std/thread/struct.ThreadId.html#method.as_u64>
+/// <https://github.com/rust-lang/rust/pull/110738>
 pub fn thread_id() -> u64 {
     // "Thread(123)"
     let id = format!("{:?}", thread::current().id());

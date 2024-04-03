@@ -13,7 +13,7 @@ pub type EgDate = DateTime<FixedOffset>;
 ///
 /// Supports a subset of the language, which is typically enough
 /// for our use cases.  For better parsing, if needed, we could use
-/// (e.g.) https://crates.io/crates/parse_duration
+/// (e.g.) <https://crates.io/crates/parse_duration>
 ///
 /// ```
 /// use evergreen::date;

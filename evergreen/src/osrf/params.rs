@@ -1,9 +1,9 @@
 use crate::{EgResult, EgValue};
 use json::JsonValue;
 
-/// Generic container for translating various data types into a Vec<JsonValue>.
+/// Generic container for translating various data types into a `Vec<JsonValue>`.
 ///
-/// NOTE: Into<ApiParams> values that are Vec/&Vec's are treated as a
+/// NOTE: `Into<ApiParams>` values that are Vec/&Vec's are treated as a
 /// list of individual API call parameters.  To pass a single parameter
 /// that is itself a list, pass the value as either a JsonValue::Array
 /// or as a (e.g.) vec![vec![1,2,3]].

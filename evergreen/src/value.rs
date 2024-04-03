@@ -1,12 +1,12 @@
 ///! EgValue
-///
-/// Wrapper class for JsonValue's which may also contain IDL-blessed values,
-/// i.e. those that have an IDL class and a well-defined set of fields.
-///
-/// Values serialize and deserialize as JsonValue's and much of the
-/// code here takes direct inspiration from from the implemention for:
-///
-/// https://docs.rs/json/latest/json/enum.JsonValue.html
+///!
+///! Wrapper class for JsonValue's which may also contain IDL-blessed values,
+///! i.e. those that have an IDL class and a well-defined set of fields.
+///!
+///! Values serialize and deserialize as JSON/JsonValue's and much of the
+///! code here takes direct inspiration from from the implemention for:
+///! https://docs.rs/json/latest/json/enum.JsonValue.html
+///!
 use crate as eg;
 use eg::idl;
 use eg::{EgError, EgResult};
@@ -171,6 +171,10 @@ impl EgValue {
 
     /// Translates a Blessed value into a generic Hash value, non-recursively.
     ///
+    /// Fields which are not represented in the Blessed value, but do
+    /// exist in the class definition for the value, are included in the
+    /// generated Hash as Null values.
+    ///
     /// NO-OP for non-Blessed values.
     pub fn unbless(&mut self) {
         let (idl_class, mut map) = match self {
@@ -198,6 +202,10 @@ impl EgValue {
 
     /// Translates Blessed values into generic Hash values, recursively,
     /// retaining the original classname in the HASH_CLASSNAME_KEY key.
+    ///
+    /// Fields which are not represented in the Blessed value, but do
+    /// exist in the class definition for the value, are included in the
+    /// generated Hash as Null values.
     pub fn to_classed_hash(&mut self) {
         let (idl_class, mut map) = match self {
             Self::Array(ref mut list) => {
