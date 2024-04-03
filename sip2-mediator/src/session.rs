@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// for shutdown, etc. signals.
 const SIG_POLL_INTERVAL: u64 = 5;
 
-/// Manages the connection between a SIP client and the HTTP backend.
+/// Manages the connection between a SIP client and the Evergreen backend.
 pub struct Session {
     sip_connection: sip2::Connection,
 
@@ -45,6 +45,7 @@ impl Session {
             Err(e) => return Err(format!("SIP connection has no peer addr? {e}").into()),
         }
 
+        // Random session key string
         let key = eg::util::random_number(16);
 
         let mut con = sip2::Connection::from_stream(stream);
@@ -104,12 +105,13 @@ impl Session {
                 }
             }
 
-            // Relay the request to the HTTP backend and wait for a response.
-            // If an error occurs, all we can do is exit and force a
-            // disconnect, since SIP has no concept of an error response.
+            // Relay the request to the Evergreen backend and wait for a
+            // response.  If an error occurs, all we can do is exit and
+            // force a disconnect, since SIP has no concept of an error
+            // response.
             let sip_resp = self.osrf_round_trip(&sip_req)?;
 
-            log::trace!("{self} HTTP server replied with {sip_resp:?}");
+            log::trace!("{self} EG server replied with {sip_resp:?}");
 
             // Send the response back to the SIP client as a SIP message.
             if let Err(e) = self.sip_connection.send(&sip_resp) {
@@ -163,6 +165,7 @@ impl Session {
 
         let params = vec![EgValue::from(self.key.as_str()), msg_val];
 
+        // Uses the default request timeout (probably 60 seconds).
         let response = self
             .client
             .send_recv_one("open-ils.sip2", "open-ils.sip2.request", params)?

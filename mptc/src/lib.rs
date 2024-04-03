@@ -1,4 +1,5 @@
 pub mod server;
+pub mod signals;
 pub mod worker;
 
 pub use server::Server;

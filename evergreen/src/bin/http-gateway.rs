@@ -241,7 +241,6 @@ impl GatewayHandler {
                         .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
                 }
 
-
                 if format.is_hash() {
                     // JSON replies arrive from opensrf as Fieldmapper-encoded
                     // objects.  Decode them into flat hashes for the caller.

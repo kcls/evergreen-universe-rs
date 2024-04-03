@@ -195,7 +195,10 @@ impl EgValue {
         }
 
         // Add the _classname entry
-        map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(idl_class.classname()));
+        map.insert(
+            HASH_CLASSNAME_KEY.to_string(),
+            EgValue::from(idl_class.classname()),
+        );
 
         *self = EgValue::Hash(map);
     }
@@ -235,7 +238,10 @@ impl EgValue {
         }
 
         // Add the _classname entry
-        map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(idl_class.classname()));
+        map.insert(
+            HASH_CLASSNAME_KEY.to_string(),
+            EgValue::from(idl_class.classname()),
+        );
 
         *self = EgValue::Hash(map);
     }

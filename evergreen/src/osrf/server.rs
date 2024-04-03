@@ -9,9 +9,8 @@ use crate::osrf::session;
 use crate::osrf::worker::{Worker, WorkerState, WorkerStateEvent};
 use crate::util;
 use crate::EgResult;
-use signal_hook;
+use mptc::signals::SignalTracker;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -45,10 +44,11 @@ pub struct Server {
     worker_id_gen: u64,
     to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
-    stopping: Arc<AtomicBool>,
     host_settings: Arc<HostSettings>,
     min_workers: usize,
     max_workers: usize,
+
+    sig_tracker: SignalTracker,
 
     /// Minimum number of idle workers.  Note we don't support
     /// max_idle_workers at this time -- it would require adding an
@@ -115,7 +115,7 @@ impl Server {
             to_parent_tx: tx,
             to_parent_rx: rx,
             workers: HashMap::new(),
-            stopping: Arc::new(AtomicBool::new(false)),
+            sig_tracker: SignalTracker::new(),
             host_settings: host_settings.into_shared(),
         };
 
@@ -144,7 +144,7 @@ impl Server {
     }
 
     fn spawn_threads(&mut self) {
-        if self.stopping.load(Ordering::Relaxed) {
+        if self.sig_tracker.any_shutdown_requested() {
             return;
         }
         while self.workers.len() < self.min_workers {
@@ -160,13 +160,13 @@ impl Server {
         let factory = self.app().worker_factory();
         let env = self.app().env();
         let host_settings = self.host_settings.clone();
-        let stopping = self.stopping.clone();
+        let sig_tracker = self.sig_tracker.clone();
 
         log::trace!("server: spawning a new worker {worker_id}");
 
         let handle = thread::spawn(move || {
             Server::start_worker_thread(
-                stopping,
+                sig_tracker,
                 env,
                 host_settings,
                 factory,
@@ -187,7 +187,7 @@ impl Server {
     }
 
     fn start_worker_thread(
-        stopping: Arc<AtomicBool>,
+        sig_tracker: SignalTracker,
         env: Box<dyn app::ApplicationEnv>,
         host_settings: Arc<HostSettings>,
         factory: app::ApplicationWorkerFactory,
@@ -202,7 +202,7 @@ impl Server {
             service,
             worker_id,
             host_settings,
-            stopping,
+            sig_tracker,
             methods,
             to_parent_tx,
         ) {
@@ -273,17 +273,6 @@ impl Server {
                 Some(self.service()),
             )?;
         }
-        Ok(())
-    }
-
-    fn setup_signal_handlers(&self) -> EgResult<()> {
-        // If any of these signals occur, our self.stopping flag will be set to true
-        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-            if let Err(e) = signal_hook::flag::register(sig, self.stopping.clone()) {
-                return Err(format!("Cannot register signal handler: {e}").into());
-            }
-        }
-
         Ok(())
     }
 
@@ -374,7 +363,9 @@ impl Server {
         self.register_methods()?;
         self.register_routers()?;
         self.spawn_threads();
-        self.setup_signal_handlers()?;
+        self.sig_tracker.track_graceful_shutdown();
+        self.sig_tracker.track_fast_shutdown();
+        self.sig_tracker.track_reload();
 
         let duration = Duration::from_secs(IDLE_WAKE_TIME);
 
@@ -397,8 +388,7 @@ impl Server {
             // Always check for failed threads.
             work_performed = self.check_failed_threads() || work_performed;
 
-            // Did a signal set our "stopping" flag?
-            if self.stopping.load(Ordering::Relaxed) {
+            if self.sig_tracker.any_shutdown_requested() {
                 log::info!("We received a stop signal, exiting");
                 break;
             }
@@ -517,7 +507,7 @@ impl Server {
 
         log::trace!("server: workers idle={idle} active={active}");
 
-        if self.stopping.load(Ordering::Relaxed) {
+        if self.sig_tracker.any_shutdown_requested() {
             return;
         }
 

@@ -1,8 +1,7 @@
+use super::signals::SignalTracker;
 use super::{Request, RequestHandler};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -92,19 +91,17 @@ pub struct Worker {
     max_requests: usize,
     request_count: usize,
     start_time_epoch: u64,
-    shutdown: Arc<AtomicBool>,
-    shutdown_before: Arc<AtomicU64>,
     to_parent_tx: mpsc::Sender<WorkerStateEvent>,
     to_worker_rx: mpsc::Receiver<Box<dyn Request>>,
     handler: Box<dyn RequestHandler>,
+    sig_tracker: SignalTracker,
 }
 
 impl Worker {
     pub fn new(
         worker_id: u64,
         max_requests: usize,
-        shutdown: Arc<AtomicBool>,
-        shutdown_before: Arc<AtomicU64>,
+        sig_tracker: SignalTracker,
         to_parent_tx: mpsc::Sender<WorkerStateEvent>,
         to_worker_rx: mpsc::Receiver<Box<dyn Request>>,
         handler: Box<dyn RequestHandler>,
@@ -117,9 +114,8 @@ impl Worker {
         Worker {
             worker_id,
             max_requests,
+            sig_tracker,
             start_time_epoch: epoch,
-            shutdown,
-            shutdown_before,
             to_parent_tx,
             to_worker_rx,
             request_count: 0,
@@ -145,7 +141,7 @@ impl Worker {
             // If we're here, our parent server has exited or failed in
             // some unrecoverable way.  Tell our fellow workers it's
             // time to shut down.
-            self.shutdown.store(true, Ordering::Relaxed);
+            self.sig_tracker.request_fast_shutdown();
 
             return Err(format!("Error notifying parent of state change: {e}"));
         } else {
@@ -154,15 +150,15 @@ impl Worker {
     }
 
     fn should_shut_down(&self) -> bool {
-        if self.shutdown.load(Ordering::Relaxed) {
+        if self.sig_tracker.any_shutdown_requested() {
             log::debug!("{self} received shutdown, exiting run loop");
             println!("{self} received shutdown, exiting run loop");
             return true;
         }
 
-        let sdbf = self.shutdown_before.load(Ordering::Relaxed);
-        if sdbf > self.start_time_epoch {
-            log::info!("{self} shutdown_before of {sdbf} issued.  That includes us");
+        let reload_time = self.sig_tracker.reload_request_time();
+        if reload_time > self.start_time_epoch {
+            log::info!("{self} shutdown_before of {reload_time} issued.  That includes us");
             return true;
         }
 
@@ -189,7 +185,7 @@ impl Worker {
                     // If we're here, our parent server has exited
                     // or failed in some unrecoverable way.
                     // Tell our fellow workers it's time to shut down.
-                    self.shutdown.store(true, Ordering::Relaxed);
+                    self.sig_tracker.request_graceful_shutdown();
                     break;
                 }
             };

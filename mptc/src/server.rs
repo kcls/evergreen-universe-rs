@@ -1,12 +1,10 @@
+use super::signals::SignalTracker;
 use super::worker::{Worker, WorkerInstance, WorkerState, WorkerStateEvent};
 use super::{Request, RequestStream};
-use signal_hook as sig;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 pub struct Server {
     worker_id_gen: u64,
@@ -19,14 +17,7 @@ pub struct Server {
     max_workers: usize,
     max_worker_reqs: usize,
 
-    reload: Arc<AtomicBool>,
-    shutdown: Arc<AtomicBool>,
-
-    // Contains the epoch seconds at which the most recent reload
-    // request was issued.  With this,  workers can tell if they
-    // need to shut down (as part of a reload) by comparing their
-    // start time with the shutdown request time.
-    shutdown_before: Arc<AtomicU64>,
+    sig_tracker: SignalTracker,
 
     /// All inbound requests arrive via this stream.
     stream: Box<dyn RequestStream>,
@@ -42,15 +33,13 @@ impl Server {
         Server {
             stream,
             workers: HashMap::new(),
+            sig_tracker: SignalTracker::new(),
             worker_id_gen: 0,
             to_parent_tx: tx,
             to_parent_rx: rx,
             min_workers: super::DEFAULT_MIN_WORKERS,
             max_workers: super::DEFAULT_MAX_WORKERS,
             max_worker_reqs: super::DEFAULT_MAX_WORKER_REQS,
-            reload: Arc::new(AtomicBool::new(false)),
-            shutdown: Arc::new(AtomicBool::new(false)),
-            shutdown_before: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -91,8 +80,7 @@ impl Server {
         let to_parent_tx = self.to_parent_tx.clone();
         let max_reqs = self.max_worker_reqs;
         let handler = self.stream.new_handler();
-        let shutdown = self.shutdown.clone();
-        let shutdown_before = self.shutdown_before.clone();
+        let sig_tracker = self.sig_tracker.clone();
 
         log::trace!(
             "Starting worker with idle={} active={}",
@@ -106,15 +94,7 @@ impl Server {
         ) = mpsc::channel();
 
         let handle = thread::spawn(move || {
-            let mut w = Worker::new(
-                worker_id,
-                max_reqs,
-                shutdown,
-                shutdown_before,
-                to_parent_tx,
-                rx,
-                handler,
-            );
+            let mut w = Worker::new(worker_id, max_reqs, sig_tracker, to_parent_tx, rx, handler);
             w.run();
         });
 
@@ -217,17 +197,9 @@ impl Server {
     /// becomes available.
     fn housekeeping(&mut self, block: bool) -> bool {
         loop {
-            if self.reload.load(Ordering::Relaxed) {
+            if self.sig_tracker.reload_requested() {
                 log::info!("Reload request received.");
-                self.reload.store(false, Ordering::Relaxed);
-
-                // Tell any workers that started before now to shut
-                // themselves down.
-                let epoch = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                self.shutdown_before.store(epoch, Ordering::Relaxed);
+                self.sig_tracker.handle_reload_requested();
 
                 if let Err(e) = self.stream.reload() {
                     log::error!("Reload command failed, exiting. {e}");
@@ -235,8 +207,8 @@ impl Server {
                 }
             }
 
-            if self.shutdown.load(Ordering::Relaxed) {
-                log::info!("Graceful shutdown request received.");
+            if self.sig_tracker.any_shutdown_requested() {
+                log::info!("Shutdown request received.");
                 self.stream.shutdown();
                 return true;
             }
@@ -268,10 +240,9 @@ impl Server {
     }
 
     pub fn run(&mut self) {
-        if let Err(e) = self.setup_signal_handlers() {
-            log::error!("Cannot setup signal handlers: {e}");
-            return;
-        }
+        self.sig_tracker.track_graceful_shutdown();
+        self.sig_tracker.track_fast_shutdown();
+        self.sig_tracker.track_reload();
 
         self.start_workers();
 
@@ -343,17 +314,5 @@ impl Server {
                 return *k; // &u64
             }
         }
-    }
-
-    fn setup_signal_handlers(&self) -> Result<(), String> {
-        if let Err(e) = sig::flag::register(sig::consts::SIGHUP, self.reload.clone()) {
-            return Err(format!("Cannot register HUP signal: {e}"));
-        }
-
-        if let Err(e) = sig::flag::register(sig::consts::SIGINT, self.shutdown.clone()) {
-            return Err(format!("Cannot register INT signal: {e}"));
-        }
-
-        Ok(())
     }
 }

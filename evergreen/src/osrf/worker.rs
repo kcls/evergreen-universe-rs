@@ -15,10 +15,10 @@ use crate::osrf::sclient::HostSettings;
 use crate::osrf::session::ServerSession;
 use crate::util;
 use crate::EgResult;
+use mptc::signals::SignalTracker;
 use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -54,8 +54,8 @@ impl WorkerStateEvent {
 pub struct Worker {
     service: String,
 
-    /// Has our server asked us to clean up and exit?
-    stopping: Arc<AtomicBool>,
+    /// Watches for signals
+    sig_tracker: SignalTracker,
 
     /// Settings from opensrf.settings
     host_settings: Arc<HostSettings>,
@@ -92,7 +92,7 @@ impl Worker {
         service: String,
         worker_id: u64,
         host_settings: Arc<HostSettings>,
-        stopping: Arc<AtomicBool>,
+        sig_tracker: SignalTracker,
         methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> EgResult<Worker> {
@@ -100,7 +100,7 @@ impl Worker {
 
         Ok(Worker {
             host_settings,
-            stopping,
+            sig_tracker,
             service,
             worker_id,
             methods,
@@ -261,7 +261,7 @@ impl Worker {
             // Did we get a shutdown signal?  Check this after
             // "end_session()" so we don't interrupt a conversation to
             // shutdown.
-            if self.stopping.load(Ordering::Relaxed) {
+            if self.sig_tracker.any_shutdown_requested() {
                 log::info!("{selfstr} received a stop signal");
                 break;
             }
