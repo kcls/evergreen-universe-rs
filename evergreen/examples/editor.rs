@@ -4,9 +4,6 @@ fn main() -> Result<(), String> {
     let ctx = eg::init()?;
     let client = ctx.client();
 
-    println!("Logging in...");
-
-    //let args = eg::auth::AuthLoginArgs::new("admin", "demo123", "temp", None);
     let args = eg::auth::AuthLoginArgs::new("br1mclark", "montyc1234", "temp", None);
     let auth_ses = match eg::auth::AuthSession::login(client, &args)? {
         Some(s) => s,
@@ -27,6 +24,12 @@ fn main() -> Result<(), String> {
         println!("Requestor is allowed");
     } else {
         println!("Requestor is NOT allowed");
+    }
+
+    if editor.allowed_at("VIEW_USER", 4)? {
+        println!("VIEW_USER is allowed");
+    } else {
+        println!("VIEW_USER is NOT allowed");
     }
 
     if let Some(org) = editor.retrieve("aou", 4)? {

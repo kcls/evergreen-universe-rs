@@ -173,15 +173,25 @@ impl EgValue {
     ///
     /// NO-OP for non-Blessed values.
     pub fn unbless(&mut self) {
-        let (classname, mut map) = match self {
+        let (idl_class, mut map) = match self {
             Self::Blessed(ref mut o) => (
-                o.idl_class.classname(),
+                &o.idl_class,
                 std::mem::replace(&mut o.values, HashMap::new()),
             ),
             _ => return,
         };
 
-        map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(classname));
+        // Null's are not stored in Blessed values by default, but we do
+        // want all of the real fields to be present in the plain Hash that's
+        // generated from this method call, including NULL values.
+        for field_name in idl_class.fields().keys() {
+            if !map.contains_key(field_name) {
+                map.insert(field_name.to_string(), Self::Null);
+            }
+        }
+
+        // Add the _classname entry
+        map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(idl_class.classname()));
 
         *self = EgValue::Hash(map);
     }
@@ -189,7 +199,7 @@ impl EgValue {
     /// Translates Blessed values into generic Hash values, recursively,
     /// retaining the original classname in the HASH_CLASSNAME_KEY key.
     pub fn to_classed_hash(&mut self) {
-        let (classname, mut map) = match self {
+        let (idl_class, mut map) = match self {
             Self::Array(ref mut list) => {
                 list.iter_mut().for_each(|v| v.to_classed_hash());
                 return;
@@ -199,14 +209,25 @@ impl EgValue {
                 return;
             }
             Self::Blessed(ref mut o) => (
-                o.idl_class.classname(),
+                &o.idl_class,
                 std::mem::replace(&mut o.values, HashMap::new()),
             ),
             _ => return,
         };
 
         map.values_mut().for_each(|v| v.to_classed_hash());
-        map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(classname));
+
+        // Null's are not stored in Blessed values by default, but we do
+        // want all of the real fields to be present in the plain Hash that's
+        // generated from this method call, including NULL values.
+        for field_name in idl_class.fields().keys() {
+            if !map.contains_key(field_name) {
+                map.insert(field_name.to_string(), Self::Null);
+            }
+        }
+
+        // Add the _classname entry
+        map.insert(HASH_CLASSNAME_KEY.to_string(), EgValue::from(idl_class.classname()));
 
         *self = EgValue::Hash(map);
     }
@@ -238,6 +259,7 @@ impl EgValue {
         let classname = match self[HASH_CLASSNAME_KEY].as_str() {
             Some(c) => c,
             None => {
+                // Vanilla, un-classed hash
                 if let Self::Hash(ref mut m) = self {
                     for v in m.values_mut() {
                         v.from_classed_hash()?;
@@ -247,6 +269,7 @@ impl EgValue {
             }
         };
 
+        // This hash has class
         let idl_class = idl::get_class(classname)?.clone();
 
         let mut map = match self {
