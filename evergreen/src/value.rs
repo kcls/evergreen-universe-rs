@@ -188,9 +188,9 @@ impl EgValue {
         // Null's are not stored in Blessed values by default, but we do
         // want all of the real fields to be present in the plain Hash that's
         // generated from this method call, including NULL values.
-        for field_name in idl_class.fields().keys() {
-            if !map.contains_key(field_name) {
-                map.insert(field_name.to_string(), Self::Null);
+        for field in idl_class.real_fields() {
+            if !map.contains_key(field.name()) {
+                map.insert(field.name().to_string(), Self::Null);
             }
         }
 
@@ -231,9 +231,9 @@ impl EgValue {
         // Null's are not stored in Blessed values by default, but we do
         // want all of the real fields to be present in the plain Hash that's
         // generated from this method call, including NULL values.
-        for field_name in idl_class.fields().keys() {
-            if !map.contains_key(field_name) {
-                map.insert(field_name.to_string(), Self::Null);
+        for field in idl_class.real_fields() {
+            if !map.contains_key(field.name()) {
+                map.insert(field.name().to_string(), Self::Null);
             }
         }
 
