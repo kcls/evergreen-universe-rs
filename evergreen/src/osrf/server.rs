@@ -66,7 +66,7 @@ impl Server {
         let mut options = init::InitOptions::new();
         options.appname = Some(service.to_string());
 
-        init::with_options(&options)?;
+        init::osrf_init(&options)?;
 
         let mut client = match Client::connect() {
             Ok(c) => c,
