@@ -9,9 +9,13 @@ SYSTEMD_DIR = /lib/systemd/system
 TEST_THREADS = 8
 BUILD_THREADS = 8
 
-build: build-evergreen build-sip2server build-sip2mediator
+build: build-evergreen build-sip2mediator
 
-build-release: build-evergreen-release build-sip2server-release
+# Removes Cargo artifacts
+clean:
+	cargo clean
+
+build-release: build-evergreen-release build-sip2mediator-release
 
 test:
 	cargo test -j ${BUILD_THREADS} --all -- --test-threads=${TEST_THREADS}
@@ -19,9 +23,9 @@ test:
 test-evergreen:
 	cargo test -j ${BUILD_THREADS} --package evergreen -- --test-threads=${TEST_THREADS}
 
-install: install-evergreen install-sip2server install-sip2mediator
+install: install-evergreen install-sip2mediator
 
-install-release: install-evergreen-release install-sip2server-release install-sip2mediator-release
+install-release: install-evergreen-release install-sip2mediator-release
 
 # --- Evergreen ---
 

@@ -5,7 +5,7 @@ members = [
   "marc",
   "evergreen",
   "sip2",
-  "sip2-server",
+# "sip2-server",
   "sip2-mediator",
 ]
 default-members = [
