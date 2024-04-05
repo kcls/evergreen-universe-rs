@@ -23,9 +23,6 @@ regex = "1.9"
 getopts = "0.2"
 md5 = "0.7"
 
-# Used by (at least) the parallel export script
-threadpool = "1.8"
-
 # Needed for extracting numeric PG types
 pg_interval = "0.4"
 rust_decimal = { version = "1.26", features = ["db-postgres"] }

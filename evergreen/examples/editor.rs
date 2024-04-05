@@ -7,7 +7,7 @@ fn main() -> eg::EgResult<()> {
     let orgs = editor.search("aou", eg::hash! {"id": {">": 0}})?;
 
     for org in orgs {
-       println!("Org: {org}");
+        println!("Org: {org}");
     }
 
     let mut new_org = eg::hash! {
@@ -16,7 +16,7 @@ fn main() -> eg::EgResult<()> {
         "name": "TEST NAME",
     };
 
-	// Turn a bare hash into a blessed org unit ("aou") value.
+    // Turn a bare hash into a blessed org unit ("aou") value.
     new_org.bless("aou")?;
 
     // Modify a value after instantiation
@@ -32,7 +32,6 @@ fn main() -> eg::EgResult<()> {
 
     // Rollback the transaction and disconnect
     editor.rollback()?;
-
 
     let client = ctx.client();
 

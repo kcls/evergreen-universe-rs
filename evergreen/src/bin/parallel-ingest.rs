@@ -1,11 +1,9 @@
 use eg::db::DatabaseConnection;
 use evergreen as eg;
 use getopts::Options;
-use log::{debug, error, info};
 use postgres as pg;
 use std::fs;
 use std::thread;
-use threadpool::ThreadPool;
 
 #[derive(Debug, Clone)]
 struct IngestOptions {
@@ -122,7 +120,7 @@ fn get_record_ids(connection: &mut DatabaseConnection, sql: &str) -> Vec<i64> {
         ids.push(id);
     }
 
-    info!("Found {} record IDs to process", ids.len());
+    log::info!("Found {} record IDs to process", ids.len());
 
     ids
 }
@@ -154,7 +152,7 @@ fn ingest_records(
 
     // Remaining actions can be run in parallel
 
-    let pool = ThreadPool::new(options.max_threads);
+    let mut handles = Vec::new();
 
     while !ids.is_empty() {
         let end = match ids.len() {
@@ -162,32 +160,53 @@ fn ingest_records(
             _ => ids.len(),
         };
 
+        if handles.len() >= options.max_threads {
+            wait_for_one_thread(&mut handles);
+        }
+
         // Always pull from index 0 since we are draining the Vec each time.
         let batch: Vec<i64> = ids.drain(0..end).collect();
 
         let ops = options.clone();
         let con = connection.partial_clone();
 
-        pool.execute(move || process_batch(ops, con, batch));
+        handles.push(thread::spawn(move || process_batch(ops, con, batch)));
+    }
 
-        if pool.queued_count() > options.batch_size * 2 {
-            // Wait for each batch of batches to complete before
-            // moving on to the next.  With this we avoid queueing up
-            // huge numbers of pending threads w/ cloned closure data
-            // consuming lots of memory up front, which can be spread
-            // over time instead.
-            pool.join();
+    for handle in handles.drain(..) {
+        handle.join().ok();
+    }
+}
+
+/// Waits for at least one thread to complete.
+///
+/// Panics if handles is empty.
+fn wait_for_one_thread(handles: &mut Vec<thread::JoinHandle<()>>) {
+    let mut new_list = Vec::new();
+    let mut found = false;
+
+    for handle in handles.drain(..) {
+        if handle.is_finished() {
+            found = true;
+            handle.join().expect("Join Failed");
+        } else {
+            new_list.push(handle);
         }
     }
 
-    pool.join();
+    if !found {
+        // If no threads are ready yet, wait on the first one.
+        new_list.remove(0).join().expect("Join Failed");
+    }
+
+    *handles = new_list;
 }
 
 /// Start point for our threads
 fn process_batch(options: IngestOptions, mut connection: DatabaseConnection, ids: Vec<i64>) {
     let idlen = ids.len();
 
-    info!(
+    log::info!(
         "{:?} processing {} records: {}..{}",
         thread::current().id(),
         idlen,
@@ -223,13 +242,13 @@ fn run_serialized_updates(
         if counter % options.batch_size == 0 {
             connection.reconnect().unwrap();
             stmt = Some(connection.client().prepare(sql).unwrap());
-            info!("Browse has processed {counter} records");
+            log::info!("Browse has processed {counter} records");
         }
 
         counter += 1;
 
         if let Err(e) = connection.client().query(stmt.as_ref().unwrap(), &[id]) {
-            error!("Error with browse index for record {id}: {e}");
+            log::error!("Error with browse index for record {id}: {e}");
         }
     }
 }
@@ -238,7 +257,7 @@ fn run_serialized_updates(
 ///
 /// This occurs in the main thread without any parallelification.
 fn reingest_browse(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &Vec<i64>) {
-    debug!("Starting reingest_browse()");
+    log::debug!("Starting reingest_browse()");
 
     let sql = r#"
 		SELECT metabib.reingest_metabib_field_entries(
@@ -254,7 +273,7 @@ fn reingest_browse(options: &IngestOptions, connection: &mut DatabaseConnection,
 }
 
 fn do_search(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &Vec<i64>) {
-    debug!("Starting do_search()");
+    log::debug!("Starting do_search()");
 
     let sql = r#"
         SELECT metabib.reingest_metabib_field_entries(
@@ -273,7 +292,7 @@ fn do_search(options: &IngestOptions, connection: &mut DatabaseConnection, ids: 
 ///
 /// This occurs in the main thread without any parallelification.
 fn rebuild_rmsr(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &Vec<i64>) {
-    debug!("Starting rebuild_rmsr()");
+    log::debug!("Starting rebuild_rmsr()");
 
     let sql = r#"SELECT reporter.simple_rec_update($1)"#;
 
@@ -285,7 +304,7 @@ fn reingest_field_entries(
     connection: &mut DatabaseConnection,
     ids: &Vec<i64>,
 ) {
-    debug!("Starting reingest_field_entries()");
+    log::debug!("Starting reingest_field_entries()");
 
     let sql = r#"
         SELECT metabib.reingest_metabib_field_entries(
@@ -293,7 +312,7 @@ fn reingest_field_entries(
             skip_facet := $2,
             skip_browse := TRUE,
             skip_search := TRUE,
-            skip_display := $4
+            skip_display := $3
         )
     "#;
 
@@ -304,7 +323,7 @@ fn reingest_field_entries(
             .client()
             .query(&stmt, &[id, &!options.do_facets, &!options.do_display])
         {
-            error!("Error processing record: {id} {e}");
+            log::error!("Error processing record: {id} {e}");
         }
     }
 }
@@ -314,7 +333,7 @@ fn reingest_attributes(
     connection: &mut DatabaseConnection,
     ids: &Vec<i64>,
 ) {
-    debug!("Batch starting reingest_attributes()");
+    log::debug!("Batch starting reingest_attributes()");
 
     let has_attr_filter = !options.attrs.is_empty();
 
@@ -342,7 +361,7 @@ fn reingest_attributes(
         };
 
         if let Err(e) = result {
-            error!("Error processing record: {id} {e}");
+            log::error!("Error processing record: {id} {e}");
         }
     }
 }
