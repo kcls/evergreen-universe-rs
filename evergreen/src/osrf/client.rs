@@ -4,7 +4,7 @@ use crate::osrf::conf;
 use crate::osrf::message;
 use crate::osrf::params::ApiParams;
 use crate::osrf::session::ResponseIterator;
-use crate::osrf::session::SessionHandle;
+use crate::osrf::session::ClientSession;
 use crate::util;
 use crate::{EgResult, EgValue};
 use log::info;
@@ -326,8 +326,8 @@ impl Client {
     }
 
     /// Create a new client session for the requested service.
-    pub fn session(&self, service: &str) -> SessionHandle {
-        SessionHandle::new(self.clone(), service)
+    pub fn session(&self, service: &str) -> ClientSession {
+        ClientSession::new(self.clone(), service)
     }
 
     /// Discard any unprocessed messages from our backlog and clear our

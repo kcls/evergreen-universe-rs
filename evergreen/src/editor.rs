@@ -5,7 +5,7 @@ use eg::osrf::params::ApiParams;
 use eg::result::{EgError, EgResult};
 use eg::Client;
 use eg::EgValue;
-use eg::SessionHandle;
+use eg::ClientSession;
 
 const DEFAULT_TIMEOUT: i32 = 60;
 
@@ -47,7 +47,7 @@ pub struct QueryOps {
 
 pub struct Editor {
     client: Client,
-    session: Option<SessionHandle>,
+    session: Option<ClientSession>,
 
     personality: Personality,
     authtoken: Option<String>,
@@ -504,7 +504,7 @@ impl Editor {
     }
 
     /// Returns our mutable session, creating a new one if needed.
-    fn session(&mut self) -> &mut SessionHandle {
+    fn session(&mut self) -> &mut ClientSession {
         if self.session.is_none() {
             self.session = Some(self.client.session(self.personality().into()));
         }

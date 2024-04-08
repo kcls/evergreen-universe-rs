@@ -36,7 +36,7 @@ struct Response {
 #[derive(Clone)]
 pub struct Request {
     /// Link to our session so we can ask it for bus data.
-    session: Rc<RefCell<Session>>,
+    session: Rc<RefCell<ClientSessionInternal>>,
 
     /// Have we received all of the replies yet?
     complete: bool,
@@ -50,7 +50,7 @@ pub struct Request {
 }
 
 impl Request {
-    fn new(thread: String, session: Rc<RefCell<Session>>, thread_trace: usize) -> Request {
+    fn new(thread: String, session: Rc<RefCell<ClientSessionInternal>>, thread_trace: usize) -> Request {
         Request {
             session,
             thread,
@@ -153,7 +153,7 @@ impl Request {
 }
 
 /// Client communication state maintenance.
-struct Session {
+struct ClientSessionInternal {
     /// Client so we can ask it to pull data from the Bus for us.
     client: Client,
 
@@ -180,7 +180,7 @@ struct Session {
 
     /// Most recently used per-thread request id.
     ///
-    /// Each new Request within a Session gets a new thread_trace.
+    /// Each new Request within a ClientSessionInternal gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
     last_thread_trace: usize,
 
@@ -193,20 +193,20 @@ struct Session {
     partial_buffer: Option<String>,
 }
 
-impl fmt::Display for Session {
+impl fmt::Display for ClientSessionInternal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Session({} {})", self.service(), self.thread())
     }
 }
 
-impl Session {
-    fn new(client: Client, service: &str) -> Session {
+impl ClientSessionInternal {
+    fn new(client: Client, service: &str) -> ClientSessionInternal {
         let router_addr =
             BusAddress::for_router(conf::config().client().router_name(), client.domain());
 
         let service_addr = BusAddress::for_bare_service(service);
 
-        Session {
+        ClientSessionInternal {
             client,
             router_addr,
             service_addr,
@@ -562,17 +562,17 @@ impl Session {
 }
 
 /// Public-facing Session wrapper which exports the needed session API.
-pub struct SessionHandle {
-    session: Rc<RefCell<Session>>,
+pub struct ClientSession {
+    session: Rc<RefCell<ClientSessionInternal>>,
 }
 
-impl SessionHandle {
-    pub fn new(client: Client, service: &str) -> SessionHandle {
-        let ses = Session::new(client, service);
+impl ClientSession {
+    pub fn new(client: Client, service: &str) -> ClientSession {
+        let ses = ClientSessionInternal::new(client, service);
 
         log::trace!("Created new session {ses}");
 
-        SessionHandle {
+        ClientSession {
             session: Rc::new(RefCell::new(ses)),
         }
     }
