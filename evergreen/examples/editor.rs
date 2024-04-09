@@ -10,16 +10,14 @@ fn main() -> eg::EgResult<()> {
         println!("Org: {org}");
     }
 
-    let mut new_org = eg::hash! {
+    let mut new_org = eg::blessed! {
+        "_classname": "aou",
         "ou_type": 1,
         "shortname": "TEST",
         "name": "TEST NAME",
     };
 
-    // Turn a bare hash into a blessed org unit ("aou") value.
-    new_org.bless("aou")?;
-
-    // Modify a value after instantiation
+    // Modify a field on a value.
     new_org["email"] = "home@example.org".into();
 
     // Start a database transaction so we can modify data.

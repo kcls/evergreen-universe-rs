@@ -74,5 +74,14 @@ pub fn main() -> EgResult<()> {
 
     println!("value is {v:?}");
 
+    let v = eg::blessed! {
+        "_classname": "aou",
+        "id": 123,
+        "name": "TEST",
+        "shortname": "FOO",
+    };
+
+    println!("v = {v}");
+
     Ok(())
 }

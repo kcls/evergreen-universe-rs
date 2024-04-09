@@ -27,9 +27,9 @@ const HASH_CLASSNAME_KEY: &str = "_classname";
 /// Macro for build EgValue::Hash's by leveraging the json::object! macro.
 ///
 /// Panics if an attempt is made to build an EgValue::Blessed with
-/// an unknown class name or invalid field, however this should never
-/// happen in practice, since EgValue::Blessed are validated well
-/// before they can be included in an eg::hash! {} invocation.
+/// an unknown class name or invalid field, which can only happen
+/// in practice if the caller defines the hash using the wire-level
+/// JSON_CLASS_KEY ("__c") and JSON_PAYLOAD_KEY ("__p") structure.
 ///
 /// let h = eg::hash! {"hello": "errbody"};
 #[macro_export]
@@ -37,6 +37,29 @@ macro_rules! hash {
     ($($tts:tt)*) => {
         eg::value::EgValue::from_json_value(json::object!($($tts)*)).expect("eg::hash!")
     }
+}
+
+/// Macro for buildling EgValue::Blessed values by encoding the
+/// classname directly in the hash via the HASH_CLASSNAME_KEY key
+/// ("_classname").
+///
+/// Panics if an attempt is made to build a blessed value with an
+/// unknown class name or invalid field.
+///
+/// let v = eg::blessed! {
+///     "_classname": "aou",
+///     "id": 123,
+///     "name": "TEST",
+///     "shortname": "FOO",
+/// };
+#[macro_export]
+macro_rules! blessed {
+    ($($tts:tt)*) => {{
+        let mut val =
+            eg::value::EgValue::from_json_value(json::object!($($tts)*)).expect("from_json_value");
+        val.from_classed_hash().expect("from_classed_hash()");
+        val
+    }}
 }
 
 /// Macro for build EgValue's by leveraging the json::object! macro.
@@ -292,6 +315,10 @@ impl EgValue {
         };
 
         for (key, value) in map.iter_mut() {
+            if key == HASH_CLASSNAME_KEY {
+                // Skip _classname field.
+                continue;
+            }
             if !idl_class.has_field(key) {
                 return Err(format!(
                     "Class '{}' has no field named '{key}'",
