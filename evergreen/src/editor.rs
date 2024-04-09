@@ -4,8 +4,8 @@ use eg::idl;
 use eg::osrf::params::ApiParams;
 use eg::result::{EgError, EgResult};
 use eg::Client;
-use eg::EgValue;
 use eg::ClientSession;
+use eg::EgValue;
 
 const DEFAULT_TIMEOUT: i32 = 60;
 

@@ -50,7 +50,11 @@ pub struct Request {
 }
 
 impl Request {
-    fn new(thread: String, session: Rc<RefCell<ClientSessionInternal>>, thread_trace: usize) -> Request {
+    fn new(
+        thread: String,
+        session: Rc<RefCell<ClientSessionInternal>>,
+        thread_trace: usize,
+    ) -> Request {
         Request {
             session,
             thread,

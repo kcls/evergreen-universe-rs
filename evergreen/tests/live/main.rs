@@ -1,7 +1,7 @@
 use evergreen as eg;
 mod circ;
-mod store;
 mod json_query;
+mod store;
 mod util;
 
 /// Set to 'ignored' by default since it requires a running system

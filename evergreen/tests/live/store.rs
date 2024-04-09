@@ -51,7 +51,6 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     assert!(cbt.id().is_ok());
     tester.timer.stop("Retrieved Billing Type");
 
-
     // Search for the new billing type by name
     tester.timer.start();
     let query = eg::hash! {"name": CBT_NAME};
