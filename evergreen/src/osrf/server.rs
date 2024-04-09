@@ -4,7 +4,7 @@ use crate::osrf::client::Client;
 use crate::osrf::conf;
 use crate::osrf::message;
 use crate::osrf::method;
-use crate::osrf::sclient::{HostSettings, SettingsClient};
+use crate::osrf::sclient::HostSettings;
 use crate::osrf::session;
 use crate::osrf::worker::{Worker, WorkerState, WorkerStateEvent};
 use crate::util;
@@ -66,17 +66,8 @@ impl Server {
         let mut options = init::InitOptions::new();
         options.appname = Some(service.to_string());
 
-        init::osrf_init(&options)?;
-
-        let mut client = match Client::connect() {
-            Ok(c) => c,
-            Err(e) => Err(format!("Server cannot connect to bus: {e}"))?,
-        };
-
-        let host_settings = match SettingsClient::get_host_settings(&mut client, false) {
-            Ok(s) => s,
-            Err(e) => Err(format!("Cannot fetch host setttings: {e}"))?,
-        };
+        let (client, host_settings) = init::osrf_init(&options)?;
+        let host_settings = host_settings.unwrap(); // fetched by options
 
         let min_workers = host_settings
             .value(&format!("apps/{service}/unix_config/min_children"))
@@ -116,7 +107,7 @@ impl Server {
             to_parent_rx: rx,
             workers: HashMap::new(),
             sig_tracker: SignalTracker::new(),
-            host_settings: host_settings.into_shared(),
+            host_settings: host_settings,
         };
 
         server.listen()

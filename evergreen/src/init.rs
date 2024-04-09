@@ -26,9 +26,14 @@ impl Context {
 }
 
 pub struct InitOptions {
+    /// Skip logging initialization.
+    /// Useful if changes to the logging config first.
     pub skip_logging: bool,
+
+    /// Skip fetching the host settings from opensrf.settings
     pub skip_host_settings: bool,
-    // Application name to use with syslog.
+
+    /// Application name to use with syslog.
     pub appname: Option<String>,
 }
 
@@ -49,7 +54,9 @@ pub fn init() -> EgResult<Context> {
     with_options(&InitOptions::new())
 }
 
-pub fn osrf_init(options: &InitOptions) -> EgResult<()> {
+/// Parse the OpenSRF config file, connect to the message bus, and
+/// optionally fetch the host settings and initialize logging.
+pub fn osrf_init(options: &InitOptions) -> EgResult<(Client, Option<Arc<sclient::HostSettings>>)> {
     let builder = if let Ok(fname) = env::var("OSRF_CONFIG") {
         conf::ConfigBuilder::from_file(&fname)?
     } else {
@@ -127,12 +134,6 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<()> {
     // Save the config as the one-true-global-osrf-config
     config.store()?;
 
-    Ok(())
-}
-
-pub fn with_options(options: &InitOptions) -> EgResult<Context> {
-    osrf_init(&options)?;
-
     let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
     // We try to get the IDL path from opensrf.settings, but that will
@@ -146,6 +147,12 @@ pub fn with_options(options: &InitOptions) -> EgResult<Context> {
             host_settings = Some(s.into_shared());
         }
     }
+
+    Ok((client, host_settings))
+}
+
+pub fn with_options(options: &InitOptions) -> EgResult<Context> {
+    let (client, host_settings) = osrf_init(&options)?;
 
     load_idl(host_settings.as_ref())?;
 
