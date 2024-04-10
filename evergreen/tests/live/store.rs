@@ -5,6 +5,7 @@ use evergreen as eg;
 
 const CBT_NAME: &str = "open-ils.rs-store-test";
 
+#[allow(dead_code)]
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     let client = tester.ctx.client();
     let mut ses = client.session("open-ils.rs-store");
