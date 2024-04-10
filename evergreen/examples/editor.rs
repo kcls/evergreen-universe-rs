@@ -15,7 +15,7 @@ fn main() -> eg::EgResult<()> {
         "ou_type": 1,
         "shortname": "TEST",
         "name": "TEST NAME",
-    };
+    }?;
 
     // Modify a field on a value.
     new_org["email"] = "home@example.org".into();

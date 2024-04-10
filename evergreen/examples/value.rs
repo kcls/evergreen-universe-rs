@@ -79,7 +79,7 @@ pub fn main() -> EgResult<()> {
         "id": 123,
         "name": "TEST",
         "shortname": "FOO",
-    };
+    }?;
 
     println!("v = {v}");
 

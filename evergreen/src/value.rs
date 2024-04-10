@@ -35,7 +35,15 @@ const HASH_CLASSNAME_KEY: &str = "_classname";
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
-        eg::value::EgValue::from_json_value(json::object!($($tts)*)).expect("eg::hash!")
+        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
+            Ok(v) => v,
+            Err(e) => {
+                // Unlikely to get here, but not impossible.
+                let msg = format!("eg::hash! {e}");
+                log::error!("{msg}");
+                panic!("{}", msg);
+            }
+        }
     }
 }
 
@@ -43,22 +51,29 @@ macro_rules! hash {
 /// classname directly in the hash via the HASH_CLASSNAME_KEY key
 /// ("_classname").
 ///
-/// Panics if an attempt is made to build a blessed value with an
-/// unknown class name or invalid field.
+/// Returns Result<EgValue> to accommodate invalid classnames or fields.
+/// Becuase of this, the macro only works within functions that return
+/// EgResult.
 ///
 /// let v = eg::blessed! {
 ///     "_classname": "aou",
 ///     "id": 123,
 ///     "name": "TEST",
 ///     "shortname": "FOO",
-/// };
+/// }?;
 #[macro_export]
 macro_rules! blessed {
     ($($tts:tt)*) => {{
-        let mut val =
-            eg::value::EgValue::from_json_value(json::object!($($tts)*)).expect("from_json_value");
-        val.from_classed_hash().expect("from_classed_hash()");
-        val
+        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
+            Ok(mut v) => {
+                v.from_classed_hash()?;
+                Ok(v)
+            },
+            Err(e) => {
+                log::error!("eg::hash! {e}");
+                Err(e)
+            }
+        }
     }}
 }
 
@@ -73,7 +88,15 @@ macro_rules! blessed {
 #[macro_export]
 macro_rules! array {
     ($($tts:tt)*) => {
-        eg::value::EgValue::from_json_value(json::array!($($tts)*)).expect("eg::array!")
+        match eg::value::EgValue::from_json_value(json::array!($($tts)*)) {
+            Ok(v) => v,
+            Err(e) => {
+                // Unlikely to get here, but not impossible.
+                let msg = format!("eg::hash! {e}");
+                log::error!("{msg}");
+                panic!("{}", msg);
+            }
+        }
     }
 }
 // ---
