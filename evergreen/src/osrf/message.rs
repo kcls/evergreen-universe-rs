@@ -608,6 +608,10 @@ impl Result {
         &self.content
     }
 
+    pub fn content_mut(&mut self) -> &mut EgValue {
+        &mut self.content
+    }
+
     pub fn take_content(&mut self) -> EgValue {
         self.content.take()
     }
@@ -764,6 +768,10 @@ impl MethodCall {
 
     pub fn params(&self) -> &Vec<EgValue> {
         &self.params
+    }
+
+    pub fn params_mut(&mut self) -> &mut Vec<EgValue> {
+        &mut self.params
     }
 
     pub fn take_params(&mut self) -> Vec<EgValue> {

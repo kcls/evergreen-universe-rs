@@ -24,9 +24,16 @@ fn main() -> eg::EgResult<()> {
     editor.xact_begin()?;
 
     // Editor::create returns the newly created value.
-    new_org = editor.create(new_org)?;
+    editor.create(new_org)?;
 
-    println!("Add Org: {new_org} email={}", new_org["email"]);
+    // Search for the newly created org unit
+    // NOTE: ^-- editor.create() also returns the newly created value.
+    let org_list = editor.search("aou", eg::hash! {"shortname": "TEST"})?;
+
+    // If found, log it
+    if let Some(org) = org_list.get(0) {
+        println!("Add Org: {org} email={}", org["email"]);
+    }
 
     // Rollback the transaction and disconnect
     editor.rollback()?;

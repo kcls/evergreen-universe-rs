@@ -610,13 +610,9 @@ impl Session {
                     if format_hash {
                         if let eg::osrf::message::Payload::Method(ref mut meth) = msg.payload_mut()
                         {
-                            let mut new_params = Vec::new();
-                            let mut params = meth.take_params();
-                            for mut p in params.drain(..) {
+                            for p in meth.params_mut() {
                                 p.from_classed_hash()?;
-                                new_params.push(p);
                             }
-                            meth.set_params(new_params);
                         }
                     }
 
@@ -708,13 +704,11 @@ impl Session {
                 if let Some(format) = self.format.as_ref() {
                     if format.is_hash() {
                         // The caller wants result data returned in HASH format
-                        let mut content = r.take_content();
-                        content.to_classed_hash(); // Hashify
+                        r.content_mut().to_classed_hash();
                         if format == &idl::DataFormat::Hash {
                             // Caller wants a default slim hash
-                            content.scrub_hash_nulls();
+                            r.content_mut().scrub_hash_nulls();
                         }
-                        r.set_content(content);
                     }
                 }
             }

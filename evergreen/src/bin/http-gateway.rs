@@ -435,6 +435,7 @@ impl GatewayHandler {
                         // before relaying them to opensrf.
                         val = EgValue::from_classed_json_hash(jval)?;
                     } else {
+                        // Caller is sending array-based Fieldmapper IDL value.
                         val = EgValue::from_json_value(jval)?;
                     }
 
