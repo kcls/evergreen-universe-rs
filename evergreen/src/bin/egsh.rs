@@ -270,6 +270,12 @@ impl Shell {
             return Ok(());
         }
 
+        if self.db.is_some() {
+            eprintln!("Cannot process piped content while --with-database is on");
+            self.exit();
+            return Ok(());
+        }
+
         let mut buffer = String::new();
         let stdin = io::stdin();
 
