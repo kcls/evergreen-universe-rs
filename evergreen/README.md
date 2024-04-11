@@ -15,12 +15,13 @@ fn main() -> eg::EgResult<()> {
        println!("Org: {org}");
     }
 
+    // Create an org unit ("aou") value by hand.
     let mut new_org = eg::blessed! {
         "_classname": "aou",
         "ou_type": 1,
         "shortname": "TEST",
         "name": "TEST NAME",
-    }?
+    }?;
 
     // Modify a value after instantiation
     new_org["email"] = "home@example.org".into();
