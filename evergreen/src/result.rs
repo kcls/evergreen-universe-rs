@@ -1,3 +1,5 @@
+//! Common result type for methods/fuctions which may return a `Result`.
+
 use crate::event::EgEvent;
 use std::fmt;
 

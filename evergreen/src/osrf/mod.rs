@@ -1,3 +1,4 @@
+//! OpenSRF Components
 pub mod addr;
 pub mod app;
 pub mod bus;

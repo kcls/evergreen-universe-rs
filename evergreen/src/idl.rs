@@ -1,9 +1,4 @@
-///! IDL Parser
-///!
-///! Creates an in-memory representation of the IDL file.
-///!
-///! Parser is wrapped in an Arc<Parser> since it's read-only and
-///! practically all areas of EG code need a reference to it.
+//! Creates an in-memory representation of the fieldmapper IDL.
 use crate as eg;
 use crate::EgResult;
 use crate::EgValue;

@@ -1,12 +1,9 @@
-///! EgValue
-///!
-///! Wrapper class for JsonValue's which may also contain IDL-blessed values,
-///! i.e. those that have an IDL class and a well-defined set of fields.
-///!
-///! Values serialize and deserialize as JSON/JsonValue's and much of the
-///! code here takes direct inspiration from from the implemention for:
-///! https://docs.rs/json/latest/json/enum.JsonValue.html
-///!
+//! Wrapper class for JsonValue's which may also contain IDL-blessed values,
+//! i.e. those that have an IDL class and a well-defined set of fields.
+
+// Values serialize and deserialize as JSON/JsonValue's and much of the
+// code here takes direct inspiration from from the implemention for:
+// <https://docs.rs/json/latest/json/enum.JsonValue.html>
 use crate as eg;
 use eg::idl;
 use eg::{EgError, EgResult};
@@ -51,7 +48,7 @@ macro_rules! hash {
 /// classname directly in the hash via the HASH_CLASSNAME_KEY key
 /// ("_classname").
 ///
-/// Returns Result<EgValue> to accommodate invalid classnames or fields.
+/// Returns `Result<EgValue>` to accommodate invalid classnames or fields.
 /// Becuase of this, the macro only works within functions that return
 /// EgResult.
 ///

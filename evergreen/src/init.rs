@@ -1,3 +1,4 @@
+//! Connect to OpenSRF/Redis, load host settings, and load the IDL.
 use crate::idl;
 use crate::osrf::conf;
 use crate::osrf::logging;

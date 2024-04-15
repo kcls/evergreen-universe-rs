@@ -1,3 +1,5 @@
+//! Date handling utilities
+
 use crate::result::EgResult;
 use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, NaiveDate, TimeZone};
 use chrono_tz::Tz;

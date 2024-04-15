@@ -1,4 +1,4 @@
-///! Tools for translating between IDL objects and Database rows.
+//! Tools for managing IDL-classed objects/values via SQL.
 use crate as eg;
 use chrono::prelude::*;
 use eg::db;

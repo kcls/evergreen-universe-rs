@@ -289,6 +289,8 @@ pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
 ///
 /// Example:
 ///
+///
+/// ```text
 /// loop {
 ///    let mut tcp_listener = eg::util::tcp_listener("127.0.0.1", 9898, 5)?;
 ///
@@ -307,9 +309,8 @@ pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
 ///            }
 ///        }
 ///    }
-///
-///    // ...
 /// }
+/// ```
 pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<TcpListener> {
     let bind = format!("{address}:{port}");
 

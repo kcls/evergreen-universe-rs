@@ -1,3 +1,4 @@
+//! Evergreen API Response Events
 use crate as eg;
 use eg::date;
 use eg::EgValue;

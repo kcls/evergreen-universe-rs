@@ -1,3 +1,4 @@
+//! Create, Retrieve, Update, Delete IDL-classed objects via (by default) open-ils.cstore.
 use crate as eg;
 use eg::event::EgEvent;
 use eg::idl;

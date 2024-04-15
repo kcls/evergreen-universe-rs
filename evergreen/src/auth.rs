@@ -1,3 +1,4 @@
+//! Create and manage authentication sessions
 use crate as eg;
 use crate::Client;
 use crate::EgEvent;

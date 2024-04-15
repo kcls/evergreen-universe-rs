@@ -1,5 +1,5 @@
+//! Create, connect, and manage database connections.
 use crate::result::EgResult;
-///! Create, connect, and manage database connections.
 use getopts;
 use log::debug;
 use postgres as pg;
