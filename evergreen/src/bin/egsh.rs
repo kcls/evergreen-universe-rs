@@ -467,8 +467,19 @@ impl Shell {
     }
 
     fn handle_cstore(&mut self, args: &[&str]) -> Result<(), String> {
+        self.args_min_length(args, 2)?;
+        let action = args[0]; // retrieve, search, json_query
+
+        if action == "json_query" {
+            return self.send_request(&[
+                "open-ils.cstore",
+                "open-ils.cstore.json_query",
+                &args[1]
+            ]);
+        }
+
+        // retrieve and search require an additional class specifier
         self.args_min_length(args, 3)?;
-        let action = args[0]; // retrieve, search
 
         // IDL class may either be a class hint (e.g. "aou") or a full
         // fieldmapper name ("actor.org_unit");
@@ -649,6 +660,8 @@ impl Shell {
         let wants_summary = self.command.contains("-summary");
 
         let service = &args[0];
+
+        println!("\nNOTE: Introspecting Perl services will fail with an invalid IDL class.\n");
 
         let mut params = vec![];
         if let Some(prefix) = args.get(1) {
