@@ -194,10 +194,10 @@ pub fn get_barcodes(
     // Extract the method call parameters.
     // Incorrectly shaped parameters will result in an error
     // response to the caller.
-    let authtoken = method.param(0).string()?;
+    let authtoken = method.param(0).str()?;
     let org_id = method.param(1).int()?;
-    let context = method.param(2).string()?;
-    let barcode = method.param(3).string()?;
+    let context = method.param(2).str()?;
+    let barcode = method.param(3).str()?;
 
     let mut editor = Editor::with_auth(worker.client(), &authtoken);
 
@@ -215,7 +215,7 @@ pub fn get_barcodes(
     let query = eg::hash! {
         from: [
             "evergreen.get_barcodes",
-            org_id, context.as_str(), barcode.as_str()
+            org_id, context, barcode
         ]
     };
 
@@ -264,7 +264,7 @@ pub fn user_has_work_perm_at_batch(
     // Cast our worker instance into something we know how to use.
     let worker = app::RsActorWorker::downcast(worker)?;
 
-    let authtoken = method.param(0).string()?;
+    let authtoken = method.param(0).str()?;
 
     let perm_names: Vec<&str> = method
         .param(1)
@@ -279,7 +279,7 @@ pub fn user_has_work_perm_at_batch(
 
     let mut editor = Editor::new(worker.client());
 
-    if !editor.apply_authtoken(&authtoken)? {
+    if !editor.apply_authtoken(authtoken)? {
         return session.respond(editor.event());
     }
 
@@ -405,9 +405,9 @@ pub fn user_opac_vital_stats(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let authtoken = method.param(0).string()?;
+    let authtoken = method.param(0).str()?;
 
-    let mut editor = Editor::with_auth(worker.client(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), authtoken);
 
     if !editor.checkauth()? {
         return session.respond(editor.event());
@@ -481,10 +481,10 @@ pub fn update_penalties(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsActorWorker::downcast(worker)?;
-    let authtoken = method.param(0).string()?;
+    let authtoken = method.param(0).str()?;
     let user_id = method.param(1).int()?;
 
-    let mut editor = Editor::with_auth(worker.client(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), authtoken);
 
     if !editor.checkauth()? {
         return session.respond(editor.event());

@@ -187,7 +187,7 @@ pub fn checkout_renew_checkin(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsCircWorker::downcast(worker)?;
-    let authtoken = method.param(0).string()?;
+    let authtoken = method.param(0).str()?;
 
     // Translate the object into a hashmap our circulator can use.
     let mut options: HashMap<String, EgValue> = HashMap::new();
@@ -196,7 +196,7 @@ pub fn checkout_renew_checkin(
         options.insert(k.to_string(), v.clone());
     }
 
-    let mut editor = Editor::with_auth(worker.client(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), authtoken);
 
     // Auth check
     if !editor.checkauth()? {
@@ -252,10 +252,10 @@ pub fn renewal_chain_summary(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsCircWorker::downcast(worker)?;
-    let authtoken = method.param(0).string()?;
+    let authtoken = method.param(0).str()?;
     let circ_id = method.param(1).int()?;
 
-    let mut editor = Editor::with_auth(worker.client(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), authtoken);
 
     if !editor.checkauth()? {
         return session.respond(editor.event());
@@ -276,10 +276,10 @@ pub fn prev_renewal_chain_summary(
     method: &message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsCircWorker::downcast(worker)?;
-    let authtoken = method.param(0).string()?;
+    let authtoken = method.param(0).str()?;
     let circ_id = method.param(1).int()?;
 
-    let mut editor = Editor::with_auth(worker.client(), &authtoken);
+    let mut editor = Editor::with_auth(worker.client(), authtoken);
 
     if !editor.checkauth()? {
         return session.respond(editor.event());
