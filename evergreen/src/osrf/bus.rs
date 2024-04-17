@@ -280,22 +280,32 @@ impl Bus {
         }
     }
 
-    /// Sends a TransportMessage to the "to" value in the message.
+    /// Send a TransportMessage to the "to" value in the message.
     pub fn send(&mut self, msg: TransportMessage) -> EgResult<()> {
-        // TODO refactor so we can avoi this to_string()
-        let to = msg.to().to_string();
-        self.send_to(msg, &to)
+        self.send_internal(msg, None)
+    }
+
+    /// Send a TransportMessage to the specified BusAddress, regardless
+    /// of what value is in the msg.to() field.
+    pub fn send_to(&mut self, msg: TransportMessage, recipient: &str) -> EgResult<()> {
+        self.send_internal(msg, Some(recipient))
     }
 
     /// Sends a TransportMessage to the specified BusAddress, regardless
     /// of what value is in the msg.to() field.
-    pub fn send_to(&mut self, msg: TransportMessage, recipient: &str) -> EgResult<()> {
+    fn send_internal(&mut self, msg: TransportMessage, recipient: Option<&str>) -> EgResult<()> {
         let mut json_val = msg.into_json_value();
 
         // Play a little inside baseball here and tag the message
         // with our log trace.  This way the layers above don't have
         // to worry about it.
         json_val["osrf_xid"] = json::from(Logger::get_log_trace());
+
+        // Similarly, this allows us to avoid an unnecessary clone
+        // on the recipient if it resides in the now-moved source message.
+        // json_val["to"].as_str() is guaranteed here, because it's a
+        // requirement for TransportMessage.
+        let recipient = recipient.unwrap_or(json_val["to"].as_str().unwrap());
 
         let json_str = json_val.dump();
 

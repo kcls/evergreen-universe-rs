@@ -20,11 +20,15 @@ use crate::methods;
 
 const APPNAME: &str = "open-ils.rs-store";
 
-/// If this worker instance has performed no tasks in this amount of
-/// time, disconnect our database connection and free up resources.
-/// Will reconnect when needed.  A value of 0 disables the feature.
+/// If a worker instance has not communicted with the database in this amount of
+/// time, it will disconnect from the database to free up database resources.
+/// The worker will reconnect when needed.  A value of 0 disables the feature.
+///
+/// Setting to zero to disable for now since this is experimental and
+/// maybe wholly unnecessary.
+///
 /// TODO make this configurable.
-const IDLE_DISCONNECT_TIME: i32 = 300;
+const IDLE_DISCONNECT_TIME: i32 = 0;
 
 const DIRECT_METHODS: &[&str] = &["create", "retrieve", "search", "update", "delete"];
 

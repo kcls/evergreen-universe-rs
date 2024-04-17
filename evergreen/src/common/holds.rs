@@ -483,31 +483,30 @@ pub fn test_copy_for_hold(
     Ok(result)
 }
 
-/// Send holds to the hold targeter service for retargeting.
+/// Retarget a batch of holds.
 ///
-/// The editor is needed so we can have a ref to an opensrf client.
-/// TODO: As is, this is NOT run within a transaction, since it's a
-/// call to a remote service.  If targeting is ever ported to Rust, it
-/// can run in the same transaction.
-pub fn retarget_holds(editor: &mut Editor, hold_ids: &[i64]) -> EgResult<()> {
-    editor.client_mut().send_recv_one(
-        "open-ils.hold-targeter",
-        "open-ils.hold-targeter.target",
-        eg::hash! {hold: hold_ids},
-    )?;
+/// Each hold is targeted within its own transaction, managed by
+/// the targeter.  To target holds within an existing transaction,
+/// see `retarget_hold()`.
+pub fn retarget_holds(editor: &Editor, hold_ids: &[i64]) -> EgResult<()> {
+    let mut editor = editor.clone();
+    let mut hold_targeter = targeter::HoldTargeter::new(&mut editor);
+
+    for hold_id in hold_ids {
+        hold_targeter.target_hold(*hold_id, None)?;
+    }
 
     Ok(())
 }
 
-/// Consumes an editor, targets a hold, then returns the Editor.
+/// Target a single hold.
 ///
-/// Assumes the provided editor is running within a transaction
-/// that will be commited (or rollback back) by the caller.
-pub fn retarget_hold_in_xact(
-    editor: &mut Editor,
-    hold_id: i64,
-) -> EgResult<targeter::HoldTargetContext> {
+/// Uses an externally managed Editor transaction.
+pub fn retarget_hold(editor: &mut Editor, hold_id: i64) -> EgResult<targeter::HoldTargetContext> {
     let mut targeter = targeter::HoldTargeter::new(editor);
+
+    // We're managing the editor transaction.
+    targeter.set_transaction_manged_externally(true);
 
     targeter.init()?;
 
@@ -518,17 +517,9 @@ pub fn retarget_hold_in_xact(
 
 /// Reset a hold and retarget it.
 ///
-/// NOTE: Since retargeting must run outside of our transaction, and our
-/// changes must be committed before retargeting occurs, this function
-/// begins and commits its own transaction, by way of a cloned copy of
-/// the provided editor.
-pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
+/// Uses an externally managed Editor transaction.
+pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<targeter::HoldTargetContext> {
     log::info!("Resetting hold {hold_id}");
-
-    // Leave the provided editor in whatever state it's already in.
-    // and start our own transaction.
-    let mut editor = editor.clone();
-    editor.xact_begin()?;
 
     let mut hold = editor
         .retrieve("ahr", hold_id)?
@@ -555,7 +546,7 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
             };
 
             if let Some(ht) = editor.search("ahtc", query)?.pop() {
-                transit::cancel_transit(&mut editor, ht.id()?, true)?;
+                transit::cancel_transit(editor, ht.id()?, true)?;
             }
         }
     }
@@ -567,9 +558,8 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<()> {
     hold["current_shelf_lib"].take();
 
     editor.update(hold)?;
-    editor.commit()?;
 
-    retarget_holds(&mut editor, &[hold_id])
+    retarget_hold(editor, hold_id)
 }
 
 /// json_query order by clause for sorting holds by next to be targeted.

@@ -6,6 +6,10 @@ use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
 
+/// Cancel a transit
+///
+/// Caller is responsible for beginning and committing the `Editor`
+/// transaction.
 pub fn cancel_transit(editor: &mut Editor, transit_id: i64, skip_hold_reset: bool) -> EgResult<()> {
     let flesh = eg::hash! {
         "flesh": 1,

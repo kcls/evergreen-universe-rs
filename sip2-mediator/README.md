@@ -53,3 +53,11 @@ sudo systemctl daemon-reload
 sudo systemctl restart eg-sip2-mediator
 ```
 
+## Testing
+
+This project comes with a Evergreen-focused end-to-end SIP2 tester.
+
+```sh
+cargo run --package sip2mediator --bin sip2-mediator-e2e
+```
+

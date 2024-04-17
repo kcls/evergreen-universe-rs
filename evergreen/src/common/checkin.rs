@@ -301,8 +301,8 @@ impl Circulator<'_> {
         )?;
 
         // Since we're targeting a batch of holds, instead of a single hold,
-        // let the targeter manage the transaction.  Otherwise, we could be
-        // targeting a large number of holds within a single transaction
+        // let the targeter manage the transaction.  Otherwise, we could
+        // target a large number of holds within a single transaction,
         // which is no bueno.
         let mut editor = self.editor().clone();
         let mut hold_targeter = targeter::HoldTargeter::new(&mut editor);

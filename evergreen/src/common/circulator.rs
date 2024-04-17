@@ -1175,7 +1175,7 @@ impl<'a> Circulator<'a> {
             Some(list) => list.clone(),
             None => return Ok(()),
         };
-        holds::retarget_holds(self.editor(), hold_ids.as_slice())
+        holds::retarget_holds(&self.editor, hold_ids.as_slice())
     }
 
     /// Create A/T events for checkout/checkin/renewal actions.
