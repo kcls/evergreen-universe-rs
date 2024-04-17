@@ -17,9 +17,11 @@ enum AddressPurpose {
 ///
 /// Examples:
 ///
+/// ```text
 /// opensrf:router:$username:$domain
 /// opensrf:service:$username:$domain:$service
 /// opensrf:client:$username:$domain:$hostname:$pid:$random
+/// ```
 #[derive(Debug, Clone)]
 pub struct BusAddress {
     /// Full address string, recompiled as needed.
@@ -43,11 +45,14 @@ impl BusAddress {
     /// Creates a new BusAddress from a bus address string.
     ///
     /// ```
+    /// use evergreen::osrf::addr::BusAddress;
+    ///
     /// let addr =
-    ///   evergreen::osrf::addr::BusAddress::from_str("opensrf:client:foobar:localhost:12345")
+    ///   BusAddress::from_str("opensrf:client:foobar:localhost:12345")
     ///   .expect("Error creating address from string");
     ///
     /// assert!(addr.is_client());
+    /// assert_eq!(addr.username(), "foobar");
     /// assert_eq!(addr.domain(), "localhost");
     /// ```
     pub fn from_str(full: &str) -> Result<Self, String> {

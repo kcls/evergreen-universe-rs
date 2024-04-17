@@ -379,7 +379,15 @@ impl ClientSessionInternal {
                 let jval = json::parse(&buf)
                     .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
 
-                value = EgValue::from_json_value(jval)?;
+                // Avoid exiting with an error on receipt of invalid data
+                // from the network.  See also Bus::recv().
+                value = match EgValue::from_json_value(jval) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::error!("Error translating JSON value into EgValue: {e}");
+                        EgValue::Null
+                    }
+                };
 
                 log::trace!("Partial message is now complete");
             }

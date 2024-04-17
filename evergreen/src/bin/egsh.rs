@@ -471,11 +471,7 @@ impl Shell {
         let action = args[0]; // retrieve, search, json_query
 
         if action == "json_query" {
-            return self.send_request(&[
-                "open-ils.cstore",
-                "open-ils.cstore.json_query",
-                &args[1]
-            ]);
+            return self.send_request(&["open-ils.cstore", "open-ils.cstore.json_query", &args[1]]);
         }
 
         // retrieve and search require an additional class specifier
@@ -661,7 +657,7 @@ impl Shell {
 
         let service = &args[0];
 
-        println!("\nNOTE: Introspecting Perl services will fail with an invalid IDL class.\n");
+        println!("\nNOTE: Introspecting Perl services will fail with an unknown IDL class (see error log).\n");
 
         let mut params = vec![];
         if let Some(prefix) = args.get(1) {

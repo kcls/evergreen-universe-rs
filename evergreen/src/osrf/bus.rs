@@ -235,6 +235,23 @@ impl Bus {
     ///
     /// Keeps trying until a value is returned or the timeout is exceeded.
     ///
+    /// Avoids exiting with an error on receipt of invalid data from the
+    /// network, since exiting early can result in leaving additional
+    /// (streamed) invalid messages on the bus for later retrieval,
+    /// because presumably the original client request exited instead of
+    /// processing all of the messages.
+    ///
+    /// Invalid messages left on the bus can result in later failures
+    /// for unrelated requests as the old invalid messages are pulled
+    /// and parsed, resulting in additional early exits.
+    ///
+    /// Instead, act as if no response was received.  This is still an
+    /// error condition that requries repair, but this way the impact is
+    /// limited to the failed request.
+    ///
+    /// This condition was seen in the wild when introspecting Perl
+    /// services, which contains unknown "__c" message classes.
+    ///
     /// # Arguments
     ///
     /// * `timeout` - Time in seconds to wait for a response.
@@ -249,11 +266,15 @@ impl Bus {
         recipient: Option<&str>,
     ) -> EgResult<Option<TransportMessage>> {
         let json_op = self.recv_json_value(timeout, recipient)?;
+
         if let Some(jv) = json_op {
-            Ok(Some(TransportMessage::from_json_value(
-                jv,
-                self.raw_data_mode,
-            )?))
+            match TransportMessage::from_json_value(jv, self.raw_data_mode) {
+                Ok(v) => return Ok(Some(v)),
+                Err(e) => {
+                    log::error!("Error translating JSON value into EgValue: {e}");
+                    return Ok(None);
+                }
+            };
         } else {
             Ok(None)
         }
