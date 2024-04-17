@@ -345,7 +345,7 @@ impl Router {
 
         let busconf = router_conf.client();
 
-        let addr = BusAddress::for_router(busconf.username(), busconf.domain().name());
+        let addr = BusAddress::for_router(busconf.router_name(), busconf.domain().name());
         let primary_domain = RouterDomain::new(&busconf);
 
         Router {
