@@ -348,6 +348,8 @@ impl Router {
         let addr = BusAddress::for_router(busconf.username(), busconf.domain().name());
         let primary_domain = RouterDomain::new(&busconf);
 
+        log::info!("Router listening for requests at {}", addr.as_str());
+
         Router {
             primary_domain,
             trusted_server_domains: tsd,
