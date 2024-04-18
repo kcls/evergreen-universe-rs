@@ -12,7 +12,7 @@ use std::collections::HashMap;
 /// multiple values.
 #[derive(Debug, PartialEq)]
 pub enum DisplayAttrValue {
-    Value(String),
+    Value(Option<String>),
     List(Vec<String>),
 }
 
@@ -23,11 +23,31 @@ impl DisplayAttrValue {
     /// first value in our Self::List, otherwise empty str.
     pub fn first(&self) -> &str {
         match self {
-            Self::Value(s) => s.as_str(),
+            Self::Value(op) => {
+                match op {
+                    Some(s) => s.as_str(),
+                    None => "",
+                }
+            },
             Self::List(v) => v.get(0).map(|v| v.as_str()).unwrap_or(""),
         }
     }
+
+    pub fn into_value(mut self) -> EgValue {
+        match self {
+            Self::Value(ref mut op) => {
+                match op.take() {
+                    Some(s) => EgValue::from(s),
+                    None => EgValue::Null,
+                }
+            }
+            Self::List(ref mut l) => {
+                EgValue::from(l.drain(..).collect::<Vec<String>>())
+            }
+        }
+    }
 }
+
 
 pub struct DisplayAttr {
     name: String,
@@ -38,11 +58,12 @@ pub struct DisplayAttr {
 impl DisplayAttr {
     pub fn add_value(&mut self, value: String) {
         match self.value {
-            DisplayAttrValue::Value(ref s) => {
-                // NOTE if we create an Unset variant of DisplayAttrValue
-                // we can mem::replace the old value into the new list
-                // sans clone.
-                self.value = DisplayAttrValue::List(vec![s.clone(), value]);
+            DisplayAttrValue::Value(ref mut op) => {
+                if let Some(s) = op.take() {
+                    self.value = DisplayAttrValue::List(vec![s, value]);
+                } else {
+                    self.value = DisplayAttrValue::Value(Some(value));
+                }
             }
             DisplayAttrValue::List(ref mut l) => {
                 l.push(value);
@@ -63,6 +84,17 @@ impl DisplayAttr {
 /// Collection of metabib.flat_display_entry data for a given record.
 pub struct DisplayAttrSet {
     attrs: Vec<DisplayAttr>,
+}
+
+impl DisplayAttrSet {
+    pub fn into_value(mut self) -> EgValue {
+        let mut hash = eg::hash! {};
+        for attr in self.attrs.drain(..) {
+            let name = attr.name().to_string(); // moved below
+            hash[&name] = attr.value.into_value();
+        }
+        hash
+    }
 }
 
 impl DisplayAttrSet {
@@ -95,9 +127,9 @@ impl DisplayAttrSet {
 
 /// Build a virtual mvr from a bib record's display attributes
 pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<EgValue> {
-    let maps = get_display_attrs(editor, &[bib_id])?;
+    let mut maps = get_display_attrs(editor, &[bib_id])?;
 
-    let attr_set = match maps.get(&bib_id) {
+    let mut attr_set = match maps.remove(&bib_id) {
         Some(m) => m,
         None => return Err(format!("Bib {bib_id} has no display attributes").into()),
     };
@@ -110,12 +142,10 @@ pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<EgValue> {
     // into an mvr JSON object.
     let field_names = idl_class.field_names();
 
-    for attr in attr_set.attrs.iter() {
+    for attr in attr_set.attrs.iter_mut() {
         if field_names.contains(&attr.name.as_str()) {
-            mvr[attr.name.as_str()] = match attr.value() {
-                DisplayAttrValue::Value(v) => EgValue::from(v.as_str()),
-                DisplayAttrValue::List(l) => EgValue::from(l.clone()),
-            }
+            let value = std::mem::replace(&mut attr.value, DisplayAttrValue::Value(None));
+            mvr[&attr.name] = value.into_value();
         }
     }
 
@@ -150,11 +180,69 @@ pub fn get_display_attrs(
             let attr = DisplayAttr {
                 name: attr_name,
                 label: attr_label,
-                value: DisplayAttrValue::Value(attr_value),
+                value: DisplayAttrValue::Value(Some(attr_value)),
             };
             attr_set.attrs.push(attr);
         }
     }
 
     Ok(map)
+}
+
+pub struct RecordSummary {
+    id: i64,
+    record: EgValue,
+    display: DisplayAttrSet,
+    //attributes
+    //urls
+    record_note_count: usize
+}
+
+impl RecordSummary {
+    pub fn into_value(mut self) -> EgValue {
+        let hash = eg::hash! {
+            id: self.id,
+            record: self.record.take(),
+            display: self.display.into_value(),
+            record_note_count: self.record_note_count,
+        };
+
+        hash
+    }
+}
+
+pub fn catalog_record_summary(
+    editor: &mut Editor,
+    bib_id: i64,
+) -> EgResult<RecordSummary> {
+
+    let flesh = eg::hash! {
+        "flesh": 1,
+        "flesh_fields": {
+            "bre": ["mattrs", "creator", "editor", "notes"]
+        }
+    };
+
+    let mut record = editor.retrieve_with_ops("bre", bib_id, flesh)?
+        .ok_or_else(|| editor.die_event())?;
+
+    let mut display_map = get_display_attrs(editor, &[bib_id])?;
+
+    let display = display_map.remove(&bib_id)
+        .ok_or_else(|| format!("Cannot load attrs for bib {bib_id}"))?;
+
+    // TODO attrs
+    // TODO urls
+
+    let note_count = record["notes"].len();
+
+    // Avoid including the actual notes, which may not all be public.
+    record["notes"] = EgValue::new_array();
+
+    Ok(RecordSummary {
+        id: bib_id,
+        record,
+        display,
+        record_note_count: note_count,
+    })
 }
