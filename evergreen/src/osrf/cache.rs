@@ -16,7 +16,8 @@ fn to_key(k: &str) -> String {
 }
 
 /* opensrf.xml
-<redis>
+ * TODO: this config format is PoC and will likely change.
+<redis-cache>
   <host>127.0.0.1</host>
   <port>6379</port>
   <username>cache</username>
@@ -30,7 +31,7 @@ fn to_key(k: &str) -> String {
       <max_cache_size>102400</max_cache_size>
     </anon>
   </cache-types>
-</redis>
+</redis-cache>
 */
 
 #[derive(Debug)]
