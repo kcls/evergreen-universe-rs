@@ -701,3 +701,75 @@ pub fn related_to_copy(
 
     Ok(list)
 }
+
+/// Count of open holds that target a bib record or any of its
+/// associated call numbers, copies, etc.
+///
+/// TODO metarecords
+pub fn record_hold_counts(
+    editor: &mut Editor,
+    rec_id: i64,
+    pickup_lib_descendant: Option<i64>,
+) -> EgResult<i64> {
+    let mut query = eg::hash! {
+        "select": {
+            "ahr": [{"column": "id", "transform": "count", "alias": "count"}]
+        },
+        "from": {
+            "ahr": {
+                "rhrr": {
+                    "fkey": "id",
+                    "field": "id",
+                }
+            }
+        },
+        "where": {
+            "+ahr": {
+                "cancel_time": EgValue::Null,
+                "fulfillment_time": EgValue::Null,
+            },
+            "+rhrr": {
+                "bib_record": rec_id
+            }
+        }
+    };
+
+    if let Some(plib) = pickup_lib_descendant {
+        query["where"]["+ahr"]["pickup_lib"] = eg::hash! {
+            "in": {
+                "select": {
+                    "aou": [{
+                        "column": "id",
+                        "transform": "actor.org_unit_descendants",
+                        "result_field": "id"
+                    }]
+                },
+                "from": "aou",
+                "where": {"id": plib}
+            }
+        }
+    }
+
+    let result = editor
+        .json_query(query)?
+        .pop()
+        .ok_or_else(|| format!("record_hold_counts() return no results"))?;
+
+    result["count"].int()
+}
+
+/// Returns true if the record/metarecord in question has at least
+/// one holdable copy.
+pub fn record_has_holdable_copy(editor: &mut Editor, rec_id: i64, is_meta: bool) -> EgResult<bool> {
+    let key = if is_meta { "metarecord" } else { "record" };
+    let func = format!("asset.{key}_has_holdable_copy");
+
+    let query = eg::hash! {"from": [func.as_str(), rec_id]};
+
+    let data = editor
+        .json_query(query)?
+        .pop()
+        .ok_or_else(|| format!("json_query returned zero results"))?;
+
+    Ok(data[&func].boolish())
+}

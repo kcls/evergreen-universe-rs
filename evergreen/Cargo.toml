@@ -89,6 +89,10 @@ name = "eg-service-rs-actor"
 path = "src/services/actor/main.rs"
 
 [[bin]]
+name = "eg-service-rs-search"
+path = "src/services/search/main.rs"
+
+[[bin]]
 name = "eg-service-rs-circ"
 path = "src/services/circ/main.rs"
 

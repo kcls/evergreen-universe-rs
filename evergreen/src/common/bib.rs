@@ -1,8 +1,10 @@
 use crate as eg;
+use eg::common::holds;
 use eg::idl;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use marc;
 use std::collections::HashMap;
 
 // Bib record display attributes are used widely. May as well flesh them
@@ -12,7 +14,7 @@ use std::collections::HashMap;
 /// multiple values.
 #[derive(Debug, PartialEq)]
 pub enum DisplayAttrValue {
-    Value(String),
+    Value(Option<String>),
     List(Vec<String>),
 }
 
@@ -23,8 +25,18 @@ impl DisplayAttrValue {
     /// first value in our Self::List, otherwise empty str.
     pub fn first(&self) -> &str {
         match self {
-            Self::Value(s) => s.as_str(),
+            Self::Value(op) => match op {
+                Some(s) => s.as_str(),
+                None => "",
+            },
             Self::List(v) => v.get(0).map(|v| v.as_str()).unwrap_or(""),
+        }
+    }
+
+    pub fn into_value(mut self) -> EgValue {
+        match self {
+            Self::Value(ref mut op) => op.take().map(|v| EgValue::from(v)).unwrap_or(EgValue::Null),
+            Self::List(ref mut l) => EgValue::from(l.drain(..).collect::<Vec<String>>()),
         }
     }
 }
@@ -38,11 +50,12 @@ pub struct DisplayAttr {
 impl DisplayAttr {
     pub fn add_value(&mut self, value: String) {
         match self.value {
-            DisplayAttrValue::Value(ref s) => {
-                // NOTE if we create an Unset variant of DisplayAttrValue
-                // we can mem::replace the old value into the new list
-                // sans clone.
-                self.value = DisplayAttrValue::List(vec![s.clone(), value]);
+            DisplayAttrValue::Value(ref mut op) => {
+                if let Some(s) = op.take() {
+                    self.value = DisplayAttrValue::List(vec![s, value]);
+                } else {
+                    self.value = DisplayAttrValue::Value(Some(value));
+                }
             }
             DisplayAttrValue::List(ref mut l) => {
                 l.push(value);
@@ -63,6 +76,17 @@ impl DisplayAttr {
 /// Collection of metabib.flat_display_entry data for a given record.
 pub struct DisplayAttrSet {
     attrs: Vec<DisplayAttr>,
+}
+
+impl DisplayAttrSet {
+    pub fn into_value(mut self) -> EgValue {
+        let mut hash = eg::hash! {};
+        for attr in self.attrs.drain(..) {
+            let name = attr.name().to_string(); // moved below
+            hash[&name] = attr.value.into_value();
+        }
+        hash
+    }
 }
 
 impl DisplayAttrSet {
@@ -95,9 +119,9 @@ impl DisplayAttrSet {
 
 /// Build a virtual mvr from a bib record's display attributes
 pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<EgValue> {
-    let maps = get_display_attrs(editor, &[bib_id])?;
+    let mut maps = get_display_attrs(editor, &[bib_id])?;
 
-    let attr_set = match maps.get(&bib_id) {
+    let mut attr_set = match maps.remove(&bib_id) {
         Some(m) => m,
         None => return Err(format!("Bib {bib_id} has no display attributes").into()),
     };
@@ -110,12 +134,10 @@ pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<EgValue> {
     // into an mvr JSON object.
     let field_names = idl_class.field_names();
 
-    for attr in attr_set.attrs.iter() {
+    for attr in attr_set.attrs.iter_mut() {
         if field_names.contains(&attr.name.as_str()) {
-            mvr[attr.name.as_str()] = match attr.value() {
-                DisplayAttrValue::Value(v) => EgValue::from(v.as_str()),
-                DisplayAttrValue::List(l) => EgValue::from(l.clone()),
-            }
+            let value = std::mem::replace(&mut attr.value, DisplayAttrValue::Value(None));
+            mvr[&attr.name] = value.into_value();
         }
     }
 
@@ -150,11 +172,244 @@ pub fn get_display_attrs(
             let attr = DisplayAttr {
                 name: attr_name,
                 label: attr_label,
-                value: DisplayAttrValue::Value(attr_value),
+                value: DisplayAttrValue::Value(Some(attr_value)),
             };
             attr_set.attrs.push(attr);
         }
     }
 
     Ok(map)
+}
+
+pub struct RecordSummary {
+    id: i64,
+    record: EgValue,
+    display: DisplayAttrSet,
+    attributes: EgValue,
+    urls: Option<Vec<RecordUrl>>,
+    record_note_count: usize,
+    copy_counts: Vec<EgValue>,
+    hold_count: i64,
+    has_holdable_copy: bool,
+}
+
+impl RecordSummary {
+    pub fn into_value(mut self) -> EgValue {
+        let mut urls = EgValue::new_array();
+
+        if let Some(mut list) = self.urls.take() {
+            for v in list.drain(..) {
+                urls.push(v.into_value()).expect("Is Array");
+            }
+        }
+
+        let copy_counts = std::mem::replace(&mut self.copy_counts, vec![]);
+
+        let hash = eg::hash! {
+            id: self.id,
+            record: self.record.take(),
+            display: self.display.into_value(),
+            record_note_count: self.record_note_count,
+            attributes: self.attributes.take(),
+            copy_counts: EgValue::from(copy_counts),
+            hold_count: self.hold_count,
+            urls: urls,
+            has_holdable_copy: self.has_holdable_copy,
+            // TODO
+            staff_view_metabib_attributes: eg::hash!{},
+            // TODO
+            staff_view_metabib_records: eg::array! [],
+        };
+
+        hash
+    }
+}
+
+pub fn catalog_record_summary(
+    editor: &mut Editor,
+    org_id: i64,
+    rec_id: i64,
+    is_staff: bool,
+    is_meta: bool,
+) -> EgResult<RecordSummary> {
+    let flesh = eg::hash! {
+        "flesh": 1,
+        "flesh_fields": {
+            "bre": ["mattrs", "creator", "editor", "notes"]
+        }
+    };
+
+    let mut record = editor
+        .retrieve_with_ops("bre", rec_id, flesh)?
+        .ok_or_else(|| editor.die_event())?;
+
+    let mut display_map = get_display_attrs(editor, &[rec_id])?;
+
+    let display = display_map
+        .remove(&rec_id)
+        .ok_or_else(|| format!("Cannot load attrs for bib {rec_id}"))?;
+
+    // Create an object of 'mraf' attributes.
+    // Any attribute can be multi so dedupe and array-ify all of them.
+
+    let mut attrs = EgValue::new_object();
+    for attr in record["mattrs"].members_mut() {
+        let name = attr["attr"].take();
+        let val = attr["value"].take();
+
+        if let EgValue::Array(ref mut list) = attrs[name.str()?] {
+            list.push(val);
+        } else {
+            attrs[name.str()?] = vec![val].into();
+        }
+    }
+
+    let urls = record_urls(editor, None, Some(record["marc"].str()?))?;
+
+    let note_count = record["notes"].len();
+    let copy_counts = record_copy_counts(editor, org_id, rec_id, is_staff, is_meta)?;
+    let hold_count = holds::record_hold_counts(editor, rec_id, None)?;
+    let has_holdable_copy = holds::record_has_holdable_copy(editor, rec_id, is_meta)?;
+
+    // Avoid including the actual notes, which may not all be public.
+    record["notes"].take();
+
+    // De-bulk-ify
+    record["marc"].take();
+    record["mattrs"].take();
+
+    Ok(RecordSummary {
+        id: rec_id,
+        record,
+        display,
+        urls,
+        copy_counts,
+        hold_count,
+        attributes: attrs,
+        has_holdable_copy,
+        record_note_count: note_count,
+    })
+}
+
+pub struct RecordUrl {
+    href: String,
+    label: Option<String>,
+    notes: Option<String>,
+    ind2: String,
+}
+
+impl RecordUrl {
+    pub fn into_value(self) -> EgValue {
+        eg::hash! {
+            href: self.href,
+            label: self.label,
+            notes: self.notes,
+            ind2: self.ind2
+        }
+    }
+}
+
+pub fn record_urls(
+    _editor: &mut Editor, // TODO
+    _bib_id: Option<i64>, // TODO
+    xml: Option<&str>,
+) -> EgResult<Option<Vec<RecordUrl>>> {
+    let xml = match xml.as_ref() {
+        Some(x) => x,
+        None => {
+            todo!("Fetch Record by ID");
+        }
+    };
+
+    let record = marc::Record::from_xml(xml)
+        .next()
+        .ok_or_else(|| format!("Cannot parse MARC XML"))?;
+
+    let mut urls_maybe = None;
+
+    for field in record.get_fields("856").iter() {
+        if field.ind1() != "4" {
+            continue;
+        }
+
+        // asset.uri's
+        if field.has_subfield("9") || field.has_subfield("w") || field.has_subfield("n") {
+            continue;
+        }
+
+        let label_sf = field.first_subfield("y");
+        let notes_sf = field.first_subfield("z").or(field.first_subfield("3"));
+
+        let mut first = true;
+        for href in field.get_subfields("u").iter() {
+            if href.content().trim().is_empty() {
+                continue;
+            }
+
+            // It's possible for multiple $u's to exist within 1 856 tag.
+            // in that case, honor the label/notes data for the first $u, but
+            // leave any subsequent $u's as unadorned href's.
+            // use href/link/note keys to be consistent with args.uri's
+
+            let label = if first && label_sf.is_some() {
+                Some(label_sf.unwrap().content().to_string())
+            } else {
+                None
+            };
+
+            let notes = if first && notes_sf.is_some() {
+                Some(notes_sf.unwrap().content().to_string())
+            } else {
+                None
+            };
+
+            first = false;
+
+            let url = RecordUrl {
+                label,
+                notes,
+                href: href.content().to_string(),
+                ind2: field.ind2().to_string(),
+            };
+
+            let urls = match urls_maybe.as_mut() {
+                Some(u) => u,
+                None => {
+                    urls_maybe = Some(Vec::new());
+                    urls_maybe.as_mut().unwrap()
+                }
+            };
+
+            urls.push(url);
+        }
+    }
+
+    Ok(urls_maybe)
+}
+
+pub fn record_copy_counts(
+    editor: &mut Editor,
+    org_id: i64,
+    rec_id: i64,
+    is_staff: bool,
+    is_meta: bool,
+) -> EgResult<Vec<EgValue>> {
+    let key = if is_meta { "metarecord" } else { "record" };
+    let func = format!("asset.{key}_copy_count");
+    let query = eg::hash! {"from": [func, org_id, rec_id, is_staff]};
+    let mut data = editor.json_query(query)?;
+
+    for count in data.iter_mut() {
+        // Fix up the key name change; required by stored-proc version.
+        count["count"] = count["visible"].take();
+        count.remove("visible");
+    }
+
+    data.sort_by(|a, b| {
+        let da = a["depth"].int_required();
+        let db = b["depth"].int_required();
+        da.cmp(&db)
+    });
+
+    Ok(data)
 }
