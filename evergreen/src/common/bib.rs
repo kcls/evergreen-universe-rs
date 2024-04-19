@@ -191,7 +191,8 @@ pub struct RecordSummary {
     display: DisplayAttrSet,
     attributes: EgValue,
     urls: Option<Vec<RecordUrl>>,
-    record_note_count: usize
+    record_note_count: usize,
+    copy_counts: Vec<EgValue>,
 }
 
 impl RecordSummary {
@@ -204,12 +205,15 @@ impl RecordSummary {
             }
         }
 
+        let copy_counts = std::mem::replace(&mut self.copy_counts, vec![]);
+
         let hash = eg::hash! {
             id: self.id,
             record: self.record.take(),
             display: self.display.into_value(),
             record_note_count: self.record_note_count,
             attributes: self.attributes.take(),
+            copy_counts: EgValue::from(copy_counts),
             urls: urls,
         };
 
@@ -219,7 +223,10 @@ impl RecordSummary {
 
 pub fn catalog_record_summary(
     editor: &mut Editor,
-    bib_id: i64,
+    org_id: i64,
+    rec_id: i64,
+    is_staff: bool,
+    is_meta: bool,
 ) -> EgResult<RecordSummary> {
 
     let flesh = eg::hash! {
@@ -229,13 +236,13 @@ pub fn catalog_record_summary(
         }
     };
 
-    let mut record = editor.retrieve_with_ops("bre", bib_id, flesh)?
+    let mut record = editor.retrieve_with_ops("bre", rec_id, flesh)?
         .ok_or_else(|| editor.die_event())?;
 
-    let mut display_map = get_display_attrs(editor, &[bib_id])?;
+    let mut display_map = get_display_attrs(editor, &[rec_id])?;
 
-    let display = display_map.remove(&bib_id)
-        .ok_or_else(|| format!("Cannot load attrs for bib {bib_id}"))?;
+    let display = display_map.remove(&rec_id)
+        .ok_or_else(|| format!("Cannot load attrs for bib {rec_id}"))?;
 
 
     // Create an object of 'mraf' attributes.
@@ -253,23 +260,24 @@ pub fn catalog_record_summary(
         }
     }
 
-    // Clear the source attrs since we've scavanged them.
-    record["mattrs"] = EgValue::new_array();
-
     let urls = record_urls(editor, None, Some(record["marc"].str()?))?;
 
     let note_count = record["notes"].len();
+    let copy_counts = record_copy_counts(editor, org_id, rec_id, is_staff, is_meta)?;
 
     // Avoid including the actual notes, which may not all be public.
-    record["notes"] = EgValue::new_array();
+    record["notes"].take();
 
-    record["marc"].take(); // bloat
+    // De-bulk-ify
+    record["marc"].take();
+    record["mattrs"].take();
 
     Ok(RecordSummary {
-        id: bib_id,
+        id: rec_id,
         record,
         display,
         urls,
+        copy_counts,
         attributes: attrs,
         record_note_count: note_count,
     })
@@ -326,7 +334,7 @@ pub fn record_urls(
 
         let mut first = true;
         for href in field.get_subfields("u").iter() {
-            if href.content() == "" {
+            if href.content().trim().is_empty() {
                 continue;
             }
 
@@ -347,6 +355,8 @@ pub fn record_urls(
                 None
             };
 
+            first = false;
+
             let url = RecordUrl {
                 label,
                 notes,
@@ -363,11 +373,35 @@ pub fn record_urls(
             };
 
             urls.push(url);
-
-            first = false;
         }
     }
 
     Ok(urls_maybe)
 }
 
+pub fn record_copy_counts(
+    editor: &mut Editor,
+    org_id: i64,
+    rec_id: i64,
+    is_staff: bool,
+    is_meta: bool
+) -> EgResult<Vec<EgValue>> {
+    let key = if is_meta { "metarecord" } else { "record" };
+    let func = format!("asset.{key}_copy_count");
+    let query = eg::hash! {"from": [func, org_id, rec_id, is_staff]};
+    let mut data = editor.json_query(query)?;
+
+    for count in data.iter_mut() {
+        // Fix up the key name change; required by stored-proc version.
+        count["count"] = count["visible"].take();
+        count.remove("visible");
+    }
+
+    data.sort_by(|a, b| {
+        let da = a["depth"].int_required();
+        let db = b["depth"].int_required();
+        da.cmp(&db)
+    });
+
+    Ok(data)
+}

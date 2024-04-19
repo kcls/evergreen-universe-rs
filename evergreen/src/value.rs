@@ -967,6 +967,18 @@ impl EgValue {
         eg::NULL
     }
 
+    /// Remove a value from an object-like thing and, if found, return
+    /// the value to the caller.
+    pub fn remove(&mut self, key: &str) -> Option<EgValue> {
+        if let Self::Hash(ref mut map) = self {
+            map.remove(key)
+        } else if let Self::Blessed(ref mut o) = self {
+            o.values.remove(key)
+        } else {
+            None
+        }
+    }
+
     /// Iterator over values in an EgValue::Array.
     ///
     /// Returns an empty iterator if this is not an EgValue::Array type.

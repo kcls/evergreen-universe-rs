@@ -46,14 +46,20 @@ pub fn catalog_record_summary(
 ) -> EgResult<()> {
     let worker = app::RsSearchWorker::downcast(worker)?;
 
-    let _org_id = method.param(0).int()?;
+    let org_id = method.param(0).int()?;
     let _options = method.params().get(2); // optional
 
     let mut editor = Editor::new(worker.client());
 
     for rec_id in method.param(1).members() {
         let rec_id = rec_id.int()?;
-        let summary = bib::catalog_record_summary(&mut editor, rec_id)?;
+        let summary = bib::catalog_record_summary(
+            &mut editor,
+            org_id,
+            rec_id,
+            true /* TODO is_staff */,
+            false /* TODO is_meta */
+        )?;
 
         session.respond(summary.into_value())?;
     }
