@@ -3,6 +3,7 @@ use eg::idl;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use marc;
 use std::collections::HashMap;
 
 // Bib record display attributes are used widely. May as well flesh them
@@ -35,15 +36,10 @@ impl DisplayAttrValue {
 
     pub fn into_value(mut self) -> EgValue {
         match self {
-            Self::Value(ref mut op) => {
-                match op.take() {
-                    Some(s) => EgValue::from(s),
-                    None => EgValue::Null,
-                }
-            }
-            Self::List(ref mut l) => {
-                EgValue::from(l.drain(..).collect::<Vec<String>>())
-            }
+            Self::Value(ref mut op) =>
+                op.take().map(|v| EgValue::from(v)).unwrap_or(EgValue::Null),
+            Self::List(ref mut l) =>
+                EgValue::from(l.drain(..).collect::<Vec<String>>()),
         }
     }
 }
@@ -193,18 +189,28 @@ pub struct RecordSummary {
     id: i64,
     record: EgValue,
     display: DisplayAttrSet,
-    //attributes
-    //urls
+    attributes: EgValue,
+    urls: Option<Vec<RecordUrl>>,
     record_note_count: usize
 }
 
 impl RecordSummary {
     pub fn into_value(mut self) -> EgValue {
+        let mut urls = EgValue::new_array();
+
+        if let Some(mut list) = self.urls.take() {
+            for v in list.drain(..) {
+                urls.push(v.into_value()).expect("Is Array");
+            }
+        }
+
         let hash = eg::hash! {
             id: self.id,
             record: self.record.take(),
             display: self.display.into_value(),
             record_note_count: self.record_note_count,
+            attributes: self.attributes.take(),
+            urls: urls,
         };
 
         hash
@@ -231,18 +237,137 @@ pub fn catalog_record_summary(
     let display = display_map.remove(&bib_id)
         .ok_or_else(|| format!("Cannot load attrs for bib {bib_id}"))?;
 
-    // TODO attrs
-    // TODO urls
+
+    // Create an object of 'mraf' attributes.
+    // Any attribute can be multi so dedupe and array-ify all of them.
+
+    let mut attrs = EgValue::new_object();
+    for attr in record["mattrs"].members_mut() {
+        let name = attr["attr"].take();
+        let val = attr["value"].take();
+
+        if let EgValue::Array(ref mut list) = attrs[name.str()?] {
+            list.push(val);
+        } else {
+            attrs[name.str()?] = vec![val].into();
+        }
+    }
+
+    // Clear the source attrs since we've scavanged them.
+    record["mattrs"] = EgValue::new_array();
+
+    let urls = record_urls(editor, None, Some(record["marc"].str()?))?;
 
     let note_count = record["notes"].len();
 
     // Avoid including the actual notes, which may not all be public.
     record["notes"] = EgValue::new_array();
 
+    record["marc"].take(); // bloat
+
     Ok(RecordSummary {
         id: bib_id,
         record,
         display,
+        urls,
+        attributes: attrs,
         record_note_count: note_count,
     })
 }
+
+pub struct RecordUrl {
+    href: String,
+    label: Option<String>,
+    notes: Option<String>,
+    ind2: String,
+}
+
+impl RecordUrl {
+    pub fn into_value(self) -> EgValue {
+        eg::hash! {
+            href: self.href,
+            label: self.label,
+            notes: self.notes,
+            ind2: self.ind2
+        }
+    }
+}
+
+pub fn record_urls(
+    editor: &mut Editor,
+    bib_id: Option<i64>,
+    xml: Option<&str>
+) -> EgResult<Option<Vec<RecordUrl>>> {
+
+    let xml = match xml.as_ref() {
+        Some(x) => x,
+        None => {
+            todo!("Fetch Record by ID");
+        }
+    };
+
+    let record = marc::Record::from_xml(xml).next()
+        .ok_or_else(|| format!("Cannot parse MARC XML"))?;
+
+    let mut urls_maybe = None;
+
+    for field in record.get_fields("856").iter() {
+        if field.ind1() != "4" {
+            continue;
+        }
+
+        // asset.uri's
+        if field.has_subfield("9") || field.has_subfield("w") || field.has_subfield("n") {
+            continue;
+        }
+
+        let label_sf = field.first_subfield("y");
+        let notes_sf = field.first_subfield("z").or(field.first_subfield("3"));
+
+        let mut first = true;
+        for href in field.get_subfields("u").iter() {
+            if href.content() == "" {
+                continue;
+            }
+
+            // It's possible for multiple $u's to exist within 1 856 tag.
+            // in that case, honor the label/notes data for the first $u, but
+            // leave any subsequent $u's as unadorned href's.
+            // use href/link/note keys to be consistent with args.uri's
+
+            let label = if first && label_sf.is_some() {
+                Some(label_sf.unwrap().content().to_string())
+            } else {
+                None
+            };
+
+            let notes = if first && notes_sf.is_some() {
+                Some(notes_sf.unwrap().content().to_string())
+            } else {
+                None
+            };
+
+            let url = RecordUrl {
+                label,
+                notes,
+                href: href.content().to_string(),
+                ind2: field.ind2().to_string(),
+            };
+
+            let urls = match urls_maybe.as_mut() {
+                Some(u) => u,
+                None => {
+                    urls_maybe = Some(Vec::new());
+                    urls_maybe.as_mut().unwrap()
+                }
+            };
+
+            urls.push(url);
+
+            first = false;
+        }
+    }
+
+    Ok(urls_maybe)
+}
+

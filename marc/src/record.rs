@@ -191,9 +191,18 @@ impl Field {
         self.ind2 = Some(ind);
         Ok(())
     }
+
     /// Get a list of subfields with the provided code.
     pub fn get_subfields(&self, code: &str) -> Vec<&Subfield> {
         self.subfields.iter().filter(|f| f.code() == code).collect()
+    }
+
+    pub fn first_subfield(&self, code: &str) -> Option<&Subfield> {
+        self.subfields.iter().filter(|f| f.code() == code).next()
+    }
+
+    pub fn has_subfield(&self, code: &str) -> bool {
+        self.subfields.iter().any(|f| f.code() == code)
     }
 
     /// Get a mutable list of subfields with the provided code.
