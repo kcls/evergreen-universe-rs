@@ -13,31 +13,29 @@ use crate::app;
 /// List of method definitions we know at compile time.
 ///
 /// These will form the basis (and possibly all) of our published methods.
-pub static METHODS: &[StaticMethodDef] = &[
-    StaticMethodDef {
-        name: "biblio.record.catalog_summary",
-        desc: "Catalog Record Summary",
-        param_count: ParamCount::Range(2, 3),
-        handler: catalog_record_summary,
-        params: &[
-            StaticParam {
-                name: "Org Unit ID",
-                datatype: ParamDataType::Number,
-                desc: "Context Org Unit",
-            },
-            StaticParam {
-                name: "Record IDs",
-                datatype: ParamDataType::Array,
-                desc: ""
-            },
-            StaticParam {
-                name: "Options",
-                datatype: ParamDataType::Object,
-                desc: "Options Hash",
-            },
-        ],
-    },
-];
+pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
+    name: "biblio.record.catalog_summary",
+    desc: "Catalog Record Summary",
+    param_count: ParamCount::Range(2, 3),
+    handler: catalog_record_summary,
+    params: &[
+        StaticParam {
+            name: "Org Unit ID",
+            datatype: ParamDataType::Number,
+            desc: "Context Org Unit",
+        },
+        StaticParam {
+            name: "Record IDs",
+            datatype: ParamDataType::Array,
+            desc: "",
+        },
+        StaticParam {
+            name: "Options",
+            datatype: ParamDataType::Object,
+            desc: "Options Hash",
+        },
+    ],
+}];
 
 pub fn catalog_record_summary(
     worker: &mut Box<dyn ApplicationWorker>,
@@ -57,8 +55,8 @@ pub fn catalog_record_summary(
             &mut editor,
             org_id,
             rec_id,
-            true /* TODO is_staff */,
-            false /* TODO is_meta */
+            true,  /* TODO is_staff */
+            false, /* TODO is_meta */
         )?;
 
         session.respond(summary.into_value())?;

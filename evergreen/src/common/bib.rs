@@ -1,4 +1,5 @@
 use crate as eg;
+use eg::common::holds;
 use eg::idl;
 use eg::Editor;
 use eg::EgResult;
@@ -24,11 +25,9 @@ impl DisplayAttrValue {
     /// first value in our Self::List, otherwise empty str.
     pub fn first(&self) -> &str {
         match self {
-            Self::Value(op) => {
-                match op {
-                    Some(s) => s.as_str(),
-                    None => "",
-                }
+            Self::Value(op) => match op {
+                Some(s) => s.as_str(),
+                None => "",
             },
             Self::List(v) => v.get(0).map(|v| v.as_str()).unwrap_or(""),
         }
@@ -36,14 +35,11 @@ impl DisplayAttrValue {
 
     pub fn into_value(mut self) -> EgValue {
         match self {
-            Self::Value(ref mut op) =>
-                op.take().map(|v| EgValue::from(v)).unwrap_or(EgValue::Null),
-            Self::List(ref mut l) =>
-                EgValue::from(l.drain(..).collect::<Vec<String>>()),
+            Self::Value(ref mut op) => op.take().map(|v| EgValue::from(v)).unwrap_or(EgValue::Null),
+            Self::List(ref mut l) => EgValue::from(l.drain(..).collect::<Vec<String>>()),
         }
     }
 }
-
 
 pub struct DisplayAttr {
     name: String,
@@ -193,6 +189,8 @@ pub struct RecordSummary {
     urls: Option<Vec<RecordUrl>>,
     record_note_count: usize,
     copy_counts: Vec<EgValue>,
+    hold_count: i64,
+    has_holdable_copy: bool,
 }
 
 impl RecordSummary {
@@ -214,7 +212,9 @@ impl RecordSummary {
             record_note_count: self.record_note_count,
             attributes: self.attributes.take(),
             copy_counts: EgValue::from(copy_counts),
+            hold_count: self.hold_count,
             urls: urls,
+            has_holdable_copy: self.has_holdable_copy
         };
 
         hash
@@ -228,7 +228,6 @@ pub fn catalog_record_summary(
     is_staff: bool,
     is_meta: bool,
 ) -> EgResult<RecordSummary> {
-
     let flesh = eg::hash! {
         "flesh": 1,
         "flesh_fields": {
@@ -236,14 +235,15 @@ pub fn catalog_record_summary(
         }
     };
 
-    let mut record = editor.retrieve_with_ops("bre", rec_id, flesh)?
+    let mut record = editor
+        .retrieve_with_ops("bre", rec_id, flesh)?
         .ok_or_else(|| editor.die_event())?;
 
     let mut display_map = get_display_attrs(editor, &[rec_id])?;
 
-    let display = display_map.remove(&rec_id)
+    let display = display_map
+        .remove(&rec_id)
         .ok_or_else(|| format!("Cannot load attrs for bib {rec_id}"))?;
-
 
     // Create an object of 'mraf' attributes.
     // Any attribute can be multi so dedupe and array-ify all of them.
@@ -264,6 +264,8 @@ pub fn catalog_record_summary(
 
     let note_count = record["notes"].len();
     let copy_counts = record_copy_counts(editor, org_id, rec_id, is_staff, is_meta)?;
+    let hold_count = holds::record_hold_counts(editor, rec_id, None)?;
+    let has_holdable_copy = holds::record_has_holdable_copy(editor, rec_id, is_meta)?;
 
     // Avoid including the actual notes, which may not all be public.
     record["notes"].take();
@@ -278,7 +280,9 @@ pub fn catalog_record_summary(
         display,
         urls,
         copy_counts,
+        hold_count,
         attributes: attrs,
+        has_holdable_copy,
         record_note_count: note_count,
     })
 }
@@ -304,9 +308,8 @@ impl RecordUrl {
 pub fn record_urls(
     editor: &mut Editor,
     bib_id: Option<i64>,
-    xml: Option<&str>
+    xml: Option<&str>,
 ) -> EgResult<Option<Vec<RecordUrl>>> {
-
     let xml = match xml.as_ref() {
         Some(x) => x,
         None => {
@@ -314,7 +317,8 @@ pub fn record_urls(
         }
     };
 
-    let record = marc::Record::from_xml(xml).next()
+    let record = marc::Record::from_xml(xml)
+        .next()
         .ok_or_else(|| format!("Cannot parse MARC XML"))?;
 
     let mut urls_maybe = None;
@@ -384,7 +388,7 @@ pub fn record_copy_counts(
     org_id: i64,
     rec_id: i64,
     is_staff: bool,
-    is_meta: bool
+    is_meta: bool,
 ) -> EgResult<Vec<EgValue>> {
     let key = if is_meta { "metarecord" } else { "record" };
     let func = format!("asset.{key}_copy_count");
