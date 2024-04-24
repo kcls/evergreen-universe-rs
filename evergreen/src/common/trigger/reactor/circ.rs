@@ -1,6 +1,6 @@
 //! Base module for A/T Reactors
 use crate as eg;
-use eg::auth::{AuthInternalLoginArgs, AuthSession};
+use eg::auth::{AuthInternalLoginArgs, AuthSession, AuthLoginType};
 use eg::common::{trigger, trigger::Event, trigger::Processor};
 use eg::EgEvent;
 use eg::EgResult;
@@ -24,7 +24,7 @@ impl Processor<'_> {
             patron["home_ou"].int()?
         };
 
-        let mut auth_args = AuthInternalLoginArgs::new(patron_id, "opac");
+        let mut auth_args = AuthInternalLoginArgs::new(patron_id, AuthLoginType::Opac);
         auth_args.set_org_unit(home_ou);
 
         let auth_ses = AuthSession::internal_session(self.editor.client_mut(), &auth_args)?

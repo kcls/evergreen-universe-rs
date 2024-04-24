@@ -104,4 +104,9 @@ path = "src/services/hold-targeter/main.rs"
 name = "eg-service-rs-store"
 path = "src/services/store/main.rs"
 
+[[bin]]
+name = "eg-service-rs-auth-internal"
+path = "src/services/auth-internal/main.rs"
+
+
 

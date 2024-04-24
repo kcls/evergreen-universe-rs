@@ -4,10 +4,11 @@ use crate::Client;
 use crate::EgEvent;
 use crate::EgResult;
 use crate::EgValue;
+use crate::EgError;
 
 const LOGIN_TIMEOUT: i32 = 30;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthLoginType {
     Temp,
     Opac,
@@ -15,6 +16,7 @@ pub enum AuthLoginType {
     Persist,
 }
 
+/*
 impl From<&str> for AuthLoginType {
     fn from(s: &str) -> Self {
         match s {
@@ -26,6 +28,20 @@ impl From<&str> for AuthLoginType {
                 log::error!("Invalid login type: {s}. Using temp instead");
                 Self::Temp
             }
+        }
+    }
+}
+*/
+
+impl TryFrom<&str> for AuthLoginType {
+    type Error = EgError;
+    fn try_from(s: &str) -> EgResult<AuthLoginType> {
+        match s {
+            "opac" => Ok(Self::Opac),
+            "staff" => Ok(Self::Staff),
+            "persist" => Ok(Self::Persist),
+            "temp" => Ok(Self::Temp),
+            _ => Err(format!("Invalid login type: {s}. Using temp instead").into()),
         }
     }
 }

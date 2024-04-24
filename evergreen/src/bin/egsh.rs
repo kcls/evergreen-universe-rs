@@ -635,7 +635,12 @@ impl Shell {
         let login_type = args.get(2).unwrap_or(&DEFAULT_LOGIN_TYPE);
         let workstation = if args.len() > 3 { Some(args[3]) } else { None };
 
-        let args = eg::auth::AuthLoginArgs::new(username, password, *login_type, workstation);
+        let args = eg::auth::AuthLoginArgs::new(
+            username,
+            password,
+            eg::auth::AuthLoginType::try_from(*login_type)?,
+            workstation
+        );
 
         match eg::auth::AuthSession::login(self.ctx().client(), &args)? {
             Some(s) => {
