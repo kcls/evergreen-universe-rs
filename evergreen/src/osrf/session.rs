@@ -900,7 +900,7 @@ impl ServerSession {
                 Payload::Status(message::Status::new(
                     MessageStatus::Complete,
                     "Request Complete",
-                    "osrfStatus",
+                    "osrfConnectStatus",
                 )),
             ));
         }

@@ -533,6 +533,11 @@ impl Worker {
                 // There may be more param defs than parameters if
                 // some param are optional.
                 if let Some(param_val) = method_call.params().get(idx) {
+                    if idx >= pcount.minimum().into() && param_val.is_null() {
+                        // NULL placeholders for non-required parameters are
+                        // allowed.
+                        continue;
+                    }
                     if !param_def.datatype.matches(param_val) {
                         return self.reply_bad_request(&format!(
                             "Invalid paramter type: wanted={} got={}",
