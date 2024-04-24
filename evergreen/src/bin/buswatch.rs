@@ -1,6 +1,6 @@
+use eg::date;
 use eg::osrf::bus;
 use eg::osrf::conf;
-use eg::util;
 use eg::EgValue;
 use evergreen as eg;
 use std::env;
@@ -110,7 +110,7 @@ impl BusWatch {
                 }
             }
 
-            obj["time"] = EgValue::from(util::epoch_secs_str());
+            obj["time"] = EgValue::from(date::epoch_secs_str());
 
             log::info!("{}", obj.dump());
         }

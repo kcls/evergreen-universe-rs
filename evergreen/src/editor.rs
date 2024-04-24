@@ -260,6 +260,11 @@ impl Editor {
         self.requestor = Some(r.clone())
     }
 
+    /// Same as set_requestor, but takes ownership of the value.
+    pub fn give_requestor(&mut self, r: EgValue) {
+        self.requestor = Some(r);
+    }
+
     pub fn last_event(&self) -> Option<&EgEvent> {
         self.last_event.as_ref()
     }

@@ -167,22 +167,22 @@ impl Cache {
         Ok(Some(v))
     }
 
-    /// Store a JSON thing in the cache
-    pub fn set(&mut self, key: &str, value: EgValue, timeout: Option<usize>) -> EgResult<()> {
+    /// Store a value using the default max timeout for the cache type.
+    pub fn set(&mut self, key: &str, value: EgValue) -> EgResult<()> {
+        self.set_for(key, value, self.active_cache()?.max_cache_time())
+    }
+
+    /// Store a value in the cache for this amount of time
+    pub fn set_for(&mut self, key: &str, value: EgValue, timeout: usize) -> EgResult<()> {
         let key = to_key(key);
         let ctype = self.active_cache()?;
         let max_timeout = ctype.max_cache_time();
         let max_size = ctype.max_cache_size();
 
-        let time = match timeout {
-            Some(t) => {
-                if t > max_timeout {
-                    max_timeout
-                } else {
-                    t
-                }
-            }
-            None => max_timeout,
+        let time = if timeout > max_timeout {
+            max_timeout
+        } else {
+            timeout
         };
 
         let valstr = value.into_json_value().dump();
@@ -196,6 +196,8 @@ impl Cache {
         if let Err(err) = res {
             return Err(format!("set_ex({key}) failed: {err}").into());
         }
+
+        log::debug!("Cached {key} for {time} seconds");
 
         Ok(())
     }

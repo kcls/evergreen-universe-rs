@@ -4,6 +4,7 @@ use crate::result::EgResult;
 use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, NaiveDate, TimeZone};
 use chrono_tz::Tz;
 use regex::{Captures, Regex};
+use std::time::SystemTime;
 
 const INTERVAL_PART_REGEX: &str = r#"\s*([\+-]?)\s*(\d+)\s*(\w+)\s*"#;
 const INTERVAL_HMS_REGEX: &str = r#"(\d{2,}):(\d{2}):(\d{2})"#;
@@ -280,4 +281,19 @@ pub fn subtract_interval(date: EgDate, interval: &str) -> EgResult<EgDate> {
         .ok_or_else(|| format!("Invalid duration seconds: {seconds}"))?;
 
     Ok(date - duration)
+}
+
+/// Epoch seconds with fractional milliseconds.
+pub fn epoch_secs() -> f64 {
+    if let Ok(dur) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        let ms = dur.as_millis();
+        ms as f64 / 1000.0
+    } else {
+        0.0
+    }
+}
+
+/// Epoch seconds as a string with 3 decimal places of milliseconds.
+pub fn epoch_secs_str() -> String {
+    format!("{:0<3}", epoch_secs())
 }

@@ -77,3 +77,8 @@ pub const PRECAT_COPY_FINE_LEVEL: i64 = 2;
 pub const PRECAT_COPY_LOAN_DURATION: i64 = 2;
 pub const PRECAT_CALL_NUMBER: i64 = -1;
 pub const PRECAT_BIB_RECORD: i64 = -1;
+
+// ---------------------------------------------------------------------
+// Well-known cache key prefixes
+// ---------------------------------------------------------------------
+pub const OILS_AUTH_CACHE_PRFX: &str = "oils_auth_";

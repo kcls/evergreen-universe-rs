@@ -1,3 +1,4 @@
+use crate::date;
 ///! OpenSRF Syslog
 use crate::osrf::conf;
 use crate::util;
@@ -223,7 +224,7 @@ impl log::Log for Logger {
             "{}{} [{}:{}:{}:{}",
             match self.writer.is_some() {
                 true => format!("<{}>", severity),
-                _ => format!("{} ", util::epoch_secs()),
+                _ => format!("{} ", date::epoch_secs()),
             },
             &self.application,
             levelname,

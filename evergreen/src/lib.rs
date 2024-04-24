@@ -12,7 +12,6 @@ pub use value::EgValue;
 
 pub const NULL: EgValue = EgValue::Null;
 
-pub mod auth;
 pub mod common;
 pub mod constants;
 pub mod date;

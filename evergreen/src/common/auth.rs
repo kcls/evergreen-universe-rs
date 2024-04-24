@@ -1,61 +1,66 @@
-//! Create and manage authentication sessions
 use crate as eg;
-use crate::Client;
-use crate::EgEvent;
-use crate::EgResult;
-use crate::EgValue;
+use eg::{Editor, EgResult, EgValue, EgError, EgEvent, Client};
+use eg::date;
+use std::fmt;
+use eg::osrf::sclient::HostSettings;
+use eg::common::settings::Settings;
 
 const LOGIN_TIMEOUT: i32 = 30;
 
-#[derive(Debug)]
-pub enum AuthLoginType {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LoginType {
     Temp,
     Opac,
     Staff,
     Persist,
 }
 
-impl From<&str> for AuthLoginType {
-    fn from(s: &str) -> Self {
+impl TryFrom<&str> for LoginType {
+    type Error = EgError;
+    fn try_from(s: &str) -> EgResult<LoginType> {
         match s {
-            "opac" => Self::Opac,
-            "staff" => Self::Staff,
-            "persist" => Self::Persist,
-            "temp" => Self::Temp,
-            _ => {
-                log::error!("Invalid login type: {s}. Using temp instead");
-                Self::Temp
-            }
+            "opac" => Ok(Self::Opac),
+            "staff" => Ok(Self::Staff),
+            "persist" => Ok(Self::Persist),
+            "temp" => Ok(Self::Temp),
+            _ => Err(format!("Invalid login type: {s}. Using temp instead").into()),
         }
     }
 }
 
-impl From<&AuthLoginType> for &str {
-    fn from(lt: &AuthLoginType) -> &'static str {
+impl From<&LoginType> for &str {
+    fn from(lt: &LoginType) -> &'static str {
         match *lt {
-            AuthLoginType::Temp => "temp",
-            AuthLoginType::Opac => "opac",
-            AuthLoginType::Staff => "staff",
-            AuthLoginType::Persist => "persist",
+            LoginType::Temp => "temp",
+            LoginType::Opac => "opac",
+            LoginType::Staff => "staff",
+            LoginType::Persist => "persist",
         }
     }
 }
 
-pub struct AuthLoginArgs {
+impl fmt::Display for LoginType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s: &str = (self).into();
+        write!(f, "{}", s)
+    }
+}
+
+pub struct LoginArgs {
     pub username: String,
     pub password: String,
-    pub login_type: AuthLoginType,
+    pub login_type: LoginType,
     pub workstation: Option<String>,
 }
 
-impl AuthLoginArgs {
+impl LoginArgs {
     pub fn new(
         username: &str,
         password: &str,
-        login_type: impl Into<AuthLoginType>,
+        login_type: impl Into<LoginType>,
         workstation: Option<&str>,
     ) -> Self {
-        AuthLoginArgs {
+        LoginArgs {
             username: username.to_string(),
             password: password.to_string(),
             login_type: login_type.into(),
@@ -74,7 +79,7 @@ impl AuthLoginArgs {
         &self.password
     }
 
-    pub fn login_type(&self) -> &AuthLoginType {
+    pub fn login_type(&self) -> &LoginType {
         &self.login_type
     }
 
@@ -100,16 +105,16 @@ impl AuthLoginArgs {
 }
 
 #[derive(Debug)]
-pub struct AuthInternalLoginArgs {
+pub struct InternalLoginArgs {
     pub user_id: i64,
     pub org_unit: Option<i64>,
-    pub login_type: AuthLoginType,
+    pub login_type: LoginType,
     pub workstation: Option<String>,
 }
 
-impl AuthInternalLoginArgs {
-    pub fn new(user_id: i64, login_type: impl Into<AuthLoginType>) -> Self {
-        AuthInternalLoginArgs {
+impl InternalLoginArgs {
+    pub fn new(user_id: i64, login_type: impl Into<LoginType>) -> Self {
+        InternalLoginArgs {
             user_id,
             login_type: login_type.into(),
             org_unit: None,
@@ -140,13 +145,13 @@ impl AuthInternalLoginArgs {
     }
 }
 
-pub struct AuthSession {
+pub struct Session {
     token: String,
     authtime: usize,
     workstation: Option<String>,
 }
 
-impl AuthSession {
+impl Session {
     /// Logout and remove the cached auth session.
     pub fn logout(client: &Client, token: &str) -> EgResult<()> {
         let mut ses = client.session("open-ils.auth");
@@ -160,7 +165,7 @@ impl AuthSession {
     /// Login and acquire an authtoken.
     ///
     /// Returns None on login failure, Err on error.
-    pub fn login(client: &Client, args: &AuthLoginArgs) -> EgResult<Option<AuthSession>> {
+    pub fn login(client: &Client, args: &LoginArgs) -> EgResult<Option<Session>> {
         let params = vec![args.to_eg_value()];
         let mut ses = client.session("open-ils.auth");
         let mut req = ses.request("open-ils.auth.login", params)?;
@@ -170,7 +175,7 @@ impl AuthSession {
             None => Err(format!("Login Timed Out"))?,
         };
 
-        AuthSession::handle_auth_response(&args.workstation, &eg_val)
+        Session::handle_auth_response(&args.workstation, &eg_val)
     }
 
     /// Create an authtoken for an internal auth session.
@@ -178,8 +183,8 @@ impl AuthSession {
     /// Returns None on login failure, Err on error.
     pub fn internal_session(
         client: &Client,
-        args: &AuthInternalLoginArgs,
-    ) -> EgResult<Option<AuthSession>> {
+        args: &InternalLoginArgs,
+    ) -> EgResult<Option<Session>> {
         let params = vec![args.to_eg_value()];
         let mut ses = client.session("open-ils.auth_internal");
         let mut req = ses.request("open-ils.auth_internal.session.create", params)?;
@@ -189,13 +194,13 @@ impl AuthSession {
             None => Err(format!("Login Timed Out"))?,
         };
 
-        AuthSession::handle_auth_response(&args.workstation, &eg_val)
+        Session::handle_auth_response(&args.workstation, &eg_val)
     }
 
     fn handle_auth_response(
         workstation: &Option<String>,
         response: &EgValue,
-    ) -> EgResult<Option<AuthSession>> {
+    ) -> EgResult<Option<Session>> {
         let evt = match EgEvent::parse(&response) {
             Some(e) => e,
             None => {
@@ -226,7 +231,7 @@ impl AuthSession {
             }
         };
 
-        let mut auth_ses = AuthSession {
+        let mut auth_ses = Session {
             token: token,
             authtime: authtime,
             workstation: None,
@@ -249,5 +254,53 @@ impl AuthSession {
 
     pub fn workstation(&self) -> Option<&str> {
         self.workstation.as_deref()
+    }
+}
+
+/// Returns the auth session duration in seconds for the provided
+/// login type and context org unit(s) and host settings.
+pub fn get_auth_duration(
+    editor: &mut Editor,
+    org_id: i64,
+    user_home_ou: i64,
+    host_settings: &HostSettings,
+    auth_type: &LoginType,
+) -> EgResult<i64> {
+    // First look for an org unit setting.
+
+    let setting_name = match auth_type {
+        LoginType::Opac => "auth.opac_timeout",
+        LoginType::Staff => "auth.staff_timeout",
+        LoginType::Temp => "auth.temp_timeout",
+        LoginType::Persist => "auth.persistent_login_interval",
+    };
+
+    let mut settings = Settings::new(editor);
+    settings.set_org_id(org_id);
+
+    let mut interval = settings.get_value(setting_name)?;
+
+    if interval.is_null() && user_home_ou != org_id {
+        // If the provided context org unit has no setting, see if
+        // a setting is applied to the user's home org unit.
+        settings.set_org_id(user_home_ou);
+        interval = settings.get_value(setting_name)?;
+    }
+
+    if interval.is_null() {
+        // No org unit setting.  Use the default.
+
+        let setkey =
+            format!("apps/open-ils.auth_internal/app_settings/default_timeout/{auth_type}");
+
+        interval = host_settings.value(&setkey);
+    }
+
+    if let Some(num) = interval.as_int() {
+        Ok(num)
+    } else if let Some(s) = interval.as_str() {
+        date::interval_to_seconds(&s)
+    } else {
+        Ok(0)
     }
 }
