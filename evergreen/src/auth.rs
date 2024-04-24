@@ -5,6 +5,7 @@ use crate::EgEvent;
 use crate::EgResult;
 use crate::EgValue;
 use crate::EgError;
+use std::fmt;
 
 const LOGIN_TIMEOUT: i32 = 30;
 
@@ -15,23 +16,6 @@ pub enum AuthLoginType {
     Staff,
     Persist,
 }
-
-/*
-impl From<&str> for AuthLoginType {
-    fn from(s: &str) -> Self {
-        match s {
-            "opac" => Self::Opac,
-            "staff" => Self::Staff,
-            "persist" => Self::Persist,
-            "temp" => Self::Temp,
-            _ => {
-                log::error!("Invalid login type: {s}. Using temp instead");
-                Self::Temp
-            }
-        }
-    }
-}
-*/
 
 impl TryFrom<&str> for AuthLoginType {
     type Error = EgError;
@@ -54,6 +38,13 @@ impl From<&AuthLoginType> for &str {
             AuthLoginType::Staff => "staff",
             AuthLoginType::Persist => "persist",
         }
+    }
+}
+
+impl fmt::Display for AuthLoginType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s: &str = (self).into();
+        write!(f, "{}", s)
     }
 }
 

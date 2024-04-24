@@ -7,10 +7,12 @@ use eg::date;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
+use eg::osrf::cache; // PUT ME INTO THE WORKER ENV
 use evergreen as eg;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 // Import our local methods module.
 use crate::methods;
@@ -40,12 +42,11 @@ impl ApplicationEnv for RsAuthInternalEnv {
 
 /// Our main application class.
 pub struct RsAuthInternalApplication {
-    login_durations: HashMap<auth::AuthLoginType, i64>,
 }
 
 impl RsAuthInternalApplication {
     pub fn new() -> Self {
-        RsAuthInternalApplication {login_durations: HashMap::new()}
+        RsAuthInternalApplication {}
     }
 }
 
@@ -61,17 +62,6 @@ impl Application for RsAuthInternalApplication {
     /// Load the IDL and perform any other needed global startup work.
     fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
-
-        // TODO move settings into app chunk for this service
-        let opac_timeout = host_settings
-            .value("apps/open-ils.auth_internal/app_settings/default_timeout/opac")
-            .as_str()
-            .unwrap_or("0s");
-
-        self.login_durations.insert(
-            auth::AuthLoginType::Opac,
-            date::interval_to_seconds(opac_timeout)?
-        );
 
         Ok(())
     }
@@ -131,6 +121,13 @@ impl RsAuthInternalWorker {
             Some(eref) => Ok(eref),
             None => Err(format!("Cannot downcast").into()),
         }
+    }
+
+    /// Get to our host settings.
+    ///
+    /// Panics if unset, which is done during absorb_env.
+    pub fn host_settings(&self) -> &HostSettings {
+        self.host_settings.as_ref().unwrap()
     }
 
     /// Ref to our OpenSRF client.
