@@ -1,6 +1,7 @@
 use eg::samples::SampleData;
 use eg::Editor;
 use eg::EgResult;
+use eg::common::auth;
 use evergreen as eg;
 use std::time::SystemTime;
 
@@ -49,10 +50,10 @@ pub struct Tester {
 
 /// Login and augment the Tester's Editor with the authtoken.
 pub fn login(tester: &mut Tester) -> EgResult<()> {
-    let mut args = eg::auth::AuthInternalLoginArgs::new(eg::samples::AU_STAFF_ID, "staff");
+    let mut args = auth::AuthInternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::AuthLoginType::Staff);
     args.org_unit = Some(tester.samples.aou_id);
 
-    let auth_ses = match eg::auth::AuthSession::internal_session(tester.ctx.client(), &args)? {
+    let auth_ses = match eg::common::auth::AuthSession::internal_session(tester.ctx.client(), &args)? {
         Some(s) => s,
         None => return Err("Login failed".into()),
     };

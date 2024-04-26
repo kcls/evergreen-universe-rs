@@ -1,4 +1,5 @@
 use evergreen as eg;
+use eg::common::auth;
 
 fn main() -> eg::EgResult<()> {
     let ctx = eg::init()?;
@@ -40,8 +41,8 @@ fn main() -> eg::EgResult<()> {
 
     let client = ctx.client();
 
-    let args = eg::auth::AuthLoginArgs::new("br1mclark", "montyc1234", "temp", None);
-    let auth_ses = match eg::auth::AuthSession::login(client, &args)? {
+    let args = auth::AuthLoginArgs::new("br1mclark", "montyc1234", auth::AuthLoginType::Temp, None);
+    let auth_ses = match auth::AuthSession::login(client, &args)? {
         Some(s) => s,
         None => panic!("Login failed"),
     };
@@ -79,9 +80,9 @@ fn main() -> eg::EgResult<()> {
     }
 
     // Testing internal auth
-    let args = eg::auth::AuthInternalLoginArgs::new(1, "temp");
+    let args = auth::AuthInternalLoginArgs::new(1, auth::AuthLoginType::Temp);
 
-    let auth_ses = match eg::auth::AuthSession::internal_session(client, &args)? {
+    let auth_ses = match auth::AuthSession::internal_session(client, &args)? {
         Some(s) => s,
         None => panic!("Internal Login failed"),
     };

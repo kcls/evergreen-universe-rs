@@ -1,10 +1,10 @@
-use eg::auth;
 use eg::constants as C;
 use eg::date;
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;
+use eg::common::auth;
 use eg::util;
 use eg::Editor;
 use eg::EgEvent;
@@ -82,7 +82,7 @@ pub fn create_auth_session(
         None => user["ws_ou"].int()?,
     };
 
-    let duration = eg::common::auth::get_auth_duration(
+    let duration = auth::get_auth_duration(
         &mut editor,
         org_id,
         user["home_ou"].int()?,

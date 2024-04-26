@@ -1,6 +1,6 @@
 //! Base module for A/T Reactors
 use crate as eg;
-use eg::auth::{AuthInternalLoginArgs, AuthLoginType, AuthSession};
+use eg::common::auth::{AuthInternalLoginArgs, AuthLoginType, AuthSession};
 use eg::common::{trigger, trigger::Event, trigger::Processor};
 use eg::EgEvent;
 use eg::EgResult;

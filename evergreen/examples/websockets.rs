@@ -1,6 +1,7 @@
 use eg::osrf::message;
 use eg::util;
 use eg::EgValue;
+use eg::common::auth;
 use evergreen as eg;
 use std::io::Write;
 use std::thread;
@@ -173,8 +174,8 @@ fn _test_formats() {
 
     println!("Logging in");
 
-    let args = eg::auth::AuthLoginArgs::new("admin", "demo123", "temp", None);
-    let auth_ses = match eg::auth::AuthSession::login(client, &args).expect("login()") {
+    let args = auth::AuthLoginArgs::new("admin", "demo123", auth::AuthLoginType::Temp, None);
+    let auth_ses = match auth::AuthSession::login(client, &args).expect("login()") {
         Some(s) => s,
         None => panic!("Login failed"),
     };

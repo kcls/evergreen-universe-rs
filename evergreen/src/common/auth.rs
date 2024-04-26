@@ -1,9 +1,5 @@
 use crate as eg;
-use eg::Editor;
-use eg::EgResult;
-use eg::EgValue;
-use eg::EgError;
-use eg::Client;
+use eg::{Editor, EgResult, EgValue, EgError, EgEvent, Client};
 use eg::date;
 use std::fmt;
 use eg::osrf::sclient::HostSettings;

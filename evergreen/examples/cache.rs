@@ -12,7 +12,7 @@ fn main() {
         "key2": "blargle",
     };
 
-    cache.set("funstuff", blob, None).expect("Set OK");
+    cache.set("funstuff", blob).expect("Set OK");
 
     println!(
         "{}",
