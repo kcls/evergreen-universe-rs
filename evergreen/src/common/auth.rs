@@ -1,14 +1,13 @@
 use crate as eg;
-use eg::{Editor, EgResult, EgValue, EgError, EgEvent, Client};
-use eg::date;
-use eg::util;
-use std::fmt;
-use std::sync::Arc;
-use md5;
+use eg::common::settings::Settings;
 use eg::constants as C;
+use eg::date;
 use eg::osrf::cache::Cache;
 use eg::osrf::sclient::HostSettings;
-use eg::common::settings::Settings;
+use eg::util;
+use eg::{Client, Editor, EgError, EgEvent, EgResult, EgValue};
+use md5;
+use std::fmt;
 
 const LOGIN_TIMEOUT: i32 = 30;
 
@@ -255,11 +254,9 @@ impl Session {
     /// Directly create our own internal auth session.
     pub fn internal_session(
         editor: &mut Editor,
-        host_settings: &Arc<HostSettings>,
         cache: &mut Cache,
         args: &InternalLoginArgs,
     ) -> EgResult<Session> {
-
         let mut user = editor
             .retrieve("au", args.user_id)?
             .ok_or_else(|| editor.die_event())?;
@@ -284,13 +281,7 @@ impl Session {
             None => user["ws_ou"].int()?,
         };
 
-        let duration = get_auth_duration(
-            editor,
-            org_id,
-            user["home_ou"].int()?,
-            host_settings,
-            &args.login_type,
-        )?;
+        let duration = get_auth_duration(editor, org_id, user["home_ou"].int()?, &args.login_type)?;
 
         let authtoken = format!("{:x}", md5::compute(util::random_number(64)));
         let cache_key = format!("{}{}", C::OILS_AUTH_CACHE_PRFX, authtoken);
@@ -341,7 +332,6 @@ pub fn get_auth_duration(
     editor: &mut Editor,
     org_id: i64,
     user_home_ou: i64,
-    host_settings: &Arc<HostSettings>,
     auth_type: &LoginType,
 ) -> EgResult<i64> {
     // First look for an org unit setting.
@@ -365,13 +355,15 @@ pub fn get_auth_duration(
         interval = settings.get_value(setting_name)?;
     }
 
+    let interval_binding;
     if interval.is_null() {
         // No org unit setting.  Use the default.
 
         let setkey =
             format!("apps/open-ils.auth_internal/app_settings/default_timeout/{auth_type}");
 
-        interval = host_settings.value(&setkey);
+        interval_binding = HostSettings::value(&setkey)?.clone();
+        interval = &interval_binding;
     }
 
     if let Some(num) = interval.as_int() {

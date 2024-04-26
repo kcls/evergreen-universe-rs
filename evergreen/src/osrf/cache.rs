@@ -3,7 +3,6 @@ use crate::EgResult;
 use crate::EgValue;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 const CACHE_PREFIX: &str = "opensrf:cache";
 const DEFAULT_CACHE_TYPE: &str = "global";
@@ -60,8 +59,8 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn init(host_settings: Arc<HostSettings>) -> EgResult<Self> {
-        let config = host_settings.value("redis-cache");
+    pub fn init() -> EgResult<Self> {
+        let config = HostSettings::value("redis-cache")?;
 
         if config.is_null() {
             return Err(format!("No Cache configuration for redis").into());

@@ -1,7 +1,6 @@
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
-use eg::osrf::sclient::HostSettings;
 use eg::Client;
 use eg::{EgError, EgResult};
 use evergreen as eg;
@@ -53,17 +52,13 @@ impl Application for RsCircApplication {
     }
 
     /// Load the IDL and perform any other needed global startup work.
-    fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
-        eg::init::load_idl(Some(&host_settings))?;
+    fn init(&mut self, _client: Client) -> EgResult<()> {
+        eg::init::load_idl()?;
         Ok(())
     }
 
     /// Tell the Server what methods we want to publish.
-    fn register_methods(
-        &self,
-        _client: Client,
-        _host_settings: Arc<HostSettings>,
-    ) -> EgResult<Vec<MethodDef>> {
+    fn register_methods(&self, _client: Client) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
         // Create Method objects from our static method definitions.
@@ -84,7 +79,6 @@ impl Application for RsCircApplication {
 pub struct RsCircWorker {
     env: Option<RsCircEnv>,
     client: Option<Client>,
-    host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
@@ -94,7 +88,6 @@ impl RsCircWorker {
             env: None,
             client: None,
             methods: None,
-            host_settings: None,
         }
     }
 
@@ -138,7 +131,6 @@ impl ApplicationWorker for RsCircWorker {
     fn absorb_env(
         &mut self,
         client: Client,
-        host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()> {
@@ -150,7 +142,6 @@ impl ApplicationWorker for RsCircWorker {
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.methods = Some(methods);
-        self.host_settings = Some(host_settings);
 
         Ok(())
     }

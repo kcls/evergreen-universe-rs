@@ -1,7 +1,6 @@
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
-use eg::osrf::sclient::HostSettings;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
@@ -54,17 +53,13 @@ impl Application for HoldTargeterApplication {
     }
 
     /// Load the IDL and perform any other needed global startup work.
-    fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
-        eg::init::load_idl(Some(&host_settings))?;
+    fn init(&mut self, _client: Client) -> EgResult<()> {
+        eg::init::load_idl()?;
         Ok(())
     }
 
     /// Tell the Server what methods we want to publish.
-    fn register_methods(
-        &self,
-        _client: Client,
-        _host_settings: Arc<HostSettings>,
-    ) -> EgResult<Vec<MethodDef>> {
+    fn register_methods(&self, _client: Client) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
         // Create Method objects from our static method definitions.
@@ -85,7 +80,6 @@ impl Application for HoldTargeterApplication {
 pub struct HoldTargeterWorker {
     env: Option<HoldTargeterEnv>,
     client: Option<Client>,
-    host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
@@ -95,7 +89,6 @@ impl HoldTargeterWorker {
             env: None,
             client: None,
             methods: None,
-            host_settings: None,
         }
     }
 
@@ -139,7 +132,6 @@ impl ApplicationWorker for HoldTargeterWorker {
     fn absorb_env(
         &mut self,
         client: Client,
-        host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()> {
@@ -151,7 +143,6 @@ impl ApplicationWorker for HoldTargeterWorker {
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.methods = Some(methods);
-        self.host_settings = Some(host_settings);
 
         Ok(())
     }

@@ -57,9 +57,6 @@ pub struct Worker {
     /// Watches for signals
     sig_tracker: SignalTracker,
 
-    /// Settings from opensrf.settings
-    host_settings: Arc<HostSettings>,
-
     client: Client,
 
     /// True if the caller has requested a stateful conversation.
@@ -91,7 +88,6 @@ impl Worker {
     pub fn new(
         service: String,
         worker_id: u64,
-        host_settings: Arc<HostSettings>,
         sig_tracker: SignalTracker,
         methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
@@ -99,7 +95,6 @@ impl Worker {
         let client = Client::connect()?;
 
         Ok(Worker {
-            host_settings,
             sig_tracker,
             service,
             worker_id,
@@ -139,12 +134,7 @@ impl Worker {
         env: Box<dyn app::ApplicationEnv>,
     ) -> EgResult<Box<dyn app::ApplicationWorker>> {
         let mut app_worker = (factory)();
-        app_worker.absorb_env(
-            self.client.clone(),
-            self.host_settings.clone(),
-            self.methods.clone(),
-            env,
-        )?;
+        app_worker.absorb_env(self.client.clone(), self.methods.clone(), env)?;
         Ok(app_worker)
     }
 
@@ -157,17 +147,17 @@ impl Worker {
             return;
         }
 
-        let max_requests: usize = self
-            .host_settings
-            .value(&format!("apps/{}/unix_config/max_requests", self.service))
-            .as_usize()
-            .unwrap_or(5000);
+        let max_requests: usize =
+            HostSettings::value(&format!("apps/{}/unix_config/max_requests", self.service))
+                .expect("Host Settings Not Retrieved")
+                .as_usize()
+                .unwrap_or(5000);
 
-        let keepalive: usize = self
-            .host_settings
-            .value(&format!("apps/{}/unix_config/keepalive", self.service))
-            .as_usize()
-            .unwrap_or(5);
+        let keepalive: usize =
+            HostSettings::value(&format!("apps/{}/unix_config/keepalive", self.service))
+                .expect("Host Settings Not Retrieved")
+                .as_usize()
+                .unwrap_or(5);
 
         let mut requests: usize = 0;
 

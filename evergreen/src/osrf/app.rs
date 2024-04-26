@@ -1,7 +1,6 @@
 use crate::osrf::client;
 use crate::osrf::message;
 use crate::osrf::method;
-use crate::osrf::sclient;
 use crate::EgError;
 use crate::EgResult;
 use std::any::Any;
@@ -51,7 +50,6 @@ pub trait ApplicationWorker: Any {
     fn absorb_env(
         &mut self,
         client: client::Client,
-        host_settings: Arc<sclient::HostSettings>,
         methods: Arc<HashMap<String, method::MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()>;
@@ -96,20 +94,12 @@ pub trait Application {
     fn name(&self) -> &str;
 
     /// Called when a service first starts, just after connecting to OpenSRF.
-    fn init(
-        &mut self,
-        client: client::Client,
-        host_settings: Arc<sclient::HostSettings>,
-    ) -> EgResult<()>;
+    fn init(&mut self, client: client::Client) -> EgResult<()>;
 
     /// Tell the server what methods this application implements.
     ///
     /// Called after self.init(), but before workers are spawned.
-    fn register_methods(
-        &self,
-        client: client::Client,
-        host_settings: Arc<sclient::HostSettings>,
-    ) -> EgResult<Vec<method::MethodDef>>;
+    fn register_methods(&self, client: client::Client) -> EgResult<Vec<method::MethodDef>>;
 
     /// Returns a function pointer (ApplicationWorkerFactory) that returns
     /// new ApplicationWorker's when called.
