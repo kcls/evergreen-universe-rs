@@ -57,5 +57,3 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     Ok(())
 }
-
-

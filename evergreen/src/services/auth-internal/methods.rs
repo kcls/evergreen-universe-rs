@@ -1,9 +1,9 @@
+use eg::common::auth;
 use eg::date;
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;
-use eg::common::auth;
 use eg::Editor;
 use eg::EgEvent;
 use eg::EgResult;
@@ -59,11 +59,7 @@ pub fn create_auth_session(
         workstation: options["workstation"].as_str().map(|v| v.to_string()),
     };
 
-    let auth_ses = auth::Session::internal_session(
-        &mut editor,
-        worker.cache(),
-        &args
-    )?;
+    let auth_ses = auth::Session::internal_session(&mut editor, worker.cache(), &args)?;
 
     session.respond(eg::hash! {"authtime": auth_ses.authtime(), "authtoken": auth_ses.token()})
 }

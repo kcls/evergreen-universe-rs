@@ -58,10 +58,7 @@ impl Application for RsCircApplication {
     }
 
     /// Tell the Server what methods we want to publish.
-    fn register_methods(
-        &self,
-        _client: Client,
-    ) -> EgResult<Vec<MethodDef>> {
+    fn register_methods(&self, _client: Client) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
         // Create Method objects from our static method definitions.

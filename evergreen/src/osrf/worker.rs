@@ -134,11 +134,7 @@ impl Worker {
         env: Box<dyn app::ApplicationEnv>,
     ) -> EgResult<Box<dyn app::ApplicationWorker>> {
         let mut app_worker = (factory)();
-        app_worker.absorb_env(
-            self.client.clone(),
-            self.methods.clone(),
-            env,
-        )?;
+        app_worker.absorb_env(self.client.clone(), self.methods.clone(), env)?;
         Ok(app_worker)
     }
 
@@ -151,17 +147,17 @@ impl Worker {
             return;
         }
 
-        let max_requests: usize = HostSettings::value(
-            &format!("apps/{}/unix_config/max_requests", self.service))
-            .expect("Host Settings Not Retrieved")
-            .as_usize()
-            .unwrap_or(5000);
+        let max_requests: usize =
+            HostSettings::value(&format!("apps/{}/unix_config/max_requests", self.service))
+                .expect("Host Settings Not Retrieved")
+                .as_usize()
+                .unwrap_or(5000);
 
-        let keepalive: usize = HostSettings::value(
-            &format!("apps/{}/unix_config/keepalive", self.service))
-            .expect("Host Settings Not Retrieved")
-            .as_usize()
-            .unwrap_or(5);
+        let keepalive: usize =
+            HostSettings::value(&format!("apps/{}/unix_config/keepalive", self.service))
+                .expect("Host Settings Not Retrieved")
+                .as_usize()
+                .unwrap_or(5);
 
         let mut requests: usize = 0;
 

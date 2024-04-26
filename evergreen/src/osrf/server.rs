@@ -67,18 +67,16 @@ impl Server {
 
         let client = init::osrf_init(&options)?;
 
-        let min_workers = HostSettings::value(
-            &format!("apps/{service}/unix_config/min_children"))?
+        let min_workers = HostSettings::value(&format!("apps/{service}/unix_config/min_children"))?
             .as_usize()
             .unwrap_or(DEFAULT_MIN_WORKERS);
 
-        let min_idle_workers = HostSettings::value(
-            &format!("apps/{service}/unix_config/min_spare_children"))?
-            .as_usize()
-            .unwrap_or(DEFAULT_MIN_IDLE_WORKERS);
+        let min_idle_workers =
+            HostSettings::value(&format!("apps/{service}/unix_config/min_spare_children"))?
+                .as_usize()
+                .unwrap_or(DEFAULT_MIN_IDLE_WORKERS);
 
-        let max_workers = HostSettings::value(
-            &format!("apps/{service}/unix_config/max_children"))?
+        let max_workers = HostSettings::value(&format!("apps/{service}/unix_config/max_children"))?
             .as_usize()
             .unwrap_or(DEFAULT_MAX_WORKERS);
 
@@ -179,13 +177,7 @@ impl Server {
     ) {
         log::trace!("Creating new worker {worker_id}");
 
-        let mut worker = match Worker::new(
-            service,
-            worker_id,
-            sig_tracker,
-            methods,
-            to_parent_tx,
-        ) {
+        let mut worker = match Worker::new(service, worker_id, sig_tracker, methods, to_parent_tx) {
             Ok(w) => w,
             Err(e) => {
                 log::error!("Cannot create worker: {e}. Exiting.");

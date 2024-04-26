@@ -18,7 +18,6 @@ pub struct HostSettings {
 }
 
 impl HostSettings {
-
     /// True if the host settings have been loaded.
     pub fn is_loaded() -> bool {
         OSRF_HOST_CONFIG.get().is_some()
@@ -42,7 +41,6 @@ impl HostSettings {
             }
 
             Ok(())
-
         } else {
             Err(format!("Settings server returned no response!").into())
         }
@@ -59,7 +57,8 @@ impl HostSettings {
     ///
     /// E.g. sclient.value("apps/opensrf.settings/unix_config/max_children");
     pub fn value(slashpath: &str) -> EgResult<&EgValue> {
-        let hsets = OSRF_HOST_CONFIG.get()
+        let hsets = OSRF_HOST_CONFIG
+            .get()
             .ok_or_else(|| format!("Host settings have not been retrieved"))?;
 
         let mut value = hsets.settings();

@@ -1,7 +1,7 @@
+use eg::common::auth;
 use eg::osrf::message;
 use eg::util;
 use eg::EgValue;
-use eg::common::auth;
 use evergreen as eg;
 use std::io::Write;
 use std::thread;

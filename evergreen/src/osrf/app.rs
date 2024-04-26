@@ -94,18 +94,12 @@ pub trait Application {
     fn name(&self) -> &str;
 
     /// Called when a service first starts, just after connecting to OpenSRF.
-    fn init(
-        &mut self,
-        client: client::Client,
-    ) -> EgResult<()>;
+    fn init(&mut self, client: client::Client) -> EgResult<()>;
 
     /// Tell the server what methods this application implements.
     ///
     /// Called after self.init(), but before workers are spawned.
-    fn register_methods(
-        &self,
-        client: client::Client,
-    ) -> EgResult<Vec<method::MethodDef>>;
+    fn register_methods(&self, client: client::Client) -> EgResult<Vec<method::MethodDef>>;
 
     /// Returns a function pointer (ApplicationWorkerFactory) that returns
     /// new ApplicationWorker's when called.

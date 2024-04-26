@@ -1,5 +1,5 @@
-use evergreen as eg;
 use eg::common::auth;
+use evergreen as eg;
 
 fn main() -> eg::EgResult<()> {
     let ctx = eg::init()?;

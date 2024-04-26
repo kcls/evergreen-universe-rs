@@ -3,8 +3,8 @@ use eg::idl;
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
 use eg::osrf::message;
-use eg::osrf::sclient::HostSettings;
 use eg::osrf::method::MethodDef;
+use eg::osrf::sclient::HostSettings;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
@@ -151,10 +151,7 @@ impl Application for RsStoreApplication {
     }
 
     /// Tell the Server what methods we want to publish.
-    fn register_methods(
-        &self,
-        _client: Client,
-    ) -> EgResult<Vec<MethodDef>> {
+    fn register_methods(&self, _client: Client) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
         self.register_auto_methods(&mut methods);

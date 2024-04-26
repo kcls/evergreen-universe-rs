@@ -1,13 +1,13 @@
 use crate as eg;
-use eg::{Editor, EgResult, EgValue, EgError, EgEvent, Client};
-use eg::date;
-use eg::util;
-use std::fmt;
+use eg::common::settings::Settings;
 use eg::constants as C;
+use eg::date;
 use eg::osrf::cache::Cache;
 use eg::osrf::sclient::HostSettings;
-use eg::common::settings::Settings;
+use eg::util;
+use eg::{Client, Editor, EgError, EgEvent, EgResult, EgValue};
 use md5;
+use std::fmt;
 
 const LOGIN_TIMEOUT: i32 = 30;
 
@@ -257,7 +257,6 @@ impl Session {
         cache: &mut Cache,
         args: &InternalLoginArgs,
     ) -> EgResult<Session> {
-
         let mut user = editor
             .retrieve("au", args.user_id)?
             .ok_or_else(|| editor.die_event())?;
@@ -282,12 +281,7 @@ impl Session {
             None => user["ws_ou"].int()?,
         };
 
-        let duration = get_auth_duration(
-            editor,
-            org_id,
-            user["home_ou"].int()?,
-            &args.login_type,
-        )?;
+        let duration = get_auth_duration(editor, org_id, user["home_ou"].int()?, &args.login_type)?;
 
         let authtoken = format!("{:x}", md5::compute(util::random_number(64)));
         let cache_key = format!("{}{}", C::OILS_AUTH_CACHE_PRFX, authtoken);
