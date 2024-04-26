@@ -126,23 +126,14 @@ impl Worker {
         self.worker_id
     }
 
-    /// Create and new ApplicationWorker instance and initialize
-    /// its environment.
-    pub fn create_app_worker(
-        &mut self,
-        factory: app::ApplicationWorkerFactory,
-        env: Box<dyn app::ApplicationEnv>,
-    ) -> EgResult<Box<dyn app::ApplicationWorker>> {
-        let mut app_worker = (factory)();
-        app_worker.absorb_env(self.client.clone(), self.methods.clone(), env)?;
-        Ok(app_worker)
-    }
-
     /// Wait for and process inbound API calls.
-    pub fn listen(&mut self, mut appworker: Box<dyn app::ApplicationWorker>) {
+    //pub fn listen(&mut self, mut appworker: Box<dyn app::ApplicationWorker>) {
+    pub fn listen(&mut self, factory: app::ApplicationWorkerFactory) {
         let selfstr = format!("{self}");
 
-        if let Err(e) = appworker.worker_start() {
+        let mut appworker = (factory)();
+
+        if let Err(e) = appworker.worker_start(self.client.clone(), self.methods.clone()) {
             log::error!("{selfstr} worker_start failed {e}.  Exiting");
             return;
         }

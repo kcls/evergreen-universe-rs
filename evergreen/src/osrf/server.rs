@@ -140,7 +140,6 @@ impl Server {
         let to_parent_tx = self.to_parent_tx.clone();
         let service = self.service().to_string();
         let factory = self.app().worker_factory();
-        let env = self.app().env();
         let sig_tracker = self.sig_tracker.clone();
 
         log::trace!("server: spawning a new worker {worker_id}");
@@ -148,7 +147,6 @@ impl Server {
         let handle = thread::spawn(move || {
             Server::start_worker_thread(
                 sig_tracker,
-                env,
                 factory,
                 service,
                 worker_id,
@@ -168,7 +166,6 @@ impl Server {
 
     fn start_worker_thread(
         sig_tracker: SignalTracker,
-        env: Box<dyn app::ApplicationEnv>,
         factory: app::ApplicationWorkerFactory,
         service: String,
         worker_id: u64,
@@ -192,13 +189,7 @@ impl Server {
 
         log::trace!("Worker {worker_id} going into listen()");
 
-        match worker.create_app_worker(factory, env) {
-            Ok(w) => worker.listen(w),
-            Err(e) => {
-                log::error!("Cannot create app worker: {e}. Exiting.");
-                return;
-            }
-        }
+        worker.listen(factory);
     }
 
     /// List of domains where our service is allowed to run and

@@ -1,6 +1,6 @@
 use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
 use eg::idl;
-use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
+use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
@@ -31,26 +31,6 @@ const APPNAME: &str = "open-ils.rs-store";
 const IDLE_DISCONNECT_TIME: i32 = 0;
 
 const DIRECT_METHODS: &[&str] = &["create", "retrieve", "search", "update", "delete"];
-
-/// Environment shared by all service workers.
-///
-/// The environment is only mutable up until the point our
-/// Server starts spawning threads.
-#[derive(Debug, Clone)]
-pub struct RsStoreEnv {}
-
-impl RsStoreEnv {
-    pub fn new() -> Self {
-        RsStoreEnv {}
-    }
-}
-
-/// Implement the needed Env trait
-impl ApplicationEnv for RsStoreEnv {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
 
 /// Our main application class.
 pub struct RsStoreApplication {}
@@ -140,10 +120,6 @@ impl Application for RsStoreApplication {
         APPNAME
     }
 
-    fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsStoreEnv::new())
-    }
-
     /// Load the IDL and perform any other needed global startup work.
     fn init(&mut self, _client: Client) -> EgResult<()> {
         eg::init::load_idl()?;
@@ -177,7 +153,6 @@ impl Application for RsStoreApplication {
 
 /// Per-thread worker instance.
 pub struct RsStoreWorker {
-    env: Option<RsStoreEnv>,
     client: Option<Client>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
     database: Option<Rc<RefCell<DatabaseConnection>>>,
@@ -192,18 +167,11 @@ impl RsStoreWorker {
         }
 
         RsStoreWorker {
-            env: None,
             client: None,
             methods: None,
             database: None,
             last_work_timer: timer,
         }
-    }
-
-    /// This will only ever be called after absorb_env(), so we are
-    /// guarenteed to have an env.
-    pub fn env(&self) -> &RsStoreEnv {
-        self.env.as_ref().unwrap()
     }
 
     /// Cast a generic ApplicationWorker into our RsStoreWorker.
@@ -285,31 +253,13 @@ impl ApplicationWorker for RsStoreWorker {
         &self.methods.as_ref().unwrap()
     }
 
-    /// Absorb our global dataset.
-    ///
-    /// Panics if we cannot downcast the env provided to the expected type.
-    fn absorb_env(
+    fn worker_start(
         &mut self,
         client: Client,
         methods: Arc<HashMap<String, MethodDef>>,
-        env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()> {
-        let worker_env = env
-            .as_any()
-            .downcast_ref::<RsStoreEnv>()
-            .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
-
-        self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.methods = Some(methods);
-
-        Ok(())
-    }
-
-    /// Called after this worker thread is spawned, but before the worker
-    /// goes into its listen state.
-    fn worker_start(&mut self) -> EgResult<()> {
-        log::debug!("Thread starting");
         self.setup_database()
     }
 
