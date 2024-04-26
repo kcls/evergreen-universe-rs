@@ -8,9 +8,8 @@ use evergreen as eg;
 const FULL_RETARGET: bool = true;
 
 fn main() -> EgResult<()> {
-    let ctx = eg::init()?;
-    let client = ctx.client();
-    let mut editor = Editor::new(client);
+    let client = eg::init()?;
+    let mut editor = Editor::new(&client);
 
     let start = date::now();
     let mut tgtr = targeter::HoldTargeter::new(&mut editor);

@@ -67,7 +67,7 @@ fn main() -> Result<(), String> {
 
     // OpenSRF connect, get host settings, parse IDL, etc.
     let t = Timer::new();
-    let ctx = eg::init().expect("Evergreen Init");
+    let client = eg::init().expect("Evergreen Init");
     t.done("EG Init");
 
     if params.opt_present("help") {
@@ -83,7 +83,7 @@ fn main() -> Result<(), String> {
         .unwrap();
     let sip_host = format!("{host}:{port}");
 
-    let editor = eg::Editor::new(ctx.client());
+    let editor = eg::Editor::new(&client);
 
     let t = Timer::new();
     let sipcon = sip2::Connection::new(&sip_host).expect("Error creating SIP connection");

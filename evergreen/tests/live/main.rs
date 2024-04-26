@@ -19,11 +19,11 @@ mod util;
 #[test]
 #[ignore]
 fn main() -> eg::EgResult<()> {
-    let ctx = eg::init()?;
-    let editor = eg::Editor::new(ctx.client());
+    let client = eg::init()?;
+    let editor = eg::Editor::new(&client);
 
     let mut tester = util::Tester {
-        ctx,
+        client,
         editor,
         samples: eg::samples::SampleData::new(),
         timer: util::Timer::new(),

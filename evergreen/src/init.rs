@@ -10,18 +10,6 @@ use std::env;
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 const DEFAULT_IDL_PATH: &str = "/openils/conf/fm_IDL.xml";
 
-// TODO we no longer need this since it's just a Client wrapper.
-#[derive(Clone)]
-pub struct Context {
-    client: Client,
-}
-
-impl Context {
-    pub fn client(&self) -> &Client {
-        &self.client
-    }
-}
-
 pub struct InitOptions {
     /// Skip logging initialization.
     /// Useful if changes to the logging config first.
@@ -47,7 +35,7 @@ impl InitOptions {
 /// Read environment variables, parse the core config, setup logging.
 ///
 /// This does not connect to the bus.
-pub fn init() -> EgResult<Context> {
+pub fn init() -> EgResult<Client> {
     with_options(&InitOptions::new())
 }
 
@@ -144,12 +132,12 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
     Ok(client)
 }
 
-pub fn with_options(options: &InitOptions) -> EgResult<Context> {
+pub fn with_options(options: &InitOptions) -> EgResult<Client> {
     let client = osrf_init(&options)?;
 
     load_idl()?;
 
-    Ok(Context { client })
+    Ok(client)
 }
 
 /// Locate and parse the IDL file.
@@ -172,8 +160,6 @@ pub fn load_idl() -> EgResult<()> {
 /// connect time.
 ///
 /// The only part that must happen in its own thread is the opensrf connect.
-pub fn init_from_parts() -> EgResult<Context> {
-    let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
-
-    Ok(Context { client })
+pub fn init_from_parts() -> EgResult<Client> {
+    Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}").into()))
 }

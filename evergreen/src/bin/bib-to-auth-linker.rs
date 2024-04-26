@@ -62,8 +62,8 @@ struct BibLinker {
 
 impl BibLinker {
     fn new(opts: &mut getopts::Options) -> Result<Self, String> {
-        let ctx = init::init()?;
-        let editor = eg::Editor::new(ctx.client());
+        let client = init::init()?;
+        let editor = eg::Editor::new(&client);
 
         let args: Vec<String> = std::env::args().collect();
         let params = match opts.parse(&args[1..]) {

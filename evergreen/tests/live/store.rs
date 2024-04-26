@@ -7,8 +7,7 @@ const CBT_NAME: &str = "open-ils.rs-store-test";
 
 #[allow(dead_code)]
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
-    let client = tester.ctx.client();
-    let mut ses = client.session("open-ils.rs-store");
+    let mut ses = tester.client.session("open-ils.rs-store");
 
     // Required for executing a batch of commands in a transaction.
     tester.timer.start();

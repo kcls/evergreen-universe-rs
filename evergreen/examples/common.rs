@@ -5,9 +5,8 @@ use eg::result::EgResult;
 use evergreen as eg;
 
 fn main() -> EgResult<()> {
-    let ctx = eg::init()?;
-    let client = ctx.client();
-    let mut editor = Editor::new(client);
+    let client = eg::init()?;
+    let mut editor = Editor::new(&client);
 
     let bib_ids = &[1, 2, 3];
 
