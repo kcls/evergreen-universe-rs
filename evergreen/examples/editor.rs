@@ -41,8 +41,8 @@ fn main() -> eg::EgResult<()> {
 
     let client = ctx.client();
 
-    let args = auth::AuthLoginArgs::new("br1mclark", "montyc1234", auth::AuthLoginType::Temp, None);
-    let auth_ses = match auth::AuthSession::login(client, &args)? {
+    let args = auth::LoginArgs::new("br1mclark", "montyc1234", auth::LoginType::Temp, None);
+    let auth_ses = match auth::Session::login(client, &args)? {
         Some(s) => s,
         None => panic!("Login failed"),
     };
@@ -80,9 +80,9 @@ fn main() -> eg::EgResult<()> {
     }
 
     // Testing internal auth
-    let args = auth::AuthInternalLoginArgs::new(1, auth::AuthLoginType::Temp);
+    let args = auth::InternalLoginArgs::new(1, auth::LoginType::Temp);
 
-    let auth_ses = match auth::AuthSession::internal_session(client, &args)? {
+    let auth_ses = match auth::Session::internal_session(client, &args)? {
         Some(s) => s,
         None => panic!("Internal Login failed"),
     };

@@ -174,8 +174,8 @@ fn _test_formats() {
 
     println!("Logging in");
 
-    let args = auth::AuthLoginArgs::new("admin", "demo123", auth::AuthLoginType::Temp, None);
-    let auth_ses = match auth::AuthSession::login(client, &args).expect("login()") {
+    let args = auth::LoginArgs::new("admin", "demo123", auth::LoginType::Temp, None);
+    let auth_ses = match auth::Session::login(client, &args).expect("login()") {
         Some(s) => s,
         None => panic!("Login failed"),
     };

@@ -136,7 +136,7 @@ struct Shell {
     db: Option<Rc<RefCell<DatabaseConnection>>>,
     db_translator: Option<idldb::Translator>,
     history_file: Option<String>,
-    auth_session: Option<auth::AuthSession>,
+    auth_session: Option<auth::Session>,
     result_count: usize,
     /// Pretty-printed JSON uses this many spaces for formatting.
     json_print_depth: u16,
@@ -635,14 +635,14 @@ impl Shell {
         let login_type = args.get(2).unwrap_or(&DEFAULT_LOGIN_TYPE);
         let workstation = if args.len() > 3 { Some(args[3]) } else { None };
 
-        let args = auth::AuthLoginArgs::new(
+        let args = auth::LoginArgs::new(
             username,
             password,
-            auth::AuthLoginType::try_from(*login_type)?,
+            auth::LoginType::try_from(*login_type)?,
             workstation,
         );
 
-        match auth::AuthSession::login(self.ctx().client(), &args)? {
+        match auth::Session::login(self.ctx().client(), &args)? {
             Some(s) => {
                 println!("Login succeeded: {}", s.token());
                 self.auth_session = Some(s);

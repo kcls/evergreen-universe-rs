@@ -50,10 +50,10 @@ pub struct Tester {
 
 /// Login and augment the Tester's Editor with the authtoken.
 pub fn login(tester: &mut Tester) -> EgResult<()> {
-    let mut args = auth::AuthInternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::AuthLoginType::Staff);
+    let mut args = auth::InternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::LoginType::Staff);
     args.org_unit = Some(tester.samples.aou_id);
 
-    let auth_ses = match eg::common::auth::AuthSession::internal_session(tester.ctx.client(), &args)? {
+    let auth_ses = match eg::common::auth::Session::internal_session(tester.ctx.client(), &args)? {
         Some(s) => s,
         None => return Err("Login failed".into()),
     };

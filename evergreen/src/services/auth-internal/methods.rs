@@ -54,7 +54,7 @@ pub fn create_auth_session(
     let options = method.param(0);
 
     let user_id = options["user_id"].int()?;
-    let login_type = auth::AuthLoginType::try_from(options["login_type"].str()?)?;
+    let login_type = auth::LoginType::try_from(options["login_type"].str()?)?;
 
     let mut editor = Editor::new(worker.client());
 
@@ -98,7 +98,7 @@ pub fn create_auth_session(
         "userobj": user,
     };
 
-    if login_type == auth::AuthLoginType::Persist {
+    if login_type == auth::LoginType::Persist {
         // Add entries for endtime and reset_interval, so that we can
         // gracefully extend the session a bit if the user is active
         // toward the end of the duration originally specified.
@@ -125,7 +125,7 @@ pub fn validate_user(
     let options = method.param(0);
 
     let user_id = options["user_id"].int()?;
-    let login_type = auth::AuthLoginType::try_from(options["login_type"].str()?)?;
+    let login_type = auth::LoginType::try_from(options["login_type"].str()?)?;
 
     let mut editor = Editor::new(worker.client());
 
@@ -166,9 +166,9 @@ pub fn validate_user(
     }
 
     let permission = match login_type {
-        auth::AuthLoginType::Opac => "OPAC_LOGIN",
-        auth::AuthLoginType::Staff | auth::AuthLoginType::Temp => "STAFF_LOGIN",
-        auth::AuthLoginType::Persist => "PERSISTENT_LOGIN",
+        auth::LoginType::Opac => "OPAC_LOGIN",
+        auth::LoginType::Staff | auth::LoginType::Temp => "STAFF_LOGIN",
+        auth::LoginType::Persist => "PERSISTENT_LOGIN",
     };
 
     // For backwards compat, login permission checks are always global.
