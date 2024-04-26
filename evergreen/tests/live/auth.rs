@@ -1,5 +1,6 @@
 use crate::util;
 use eg::common::auth;
+use eg::osrf::cache::Cache;
 use eg::EgResult;
 use evergreen as eg;
 
@@ -54,6 +55,20 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     )?;
     assert_eq!(DEFAULT_PERSIST_LOGIN_DURATION, persist);
     tester.timer.stop("Check Default Persist Login Duration");
+
+    tester.timer.start();
+    let mut args = auth::InternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::LoginType::Staff);
+    args.org_unit = Some(tester.samples.aou_id);
+
+    let mut cache = Cache::init()?;
+
+    let ses = auth::Session::internal_session(
+        &mut tester.editor,
+        &mut cache,
+        &args
+    )?;
+    assert_eq!(ses.authtime(), staff);
+    tester.timer.stop("Created Internal Session");
 
     Ok(())
 }
