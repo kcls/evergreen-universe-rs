@@ -2,6 +2,7 @@ use eg::common::auth;
 use eg::samples::SampleData;
 use eg::Editor;
 use eg::EgResult;
+use eg::Client;
 use evergreen as eg;
 use std::time::SystemTime;
 
@@ -42,7 +43,7 @@ impl Timer {
 }
 
 pub struct Tester {
-    pub ctx: eg::init::Context,
+    pub client: Client,
     pub editor: Editor,
     pub samples: SampleData,
     pub timer: Timer,
@@ -53,7 +54,7 @@ pub fn login(tester: &mut Tester) -> EgResult<()> {
     let mut args = auth::InternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::LoginType::Staff);
     args.org_unit = Some(tester.samples.aou_id);
 
-    let auth_ses = match auth::Session::internal_session_api(tester.ctx.client(), &args)? {
+    let auth_ses = match auth::Session::internal_session_api(&tester.client, &args)? {
         Some(s) => s,
         None => return Err("Login failed".into()),
     };

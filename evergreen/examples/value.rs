@@ -4,7 +4,7 @@ use evergreen as eg;
 
 pub fn main() -> EgResult<()> {
     // Connect and load the IDL
-    let ctx = eg::init()?;
+    let client = eg::init()?;
 
     let mut v = eg::hash! {
         "shortname": "BR1",
@@ -28,8 +28,7 @@ pub fn main() -> EgResult<()> {
 
     println!("value is {v}");
 
-    let v = ctx
-        .client()
+    let v = client
         .send_recv_one("opensrf.settings", "opensrf.system.echo", v)?
         .expect("Has Response");
 
@@ -63,8 +62,7 @@ pub fn main() -> EgResult<()> {
 
     println!("v = {}", v.dump());
 
-    let v = ctx
-        .client()
+    let v = client
         .send_recv_one(
             "opensrf.settings",
             "opensrf.system.echo",

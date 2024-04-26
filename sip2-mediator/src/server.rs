@@ -1,6 +1,7 @@
 use super::conf::Config;
 use super::session::Session;
 use eg::osrf;
+use eg::Client;
 use evergreen as eg;
 use mptc;
 use std::any::Any;
@@ -104,7 +105,7 @@ impl mptc::RequestHandler for SessionFactory {
 /// Listens for SIP client connections and passes them off to mptc:: for
 /// relaying to a Session worker.
 pub struct Server {
-    eg_ctx: eg::init::Context,
+    client: Client,
 
     /// Parsed config
     sip_config: Arc<Config>,
@@ -165,12 +166,12 @@ impl mptc::RequestStream for Server {
         log::info!("Server received mptc shutdown request");
 
         self.shutdown.store(true, Ordering::Relaxed);
-        self.eg_ctx.client().clear().ok();
+        self.client.clear().ok();
     }
 }
 
 impl Server {
-    pub fn setup(config: Config, eg_ctx: eg::init::Context) -> Result<Server, String> {
+    pub fn setup(config: Config, client: Client) -> Result<Server, String> {
         let tcp_listener = eg::util::tcp_listener(
             &config.sip_address,
             config.sip_port,
@@ -178,7 +179,7 @@ impl Server {
         )?;
 
         let server = Server {
-            eg_ctx,
+            client,
             tcp_listener,
             sip_config: Arc::new(config),
             shutdown: Arc::new(AtomicBool::new(false)),

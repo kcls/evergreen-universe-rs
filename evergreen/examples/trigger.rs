@@ -2,8 +2,8 @@ use eg::common::trigger;
 use evergreen as eg;
 
 fn main() -> eg::EgResult<()> {
-    let ctx = eg::init()?;
-    let mut editor = eg::Editor::new(ctx.client());
+    let client = eg::init()?;
+    let mut editor = eg::Editor::new(&client);
 
     let filter = eg::hash! {
         "checkin_time": json::JsonValue::Null,

@@ -1,4 +1,5 @@
 use eg::idl;
+use eg::Client;
 use eg::osrf::addr::BusAddress;
 use eg::osrf::bus::Bus;
 use eg::osrf::conf;
@@ -829,7 +830,7 @@ impl mptc::RequestHandler for WebsocketHandler {
 
 struct WebsocketStream {
     listener: TcpListener,
-    eg_ctx: eg::init::Context,
+    client: Client,
 
     /// Maximum number of active/parallel websocket requests to
     /// relay to OpenSRF at a time.  Once exceeded, new messages
@@ -844,7 +845,7 @@ struct WebsocketStream {
 
 impl WebsocketStream {
     fn new(
-        eg_ctx: eg::init::Context,
+        client: Client,
         address: &str,
         port: u16,
         max_parallel: usize,
@@ -859,7 +860,7 @@ impl WebsocketStream {
 
         let stream = WebsocketStream {
             listener,
-            eg_ctx,
+            client,
             max_parallel,
             shutdown: Arc::new(AtomicBool::new(false)),
         };
@@ -910,7 +911,7 @@ impl mptc::RequestStream for WebsocketStream {
         eprintln!("Server received mptc shutdown request");
 
         self.shutdown.store(true, Ordering::Relaxed);
-        self.eg_ctx.client().clear().ok();
+        self.client.clear().ok();
     }
 }
 
@@ -930,7 +931,7 @@ fn main() {
     // NOTE: Since we are not fetching host settings, we use
     // the default IDL path unless it's overridden with the
     // EG_IDL_FILE environment variable.
-    let eg_ctx = eg::init::with_options(&init_ops).expect("Evergreen init");
+    let client = eg::init::with_options(&init_ops).expect("Evergreen init");
 
     // Setup logging with the gateway config
     let gateway_conf = conf::config().gateway().expect("Gateway config required");
@@ -952,7 +953,7 @@ fn main() {
 
     let address = env::var("EG_WEBSOCKETS_ADDRESS").unwrap_or(DEFAULT_LISTEN_ADDRESS.to_string());
 
-    let stream = WebsocketStream::new(eg_ctx, &address, port, max_parallel).expect("Build stream");
+    let stream = WebsocketStream::new(client, &address, port, max_parallel).expect("Build stream");
 
     let mut server = mptc::Server::new(Box::new(stream));
 

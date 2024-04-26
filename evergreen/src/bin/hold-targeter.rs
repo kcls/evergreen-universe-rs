@@ -119,9 +119,9 @@ fn main() -> EgResult<()> {
     let mut init_ops = InitOptions::new();
     init_ops.skip_host_settings = true; // we don't need it.
 
-    let context = eg::init::with_options(&init_ops)?;
+    let client = eg::init::with_options(&init_ops)?;
 
-    let mut multi_ses = MultiSession::new(context.client().clone(), "open-ils.rs-hold-targeter");
+    let mut multi_ses = MultiSession::new(client.clone(), "open-ils.rs-hold-targeter");
 
     // 'slot' is 1-based at the API level.
     for slot in 1..(parallel + 1) {

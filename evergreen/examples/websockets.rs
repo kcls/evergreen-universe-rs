@@ -169,13 +169,12 @@ fn unpack_response(text: &str) -> Option<EgValue> {
 fn _test_formats() {
     println!("EG init");
 
-    let ctx = eg::init().expect("EG init");
-    let client = ctx.client();
+    let client = eg::init().expect("EG init");
 
     println!("Logging in");
 
     let args = auth::LoginArgs::new("admin", "demo123", auth::LoginType::Temp, None);
-    let auth_ses = match auth::Session::login(client, &args).expect("login()") {
+    let auth_ses = match auth::Session::login(&client, &args).expect("login()") {
         Some(s) => s,
         None => panic!("Login failed"),
     };

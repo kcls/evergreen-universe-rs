@@ -1,5 +1,6 @@
 use eg::common::auth;
 use eg::EgValue;
+use eg::Client;
 use evergreen as eg;
 use serde_json;
 use sip2;
@@ -18,7 +19,6 @@ use eg::editor;
 use eg::event;
 use eg::idl;
 use eg::idldb;
-use eg::init;
 
 use eg::osrf::logging::Logger;
 use eg::util;
@@ -132,7 +132,7 @@ fn main() -> Result<(), String> {
 
 /// Collection of context data, etc. for our shell.
 struct Shell {
-    ctx: init::Context,
+    client: Client,
     db: Option<Rc<RefCell<DatabaseConnection>>>,
     db_translator: Option<idldb::Translator>,
     history_file: Option<String>,
@@ -165,13 +165,13 @@ impl Shell {
             Err(e) => panic!("Error parsing options: {}", e),
         };
 
-        let context = match eg::init() {
+        let client = match eg::init() {
             Ok(c) => c,
             Err(e) => panic!("Cannot init to OpenSRF: {}", e),
         };
 
         let mut shell = Shell {
-            ctx: context,
+            client,
             db: None,
             db_translator: None,
             history_file: None,
@@ -191,8 +191,8 @@ impl Shell {
         shell
     }
 
-    fn ctx(&self) -> &init::Context {
-        &self.ctx
+    fn client(&self) -> &Client {
+        &self.client
     }
 
     /// Connect directly to the specified database.
@@ -529,7 +529,7 @@ impl Shell {
     }
 
     fn get_setting(&mut self, args: &[&str]) -> Result<(), String> {
-        let mut editor = editor::Editor::new(self.ctx().client());
+        let mut editor = editor::Editor::new(self.client());
         let mut sc = settings::Settings::new(&editor);
 
         // If the caller requested settings for a specific org unit,
@@ -642,7 +642,7 @@ impl Shell {
             workstation,
         );
 
-        match auth::Session::login(self.ctx().client(), &args)? {
+        match auth::Session::login(self.client(), &args)? {
             Some(s) => {
                 println!("Login succeeded: {}", s.token());
                 self.auth_session = Some(s);
@@ -675,7 +675,7 @@ impl Shell {
             "opensrf.system.method.all"
         };
 
-        let mut ses = self.ctx().client().session(service);
+        let mut ses = self.client().session(service);
         let mut req = ses.request(method, params)?;
 
         while let Some(resp) = req.recv()? {
@@ -719,7 +719,7 @@ impl Shell {
         // We are the entry point for this request.  Give it a log trace.
         Logger::mk_log_trace();
 
-        let mut ses = self.ctx().client().session(args[0]);
+        let mut ses = self.client().session(args[0]);
         let mut req = ses.request(args[1], params)?;
 
         while let Some(resp) = req.recv()? {

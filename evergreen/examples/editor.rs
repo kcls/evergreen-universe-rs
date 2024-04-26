@@ -2,8 +2,8 @@ use eg::common::auth;
 use evergreen as eg;
 
 fn main() -> eg::EgResult<()> {
-    let ctx = eg::init()?;
-    let mut editor = eg::Editor::new(ctx.client());
+    let client = eg::init()?;
+    let mut editor = eg::Editor::new(&client);
 
     let orgs = editor.search("aou", eg::hash! {"id": {">": 0}})?;
 
@@ -39,10 +39,8 @@ fn main() -> eg::EgResult<()> {
     // Rollback the transaction and disconnect
     editor.rollback()?;
 
-    let client = ctx.client();
-
     let args = auth::LoginArgs::new("br1mclark", "montyc1234", auth::LoginType::Temp, None);
-    let auth_ses = match auth::Session::login(client, &args)? {
+    let auth_ses = match auth::Session::login(&client, &args)? {
         Some(s) => s,
         None => panic!("Login failed"),
     };
@@ -51,7 +49,7 @@ fn main() -> eg::EgResult<()> {
 
     println!("Logged in and got authtoken: {}", token);
 
-    let mut editor = eg::Editor::with_auth(client, token);
+    let mut editor = eg::Editor::with_auth(&client, token);
 
     if editor.checkauth()? {
         println!("Auth Check OK: {}", editor.requestor().unwrap()["usrname"]);
@@ -82,7 +80,7 @@ fn main() -> eg::EgResult<()> {
     // Testing internal auth
     let args = auth::InternalLoginArgs::new(1, auth::LoginType::Temp);
 
-    let auth_ses = match auth::Session::internal_session_api(client, &args)? {
+    let auth_ses = match auth::Session::internal_session_api(&client, &args)? {
         Some(s) => s,
         None => panic!("Internal Login failed"),
     };
