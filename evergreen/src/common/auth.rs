@@ -1,11 +1,19 @@
 use crate as eg;
 use eg::{Editor, EgResult, EgValue, EgError, EgEvent, Client};
 use eg::date;
+use eg::util;
 use std::fmt;
+use std::sync::Arc;
+use md5;
+use eg::constants as C;
+use eg::osrf::cache::Cache;
 use eg::osrf::sclient::HostSettings;
 use eg::common::settings::Settings;
 
 const LOGIN_TIMEOUT: i32 = 30;
+
+// Default time for extending a persistent session: ten minutes
+const DEFAULT_RESET_INTERVAL: i32 = 10 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoginType {
@@ -147,7 +155,7 @@ impl InternalLoginArgs {
 
 pub struct Session {
     token: String,
-    authtime: usize,
+    authtime: i64,
     workstation: Option<String>,
 }
 
@@ -178,10 +186,10 @@ impl Session {
         Session::handle_auth_response(&args.workstation, &eg_val)
     }
 
-    /// Create an authtoken for an internal auth session.
+    /// Create an authtoken for an internal auth session via the API.
     ///
     /// Returns None on login failure, Err on error.
-    pub fn internal_session(
+    pub fn internal_session_api(
         client: &Client,
         args: &InternalLoginArgs,
     ) -> EgResult<Option<Session>> {
@@ -224,7 +232,7 @@ impl Session {
             }
         };
 
-        let authtime = match evt.payload()["authtime"].as_usize() {
+        let authtime = match evt.payload()["authtime"].as_int() {
             Some(t) => t,
             None => {
                 return Err(format!("Unexpected response: {}", evt).into());
@@ -244,11 +252,81 @@ impl Session {
         Ok(Some(auth_ses))
     }
 
+    /// Directly create our own internal auth session.
+    pub fn internal_session(
+        editor: &mut Editor,
+        host_settings: &Arc<HostSettings>,
+        cache: &mut Cache,
+        args: &InternalLoginArgs,
+    ) -> EgResult<Session> {
+
+        let mut user = editor
+            .retrieve("au", args.user_id)?
+            .ok_or_else(|| editor.die_event())?;
+
+        // Clear the (mostly dummy) password values.
+        user["passwd"].take();
+
+        if let Some(workstation) = args.workstation.as_deref() {
+            let mut ws = editor
+                .search("aws", eg::hash! {"name": workstation})?
+                .pop()
+                .ok_or_else(|| editor.die_event())?;
+
+            user["wsid"] = ws["id"].take();
+            user["ws_ou"] = ws["owning_lib"].take();
+        } else {
+            user["ws_ou"] = user["home_ou"].clone();
+        }
+
+        let org_id = match args.org_unit {
+            Some(id) => id,
+            None => user["ws_ou"].int()?,
+        };
+
+        let duration = get_auth_duration(
+            editor,
+            org_id,
+            user["home_ou"].int()?,
+            host_settings,
+            &args.login_type,
+        )?;
+
+        let authtoken = format!("{:x}", md5::compute(util::random_number(64)));
+        let cache_key = format!("{}{}", C::OILS_AUTH_CACHE_PRFX, authtoken);
+
+        let mut cache_val = eg::hash! {
+            "authtime": duration,
+            "userobj": user,
+        };
+
+        if args.login_type == LoginType::Persist {
+            // Add entries for endtime and reset_interval, so that we can
+            // gracefully extend the session a bit if the user is active
+            // toward the end of the duration originally specified.
+            cache_val["endtime"] = EgValue::from(date::epoch_secs().floor() as i64 + duration);
+
+            // Reset interval is hard-coded for now, but if we ever want to make it
+            // configurable, this is the place to do it:
+            cache_val["reset_interval"] = DEFAULT_RESET_INTERVAL.into();
+        }
+
+        cache.set_for(&cache_key, cache_val, duration)?;
+
+        let auth_ses = Session {
+            token: authtoken,
+            authtime: duration,
+            workstation: args.workstation.clone(),
+        };
+
+        Ok(auth_ses)
+    }
+
     pub fn token(&self) -> &str {
         &self.token
     }
 
-    pub fn authtime(&self) -> usize {
+    pub fn authtime(&self) -> i64 {
         self.authtime
     }
 
@@ -263,7 +341,7 @@ pub fn get_auth_duration(
     editor: &mut Editor,
     org_id: i64,
     user_home_ou: i64,
-    host_settings: &HostSettings,
+    host_settings: &Arc<HostSettings>,
     auth_type: &LoginType,
 ) -> EgResult<i64> {
     // First look for an org unit setting.

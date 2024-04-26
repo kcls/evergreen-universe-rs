@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 const CACHE_PREFIX: &str = "opensrf:cache";
 const DEFAULT_CACHE_TYPE: &str = "global";
-const DEFAULT_MAX_CACHE_TIME: usize = 86400;
-const DEFAULT_MAX_CACHE_SIZE: usize = 100000000; // ~100M
+const DEFAULT_MAX_CACHE_TIME: i64 = 86400;
+const DEFAULT_MAX_CACHE_SIZE: i64 = 100000000; // ~100M
 
 /// Append our cache prefix to whatever key the caller provides.
 fn to_key(k: &str) -> String {
@@ -37,18 +37,18 @@ fn to_key(k: &str) -> String {
 #[derive(Debug)]
 pub struct CacheType {
     name: String,
-    max_cache_time: usize,
-    max_cache_size: usize,
+    max_cache_time: i64,
+    max_cache_size: i64,
 }
 
 impl CacheType {
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
-    pub fn max_cache_time(&self) -> usize {
+    pub fn max_cache_time(&self) -> i64 {
         self.max_cache_time
     }
-    pub fn max_cache_size(&self) -> usize {
+    pub fn max_cache_size(&self) -> i64 {
         self.max_cache_size
     }
 }
@@ -122,11 +122,11 @@ impl Cache {
     fn load_types(&mut self, config: &EgValue) {
         for (ctype, conf) in config["cache-types"].entries() {
             let max_cache_time = conf["max_cache_time"]
-                .as_usize()
+                .as_i64()
                 .unwrap_or(DEFAULT_MAX_CACHE_TIME);
 
             let max_cache_size = conf["max_cache_size"]
-                .as_usize()
+                .as_i64()
                 .unwrap_or(DEFAULT_MAX_CACHE_SIZE);
 
             let ct = CacheType {
@@ -173,7 +173,7 @@ impl Cache {
     }
 
     /// Store a value in the cache for this amount of time
-    pub fn set_for(&mut self, key: &str, value: EgValue, timeout: usize) -> EgResult<()> {
+    pub fn set_for(&mut self, key: &str, value: EgValue, timeout: i64) -> EgResult<()> {
         let key = to_key(key);
         let ctype = self.active_cache()?;
         let max_timeout = ctype.max_cache_time();
@@ -187,11 +187,11 @@ impl Cache {
 
         let valstr = value.into_json_value().dump();
 
-        if valstr.bytes().count() > max_size {
+        if valstr.bytes().count() > max_size as usize {
             return Err(format!("Cache value too large: bytes={}", valstr.bytes().count()).into());
         }
 
-        let res: Result<(), _> = self.redis.set_ex(&key, valstr, time);
+        let res: Result<(), _> = self.redis.set_ex(&key, valstr, time as usize);
 
         if let Err(err) = res {
             return Err(format!("set_ex({key}) failed: {err}").into());

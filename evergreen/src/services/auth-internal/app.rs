@@ -122,8 +122,8 @@ impl RsAuthInternalWorker {
     /// Get to our host settings.
     ///
     /// Panics if unset, which is done during absorb_env.
-    pub fn host_settings(&self) -> &HostSettings {
-        self.host_settings.as_ref().unwrap()
+    pub fn host_settings(&self) -> Arc<HostSettings> {
+        self.host_settings.clone().unwrap()
     }
 
     /// Ref to our OpenSRF client.

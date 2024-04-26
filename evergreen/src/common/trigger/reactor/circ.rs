@@ -27,7 +27,8 @@ impl Processor<'_> {
         let mut auth_args = auth::InternalLoginArgs::new(patron_id, auth::LoginType::Opac);
         auth_args.set_org_unit(home_ou);
 
-        let auth_ses = auth::Session::internal_session(self.editor.client_mut(), &auth_args)?
+        // TODO move to internal_session() / add Trigger worker cache.
+        let auth_ses = auth::Session::internal_session_api(self.editor.client_mut(), &auth_args)?
             .ok_or_else(|| format!("Cannot create internal auth session"))?;
 
         for event in events {
