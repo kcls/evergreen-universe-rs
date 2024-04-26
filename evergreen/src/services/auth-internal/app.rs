@@ -1,4 +1,4 @@
-use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
+use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::cache::Cache;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
@@ -15,26 +15,6 @@ use crate::methods;
 
 const APPNAME: &str = "open-ils.rs-auth-internal";
 
-/// Environment shared by all service workers.
-///
-/// The environment is only mutable up until the point our
-/// Server starts spawning threads.
-#[derive(Debug, Clone)]
-pub struct RsAuthInternalEnv {}
-
-impl RsAuthInternalEnv {
-    pub fn new() -> Self {
-        RsAuthInternalEnv {}
-    }
-}
-
-/// Implement the needed Env trait
-impl ApplicationEnv for RsAuthInternalEnv {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
 /// Our main application class.
 pub struct RsAuthInternalApplication {}
 
@@ -47,10 +27,6 @@ impl RsAuthInternalApplication {
 impl Application for RsAuthInternalApplication {
     fn name(&self) -> &str {
         APPNAME
-    }
-
-    fn env(&self) -> Box<dyn ApplicationEnv> {
-        Box::new(RsAuthInternalEnv::new())
     }
 
     /// Load the IDL and perform any other needed global startup work.
@@ -79,7 +55,6 @@ impl Application for RsAuthInternalApplication {
 
 /// Per-thread worker instance.
 pub struct RsAuthInternalWorker {
-    env: Option<RsAuthInternalEnv>,
     client: Option<Client>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
     cache: Option<Cache>,
@@ -88,17 +63,10 @@ pub struct RsAuthInternalWorker {
 impl RsAuthInternalWorker {
     pub fn new() -> Self {
         RsAuthInternalWorker {
-            env: None,
             client: None,
             methods: None,
             cache: None,
         }
-    }
-
-    /// This will only ever be called after absorb_env(), so we are
-    /// guarenteed to have an env.
-    pub fn env(&self) -> &RsAuthInternalEnv {
-        self.env.as_ref().unwrap()
     }
 
     /// Cast a generic ApplicationWorker into our RsAuthInternalWorker.
@@ -113,20 +81,16 @@ impl RsAuthInternalWorker {
     }
 
     /// Ref to our OpenSRF client.
-    ///
-    /// Set during absorb_env()
     pub fn client(&self) -> &Client {
         self.client.as_ref().unwrap()
     }
 
     /// Mutable ref to our OpenSRF client.
-    ///
-    /// Set during absorb_env()
     pub fn client_mut(&mut self) -> &mut Client {
         self.client.as_mut().unwrap()
     }
 
-    /// Panics if unset, i.e. called before absorb_env()
+    /// Panics if unset
     pub fn cache(&mut self) -> &mut Cache {
         self.cache.as_mut().unwrap()
     }
@@ -141,31 +105,14 @@ impl ApplicationWorker for RsAuthInternalWorker {
         &self.methods.as_ref().unwrap()
     }
 
-    /// Absorb our global dataset.
-    ///
-    /// Panics if we cannot downcast the env provided to the expected type.
-    fn absorb_env(
+    fn worker_start(
         &mut self,
         client: Client,
         methods: Arc<HashMap<String, MethodDef>>,
-        env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()> {
-        let worker_env = env
-            .as_any()
-            .downcast_ref::<RsAuthInternalEnv>()
-            .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
-
         self.cache = Some(Cache::init()?);
-        self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.methods = Some(methods);
-
-        Ok(())
-    }
-
-    /// Called before the worker goes into its listen state.
-    fn worker_start(&mut self) -> EgResult<()> {
-        log::debug!("Thread starting");
         Ok(())
     }
 

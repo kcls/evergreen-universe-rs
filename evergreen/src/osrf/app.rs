@@ -10,8 +10,6 @@ use std::sync::Arc;
 /// * Server spawns a worker thread
 /// * Worker thread calls an ApplicationWorkerFactory function to
 ///   generate an ApplicationWorker.
-/// * app_worker.absorb_env() is called to pass the worker a Client
-///   and allow for other thread data collection routines.
 /// * app_worker.worker_start() is called allowing the worker to
 ///   perform any other startup routines.
 /// * Worker waits for inbound method calls.
@@ -32,11 +30,6 @@ use std::sync::Arc;
 /// guaranteed to be thread-Send-able, hence the factory approach.
 pub type ApplicationWorkerFactory = fn() -> Box<dyn ApplicationWorker>;
 
-/// Opaque collection of read-only, thread-Send'able data.
-pub trait ApplicationEnv: Any + Sync + Send {
-    fn as_any(&self) -> &dyn Any;
-}
-
 pub trait ApplicationWorker: Any {
     /// Required for downcasting into the local ApplicationWorker implementation type.
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -44,18 +37,12 @@ pub trait ApplicationWorker: Any {
     /// All of our registered method definitions, keyed on API name.
     fn methods(&self) -> &Arc<HashMap<String, method::MethodDef>>;
 
-    /// Passing copies of Server-global environment data to the worker.
-    ///
-    /// This is the first method called on each worker after spawning.
-    fn absorb_env(
+    /// Called just after a new worker is spawned.
+    fn worker_start(
         &mut self,
         client: client::Client,
         methods: Arc<HashMap<String, method::MethodDef>>,
-        env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()>;
-
-    /// Called after absorb_env, but before any work occurs.
-    fn worker_start(&mut self) -> EgResult<()>;
 
     /// Called for stateful sessions on CONNECT and for each request
     /// in a stateless session.
@@ -107,7 +94,4 @@ pub trait Application {
     /// Dynamic trait objects cannot be passed to threads, but functions
     /// that generate them can.
     fn worker_factory(&self) -> fn() -> Box<dyn ApplicationWorker>;
-
-    /// Creates a new application environment object.
-    fn env(&self) -> Box<dyn ApplicationEnv>;
 }
