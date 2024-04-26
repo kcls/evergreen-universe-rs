@@ -48,18 +48,18 @@ impl fmt::Display for EgEvent {
     }
 }
 
-impl From<&EgEvent> for EgValue {
-    fn from(evt: &EgEvent) -> Self {
+impl From<EgEvent> for EgValue {
+    fn from(mut evt: EgEvent) -> Self {
         let mut obj: EgValue = eg::hash! {
             "code": evt.code(),
             "textcode": evt.textcode(),
-            "payload": evt.payload().clone(),
+            "payload": evt.payload_mut().take(),
             "ilspermloc": evt.ilspermloc(),
         };
 
-        if let Some(ad_hoc) = evt.ad_hoc.as_ref() {
-            for (k, v) in ad_hoc.entries() {
-                obj[k] = v.clone();
+        if let Some(ad_hoc) = evt.ad_hoc.as_mut() {
+            for (k, v) in ad_hoc.entries_mut() {
+                obj[k] = v.take();
             }
         }
 
@@ -86,6 +86,12 @@ impl From<&EgEvent> for EgValue {
     }
 }
 
+impl From<&EgEvent> for EgValue {
+    fn from(evt: &EgEvent) -> Self {
+        EgValue::from(evt.clone())
+    }
+}
+
 impl EgEvent {
     /// Create a new event with the provided code.
     pub fn new(textcode: &str) -> Self {
@@ -104,6 +110,16 @@ impl EgEvent {
             ilspermloc: 0,
             ad_hoc: None,
         }
+    }
+
+    /// Shorthand for creating an event from a textcode as an EgValue.
+    pub fn value(textcode: &str) -> EgValue {
+        EgValue::from(EgEvent::new(textcode))
+    }
+
+    /// Shorthand for creating a SUCCESS event as an EgValue.
+    pub fn success_value() -> EgValue {
+        EgValue::from(EgEvent::success())
     }
 
     /// Create a new SUCCESS event

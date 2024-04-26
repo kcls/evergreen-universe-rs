@@ -9,7 +9,7 @@ use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 pub const REDACTED_PARAMS_STR: &str = "**PARAMS REDACTED**";
 
@@ -139,19 +139,6 @@ impl Timer {
     pub fn done(&self) -> bool {
         self.remaining() <= 0
     }
-}
-
-pub fn epoch_secs() -> f64 {
-    if let Ok(dur) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        let ms = dur.as_millis();
-        ms as f64 / 1000.0
-    } else {
-        0.0
-    }
-}
-
-pub fn epoch_secs_str() -> String {
-    format!("{:0<3}", epoch_secs())
 }
 
 /// Creates a (JSON) String verion of a list of method parameters,

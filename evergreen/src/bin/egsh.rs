@@ -639,7 +639,7 @@ impl Shell {
             username,
             password,
             eg::auth::AuthLoginType::try_from(*login_type)?,
-            workstation
+            workstation,
         );
 
         match eg::auth::AuthSession::login(self.ctx().client(), &args)? {

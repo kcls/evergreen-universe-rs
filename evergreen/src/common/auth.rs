@@ -1,19 +1,19 @@
 use crate as eg;
-use eg::Editor;
-use eg::EgResult;
 use eg::auth;
+use eg::common::settings::Settings;
 use eg::date;
 use eg::osrf::sclient::HostSettings;
-use eg::common::settings::Settings;
+use eg::Editor;
+use eg::EgResult;
 
 /// Returns the auth session duration in seconds for the provided
-/// login type and context org units.
+/// login type and context org unit(s) and host settings.
 pub fn get_auth_duration(
     editor: &mut Editor,
     org_id: i64,
     user_home_ou: i64,
     host_settings: &HostSettings,
-    auth_type: &auth::AuthLoginType
+    auth_type: &auth::AuthLoginType,
 ) -> EgResult<i64> {
     // First look for an org unit setting.
 
@@ -27,29 +27,29 @@ pub fn get_auth_duration(
     let mut settings = Settings::new(editor);
     settings.set_org_id(org_id);
 
-    let setting = settings.get_value(setting_name)?;
-    if !setting.is_null() {
-        // .string() because the value could be numeric.
-        return date::interval_to_seconds(&setting.string()?);
-    }
+    let mut interval = settings.get_value(setting_name)?;
 
-    if user_home_ou != org_id {
+    if interval.is_null() && user_home_ou != org_id {
         // If the provided context org unit has no setting, see if
         // a setting is applied to the user's home org unit.
         settings.set_org_id(user_home_ou);
-
-        let setting = settings.get_value(setting_name)?;
-        if !setting.is_null() {
-            // .string() because the value could be numeric.
-            return date::interval_to_seconds(&setting.string()?);
-        }
+        interval = settings.get_value(setting_name)?;
     }
 
-    // No org unit setting.  Use the default.
+    if interval.is_null() {
+        // No org unit setting.  Use the default.
 
-    let setkey = format!("apps/open-ils.auth_internal/app_settings/default_timeout/{auth_type}");
-    let interval = host_settings.value(&setkey).as_str().unwrap_or("0s");
+        let setkey =
+            format!("apps/open-ils.auth_internal/app_settings/default_timeout/{auth_type}");
 
-    date::interval_to_seconds(interval)
+        interval = host_settings.value(&setkey);
+    }
+
+    if let Some(num) = interval.as_int() {
+        Ok(num)
+    } else if let Some(s) = interval.as_str() {
+        date::interval_to_seconds(&s)
+    } else {
+        Ok(0)
+    }
 }
-

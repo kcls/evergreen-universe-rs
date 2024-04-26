@@ -1,18 +1,15 @@
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
+use eg::osrf::cache::Cache;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::osrf::sclient::HostSettings;
-use eg::auth;
-use eg::date;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
-use eg::osrf::cache; // PUT ME INTO THE WORKER ENV
 use evergreen as eg;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::OnceLock;
 
 // Import our local methods module.
 use crate::methods;
@@ -24,8 +21,7 @@ const APPNAME: &str = "open-ils.rs-auth-internal";
 /// The environment is only mutable up until the point our
 /// Server starts spawning threads.
 #[derive(Debug, Clone)]
-pub struct RsAuthInternalEnv {
-}
+pub struct RsAuthInternalEnv {}
 
 impl RsAuthInternalEnv {
     pub fn new() -> Self {
@@ -41,8 +37,7 @@ impl ApplicationEnv for RsAuthInternalEnv {
 }
 
 /// Our main application class.
-pub struct RsAuthInternalApplication {
-}
+pub struct RsAuthInternalApplication {}
 
 impl RsAuthInternalApplication {
     pub fn new() -> Self {
@@ -62,7 +57,6 @@ impl Application for RsAuthInternalApplication {
     /// Load the IDL and perform any other needed global startup work.
     fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
         eg::init::load_idl(Some(&host_settings))?;
-
         Ok(())
     }
 
@@ -94,6 +88,7 @@ pub struct RsAuthInternalWorker {
     client: Option<Client>,
     host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
+    cache: Option<Cache>,
 }
 
 impl RsAuthInternalWorker {
@@ -103,6 +98,7 @@ impl RsAuthInternalWorker {
             client: None,
             methods: None,
             host_settings: None,
+            cache: None,
         }
     }
 
@@ -143,6 +139,11 @@ impl RsAuthInternalWorker {
     pub fn client_mut(&mut self) -> &mut Client {
         self.client.as_mut().unwrap()
     }
+
+    /// Panics if unset, i.e. called before absorb_env()
+    pub fn cache(&mut self) -> &mut Cache {
+        self.cache.as_mut().unwrap()
+    }
 }
 
 impl ApplicationWorker for RsAuthInternalWorker {
@@ -169,6 +170,7 @@ impl ApplicationWorker for RsAuthInternalWorker {
             .downcast_ref::<RsAuthInternalEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
 
+        self.cache = Some(Cache::init(host_settings.clone())?);
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.methods = Some(methods);

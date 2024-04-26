@@ -1,10 +1,10 @@
 //! Create and manage authentication sessions
 use crate as eg;
 use crate::Client;
+use crate::EgError;
 use crate::EgEvent;
 use crate::EgResult;
 use crate::EgValue;
-use crate::EgError;
 use std::fmt;
 
 const LOGIN_TIMEOUT: i32 = 30;
