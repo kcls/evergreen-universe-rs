@@ -11,7 +11,6 @@ const DEFAULT_PERSIST_LOGIN_DURATION: i64 = 2 * 604800; // "2 weeks"
 const NO_ORG_UNIT: i64 = 0;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
-    let host_settings = tester.ctx.host_settings().unwrap();
     // Check default auth durations
 
     tester.timer.start();
@@ -21,7 +20,6 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         // we don't find any.
         NO_ORG_UNIT,
         NO_ORG_UNIT,
-        host_settings,
         &auth::LoginType::Opac,
     )?;
     assert_eq!(DEFAULT_OPAC_LOGIN_DURATION, opac);
@@ -32,7 +30,6 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &mut tester.editor,
         NO_ORG_UNIT,
         NO_ORG_UNIT,
-        host_settings,
         &auth::LoginType::Staff,
     )?;
     assert_eq!(DEFAULT_STAFF_LOGIN_DURATION, staff);
@@ -43,7 +40,6 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &mut tester.editor,
         NO_ORG_UNIT,
         NO_ORG_UNIT,
-        host_settings,
         &auth::LoginType::Temp,
     )?;
     assert_eq!(DEFAULT_TEMP_LOGIN_DURATION, temp);
@@ -54,7 +50,6 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &mut tester.editor,
         NO_ORG_UNIT,
         NO_ORG_UNIT,
-        host_settings,
         &auth::LoginType::Persist,
     )?;
     assert_eq!(DEFAULT_PERSIST_LOGIN_DURATION, persist);

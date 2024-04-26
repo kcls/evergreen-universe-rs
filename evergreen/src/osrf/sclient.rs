@@ -1,38 +1,15 @@
+//! Host Settings Module
 use crate::osrf::conf;
-///! Settings Client Module
-///
 use crate::Client;
 use crate::EgResult;
 use crate::EgValue;
-use std::sync::Arc;
+use std::sync::OnceLock;
 
 const SETTINGS_TIMEOUT: i32 = 10;
 
-pub struct SettingsClient;
-
-impl SettingsClient {
-    /// Fetch the host config for our host.
-    ///
-    /// If force is set, it is passed to opensrf.settings to override
-    /// any caching.
-    pub fn get_host_settings(client: &Client, force: bool) -> EgResult<HostSettings> {
-        let mut ses = client.session("opensrf.settings");
-
-        let mut req = ses.request(
-            "opensrf.settings.host_config.get",
-            vec![
-                EgValue::from(conf::config().hostname()),
-                EgValue::from(force),
-            ],
-        )?;
-
-        if let Some(s) = req.recv_with_timeout(SETTINGS_TIMEOUT)? {
-            Ok(HostSettings { settings: s })
-        } else {
-            Err(format!("Settings server returned no response!").into())
-        }
-    }
-}
+/// If we fetch host settings, they will live here.
+/// They may be fetched and stored at most one time.
+static OSRF_HOST_CONFIG: OnceLock<HostSettings> = OnceLock::new();
 
 /// Read-only wrapper around a JSON blob of server setting values, which
 /// provides accessor methods for pulling setting values.
@@ -41,6 +18,36 @@ pub struct HostSettings {
 }
 
 impl HostSettings {
+
+    /// True if the host settings have been loaded.
+    pub fn is_loaded() -> bool {
+        OSRF_HOST_CONFIG.get().is_some()
+    }
+
+    /// Fetch the host config for our host and store the result in
+    /// our global host settings.
+    ///
+    pub fn load(client: &Client) -> EgResult<()> {
+        let mut ses = client.session("opensrf.settings");
+
+        let mut req = ses.request(
+            "opensrf.settings.host_config.get",
+            conf::config().hostname(),
+        )?;
+
+        if let Some(s) = req.recv_with_timeout(SETTINGS_TIMEOUT)? {
+            let sets = HostSettings { settings: s };
+            if OSRF_HOST_CONFIG.set(sets).is_err() {
+                return Err(format!("Cannot apply host settings more than once").into());
+            }
+
+            Ok(())
+
+        } else {
+            Err(format!("Settings server returned no response!").into())
+        }
+    }
+
     /// Returns the full host settings config as a JsonValue.
     pub fn settings(&self) -> &EgValue {
         &self.settings
@@ -51,16 +58,15 @@ impl HostSettings {
     /// Panics of the host config has not yet been retrieved.
     ///
     /// E.g. sclient.value("apps/opensrf.settings/unix_config/max_children");
-    pub fn value(&self, slashpath: &str) -> &EgValue {
-        let mut value = self.settings();
+    pub fn value(slashpath: &str) -> EgResult<&EgValue> {
+        let hsets = OSRF_HOST_CONFIG.get()
+            .ok_or_else(|| format!("Host settings have not been retrieved"))?;
+
+        let mut value = hsets.settings();
         for part in slashpath.split("/") {
             value = &value[part]; // -> JsonValue::Null if key is not found.
         }
 
-        value
-    }
-
-    pub fn into_shared(self) -> Arc<Self> {
-        Arc::new(self)
+        Ok(value)
     }
 }

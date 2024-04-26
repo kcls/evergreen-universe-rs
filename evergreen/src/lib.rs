@@ -4,7 +4,7 @@ pub use init::init;
 pub use osrf::client::Client;
 pub use osrf::conf::Config;
 pub use osrf::logging::Logger;
-pub use osrf::sclient::SettingsClient;
+pub use osrf::sclient::HostSettings;
 pub use osrf::session::ClientSession;
 pub use result::EgError;
 pub use result::EgResult;

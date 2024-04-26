@@ -82,7 +82,7 @@ fn main() -> eg::EgResult<()> {
     // Testing internal auth
     let args = auth::InternalLoginArgs::new(1, auth::LoginType::Temp);
 
-    let auth_ses = match auth::Session::internal_session(client, &args)? {
+    let auth_ses = match auth::Session::internal_session_api(client, &args)? {
         Some(s) => s,
         None => panic!("Internal Login failed"),
     };

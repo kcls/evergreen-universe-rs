@@ -44,7 +44,6 @@ pub struct Server {
     worker_id_gen: u64,
     to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
-    host_settings: Arc<HostSettings>,
     min_workers: usize,
     max_workers: usize,
 
@@ -66,21 +65,20 @@ impl Server {
         let mut options = init::InitOptions::new();
         options.appname = Some(service.to_string());
 
-        let (client, host_settings) = init::osrf_init(&options)?;
-        let host_settings = host_settings.unwrap(); // fetched by options
+        let client = init::osrf_init(&options)?;
 
-        let min_workers = host_settings
-            .value(&format!("apps/{service}/unix_config/min_children"))
+        let min_workers = HostSettings::value(
+            &format!("apps/{service}/unix_config/min_children"))?
             .as_usize()
             .unwrap_or(DEFAULT_MIN_WORKERS);
 
-        let min_idle_workers = host_settings
-            .value(&format!("apps/{service}/unix_config/min_spare_children"))
+        let min_idle_workers = HostSettings::value(
+            &format!("apps/{service}/unix_config/min_spare_children"))?
             .as_usize()
             .unwrap_or(DEFAULT_MIN_IDLE_WORKERS);
 
-        let max_workers = host_settings
-            .value(&format!("apps/{service}/unix_config/max_children"))
+        let max_workers = HostSettings::value(
+            &format!("apps/{service}/unix_config/max_children"))?
             .as_usize()
             .unwrap_or(DEFAULT_MAX_WORKERS);
 
@@ -107,14 +105,9 @@ impl Server {
             to_parent_rx: rx,
             workers: HashMap::new(),
             sig_tracker: SignalTracker::new(),
-            host_settings: host_settings,
         };
 
         server.listen()
-    }
-
-    fn host_settings(&self) -> &Arc<HostSettings> {
-        &self.host_settings
     }
 
     fn app(&self) -> &Box<dyn app::Application> {
@@ -150,7 +143,6 @@ impl Server {
         let service = self.service().to_string();
         let factory = self.app().worker_factory();
         let env = self.app().env();
-        let host_settings = self.host_settings.clone();
         let sig_tracker = self.sig_tracker.clone();
 
         log::trace!("server: spawning a new worker {worker_id}");
@@ -159,7 +151,6 @@ impl Server {
             Server::start_worker_thread(
                 sig_tracker,
                 env,
-                host_settings,
                 factory,
                 service,
                 worker_id,
@@ -180,7 +171,6 @@ impl Server {
     fn start_worker_thread(
         sig_tracker: SignalTracker,
         env: Box<dyn app::ApplicationEnv>,
-        host_settings: Arc<HostSettings>,
         factory: app::ApplicationWorkerFactory,
         service: String,
         worker_id: u64,
@@ -192,7 +182,6 @@ impl Server {
         let mut worker = match Worker::new(
             service,
             worker_id,
-            host_settings,
             sig_tracker,
             methods,
             to_parent_tx,
@@ -269,14 +258,12 @@ impl Server {
 
     fn service_init(&mut self) -> EgResult<()> {
         let client = self.client.clone();
-        let host_settings = self.host_settings().clone();
-        self.app_mut().init(client, host_settings)
+        self.app_mut().init(client)
     }
 
     fn register_methods(&mut self) -> EgResult<()> {
         let client = self.client.clone();
-        let host_settings = self.host_settings().clone();
-        let list = self.app_mut().register_methods(client, host_settings)?;
+        let list = self.app_mut().register_methods(client)?;
         let mut hash: HashMap<String, method::MethodDef> = HashMap::new();
         for m in list {
             hash.insert(m.name().to_string(), m);

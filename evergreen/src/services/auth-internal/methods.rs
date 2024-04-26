@@ -59,10 +59,8 @@ pub fn create_auth_session(
         workstation: options["workstation"].as_str().map(|v| v.to_string()),
     };
 
-    let host_settings = worker.host_settings();
     let auth_ses = auth::Session::internal_session(
         &mut editor,
-        &host_settings,
         worker.cache(),
         &args
     )?;

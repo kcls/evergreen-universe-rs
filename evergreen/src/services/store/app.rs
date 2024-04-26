@@ -3,8 +3,8 @@ use eg::idl;
 use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
 use eg::osrf::message;
-use eg::osrf::method::MethodDef;
 use eg::osrf::sclient::HostSettings;
+use eg::osrf::method::MethodDef;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
@@ -145,8 +145,8 @@ impl Application for RsStoreApplication {
     }
 
     /// Load the IDL and perform any other needed global startup work.
-    fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
-        eg::init::load_idl(Some(&host_settings))?;
+    fn init(&mut self, _client: Client) -> EgResult<()> {
+        eg::init::load_idl()?;
         Ok(())
     }
 
@@ -154,7 +154,6 @@ impl Application for RsStoreApplication {
     fn register_methods(
         &self,
         _client: Client,
-        _host_settings: Arc<HostSettings>,
     ) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
@@ -183,7 +182,6 @@ impl Application for RsStoreApplication {
 pub struct RsStoreWorker {
     env: Option<RsStoreEnv>,
     client: Option<Client>,
-    host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
     database: Option<Rc<RefCell<DatabaseConnection>>>,
     last_work_timer: Option<eg::util::Timer>,
@@ -200,7 +198,6 @@ impl RsStoreWorker {
             env: None,
             client: None,
             methods: None,
-            host_settings: None,
             database: None,
             last_work_timer: timer,
         }
@@ -238,7 +235,7 @@ impl RsStoreWorker {
         let mut builder = DatabaseConnectionBuilder::new();
 
         let path = format!("apps/{APPNAME}/app_settings/database");
-        let settings = self.host_settings.as_ref().unwrap().value(&path);
+        let settings = HostSettings::value(&path)?;
 
         if let Some(user) = settings["user"].as_str() {
             builder.set_user(user);
@@ -297,7 +294,6 @@ impl ApplicationWorker for RsStoreWorker {
     fn absorb_env(
         &mut self,
         client: Client,
-        host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()> {
@@ -309,7 +305,6 @@ impl ApplicationWorker for RsStoreWorker {
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.methods = Some(methods);
-        self.host_settings = Some(host_settings);
 
         Ok(())
     }

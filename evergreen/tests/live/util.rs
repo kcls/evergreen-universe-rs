@@ -53,7 +53,7 @@ pub fn login(tester: &mut Tester) -> EgResult<()> {
     let mut args = auth::InternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::LoginType::Staff);
     args.org_unit = Some(tester.samples.aou_id);
 
-    let auth_ses = match auth::Session::internal_session(tester.ctx.client(), &args)? {
+    let auth_ses = match auth::Session::internal_session_api(tester.ctx.client(), &args)? {
         Some(s) => s,
         None => return Err("Login failed".into()),
     };

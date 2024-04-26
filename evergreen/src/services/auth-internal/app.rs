@@ -2,7 +2,6 @@ use eg::osrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationW
 use eg::osrf::cache::Cache;
 use eg::osrf::message;
 use eg::osrf::method::MethodDef;
-use eg::osrf::sclient::HostSettings;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
@@ -55,8 +54,8 @@ impl Application for RsAuthInternalApplication {
     }
 
     /// Load the IDL and perform any other needed global startup work.
-    fn init(&mut self, _client: Client, host_settings: Arc<HostSettings>) -> EgResult<()> {
-        eg::init::load_idl(Some(&host_settings))?;
+    fn init(&mut self, _client: Client) -> EgResult<()> {
+        eg::init::load_idl()?;
         Ok(())
     }
 
@@ -64,7 +63,6 @@ impl Application for RsAuthInternalApplication {
     fn register_methods(
         &self,
         _client: Client,
-        _host_settings: Arc<HostSettings>,
     ) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
@@ -86,7 +84,6 @@ impl Application for RsAuthInternalApplication {
 pub struct RsAuthInternalWorker {
     env: Option<RsAuthInternalEnv>,
     client: Option<Client>,
-    host_settings: Option<Arc<HostSettings>>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
     cache: Option<Cache>,
 }
@@ -97,7 +94,6 @@ impl RsAuthInternalWorker {
             env: None,
             client: None,
             methods: None,
-            host_settings: None,
             cache: None,
         }
     }
@@ -117,13 +113,6 @@ impl RsAuthInternalWorker {
             Some(eref) => Ok(eref),
             None => Err(format!("Cannot downcast").into()),
         }
-    }
-
-    /// Get to our host settings.
-    ///
-    /// Panics if unset, which is done during absorb_env.
-    pub fn host_settings(&self) -> Arc<HostSettings> {
-        self.host_settings.clone().unwrap()
     }
 
     /// Ref to our OpenSRF client.
@@ -161,7 +150,6 @@ impl ApplicationWorker for RsAuthInternalWorker {
     fn absorb_env(
         &mut self,
         client: Client,
-        host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, MethodDef>>,
         env: Box<dyn ApplicationEnv>,
     ) -> EgResult<()> {
@@ -170,11 +158,10 @@ impl ApplicationWorker for RsAuthInternalWorker {
             .downcast_ref::<RsAuthInternalEnv>()
             .ok_or_else(|| format!("Unexpected environment type in absorb_env()"))?;
 
-        self.cache = Some(Cache::init(host_settings.clone())?);
+        self.cache = Some(Cache::init()?);
         self.env = Some(worker_env.clone());
         self.client = Some(client);
         self.methods = Some(methods);
-        self.host_settings = Some(host_settings);
 
         Ok(())
     }

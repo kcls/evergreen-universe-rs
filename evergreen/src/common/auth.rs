@@ -3,12 +3,11 @@ use eg::{Editor, EgResult, EgValue, EgError, EgEvent, Client};
 use eg::date;
 use eg::util;
 use std::fmt;
-use std::sync::Arc;
-use md5;
 use eg::constants as C;
 use eg::osrf::cache::Cache;
 use eg::osrf::sclient::HostSettings;
 use eg::common::settings::Settings;
+use md5;
 
 const LOGIN_TIMEOUT: i32 = 30;
 
@@ -255,7 +254,6 @@ impl Session {
     /// Directly create our own internal auth session.
     pub fn internal_session(
         editor: &mut Editor,
-        host_settings: &Arc<HostSettings>,
         cache: &mut Cache,
         args: &InternalLoginArgs,
     ) -> EgResult<Session> {
@@ -288,7 +286,6 @@ impl Session {
             editor,
             org_id,
             user["home_ou"].int()?,
-            host_settings,
             &args.login_type,
         )?;
 
@@ -341,7 +338,6 @@ pub fn get_auth_duration(
     editor: &mut Editor,
     org_id: i64,
     user_home_ou: i64,
-    host_settings: &Arc<HostSettings>,
     auth_type: &LoginType,
 ) -> EgResult<i64> {
     // First look for an org unit setting.
@@ -365,13 +361,15 @@ pub fn get_auth_duration(
         interval = settings.get_value(setting_name)?;
     }
 
+    let interval_binding;
     if interval.is_null() {
         // No org unit setting.  Use the default.
 
         let setkey =
             format!("apps/open-ils.auth_internal/app_settings/default_timeout/{auth_type}");
 
-        interval = host_settings.value(&setkey);
+        interval_binding = HostSettings::value(&setkey)?.clone();
+        interval = &interval_binding;
     }
 
     if let Some(num) = interval.as_int() {

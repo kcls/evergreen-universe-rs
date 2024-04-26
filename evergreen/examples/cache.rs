@@ -3,9 +3,8 @@ use evergreen as eg;
 
 fn main() {
     // Standard setup + connect routines.
-    let ctx = eg::init().expect("Init OK");
-    let hsettings = ctx.host_settings().unwrap();
-    let mut cache = cache::Cache::init(hsettings.clone()).expect("Cache Connected");
+    let _ = eg::init().expect("Init OK");
+    let mut cache = cache::Cache::init().expect("Cache Connected");
 
     let blob = eg::hash! {
         "key1": [1, 2, 3],

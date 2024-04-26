@@ -2,27 +2,23 @@
 use crate::idl;
 use crate::osrf::conf;
 use crate::osrf::logging;
-use crate::osrf::sclient;
+use crate::osrf::sclient::HostSettings;
 use crate::Client;
 use crate::EgResult;
 use std::env;
-use std::sync::Arc;
 
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 const DEFAULT_IDL_PATH: &str = "/openils/conf/fm_IDL.xml";
 
+// TODO we no longer need this since it's just a Client wrapper.
 #[derive(Clone)]
 pub struct Context {
     client: Client,
-    host_settings: Option<Arc<sclient::HostSettings>>,
 }
 
 impl Context {
     pub fn client(&self) -> &Client {
         &self.client
-    }
-    pub fn host_settings(&self) -> Option<&Arc<sclient::HostSettings>> {
-        self.host_settings.as_ref()
     }
 }
 
@@ -57,7 +53,7 @@ pub fn init() -> EgResult<Context> {
 
 /// Parse the OpenSRF config file, connect to the message bus, and
 /// optionally fetch the host settings and initialize logging.
-pub fn osrf_init(options: &InitOptions) -> EgResult<(Client, Option<Arc<sclient::HostSettings>>)> {
+pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
     let builder = if let Ok(fname) = env::var("OSRF_CONFIG") {
         conf::ConfigBuilder::from_file(&fname)?
     } else {
@@ -141,36 +137,29 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<(Client, Option<Arc<sclient:
     // fail if we are not connected to a domain running opensrf.settings
     // (e.g. a public domain).
 
-    let mut host_settings: Option<Arc<sclient::HostSettings>> = None;
-
     if !options.skip_host_settings {
-        if let Ok(s) = sclient::SettingsClient::get_host_settings(&client, false) {
-            host_settings = Some(s.into_shared());
-        }
+        HostSettings::load(&client)?;
     }
 
-    Ok((client, host_settings))
+    Ok(client)
 }
 
 pub fn with_options(options: &InitOptions) -> EgResult<Context> {
-    let (client, host_settings) = osrf_init(&options)?;
+    let client = osrf_init(&options)?;
 
-    load_idl(host_settings.as_ref())?;
+    load_idl()?;
 
-    Ok(Context {
-        client,
-        host_settings,
-    })
+    Ok(Context { client })
 }
 
 /// Locate and parse the IDL file.
-pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
+pub fn load_idl() -> EgResult<()> {
     if let Ok(v) = env::var("EG_IDL_FILE") {
         return idl::Parser::load_file(&v);
     }
 
-    if let Some(s) = settings {
-        if let Some(fname) = s.value("/IDL").as_str() {
+    if HostSettings::is_loaded() {
+        if let Some(fname) = HostSettings::value("/IDL")?.as_str() {
             return idl::Parser::load_file(fname);
         }
     }
@@ -183,11 +172,8 @@ pub fn load_idl(settings: Option<&Arc<sclient::HostSettings>>) -> EgResult<()> {
 /// connect time.
 ///
 /// The only part that must happen in its own thread is the opensrf connect.
-pub fn init_from_parts(host_settings: Option<Arc<sclient::HostSettings>>) -> EgResult<Context> {
+pub fn init_from_parts() -> EgResult<Context> {
     let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
 
-    Ok(Context {
-        client,
-        host_settings,
-    })
+    Ok(Context { client })
 }
