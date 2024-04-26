@@ -1,10 +1,10 @@
 use eg::idl;
-use eg::Client;
 use eg::osrf::addr::BusAddress;
 use eg::osrf::bus::Bus;
 use eg::osrf::conf;
 use eg::osrf::logging::Logger;
 use eg::osrf::message;
+use eg::Client;
 use eg::EgResult;
 use evergreen as eg;
 use mptc;
@@ -844,12 +844,7 @@ struct WebsocketStream {
 }
 
 impl WebsocketStream {
-    fn new(
-        client: Client,
-        address: &str,
-        port: u16,
-        max_parallel: usize,
-    ) -> Result<Self, String> {
+    fn new(client: Client, address: &str, port: u16, max_parallel: usize) -> Result<Self, String> {
         log::info!("EG Websocket listening at {address}:{port}");
 
         let listener = eg::util::tcp_listener(address, port, SIG_POLL_INTERVAL).or_else(|e| {

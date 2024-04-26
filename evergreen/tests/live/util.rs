@@ -1,8 +1,8 @@
 use eg::common::auth;
 use eg::samples::SampleData;
+use eg::Client;
 use eg::Editor;
 use eg::EgResult;
-use eg::Client;
 use evergreen as eg;
 use std::time::SystemTime;
 
