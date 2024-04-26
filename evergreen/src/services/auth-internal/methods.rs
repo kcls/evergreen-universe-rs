@@ -1,20 +1,14 @@
-use eg::constants as C;
 use eg::date;
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;
 use eg::common::auth;
-use eg::util;
 use eg::Editor;
 use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
-use md5;
-
-// Default time for extending a persistent session: ten minutes
-const DEFAULT_RESET_INTERVAL: i32 = 10 * 60;
 
 // Import our local app module
 use crate::app;
@@ -58,62 +52,22 @@ pub fn create_auth_session(
 
     let mut editor = Editor::new(worker.client());
 
-    let mut user = editor
-        .retrieve("au", user_id)?
-        .ok_or_else(|| editor.die_event())?;
-
-    // No long really an issue, but good to clear.
-    user["passwd"].take();
-
-    if let Some(workstation) = options["workstation"].as_str() {
-        let mut ws = editor
-            .search("aws", eg::hash! {"name": workstation})?
-            .pop()
-            .ok_or_else(|| editor.die_event())?;
-
-        user["wsid"] = ws["id"].take();
-        user["ws_ou"] = ws["owning_lib"].take();
-    } else {
-        user["ws_ou"] = user["home_ou"].clone();
-    }
-
-    let org_id = match options["org_id"].as_int() {
-        Some(id) => id,
-        None => user["ws_ou"].int()?,
+    let args = auth::InternalLoginArgs {
+        user_id,
+        login_type,
+        org_unit: options["org_id"].as_int(),
+        workstation: options["workstation"].as_str().map(|v| v.to_string()),
     };
 
-    let duration = auth::get_auth_duration(
+    let host_settings = worker.host_settings();
+    let auth_ses = auth::Session::internal_session(
         &mut editor,
-        org_id,
-        user["home_ou"].int()?,
-        worker.host_settings(),
-        &login_type,
+        &host_settings,
+        worker.cache(),
+        &args
     )?;
 
-    let authtoken = format!("{:x}", md5::compute(util::random_number(64)));
-    let cache_key = format!("{}{}", C::OILS_AUTH_CACHE_PRFX, authtoken);
-
-    let mut cache_val = eg::hash! {
-        "authtime": duration,
-        "userobj": user,
-    };
-
-    if login_type == auth::LoginType::Persist {
-        // Add entries for endtime and reset_interval, so that we can
-        // gracefully extend the session a bit if the user is active
-        // toward the end of the duration originally specified.
-        cache_val["endtime"] = EgValue::from(date::epoch_secs().floor() as i64 + duration);
-
-        // Reset interval is hard-coded for now, but if we ever want to make it
-        // configurable, this is the place to do it:
-        cache_val["reset_interval"] = DEFAULT_RESET_INTERVAL.into();
-    }
-
-    worker
-        .cache()
-        .set_for(&cache_key, cache_val, duration as usize)?;
-
-    session.respond(eg::hash! {"authtime": duration, "authtoken": authtoken})
+    session.respond(eg::hash! {"authtime": auth_ses.authtime(), "authtoken": auth_ses.token()})
 }
 
 pub fn validate_user(
