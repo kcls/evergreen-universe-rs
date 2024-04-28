@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
+use std::mem;
 
 /// Classname and payload fields for wire-protocol JSON values.
 const JSON_CLASS_KEY: &str = "__c";
@@ -188,7 +189,7 @@ impl EgValue {
         // Pull the map out of the EgValue::Hash so we can inspect
         // it and eventually consume it.
         let map = match self {
-            Self::Hash(ref mut h) => std::mem::replace(h, HashMap::new()),
+            Self::Hash(ref mut h) => mem::replace(h, HashMap::new()),
             _ => return Err(format!("Only EgValue::Hash's can be blessed").into()),
         };
 
@@ -470,6 +471,23 @@ impl EgValue {
     /// stored at self.
     pub fn take(&mut self) -> EgValue {
         std::mem::replace(self, EgValue::Null)
+    }
+
+    /// Returns an owned String if this value is a string.
+    /// https://docs.rs/json/latest/src/json/value/mod.rs.html#367-381
+    pub fn take_string(&mut self) -> Option<String> {
+        let mut placeholder = Self::Null;
+
+        mem::swap(self, &mut placeholder);
+
+        if let Self::String(s) = placeholder {
+            return Some(s);
+        }
+
+        // Not a Self::String value.
+        mem::swap(self, &mut placeholder);
+
+        None
     }
 
     /// Turn a value into a JSON string.

@@ -153,12 +153,54 @@ impl InternalLoginArgs {
 }
 
 pub struct Session {
+    user: EgValue,
+
     token: String,
+
+    /// Duration of the authentication session
     authtime: i64,
+
+    /// Workstation name if applied
+    /// Sessions pulled from the cache will not have a Workstation
+    /// value, only "wsid" values.
     workstation: Option<String>,
+
+    /// Epoch seconds where this session expires from cache.
+    /// Only applied to Persist sessions.
+    endtime: Option<i64>,
+
+    /// Amount to exist Persist sessions.
+    reset_interval: Option<i64>
 }
 
 impl Session {
+
+    /// Get the auth session matching the provided auth token.
+    ///
+    /// Uses our internal cache, not the API.
+    pub fn from_cache(cache: &mut Cache, token: &str) -> EgResult<Option<Session>> {
+        let mut cache_val = match cache.get(&format!("{}{}", C::OILS_AUTH_CACHE_PRFX, token))? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        let authtime = cache_val["authtime"].int()?;
+        let user = cache_val["userobj"].take();
+        let endtime = cache_val["endtime"].as_i64();
+        let reset_interval = cache_val["reset_interval"].as_i64();
+
+        let ses = Session {
+            user,
+            authtime,
+            endtime,
+            reset_interval,
+            workstation: None,
+            token: token.to_string(),
+        };
+
+        Ok(Some(ses))
+    }
+
     /// Logout and remove the cached auth session.
     pub fn logout(client: &Client, token: &str) -> EgResult<()> {
         let mut ses = client.session("open-ils.auth");
@@ -208,7 +250,7 @@ impl Session {
         workstation: &Option<String>,
         response: &EgValue,
     ) -> EgResult<Option<Session>> {
-        let evt = match EgEvent::parse(&response) {
+        let mut evt = match EgEvent::parse(&response) {
             Some(e) => e,
             None => {
                 return Err(format!("Unexpected response: {:?}", response).into());
@@ -224,24 +266,19 @@ impl Session {
             return Err(format!("Unexpected response: {}", evt).into());
         }
 
-        let token = match evt.payload()["authtoken"].as_str() {
-            Some(t) => String::from(t),
-            None => {
-                return Err(format!("Unexpected response: {}", evt).into());
-            }
-        };
+        let token = evt.payload_mut()["authtoken"].take_string()
+            .ok_or_else(|| format!("Auth cache value has invalid authtoken"))?;
 
-        let authtime = match evt.payload()["authtime"].as_int() {
-            Some(t) => t,
-            None => {
-                return Err(format!("Unexpected response: {}", evt).into());
-            }
-        };
+        let authtime = evt.payload()["authtime"].int()?;
+        let user = evt.payload_mut()["userobj"].take();
 
         let mut auth_ses = Session {
-            token: token,
+            user,
+            token,
             authtime: authtime,
             workstation: None,
+            endtime: None,
+            reset_interval: None,
         };
 
         if let Some(w) = workstation {
@@ -288,7 +325,7 @@ impl Session {
 
         let mut cache_val = eg::hash! {
             "authtime": duration,
-            "userobj": user,
+            "userobj": user.clone(),
         };
 
         if args.login_type == LoginType::Persist {
@@ -302,11 +339,17 @@ impl Session {
             cache_val["reset_interval"] = DEFAULT_RESET_INTERVAL.into();
         }
 
+        let endtime = cache_val["endtime"].as_int();
+        let reset_interval = cache_val["reset_interval"].as_int();
+
         cache.set_for(&cache_key, cache_val, duration)?;
 
         let auth_ses = Session {
+            user,
             token: authtoken,
             authtime: duration,
+            endtime,
+            reset_interval,
             workstation: args.workstation.clone(),
         };
 
@@ -323,6 +366,17 @@ impl Session {
 
     pub fn workstation(&self) -> Option<&str> {
         self.workstation.as_deref()
+    }
+
+    pub fn endtime(&self) -> Option<i64> {
+        self.endtime
+    }
+
+    pub fn reset_interval(&self) -> Option<i64> {
+        self.reset_interval
+    }
+    pub fn user(&self) -> &EgValue {
+        &self.user
     }
 }
 
@@ -359,7 +413,7 @@ pub fn get_auth_duration(
     if interval.is_null() {
         // No org unit setting.  Use the default.
 
-        let setkey =
+        let setkey = // TODO change key names?
             format!("apps/open-ils.auth_internal/app_settings/default_timeout/{auth_type}");
 
         interval_binding = HostSettings::value(&setkey)?.clone();

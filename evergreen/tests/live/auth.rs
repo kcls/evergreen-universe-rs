@@ -70,5 +70,12 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     assert_eq!(ses.authtime(), staff);
     tester.timer.stop("Created Internal Session");
 
+    tester.timer.start();
+    let ses2 = auth::Session::from_cache(&mut cache, ses.token())?.expect("Session Exists");
+    assert_eq!(ses2.token(), ses.token());
+    assert_eq!(ses2.user().id()?, eg::samples::AU_STAFF_ID);
+    assert_eq!(ses2.authtime(), staff);
+    tester.timer.stop("Retrieved valid Session from cache");
+
     Ok(())
 }
