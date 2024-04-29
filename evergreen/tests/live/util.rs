@@ -13,7 +13,6 @@ pub struct Timer {
 impl Timer {
     pub fn new() -> Timer {
         Timer {
-            //start: SystemTime::now(),
             start: None,
         }
     }
@@ -22,7 +21,7 @@ impl Timer {
         self.start = Some(SystemTime::now());
     }
 
-    pub fn stop(&mut self, msg: &str) {
+    pub fn log(&mut self, msg: &str) {
         let start = match self.start {
             Some(s) => s,
             None => {
@@ -37,7 +36,11 @@ impl Timer {
         let millis = (duration as f64) / 1000.0;
 
         println!("OK [{:.3} ms]\t{msg}", millis);
+    }
 
+    /// Stop the timer.  Currently unused.
+    pub fn _stop(&mut self, msg: &str) {
+        self.log(msg);
         self.start = None;
     }
 }

@@ -81,4 +81,5 @@ pub const PRECAT_BIB_RECORD: i64 = -1;
 // ---------------------------------------------------------------------
 // Well-known cache key prefixes
 // ---------------------------------------------------------------------
-pub const OILS_AUTH_CACHE_PRFX: &str = "oils_auth_";
+// This is our local Redis-based cache key prefix.
+pub const OILS_AUTH_CACHE_PRFX: &str = "opensrf:auth:";

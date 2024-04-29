@@ -12,9 +12,8 @@ const DEFAULT_PERSIST_LOGIN_DURATION: i64 = 2 * 604800; // "2 weeks"
 const NO_ORG_UNIT: i64 = 0;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
-    // Check default auth durations
-
     tester.timer.start();
+
     let opac = auth::get_auth_duration(
         &mut tester.editor,
         // Org unit setting lookups will occur, but this guarantees
@@ -24,9 +23,8 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &auth::LoginType::Opac,
     )?;
     assert_eq!(DEFAULT_OPAC_LOGIN_DURATION, opac);
-    tester.timer.stop("Check Default OPAC Login Duration");
+    tester.timer.log("Check Default OPAC Login Duration");
 
-    tester.timer.start();
     let staff = auth::get_auth_duration(
         &mut tester.editor,
         NO_ORG_UNIT,
@@ -34,9 +32,8 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &auth::LoginType::Staff,
     )?;
     assert_eq!(DEFAULT_STAFF_LOGIN_DURATION, staff);
-    tester.timer.stop("Check Default Staff Login Duration");
+    tester.timer.log("Check Default Staff Login Duration");
 
-    tester.timer.start();
     let temp = auth::get_auth_duration(
         &mut tester.editor,
         NO_ORG_UNIT,
@@ -44,9 +41,8 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &auth::LoginType::Temp,
     )?;
     assert_eq!(DEFAULT_TEMP_LOGIN_DURATION, temp);
-    tester.timer.stop("Check Default Temp Login Duration");
+    tester.timer.log("Check Default Temp Login Duration");
 
-    tester.timer.start();
     let persist = auth::get_auth_duration(
         &mut tester.editor,
         NO_ORG_UNIT,
@@ -54,9 +50,8 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &auth::LoginType::Persist,
     )?;
     assert_eq!(DEFAULT_PERSIST_LOGIN_DURATION, persist);
-    tester.timer.stop("Check Default Persist Login Duration");
+    tester.timer.log("Check Default Persist Login Duration");
 
-    tester.timer.start();
     let mut args = auth::InternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::LoginType::Staff);
     args.org_unit = Some(tester.samples.aou_id);
 
@@ -68,14 +63,17 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         &args
     )?;
     assert_eq!(ses.authtime(), staff);
-    tester.timer.stop("Created Internal Session");
+    tester.timer.log("Created Internal Session");
 
-    tester.timer.start();
     let ses2 = auth::Session::from_cache(&mut cache, ses.token())?.expect("Session Exists");
     assert_eq!(ses2.token(), ses.token());
     assert_eq!(ses2.user().id()?, eg::samples::AU_STAFF_ID);
     assert_eq!(ses2.authtime(), staff);
-    tester.timer.stop("Retrieved valid Session from cache");
+    tester.timer.log("Retrieved valid Session from cache");
+
+    ses2.remove(&mut cache)?;
+    assert!(auth::Session::from_cache(&mut cache, ses2.token())?.is_none());
+    tester.timer.log("Removed session from cache");
 
     Ok(())
 }

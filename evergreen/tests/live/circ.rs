@@ -8,30 +8,25 @@ use std::collections::HashMap;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     util::login(tester)?;
-
     tester.timer.start();
+
     delete_test_assets(tester)?;
-    tester.timer.stop("Deleted circ assets");
+    tester.timer.log("Deleted circ assets");
 
-    tester.timer.start();
     create_test_assets(tester)?;
-    tester.timer.stop("Created circ assets");
+    tester.timer.log("Created circ assets");
 
-    tester.timer.start();
     checkout(tester)?;
-    tester.timer.stop("checkout()");
+    tester.timer.log("checkout()");
 
-    tester.timer.start();
     checkin_item_at_home(tester)?;
-    tester.timer.stop("checkin_item_at_home()");
+    tester.timer.log("checkin_item_at_home()");
 
-    tester.timer.start();
     checkin_item_remote(tester)?;
-    tester.timer.stop("checkin_item_remote()");
+    tester.timer.log("checkin_item_remote()");
 
-    tester.timer.start();
     delete_test_assets(tester)?;
-    tester.timer.stop("Deleted circ assets");
+    tester.timer.log("Deleted circ assets");
 
     Ok(())
 }

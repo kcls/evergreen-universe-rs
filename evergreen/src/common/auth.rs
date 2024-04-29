@@ -14,6 +14,10 @@ const LOGIN_TIMEOUT: i32 = 30;
 // Default time for extending a persistent session: ten minutes
 const DEFAULT_RESET_INTERVAL: i32 = 10 * 60;
 
+fn cache_key(token: &str) -> String {
+    format!("{}{}", C::OILS_AUTH_CACHE_PRFX, token)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoginType {
     Temp,
@@ -174,12 +178,11 @@ pub struct Session {
 }
 
 impl Session {
-
     /// Get the auth session matching the provided auth token.
     ///
     /// Uses our internal cache, not the API.
     pub fn from_cache(cache: &mut Cache, token: &str) -> EgResult<Option<Session>> {
-        let mut cache_val = match cache.get(&format!("{}{}", C::OILS_AUTH_CACHE_PRFX, token))? {
+        let mut cache_val = match cache.get(&cache_key(token))? {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -202,7 +205,7 @@ impl Session {
     }
 
     pub fn remove(&self, cache: &mut Cache) -> EgResult<()> {
-        cache.del(self.token())
+        cache.del(&cache_key(self.token()))
     }
 
     /// Logout and remove the cached auth session.
@@ -325,7 +328,6 @@ impl Session {
         let duration = get_auth_duration(editor, org_id, user["home_ou"].int()?, &args.login_type)?;
 
         let authtoken = format!("{:x}", md5::compute(util::random_number(20)));
-        let cache_key = format!("{}{}", C::OILS_AUTH_CACHE_PRFX, authtoken);
 
         let mut cache_val = eg::hash! {
             "authtime": duration,
@@ -346,7 +348,7 @@ impl Session {
         let endtime = cache_val["endtime"].as_int();
         let reset_interval = cache_val["reset_interval"].as_int();
 
-        cache.set_for(&cache_key, cache_val, duration)?;
+        cache.set_for(&cache_key(&authtoken), cache_val, duration)?;
 
         let auth_ses = Session {
             user,
