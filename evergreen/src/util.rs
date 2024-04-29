@@ -37,17 +37,18 @@ pub fn thread_id() -> u64 {
 
 /// Returns a string of random numbers of the requested length
 ///
+/// Any `size` value that exceeds about 20 will consist wholly of
+/// zeroes along the first portion of the string.
+///
 /// ```
 /// use evergreen::util;
 /// let n = util::random_number(12);
 /// assert_eq!(n.len(), 12);
-/// let n = util::random_number(100);
-/// assert_eq!(n.len(), 100);
 /// ```
-pub fn random_number(size: usize) -> String {
+pub fn random_number(size: u8) -> String {
     let mut rng = rand::thread_rng();
-    let num: u64 = rng.gen_range(100_000_000_000..1_000_000_000_000);
-    format!("{:0width$}", num, width = size)[0..size].to_string()
+    let num: u64 = rng.gen_range(0..std::u64::MAX);
+    format!("{:0width$}", num, width = size as usize)[0..size as usize].to_string()
 }
 
 /// Converts a JSON number or string to an isize if possible

@@ -288,7 +288,7 @@ impl Session {
         Ok(Some(auth_ses))
     }
 
-    /// Directly create our own internal auth session.
+    /// Create an internal auth session and store it directly in the cache.
     pub fn internal_session(
         editor: &mut Editor,
         cache: &mut Cache,
@@ -320,7 +320,7 @@ impl Session {
 
         let duration = get_auth_duration(editor, org_id, user["home_ou"].int()?, &args.login_type)?;
 
-        let authtoken = format!("{:x}", md5::compute(util::random_number(64)));
+        let authtoken = format!("{:x}", md5::compute(util::random_number(20)));
         let cache_key = format!("{}{}", C::OILS_AUTH_CACHE_PRFX, authtoken);
 
         let mut cache_val = eg::hash! {
