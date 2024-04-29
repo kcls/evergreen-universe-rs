@@ -201,6 +201,10 @@ impl Session {
         Ok(Some(ses))
     }
 
+    pub fn remove(&self, cache: &mut Cache) -> EgResult<()> {
+        cache.del(self.token())
+    }
+
     /// Logout and remove the cached auth session.
     pub fn logout(client: &Client, token: &str) -> EgResult<()> {
         let mut ses = client.session("open-ils.auth");
@@ -381,7 +385,7 @@ impl Session {
 }
 
 /// Returns the auth session duration in seconds for the provided
-/// login type and context org unit(s) and host settings.
+/// login type, context org unit(s), and host settings.
 pub fn get_auth_duration(
     editor: &mut Editor,
     org_id: i64,
