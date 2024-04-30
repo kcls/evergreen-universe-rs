@@ -60,7 +60,7 @@ pub struct Cache {
 
 impl Cache {
     pub fn init() -> EgResult<Self> {
-        let config = HostSettings::value("redis-cache")?;
+        let config = HostSettings::get("redis-cache")?;
 
         if config.is_null() {
             return Err(format!("No Cache configuration for redis").into());

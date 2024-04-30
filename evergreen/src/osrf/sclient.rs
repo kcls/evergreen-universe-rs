@@ -56,7 +56,7 @@ impl HostSettings {
     /// Panics of the host config has not yet been retrieved.
     ///
     /// E.g. sclient.value("apps/opensrf.settings/unix_config/max_children");
-    pub fn value(slashpath: &str) -> EgResult<&EgValue> {
+    pub fn get(slashpath: &str) -> EgResult<&EgValue> {
         let hsets = OSRF_HOST_CONFIG
             .get()
             .ok_or_else(|| format!("Host settings have not been retrieved"))?;

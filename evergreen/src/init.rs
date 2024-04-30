@@ -147,7 +147,7 @@ pub fn load_idl() -> EgResult<()> {
     }
 
     if HostSettings::is_loaded() {
-        if let Some(fname) = HostSettings::value("/IDL")?.as_str() {
+        if let Some(fname) = HostSettings::get("/IDL")?.as_str() {
             return idl::Parser::load_file(fname);
         }
     }

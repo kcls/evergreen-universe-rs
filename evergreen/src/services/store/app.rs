@@ -200,7 +200,7 @@ impl RsStoreWorker {
         let mut builder = DatabaseConnectionBuilder::new();
 
         let path = format!("apps/{APPNAME}/app_settings/database");
-        let settings = HostSettings::value(&path)?;
+        let settings = HostSettings::get(&path)?;
 
         if let Some(user) = settings["user"].as_str() {
             builder.set_user(user);

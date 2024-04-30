@@ -67,16 +67,16 @@ impl Server {
 
         let client = init::osrf_init(&options)?;
 
-        let min_workers = HostSettings::value(&format!("apps/{service}/unix_config/min_children"))?
+        let min_workers = HostSettings::get(&format!("apps/{service}/unix_config/min_children"))?
             .as_usize()
             .unwrap_or(DEFAULT_MIN_WORKERS);
 
         let min_idle_workers =
-            HostSettings::value(&format!("apps/{service}/unix_config/min_spare_children"))?
+            HostSettings::get(&format!("apps/{service}/unix_config/min_spare_children"))?
                 .as_usize()
                 .unwrap_or(DEFAULT_MIN_IDLE_WORKERS);
 
-        let max_workers = HostSettings::value(&format!("apps/{service}/unix_config/max_children"))?
+        let max_workers = HostSettings::get(&format!("apps/{service}/unix_config/max_children"))?
             .as_usize()
             .unwrap_or(DEFAULT_MAX_WORKERS);
 

@@ -139,13 +139,13 @@ impl Worker {
         }
 
         let max_requests: usize =
-            HostSettings::value(&format!("apps/{}/unix_config/max_requests", self.service))
+            HostSettings::get(&format!("apps/{}/unix_config/max_requests", self.service))
                 .expect("Host Settings Not Retrieved")
                 .as_usize()
                 .unwrap_or(5000);
 
         let keepalive: usize =
-            HostSettings::value(&format!("apps/{}/unix_config/keepalive", self.service))
+            HostSettings::get(&format!("apps/{}/unix_config/keepalive", self.service))
                 .expect("Host Settings Not Retrieved")
                 .as_usize()
                 .unwrap_or(5);

@@ -422,7 +422,7 @@ pub fn get_auth_duration(
         let setkey = // TODO change key names?
             format!("apps/open-ils.auth_internal/app_settings/default_timeout/{auth_type}");
 
-        interval_binding = HostSettings::value(&setkey)?.clone();
+        interval_binding = HostSettings::get(&setkey)?.clone();
         interval = &interval_binding;
     }
 
