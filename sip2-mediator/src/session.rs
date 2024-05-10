@@ -75,9 +75,10 @@ impl Session {
             let sip_req_op = match self.sip_connection.recv_with_timeout(SIG_POLL_INTERVAL) {
                 Ok(msg_op) => msg_op,
                 Err(e) => {
-                    return Err(
-                        format!("{self} SIP receive exited early; ending session: [{e}]").into(),
-                    )
+                    // We'll end up here if the client disconnects.
+                    // Exit the listen loop and cleanup.
+                    log::debug!("{self} SIP receive exited early; ending session: [{e}]");
+                    break;
                 }
             };
 
@@ -107,15 +108,22 @@ impl Session {
 
             // Relay the request to the Evergreen backend and wait for a
             // response.  If an error occurs, all we can do is exit and
-            // force a disconnect, since SIP has no concept of an error
-            // response.
-            let sip_resp = self.osrf_round_trip(&sip_req)?;
+            // cleanup, since SIP has no concept of an error response.
+            let sip_resp = match self.osrf_round_trip(&sip_req) {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("{self} error routing ILS message: {e}");
+                    break;
+                }
+            };
 
             log::trace!("{self} EG server replied with {sip_resp:?}");
 
             // Send the response back to the SIP client as a SIP message.
+            // If there's an error, exit and cleanup.
             if let Err(e) = self.sip_connection.send(&sip_resp) {
-                return Err(format!("Error sending SIP resonse: {e}").into());
+                log::error!("{self} error sending response to SIP client: {e}");
+                break;
             }
 
             log::debug!("{self} Successfully relayed response back to SIP client");
@@ -126,8 +134,9 @@ impl Session {
             }
         }
 
-        log::info!("{self} shutting down");
+        log::info!("{self} cleaning up and exiting");
 
+        // Might already be disconnected
         self.sip_connection.disconnect().ok();
 
         // Tell the Evergreen server our session is done.
@@ -139,7 +148,7 @@ impl Session {
     /// Response and errors are ignored since this is the final step
     /// in the session shuting down.
     fn send_end_session(&mut self) -> EgResult<()> {
-        log::trace!("{} sending end of session message to the ILS", self);
+        log::debug!("{self} sending end of session message to the ILS");
 
         let msg_spec = sip2::spec::Message::from_code("XS").unwrap();
 
