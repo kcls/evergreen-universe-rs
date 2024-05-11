@@ -1,22 +1,31 @@
+//! Watch the message bus for stale messages and apply a TTL value
+//! so they may be removed.
 use eg::date;
 use eg::osrf::bus;
 use eg::osrf::conf;
 use eg::EgValue;
+use eg::EgResult;
 use evergreen as eg;
 use std::env;
 use std::fmt;
 use std::thread;
 use std::time::Duration;
 
+// The 'watch' account requires permissions:
+// +keys +ttl +expire +llen
+
+/// How often we wake and check for stale keys.
 const DEFAULT_WAIT_TIME: u64 = 60; // 1 minute
 
-// Redis lists are deleted every time the last value in the list is
-// popped.  If a list key persists for many minutes, it means the list
-// is never fully drained, suggesting the backend responsible for
-// popping values from the list is no longer alive OR is perpetually
-// under excessive load.  Tell keys to delete themselves after
-// this many seconds of being unable to drain the list.
-const DEFAULT_KEY_EXPIRE_SECS: u64 = 1800; // 30 minutes
+/// Set the expire time to this many seconds when a stale key is found.
+///
+/// Redis lists are deleted every time the last value in the list is
+/// popped.  If a list key persists for many minutes, it means the list
+/// is never fully drained, suggesting the backend responsible for
+/// popping values from the list is no longer alive or is under constant
+/// load.  Tell keys to delete themselves after
+/// this many seconds of being unable to drain the list.
+const DEFAULT_KEY_EXPIRE_SECS: u64 = 7200; // 2 hours
 
 struct BusWatch {
     bus: bus::Bus,
@@ -46,23 +55,14 @@ impl BusWatch {
         }
     }
 
-    /// Returns true if the caller should start over with a new
-    /// buswatcher to recover from a potentially temporary bus
-    /// connection error.  False if this is a clean shutdown.
-    pub fn watch(&mut self) -> bool {
+    pub fn watch(&mut self) -> EgResult<()> {
         let mut obj = eg::hash! {};
 
         loop {
             thread::sleep(Duration::from_secs(self.wait_time));
 
             // Check all opensrf keys.
-            let keys = match self.bus.keys("opensrf:*") {
-                Ok(k) => k,
-                Err(e) => {
-                    log::error!("Error in keys() command: {e}");
-                    return true;
-                }
-            };
+            let keys = self.bus.keys("opensrf:*")?;
 
             if keys.len() == 0 {
                 continue;
@@ -71,42 +71,30 @@ impl BusWatch {
             obj["stats"] = EgValue::new_object();
 
             for key in keys.iter() {
-                match self.bus.llen(key) {
-                    Ok(l) => {
-                        // The list may have cleared in the time between the
-                        // time we called keys() and llen().
-                        if l > 0 {
-                            obj["stats"][key]["count"] = EgValue::from(l);
-                            // Uncomment this chunk to see the next opensrf
-                            // message in the queue for this key as JSON.
-                            if let Ok(list) = self.bus.lrange(key, 0, 1) {
-                                if let Some(s) = list.get(0) {
-                                    obj["stats"][key]["next_value"] = EgValue::from(s.as_str());
-                                }
-                            }
+                let l = self.bus.llen(key)?;
+
+                // The list may have cleared in the time between the
+                // time we called keys() and llen().
+                if l > 0 {
+                    obj["stats"][key]["count"] = EgValue::from(l);
+
+                    // Uncomment this chunk to see the next
+                    // message in the queue for this key as JSON.
+
+                    if let Ok(list) = self.bus.lrange(key, 0, 1) {
+                        if let Some(s) = list.get(0) {
+                            obj["stats"][key]["next_value"] = EgValue::from(s.as_str());
                         }
-                    }
-                    Err(e) => {
-                        let err = format!("Error reading LLEN list={key} error={e}");
-                        log::error!("{err}");
-                        return true;
                     }
                 }
 
-                match self.bus.ttl(key) {
-                    Ok(ttl) => {
-                        obj["stats"][key]["ttl"] = EgValue::from(ttl);
-                        if ttl == -1 {
-                            log::debug!("Setting TTL for stale key {key}");
-                            if let Err(e) = self.bus.set_key_timeout(key, self.ttl) {
-                                log::error!("Error with set_key_timeout: {e}");
-                                return true;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Error with ttl: {e}");
-                    }
+                let ttl = self.bus.ttl(key)?;
+
+                obj["stats"][key]["ttl"] = EgValue::from(ttl);
+
+                if ttl == -1 {
+                    log::warn!("Setting TTL {} for stale key {key}", self.ttl);
+                    self.bus.set_key_timeout(key, self.ttl)?;
                 }
             }
 
@@ -132,12 +120,9 @@ fn main() {
     }
 
     loop {
-        if watcher.watch() {
-            log::error!("Restarting watcher after fatal error");
-        } else {
-            break;
+        if let Err(e) = watcher.watch() {
+            log::error!("Buswatch failed; restarting: {e}");
         }
     }
-
-    log::info!("Watcher exiting");
 }
+
