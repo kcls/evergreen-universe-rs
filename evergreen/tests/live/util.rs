@@ -12,9 +12,7 @@ pub struct Timer {
 
 impl Timer {
     pub fn new() -> Timer {
-        Timer {
-            start: None,
-        }
+        Timer { start: None }
     }
 
     pub fn start(&mut self) {

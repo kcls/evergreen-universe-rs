@@ -3,8 +3,8 @@
 use eg::date;
 use eg::osrf::bus;
 use eg::osrf::conf;
-use eg::EgValue;
 use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use std::env;
 use std::fmt;
@@ -125,4 +125,3 @@ fn main() {
         }
     }
 }
-

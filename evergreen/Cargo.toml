@@ -22,6 +22,7 @@ postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 regex = "1.9"                                                                
 getopts = "0.2"
 md5 = "0.7"
+memcache = "0.17.2"
 
 # Needed for extracting numeric PG types
 pg_interval = "0.4"

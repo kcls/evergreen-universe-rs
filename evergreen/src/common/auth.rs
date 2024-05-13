@@ -162,7 +162,7 @@ pub struct Session {
     token: String,
 
     /// Duration of the authentication session
-    authtime: i64,
+    authtime: u32,
 
     /// Workstation name if applied
     /// Sessions pulled from the cache will not have a Workstation
@@ -174,20 +174,20 @@ pub struct Session {
     endtime: Option<i64>,
 
     /// Amount to exist Persist sessions.
-    reset_interval: Option<i64>
+    reset_interval: Option<i64>,
 }
 
 impl Session {
     /// Get the auth session matching the provided auth token.
     ///
     /// Uses our internal cache, not the API.
-    pub fn from_cache(cache: &mut Cache, token: &str) -> EgResult<Option<Session>> {
-        let mut cache_val = match cache.get(&cache_key(token))? {
+    pub fn from_cache(token: &str) -> EgResult<Option<Session>> {
+        let mut cache_val = match Cache::get_global(&cache_key(token))? {
             Some(v) => v,
             None => return Ok(None),
         };
 
-        let authtime = cache_val["authtime"].int()?;
+        let authtime = cache_val["authtime"].int()? as u32;
         let user = cache_val["userobj"].take();
         let endtime = cache_val["endtime"].as_i64();
         let reset_interval = cache_val["reset_interval"].as_i64();
@@ -204,8 +204,8 @@ impl Session {
         Ok(Some(ses))
     }
 
-    pub fn remove(&self, cache: &mut Cache) -> EgResult<()> {
-        cache.del(&cache_key(self.token()))
+    pub fn remove(&self) -> EgResult<()> {
+        Cache::del_global(&cache_key(self.token()))
     }
 
     /// Logout and remove the cached auth session.
@@ -273,10 +273,11 @@ impl Session {
             return Err(format!("Unexpected response: {}", evt).into());
         }
 
-        let token = evt.payload_mut()["authtoken"].take_string()
+        let token = evt.payload_mut()["authtoken"]
+            .take_string()
             .ok_or_else(|| format!("Auth cache value has invalid authtoken"))?;
 
-        let authtime = evt.payload()["authtime"].int()?;
+        let authtime = evt.payload()["authtime"].int()? as u32;
         let user = evt.payload_mut()["userobj"].take();
 
         let mut auth_ses = Session {
@@ -296,11 +297,7 @@ impl Session {
     }
 
     /// Create an internal auth session and store it directly in the cache.
-    pub fn internal_session(
-        editor: &mut Editor,
-        cache: &mut Cache,
-        args: &InternalLoginArgs,
-    ) -> EgResult<Session> {
+    pub fn internal_session(editor: &mut Editor, args: &InternalLoginArgs) -> EgResult<Session> {
         let mut user = editor
             .retrieve("au", args.user_id)?
             .ok_or_else(|| editor.die_event())?;
@@ -338,7 +335,7 @@ impl Session {
             // Add entries for endtime and reset_interval, so that we can
             // gracefully extend the session a bit if the user is active
             // toward the end of the duration originally specified.
-            cache_val["endtime"] = EgValue::from(date::epoch_secs().floor() as i64 + duration);
+            cache_val["endtime"] = EgValue::from(date::epoch_secs().floor() as u32 + duration);
 
             // Reset interval is hard-coded for now, but if we ever want to make it
             // configurable, this is the place to do it:
@@ -348,7 +345,7 @@ impl Session {
         let endtime = cache_val["endtime"].as_int();
         let reset_interval = cache_val["reset_interval"].as_int();
 
-        cache.set_for(&cache_key(&authtoken), cache_val, duration)?;
+        Cache::set_global_for(&cache_key(&authtoken), cache_val, duration)?;
 
         let auth_ses = Session {
             user,
@@ -366,7 +363,7 @@ impl Session {
         &self.token
     }
 
-    pub fn authtime(&self) -> i64 {
+    pub fn authtime(&self) -> u32 {
         self.authtime
     }
 
@@ -393,7 +390,7 @@ pub fn get_auth_duration(
     org_id: i64,
     user_home_ou: i64,
     auth_type: &LoginType,
-) -> EgResult<i64> {
+) -> EgResult<u32> {
     // First look for an org unit setting.
 
     let setting_name = match auth_type {
@@ -427,9 +424,9 @@ pub fn get_auth_duration(
     }
 
     if let Some(num) = interval.as_int() {
-        Ok(num)
+        Ok(num as u32)
     } else if let Some(s) = interval.as_str() {
-        date::interval_to_seconds(&s)
+        date::interval_to_seconds(&s).map(|n| n as u32)
     } else {
         Ok(0)
     }

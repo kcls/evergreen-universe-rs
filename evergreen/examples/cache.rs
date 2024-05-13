@@ -1,32 +1,29 @@
-use eg::osrf::cache;
+use eg::osrf::cache::Cache;
 use evergreen as eg;
 
 fn main() {
-    // Standard setup + connect routines.
     let _ = eg::init().expect("Init OK");
-    let mut cache = cache::Cache::init().expect("Cache Connected");
+    Cache::init_cache("global").expect("Cache Connected");
 
     let blob = eg::hash! {
         "key1": [1, 2, 3],
         "key2": "blargle",
     };
 
-    cache.set("funstuff", blob).expect("Set OK");
+    Cache::set_global("funstuff", blob).expect("Set OK");
 
     println!(
         "{}",
-        cache
-            .get("funstuff")
+        Cache::get_global("funstuff")
             .expect("Get OK")
             .expect("Has Value")
             .dump()
     );
 
-    cache.del("funstuff").expect("Del OK");
+    Cache::del_global("funstuff").expect("Del OK");
 
-    assert_eq!(cache.get("funstuff").expect("Get OK"), None);
+    assert_eq!(Cache::get_global("funstuff").expect("Get OK"), None);
 
-    assert!(cache.set_active_type("anon").is_ok());
-
-    assert!(cache.set_active_type("asdjasfjklsadkj").is_err());
+    // We have not initialized the anon cache, so error.
+    assert!(Cache::get_anon("foo").is_err());
 }

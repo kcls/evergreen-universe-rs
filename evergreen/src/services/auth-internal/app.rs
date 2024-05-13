@@ -57,7 +57,6 @@ impl Application for RsAuthInternalApplication {
 pub struct RsAuthInternalWorker {
     client: Option<Client>,
     methods: Option<Arc<HashMap<String, MethodDef>>>,
-    cache: Option<Cache>,
 }
 
 impl RsAuthInternalWorker {
@@ -65,7 +64,6 @@ impl RsAuthInternalWorker {
         RsAuthInternalWorker {
             client: None,
             methods: None,
-            cache: None,
         }
     }
 
@@ -89,11 +87,6 @@ impl RsAuthInternalWorker {
     pub fn client_mut(&mut self) -> &mut Client {
         self.client.as_mut().unwrap()
     }
-
-    /// Panics if unset
-    pub fn cache(&mut self) -> &mut Cache {
-        self.cache.as_mut().unwrap()
-    }
 }
 
 impl ApplicationWorker for RsAuthInternalWorker {
@@ -110,7 +103,7 @@ impl ApplicationWorker for RsAuthInternalWorker {
         client: Client,
         methods: Arc<HashMap<String, MethodDef>>,
     ) -> EgResult<()> {
-        self.cache = Some(Cache::init()?);
+        Cache::init_cache("global")?;
         self.client = Some(client);
         self.methods = Some(methods);
         Ok(())

@@ -59,7 +59,7 @@ pub fn create_auth_session(
         workstation: options["workstation"].as_str().map(|v| v.to_string()),
     };
 
-    let auth_ses = auth::Session::internal_session(&mut editor, worker.cache(), &args)?;
+    let auth_ses = auth::Session::internal_session(&mut editor, &args)?;
 
     session.respond(eg::hash! {"authtime": auth_ses.authtime(), "authtoken": auth_ses.token()})
 }

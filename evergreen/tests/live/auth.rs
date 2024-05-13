@@ -5,10 +5,10 @@ use eg::EgResult;
 use evergreen as eg;
 
 /// Values from EG's opensrf.xml.example
-const DEFAULT_OPAC_LOGIN_DURATION: i64 = 420;
-const DEFAULT_STAFF_LOGIN_DURATION: i64 = 7200;
-const DEFAULT_TEMP_LOGIN_DURATION: i64 = 300;
-const DEFAULT_PERSIST_LOGIN_DURATION: i64 = 2 * 604800; // "2 weeks"
+const DEFAULT_OPAC_LOGIN_DURATION: u32 = 420;
+const DEFAULT_STAFF_LOGIN_DURATION: u32 = 7200;
+const DEFAULT_TEMP_LOGIN_DURATION: u32 = 300;
+const DEFAULT_PERSIST_LOGIN_DURATION: u32 = 2 * 604800; // "2 weeks"
 const NO_ORG_UNIT: i64 = 0;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
@@ -55,24 +55,20 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     let mut args = auth::InternalLoginArgs::new(eg::samples::AU_STAFF_ID, auth::LoginType::Staff);
     args.org_unit = Some(tester.samples.aou_id);
 
-    let mut cache = Cache::init()?;
+    Cache::init_cache("global")?;
 
-    let ses = auth::Session::internal_session(
-        &mut tester.editor,
-        &mut cache,
-        &args
-    )?;
+    let ses = auth::Session::internal_session(&mut tester.editor, &args)?;
     assert_eq!(ses.authtime(), staff);
     tester.timer.log("Created Internal Session");
 
-    let ses2 = auth::Session::from_cache(&mut cache, ses.token())?.expect("Session Exists");
+    let ses2 = auth::Session::from_cache(ses.token())?.expect("Session Exists");
     assert_eq!(ses2.token(), ses.token());
     assert_eq!(ses2.user().id()?, eg::samples::AU_STAFF_ID);
     assert_eq!(ses2.authtime(), staff);
     tester.timer.log("Retrieved valid Session from cache");
 
-    ses2.remove(&mut cache)?;
-    assert!(auth::Session::from_cache(&mut cache, ses2.token())?.is_none());
+    ses2.remove()?;
+    assert!(auth::Session::from_cache(ses2.token())?.is_none());
     tester.timer.log("Removed session from cache");
 
     Ok(())

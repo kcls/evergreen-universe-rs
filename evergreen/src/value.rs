@@ -10,9 +10,9 @@ use eg::{EgError, EgResult};
 use json::JsonValue;
 use std::collections::HashMap;
 use std::fmt;
+use std::mem;
 use std::ops::{Index, IndexMut};
 use std::sync::Arc;
-use std::mem;
 
 /// Classname and payload fields for wire-protocol JSON values.
 const JSON_CLASS_KEY: &str = "__c";

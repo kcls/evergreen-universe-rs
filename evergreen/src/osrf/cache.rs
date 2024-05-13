@@ -1,215 +1,241 @@
 use crate::osrf::sclient::HostSettings;
 use crate::EgResult;
 use crate::EgValue;
-use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
+use memcache;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 
-const CACHE_PREFIX: &str = "opensrf:cache";
-const DEFAULT_CACHE_TYPE: &str = "global";
-const DEFAULT_MAX_CACHE_TIME: i64 = 86400;
-const DEFAULT_MAX_CACHE_SIZE: i64 = 100000000; // ~100M
-
-/// Append our cache prefix to whatever key the caller provides.
-fn to_key(k: &str) -> String {
-    format!("{CACHE_PREFIX}:{k}")
+thread_local! {
+    static CACHE_CONNECTIONS: RefCell<HashMap<String, CacheConnection>> = RefCell::new(HashMap::new());
 }
 
-/* opensrf.xml
- * TODO: this config format is PoC and will likely change.
-<redis-cache>
-  <host>127.0.0.1</host>
-  <port>6379</port>
-  <username>cache</username>
-  <password>250f29a2-e2dd-4032-99da-1726bc8d7277</password>
-  <cache-types>
-    <global>
-      <max_cache_time>86400</max_cache_time>
-    </global>
-    <anon>
-      <max_cache_time>1800</max_cache_time>
-      <max_cache_size>102400</max_cache_size>
-    </anon>
-  </cache-types>
-</redis-cache>
+const DEFAULT_MAX_CACHE_TIME: u32 = 86400;
+const DEFAULT_MAX_CACHE_SIZE: u32 = 100000000; // ~100M
+const GLOBAL_CACHE_NAME: &str = "global";
+const ANON_CACHE_NAME: &str = "anon";
+
+/*
+<cache>
+  <global>
+    <servers>
+      <server>127.0.0.1:11211</server>
+    </servers>
+    <max_cache_time>86400</max_cache_time>
+  </global>
+  <anon>
+    <servers>
+      <server>127.0.0.1:11211</server>
+    </servers>
+    <max_cache_time>1800</max_cache_time>
+    <max_cache_size>102400</max_cache_size>
+  </anon>
+</cache>
 */
 
-#[derive(Debug)]
-pub struct CacheType {
+pub struct CacheConnection {
     name: String,
-    max_cache_time: i64,
-    max_cache_size: i64,
+    memcache: memcache::Client,
+    max_cache_time: u32,
+    max_cache_size: u32,
 }
 
-impl CacheType {
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-    pub fn max_cache_time(&self) -> i64 {
-        self.max_cache_time
-    }
-    pub fn max_cache_size(&self) -> i64 {
-        self.max_cache_size
+impl fmt::Display for CacheConnection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Cache name={}", self.name)
     }
 }
 
-pub struct Cache {
-    redis: redis::Connection,
-    active_type: Option<String>,
-    cache_types: HashMap<String, CacheType>,
+impl CacheConnection {
+    /// Store a value in the cache with the provided timeout.
+    ///
+    /// If the timeout is 0, the default timeout for the connection type is used.
+    fn set(&self, key: &str, value: EgValue, mut timeout: u32) -> EgResult<()> {
+        let value = value.into_json_value().dump();
+        let byte_count = value.as_bytes().len();
+
+        log::debug!("{self} caching {byte_count} bytes at key={key}");
+
+        if byte_count > self.max_cache_size as usize {
+            return Err(format!(
+                "{self} key={key} exceeds the max size of {}",
+                self.max_cache_size
+            )
+            .into());
+        }
+
+        if timeout == 0 {
+            timeout = self.max_cache_time;
+        }
+
+        self.memcache
+            .set(key, &value, timeout)
+            .map_err(|e| format!("{self} set key={key} failed: {e}").into())
+    }
+
+    fn get(&self, key: &str) -> EgResult<Option<EgValue>> {
+        let result: Option<String> = match self.memcache.get(key) {
+            Ok(r) => r,
+            Err(e) => return Err(format!("{self} get key={key} failed: {e}").into()),
+        };
+
+        if let Some(value) = result {
+            let obj = json::parse(&value).or_else(|e| {
+                Err(format!(
+                    "Cached JSON parse failure on key {key}: {e} [{value}]"
+                ))
+            })?;
+
+            let v = EgValue::try_from(obj)?;
+
+            return Ok(Some(v));
+        }
+
+        Ok(None)
+    }
+
+    fn del(&self, key: &str) -> EgResult<()> {
+        self.memcache
+            .delete(key)
+            .map(|_| ())
+            .map_err(|e| format!("{self} del key={key} failed: {e}").into())
+    }
 }
+
+pub struct Cache;
 
 impl Cache {
-    pub fn init() -> EgResult<Self> {
-        let config = HostSettings::get("redis-cache")?;
-
-        if config.is_null() {
-            return Err(format!("No Cache configuration for redis").into());
-        }
-
-        let err = || format!("Invalid cache config");
-
-        let host = config["host"].as_str().ok_or_else(err)?;
-        let port = config["port"].as_u16().ok_or_else(err)?;
-        let username = config["username"].as_str().ok_or_else(err)?;
-        let password = config["password"].as_str().ok_or_else(err)?;
-
-        let con_info = ConnectionInfo {
-            addr: ConnectionAddr::Tcp(host.to_string(), port),
-            redis: RedisConnectionInfo {
-                db: 0,
-                username: Some(username.to_string()),
-                password: Some(password.to_string()),
-            },
-        };
-
-        log::info!("Connecting to Redis cache as host={host} port={port} username={username}");
-
-        let redis = redis::Client::open(con_info)
-            .or_else(|e| Err(format!("Error opening Redis connection: {e}")))?;
-
-        let redis = redis
-            .get_connection()
-            .or_else(|e| Err(format!("Error opening Redis connection: {e}")))?;
-
-        let mut cache = Cache {
-            redis,
-            active_type: None,
-            cache_types: HashMap::new(),
-        };
-
-        cache.load_types(config);
-
-        Ok(cache)
-    }
-
-    pub fn active_cache(&self) -> EgResult<&CacheType> {
-        let name = self.active_type.as_deref().unwrap_or(DEFAULT_CACHE_TYPE);
-        self.cache_types
-            .get(name)
-            .ok_or_else(|| format!("No such cache type: {name}").into())
-    }
-
-    pub fn set_active_type(&mut self, ctype: &str) -> EgResult<()> {
-        if !self.cache_types.contains_key(ctype) {
-            Err(format!("No configuration present for cache type: {ctype}").into())
-        } else {
-            self.active_type = Some(ctype.to_string());
+    /// Returns OK if the specified cache type has been initialized, Err otherwise.
+    fn verify_cache(cache_name: &str) -> EgResult<()> {
+        let mut has = false;
+        CACHE_CONNECTIONS.with(|cc| has = cc.borrow().contains_key(cache_name));
+        if has {
             Ok(())
-        }
-    }
-
-    fn load_types(&mut self, config: &EgValue) {
-        for (ctype, conf) in config["cache-types"].entries() {
-            let max_cache_time = conf["max_cache_time"]
-                .as_i64()
-                .unwrap_or(DEFAULT_MAX_CACHE_TIME);
-
-            let max_cache_size = conf["max_cache_size"]
-                .as_i64()
-                .unwrap_or(DEFAULT_MAX_CACHE_SIZE);
-
-            let ct = CacheType {
-                name: ctype.to_string(),
-                max_cache_time,
-                max_cache_size,
-            };
-
-            log::info!("Adding cache config: {ct:?}");
-
-            self.cache_types.insert(ctype.to_string(), ct);
-        }
-    }
-
-    /// Retrieve a JSON thing from the cache.
-    pub fn get(&mut self, key: &str) -> EgResult<Option<EgValue>> {
-        let key = to_key(key);
-        let value: String = match self.redis.get(&key) {
-            Ok(v) => v,
-            Err(e) => match e.kind() {
-                // Returns Nil if no value is present for the key.
-                redis::ErrorKind::TypeError => {
-                    return Ok(None);
-                }
-
-                _ => return Err(format!("get({key}) failed: {e}").into()),
-            },
-        };
-
-        let obj = json::parse(&value).or_else(|e| {
-            Err(format!(
-                "Cached JSON parse failure on key {key}: {e} [{value}]"
-            ))
-        })?;
-
-        let v = EgValue::try_from(obj)?;
-
-        Ok(Some(v))
-    }
-
-    /// Store a value using the default max timeout for the cache type.
-    pub fn set(&mut self, key: &str, value: EgValue) -> EgResult<()> {
-        self.set_for(key, value, self.active_cache()?.max_cache_time())
-    }
-
-    /// Store a value in the cache for this amount of time
-    pub fn set_for(&mut self, key: &str, value: EgValue, timeout: i64) -> EgResult<()> {
-        let key = to_key(key);
-        let ctype = self.active_cache()?;
-        let max_timeout = ctype.max_cache_time();
-        let max_size = ctype.max_cache_size();
-
-        let time = if timeout > max_timeout {
-            max_timeout
         } else {
-            timeout
+            Err(format!("No such cache initialized: {cache_name}").into())
+        }
+    }
+
+    pub fn init_cache(cache_name: &str) -> EgResult<()> {
+        if Cache::verify_cache(cache_name).is_ok() {
+            log::warn!("Cache {cache_name} is already connected; ignoring");
+            return Ok(());
+        }
+
+        let conf_key = format!("cache/{}", cache_name);
+        let config = HostSettings::get(&conf_key)?;
+
+        let mut servers = Vec::new();
+        if let Some(server) = config["servers"]["server"].as_str() {
+            servers.push(format!("memcache://{server}"));
+        } else {
+            for server in config["servers"]["server"].members() {
+                servers.push(format!("memcache://{server}"));
+            }
+        }
+
+        let cache_time = config["max_cache_time"]
+            .as_int()
+            .map(|n| n as u32)
+            .unwrap_or(DEFAULT_MAX_CACHE_TIME);
+
+        let cache_size = config["max_cache_size"]
+            .as_int()
+            .map(|n| n as u32)
+            .unwrap_or(DEFAULT_MAX_CACHE_SIZE);
+
+        log::info!("Connecting to cache servers: {servers:?}");
+
+        let mc = match memcache::connect(servers) {
+            Ok(mc) => mc,
+            Err(e) => {
+                return Err(format!(
+                    "Cannot connect to memcache with config: {} : {e}",
+                    config.clone().into_json_value().dump()
+                )
+                .into());
+            }
         };
 
-        let valstr = value.into_json_value().dump();
+        let cache = CacheConnection {
+            name: GLOBAL_CACHE_NAME.to_string(),
+            memcache: mc,
+            max_cache_time: cache_time,
+            max_cache_size: cache_size,
+        };
 
-        if valstr.bytes().count() > max_size as usize {
-            return Err(format!("Cache value too large: bytes={}", valstr.bytes().count()).into());
-        }
-
-        let res: Result<(), _> = self.redis.set_ex(&key, valstr, time as usize);
-
-        if let Err(err) = res {
-            return Err(format!("set_ex({key}) failed: {err}").into());
-        }
-
-        log::debug!("Cached {key} for {time} seconds");
+        CACHE_CONNECTIONS.with(|c| c.borrow_mut().insert(GLOBAL_CACHE_NAME.to_string(), cache));
 
         Ok(())
     }
 
     /// Remove a thing from the cache.
-    pub fn del(&mut self, key: &str) -> EgResult<()> {
-        let key = to_key(key);
-        let res: Result<(), _> = self.redis.del(&key);
+    pub fn del_from(cache_name: &str, key: &str) -> EgResult<()> {
+        Cache::verify_cache(cache_name)?;
 
-        if let Err(err) = res {
-            return Err(format!("del({key}) failed: {err}").into());
-        }
+        let mut result = Ok(());
+        CACHE_CONNECTIONS.with(|c| result = c.borrow().get(cache_name).unwrap().del(key));
+        result
+    }
 
-        Ok(())
+    /// Shortcut to remove a value from the "global" cache
+    pub fn del_global(key: &str) -> EgResult<()> {
+        Cache::del_from(GLOBAL_CACHE_NAME, key)
+    }
+
+    /// Shortcut to remove a value from the "anon" cache
+    pub fn del_anon(key: &str) -> EgResult<()> {
+        Cache::del_from(ANON_CACHE_NAME, key)
+    }
+
+    pub fn get(cache_name: &str, key: &str) -> EgResult<Option<EgValue>> {
+        Cache::verify_cache(cache_name)?;
+        let mut result = Ok(None);
+        CACHE_CONNECTIONS.with(|c| result = c.borrow().get(cache_name).unwrap().get(key));
+        result
+    }
+
+    /// Shortcut to return a value from the "global" cache
+    pub fn get_global(key: &str) -> EgResult<Option<EgValue>> {
+        Cache::get(GLOBAL_CACHE_NAME, key)
+    }
+
+    /// Shortcut to return a value from the "anon" cache
+    pub fn get_anon(key: &str) -> EgResult<Option<EgValue>> {
+        Cache::get(ANON_CACHE_NAME, key)
+    }
+
+    /// Store a value using the specified cache.
+    pub fn set(cache_name: &str, key: &str, value: EgValue, timeout: u32) -> EgResult<()> {
+        Cache::verify_cache(cache_name)?;
+
+        let mut result = Ok(());
+        CACHE_CONNECTIONS
+            .with(|c| result = c.borrow().get(cache_name).unwrap().set(key, value, timeout));
+        result
+    }
+
+    /// Shortcut for storing a value in the "global" cache with the
+    /// default timeout.
+    pub fn set_global(key: &str, value: EgValue) -> EgResult<()> {
+        Cache::set(GLOBAL_CACHE_NAME, key, value, 0)
+    }
+
+    /// Shortcut for storing a value in the "global" cache with the
+    /// provided timeout.
+    pub fn set_global_for(key: &str, value: EgValue, timeout: u32) -> EgResult<()> {
+        Cache::set(GLOBAL_CACHE_NAME, key, value, timeout)
+    }
+
+    /// Shortcut for storing a value in the "anon" cache with the
+    /// default timeout.
+    pub fn set_anon(key: &str, value: EgValue) -> EgResult<()> {
+        Cache::set(ANON_CACHE_NAME, key, value, 0)
+    }
+
+    /// Shortcut for storing a value in the "anon" cache with the
+    /// provided timeout.
+    pub fn set_anon_for(key: &str, value: EgValue, timeout: u32) -> EgResult<()> {
+        Cache::set(ANON_CACHE_NAME, key, value, timeout)
     }
 }
