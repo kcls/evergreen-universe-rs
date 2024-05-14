@@ -365,6 +365,23 @@ impl EgValue {
     /// Does not remove NULL Array values, since that would change value
     /// positions, but may modify a hash/object which is a member of an
     /// array.
+    ///
+    /// ```
+    /// use evergreen::EgValue;
+    ///
+    /// let mut h = EgValue::new_object();
+    /// h["hello"] = EgValue::Null;
+    /// h["hello2"] = 1.into();
+    /// h["hello3"] = vec![EgValue::from(2), EgValue::Null].into();
+    ///
+    /// h.scrub_hash_nulls();
+    ///
+    /// assert!(!h.has_key("hello"));
+    /// assert!(h.has_key("hello2"));
+    ///
+    /// // Array NULLs are retained
+    /// assert_eq!(h["hello3"].len(), 2);
+    /// ```
     pub fn scrub_hash_nulls(&mut self) {
         if let EgValue::Hash(ref mut m) = self {
             // Build a new map containg the scrubbed values and no
@@ -389,6 +406,13 @@ impl EgValue {
     }
 
     /// True if this value is an Array and it contains the provided item.
+    /// ```
+    /// use evergreen::EgValue;
+    /// let v = EgValue::from(vec!["yes".to_string(), "no".to_string()]);
+    /// assert!(v.contains("no"));
+    /// assert!(!v.contains("nope"));
+    /// ```
+    ///
     pub fn contains(&self, item: impl PartialEq<EgValue>) -> bool {
         match *self {
             EgValue::Array(ref vec) => vec.iter().any(|member| item == *member),
@@ -427,6 +451,17 @@ impl EgValue {
     }
 
     /// Return the classname of the wrapped object if one exists.
+    ///
+    /// ```
+    /// use evergreen::EgValue;
+    ///
+    /// let h = json::object! {
+    ///   "__c": "yup",
+    ///   "__p": [1, 2, 3]
+    /// };
+    ///
+    /// assert_eq!(EgValue::wrapped_classname(&h), Some("yup"));
+    /// ```
     pub fn wrapped_classname(obj: &JsonValue) -> Option<&str> {
         if obj.is_object()
             && obj.has_key(JSON_CLASS_KEY)
@@ -443,13 +478,16 @@ impl EgValue {
     /// Array, Hash, or BlessedValue.
     ///
     ///
-    /// use evergreen::EgValue;
+    /// ```
+    /// use evergreen as eg;
+    /// use eg::EgValue;
     ///
     /// let v = evergreen::array! ["one", "two", "three"];
     /// assert_eq!(v.len(), 3);
     ///
-    /// let v = evergreen::object! {"just":"some","stuff",["fooozle", "fazzle", "frizzle"]};
-    /// assert_eq(v.len(), 2);
+    /// let v = evergreen::hash! {"just":"some","stuff":["fooozle", "fazzle", "frizzle"]};
+    /// assert_eq!(v.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         match self {
             EgValue::Array(ref l) => l.len(),
