@@ -1,5 +1,6 @@
 use evergreen as eg;
 mod auth;
+mod cache;
 mod circ;
 mod json_query;
 mod store;
@@ -28,6 +29,8 @@ fn main() -> eg::EgResult<()> {
         samples: eg::samples::SampleData::new(),
         timer: util::Timer::new(),
     };
+
+    cache::run_live_tests(&mut tester)?;
 
     auth::run_live_tests(&mut tester)?;
 
