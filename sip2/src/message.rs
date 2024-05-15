@@ -4,6 +4,8 @@ use super::util;
 use log::{error, warn};
 use std::fmt;
 
+const PASSWORD_REDACTED: &str = "REDACTED";
+
 /// Fixed field with spec and value.
 ///
 /// Since fixed fields have specific length requirements, a well-known
@@ -284,6 +286,30 @@ impl Message {
 
         for f in self.fields.iter() {
             s.push_str(&f.to_sip());
+        }
+
+        s
+    }
+
+    /// Same as to_sip() but replaces the patron password 'AD' value
+    /// with redacted text.
+    ///
+    /// Useful for logging.
+    pub fn to_sip_redacted(&self) -> String {
+        let mut s = self.spec.code.to_string();
+
+        for ff in self.fixed_fields.iter() {
+            s.push_str(&ff.to_sip());
+        }
+
+        for f in self.fields.iter() {
+            if f.code() == spec::F_PATRON_PWD.code {
+                s += f.code();
+                s += PASSWORD_REDACTED;
+                s += "|";
+            } else {
+                s.push_str(&f.to_sip());
+            }
         }
 
         s

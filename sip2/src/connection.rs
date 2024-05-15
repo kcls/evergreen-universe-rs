@@ -78,6 +78,7 @@ impl Connection {
             msg_sip = deunicode(&msg_sip).replace("\n", "");
         }
 
+        // No need to redact here since SIP replies do not include passwords.
         log::info!("OUTBOUND: {}", msg_sip);
 
         match self.tcp_stream.write(&msg_sip.as_bytes()) {
@@ -164,8 +165,8 @@ impl Connection {
 
         match parts.next() {
             Some(s) => {
-                log::info!("INBOUND: {}", s);
                 let msg = Message::from_sip(s)?;
+                log::info!("INBOUND: {}", msg.to_sip_redacted());
                 return Ok(Some(msg));
             }
             None => Err(Error::MessageFormatError),
