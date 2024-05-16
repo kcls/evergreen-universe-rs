@@ -1,45 +1,55 @@
 use eg::db::DatabaseConnection;
 use evergreen as eg;
 use getopts::Options;
-use postgres as pg;
+use marc::Record;
 
+// for debugging
+use std::fs::File;
+use std::io::prelude::*;
 
+const RECORD_EDITOR: i32 = 1;
+
+/// Bib records with a NULL cataloging date, specified call number,
+/// and audience value that does not match a dequired value.
 const TARGET_RECORDS_SQL: &str = r#"
     SELECT bre.id, bre.marc
     FROM biblio.record_entry bre
     JOIN metabib.record_attr_flat mraf ON (mraf.id = bre.id AND mraf.attr = 'audience')
-    JOIN metabib.real_full_rec mrfc ON (
-        mrfc.record = bre.id
-        AND mrfc.tag = $1
-        AND mrfc.subfield = $2
+    JOIN metabib.identifier_field_entry mife ON (
+        mife.source = bre.id
+        AND mife.field = 25
     )
     WHERE
         NOT bre.deleted
+        AND bre.id > 0
         AND bre.cataloging_date IS NULL
-        AND mrfc.value = $3
-        AND mraf.value != $4
+        AND mife.value = $1  -- call number
+        AND mraf.value != $2 -- audience
 "#;
 
+const UPDATE_BIB_SQL: &str = r#"
+    UPDATE biblio.record_entry 
+    SET marc = $1, editor = $2, edit_date = NOW() 
+    WHERE id = $3
+"#;
+
+#[derive(Debug)]
 struct AudienceMap {
-    tag: &'static str,
-    subfield: &'static str,
-    call_number: &'static str,
     audience: &'static str,
+    call_number: &'static str,
 }
 
 /// Map of MARC tag, subfield, value (call number), and desired audience code
 const CALL_NUMBER_AUDIENCE_MAP: [AudienceMap; 8] = [
-    AudienceMap { tag: "092", subfield: "a", audience: "a", call_number: "E ON ORDER" },
-    AudienceMap { tag: "092", subfield: "a", audience: "c", call_number: "J ON ORDER" },
-    AudienceMap { tag: "092", subfield: "a", audience: "c", call_number: "J LP ON ORDER" },
-    AudienceMap { tag: "092", subfield: "a", audience: "d", call_number: "Y ON ORDER" },
-    AudienceMap { tag: "092", subfield: "a", audience: "d", call_number: "Y LP ON ORDER" },
-    AudienceMap { tag: "092", subfield: "a", audience: "e", call_number: "ON ORDER" },
-    AudienceMap { tag: "092", subfield: "a", audience: "e", call_number: "LP ON ORDER" },
-    AudienceMap { tag: "092", subfield: "a", audience: "e", call_number: "REF ON ORDER" },
+    AudienceMap { audience: "a", call_number: "E ON ORDER" },
+    AudienceMap { audience: "c", call_number: "J ON ORDER" },
+    AudienceMap { audience: "c", call_number: "J LP ON ORDER" },
+    AudienceMap { audience: "d", call_number: "Y ON ORDER" },
+    AudienceMap { audience: "d", call_number: "Y LP ON ORDER" },
+    AudienceMap { audience: "e", call_number: "ON ORDER" },
+    AudienceMap { audience: "e", call_number: "LP ON ORDER" },
+    AudienceMap { audience: "e", call_number: "REF ON ORDER" },
 ];
-
-
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -47,11 +57,11 @@ fn main() {
 
     DatabaseConnection::append_options(&mut opts);
 
-    let params = opts.parse(&args[1..]).expect("DB Connection Failed");
+    let params = opts.parse(&args[1..]).expect("Cannot Parse Options");
 
     let mut connection = DatabaseConnection::new_from_options(&params);
 
-    connection.connect().expect("DB Connection Failed");
+    connection.connect().expect("Cannot Connect to Database");
 
     for map in CALL_NUMBER_AUDIENCE_MAP.iter() {
         process_one_batch(&mut connection, map);
@@ -60,17 +70,72 @@ fn main() {
     connection.disconnect();
 }
 
+fn debug_xml(id: i64, xml: &str, after: bool) {
+    let fname = if after {
+        format!("/tmp/marc-{id}-after.xml")
+    } else {
+        format!("/tmp/marc-{id}.xml")
+    };
+
+    File::create(&fname)
+        .expect("Cannot Create File")
+        .write_all(xml.as_bytes())
+        .expect("Cannot Write XML File");
+}
+
 fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
+    println!("Processing {map:?}");
 
-    let mut params: Vec<&(dyn pg::types::ToSql + Sync)> = Vec::new();
-    params.push(&map.tag);
-    params.push(&map.subfield);
-    params.push(&map.call_number);
-    params.push(&map.audience);
+    let rows = db.client()
+        .query(TARGET_RECORDS_SQL, &[&map.call_number, &map.audience])
+        .expect("Query Failed");
 
-    for row in db.client().query(TARGET_RECORDS_SQL, &params).expect("Query Failed") {
+    for row in rows {
         let id: i64 = row.get("id");
-        println!("Found record: {id}");
+        let xml: &str = row.get("marc");
+
+        debug_xml(id, xml, false);
+
+        // TODO make Record::xml mod produce Results
+        let mut record = match Record::from_xml(&xml).next() {
+            Some(r) => r,
+            None => continue,
+        };
+
+        // We're not concerned with 006 values for this script.
+        let cf008 = match record.control_fields_mut().iter_mut().filter(|cf| cf.tag() == "008").next() {
+            Some(cf) => cf,
+            None => continue, // should never happen
+        };
+
+        let mut content = cf008.content().to_string();
+
+        if content.len() < 23 {
+            eprintln!("Record {id} has invalid 008 content: {content}");
+            continue;
+        }
+
+        // Replace 1 character at index 22.
+        content.replace_range(22..23, map.audience);
+
+        cf008.set_content(content);
+
+        let new_xml = record.to_xml_ops(marc::xml::XmlOptions {
+            formatted: false,
+            with_xml_declaration: false
+        }).expect("Failed to Generate XML");
+
+        debug_xml(id, &new_xml, true);
+
+        db.xact_begin().expect("Begin");
+
+        db.client()
+            .query(UPDATE_BIB_SQL, &[&new_xml, &RECORD_EDITOR, &id])
+            .expect(&format!("Record {id} Update Failed Failed"));
+
+        // TODO update the record.
+        // db.xact_commit().expect("Commit Failed");
+        db.xact_rollback().expect("Rollback Failed");
     }
 }
 

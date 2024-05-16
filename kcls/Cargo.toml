@@ -7,7 +7,6 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 [dependencies]
 marc = { path = "../marc" }
 evergreen = { path = "../evergreen" }
-postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 json = "0.12"
 log = "0.4"
 getopts = "0.2"

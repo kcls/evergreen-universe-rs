@@ -6,10 +6,10 @@ members = [
   "evergreen",
   "sip2",
   "sip2-mediator",
+  "kcls",
 ]
 exclude = [
     "sip2-server",
-    "kcls"
 ]
 default-members = [
 ]
