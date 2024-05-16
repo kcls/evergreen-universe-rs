@@ -77,6 +77,8 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
 
+    opts.optflag("", "commit", "");
+
     // See DatabaseConnection for command line options
     DatabaseConnection::append_options(&mut opts);
 
@@ -87,13 +89,13 @@ fn main() {
     connection.connect().expect("Cannot Connect to Database");
 
     for map in CALL_NUMBER_AUDIENCE_MAP.iter() {
-        process_one_batch(&mut connection, map);
+        process_one_batch(&mut connection, map, &params);
     }
 
     connection.disconnect();
 }
 
-fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
+fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap, ops: &getopts::Matches) {
     println!("Processing: {map:?}");
 
     let rows = db
@@ -169,8 +171,12 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
             continue;
         }
 
-        // TODO update the record.
-        // db.xact_commit().expect("Commit Failed");
-        db.xact_rollback().expect("Rollback Failed");
+        if ops.opt_present("commit") {
+            println!("Committing changes to record {id}");
+            db.xact_commit().expect("Commit Failed");
+        } else {
+            println!("Rolling back changes to record {id}");
+            db.xact_rollback().expect("Rollback Failed");
+        }
     }
 }
