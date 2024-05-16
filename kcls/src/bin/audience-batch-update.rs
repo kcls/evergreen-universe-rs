@@ -3,10 +3,7 @@ use evergreen as eg;
 use getopts::Options;
 use marc::Record;
 
-// for debugging
-use std::fs::File;
-use std::io::prelude::*;
-
+/// actor.usr ID
 const RECORD_EDITOR: i32 = 1;
 
 /// Bib records with a NULL cataloging date, specified call number,
@@ -55,6 +52,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
 
+    // See DatabaseConnection for command line options
     DatabaseConnection::append_options(&mut opts);
 
     let params = opts.parse(&args[1..]).expect("Cannot Parse Options");
@@ -70,19 +68,6 @@ fn main() {
     connection.disconnect();
 }
 
-fn debug_xml(id: i64, xml: &str, after: bool) {
-    let fname = if after {
-        format!("/tmp/marc-{id}-after.xml")
-    } else {
-        format!("/tmp/marc-{id}.xml")
-    };
-
-    File::create(&fname)
-        .expect("Cannot Create File")
-        .write_all(xml.as_bytes())
-        .expect("Cannot Write XML File");
-}
-
 fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
     println!("Processing {map:?}");
 
@@ -94,26 +79,41 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
         let id: i64 = row.get("id");
         let xml: &str = row.get("marc");
 
-        debug_xml(id, xml, false);
-
-        // TODO make Record::xml mod produce Results
         let mut record = match Record::from_xml(&xml).next() {
-            Some(r) => r,
-            None => continue,
+            Some(result) => match result {
+                Ok(rec) => rec,
+                Err(err) => {
+                    eprintln!("Error parsing MARC XML for record {id}: {err}");
+                    continue;
+                }
+            },
+            None => {
+                eprintln!("MARC XML parsed no content for record {id}");
+                continue;
+            }
         };
 
         // We're not concerned with 006 values for this script.
-        let cf008 = match record.control_fields_mut().iter_mut().filter(|cf| cf.tag() == "008").next() {
+        let cf008 = match record.control_fields_mut()
+            .iter_mut()
+            .filter(|cf| cf.tag() == "008")
+            .next() 
+        {
             Some(cf) => cf,
-            None => continue, // should never happen
+            None => {
+                eprintln!("Record {id} has no 008 value?");
+                continue;
+            }
         };
 
         let mut content = cf008.content().to_string();
 
         if content.len() < 23 {
-            eprintln!("Record {id} has invalid 008 content: {content}");
+            eprintln!("Record {id} has invalid 008 content: '{content}'");
             continue;
         }
+
+        println!("Updating record {id} with current audience value '{}'", &content[22..23]);
 
         // Replace 1 character at index 22.
         content.replace_range(22..23, map.audience);
@@ -125,13 +125,13 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
             with_xml_declaration: false
         }).expect("Failed to Generate XML");
 
-        debug_xml(id, &new_xml, true);
+        db.xact_begin().expect("Begin Failed");
 
-        db.xact_begin().expect("Begin");
-
-        db.client()
-            .query(UPDATE_BIB_SQL, &[&new_xml, &RECORD_EDITOR, &id])
-            .expect(&format!("Record {id} Update Failed Failed"));
+        if let Err(err) = db.client().query(UPDATE_BIB_SQL, &[&new_xml, &RECORD_EDITOR, &id]) {
+            eprintln!("Error updating record {id}: {err}");
+            db.xact_rollback().expect("Rollback Failed");
+            continue;
+        }
 
         // TODO update the record.
         // db.xact_commit().expect("Commit Failed");
