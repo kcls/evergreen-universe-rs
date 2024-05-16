@@ -37,7 +37,7 @@ struct AudienceMap {
     call_number: &'static str,
 }
 
-/// Map of MARC tag, subfield, value (call number), and desired audience code
+/// Map of MARC call number labels to desired audience codes.
 const CALL_NUMBER_AUDIENCE_MAP: [AudienceMap; 8] = [
     AudienceMap {
         audience: "a",
