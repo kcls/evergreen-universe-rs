@@ -23,7 +23,10 @@ fn main() {
 
     if let Some(filename) = xml_file_op {
         let s = std::fs::read_to_string(&filename).unwrap();
-        let rec = Record::from_xml(&s).next().expect("XML contains a record").expect("Parse Failed");
+        let rec = Record::from_xml(&s)
+            .next()
+            .expect("XML contains a record")
+            .expect("Parse Failed");
 
         println!("From XML String: leader={}", rec.leader());
 
