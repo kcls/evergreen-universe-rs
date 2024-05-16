@@ -1,3 +1,4 @@
+//! Tool to apply Target Audience codes (008 22) to on order bib records.
 use eg::db::DatabaseConnection;
 use evergreen as eg;
 use getopts::Options;
@@ -6,8 +7,8 @@ use marc::Record;
 /// actor.usr ID
 const RECORD_EDITOR: i32 = 1;
 
-/// Bib records with a NULL cataloging date, specified call number,
-/// and audience value that does not match a dequired value.
+/// Bib records with a NULL cataloging date, containing the specified call 
+/// number, and an audience value that does not match a desired value.
 const TARGET_RECORDS_SQL: &str = r#"
     SELECT bre.id, bre.marc
     FROM biblio.record_entry bre
@@ -38,14 +39,38 @@ struct AudienceMap {
 
 /// Map of MARC tag, subfield, value (call number), and desired audience code
 const CALL_NUMBER_AUDIENCE_MAP: [AudienceMap; 8] = [
-    AudienceMap { audience: "a", call_number: "E ON ORDER" },
-    AudienceMap { audience: "c", call_number: "J ON ORDER" },
-    AudienceMap { audience: "c", call_number: "J LP ON ORDER" },
-    AudienceMap { audience: "d", call_number: "Y ON ORDER" },
-    AudienceMap { audience: "d", call_number: "Y LP ON ORDER" },
-    AudienceMap { audience: "e", call_number: "ON ORDER" },
-    AudienceMap { audience: "e", call_number: "LP ON ORDER" },
-    AudienceMap { audience: "e", call_number: "REF ON ORDER" },
+    AudienceMap {
+        audience: "a",
+        call_number: "E ON ORDER",
+    },
+    AudienceMap {
+        audience: "c",
+        call_number: "J ON ORDER",
+    },
+    AudienceMap {
+        audience: "c",
+        call_number: "J LP ON ORDER",
+    },
+    AudienceMap {
+        audience: "d",
+        call_number: "Y ON ORDER",
+    },
+    AudienceMap {
+        audience: "d",
+        call_number: "Y LP ON ORDER",
+    },
+    AudienceMap {
+        audience: "e",
+        call_number: "ON ORDER",
+    },
+    AudienceMap {
+        audience: "e",
+        call_number: "LP ON ORDER",
+    },
+    AudienceMap {
+        audience: "e",
+        call_number: "REF ON ORDER",
+    },
 ];
 
 fn main() {
@@ -69,9 +94,10 @@ fn main() {
 }
 
 fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
-    println!("Processing {map:?}");
+    println!("Processing: {map:?}");
 
-    let rows = db.client()
+    let rows = db
+        .client()
         .query(TARGET_RECORDS_SQL, &[&map.call_number, &map.audience])
         .expect("Query Failed");
 
@@ -94,10 +120,11 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
         };
 
         // We're not concerned with 006 values for this script.
-        let cf008 = match record.control_fields_mut()
+        let cf008 = match record
+            .control_fields_mut()
             .iter_mut()
             .filter(|cf| cf.tag() == "008")
-            .next() 
+            .next()
         {
             Some(cf) => cf,
             None => {
@@ -113,21 +140,30 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
             continue;
         }
 
-        println!("Updating record {id} with current audience value '{}'", &content[22..23]);
+        println!(
+            "Updating record {id} ({}) with current audience value '{}'",
+            map.call_number,
+            &content[22..23]
+        );
 
         // Replace 1 character at index 22.
         content.replace_range(22..23, map.audience);
 
         cf008.set_content(content);
 
-        let new_xml = record.to_xml_ops(marc::xml::XmlOptions {
-            formatted: false,
-            with_xml_declaration: false
-        }).expect("Failed to Generate XML");
+        let new_xml = record
+            .to_xml_ops(marc::xml::XmlOptions {
+                formatted: false,
+                with_xml_declaration: false,
+            })
+            .expect("Failed to Generate XML");
 
         db.xact_begin().expect("Begin Failed");
 
-        if let Err(err) = db.client().query(UPDATE_BIB_SQL, &[&new_xml, &RECORD_EDITOR, &id]) {
+        if let Err(err) = db
+            .client()
+            .query(UPDATE_BIB_SQL, &[&new_xml, &RECORD_EDITOR, &id])
+        {
             eprintln!("Error updating record {id}: {err}");
             db.xact_rollback().expect("Rollback Failed");
             continue;
@@ -138,6 +174,3 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap) {
         db.xact_rollback().expect("Rollback Failed");
     }
 }
-
-
-
