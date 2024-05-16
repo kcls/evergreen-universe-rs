@@ -15,18 +15,20 @@ fn main() {
     let bin_file_op = params.opt_str("bin-file");
 
     if let Some(filename) = bin_file_op {
-        for mut record in Record::from_binary_file(&filename).expect("Start Binary File") {
+        for record in Record::from_binary_file(&filename).expect("Start Binary File") {
+            let mut record = record.expect("Parase Failed");
             inspect_record(&mut record);
         }
     }
 
     if let Some(filename) = xml_file_op {
         let s = std::fs::read_to_string(&filename).unwrap();
-        let rec = Record::from_xml(&s).next().expect("XML contains a record");
+        let rec = Record::from_xml(&s).next().expect("XML contains a record").expect("Parse Failed");
 
         println!("From XML String: leader={}", rec.leader());
 
-        for mut record in Record::from_xml_file(&filename).expect("Created Iterator") {
+        for record in Record::from_xml_file(&filename).expect("Created Iterator") {
+            let mut record = record.expect("Parase Failed");
             inspect_record(&mut record);
         }
     }

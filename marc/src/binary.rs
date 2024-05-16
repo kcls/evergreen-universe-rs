@@ -23,7 +23,7 @@ pub struct BinaryRecordIterator {
 }
 
 impl Iterator for BinaryRecordIterator {
-    type Item = Record;
+    type Item = Result<Record, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut bytes: Vec<u8> = Vec::new();
@@ -45,23 +45,15 @@ impl Iterator for BinaryRecordIterator {
                     }
                 }
                 Err(e) => {
-                    // Can't really return an Err from an Iterator.
-                    // Log the error and wrap it up.
-                    eprintln!("Error reading file: {:?} {}", self.file, e);
-                    break;
+                    return Some(Err(format!("Error reading file: {:?} {}", self.file, e)));
                 }
             }
         }
 
         if bytes.len() > 0 {
             match Record::from_binary(&bytes) {
-                Ok(r) => {
-                    return Some(r);
-                }
-                Err(e) => {
-                    eprintln!("Error processing bytes: {:?} {}", bytes, e);
-                    return None;
-                }
+                Ok(r) => return Some(Ok(r)),
+                Err(e) => return Some(Err(format!("Error processing bytes: {:?} {}", bytes, e))),
             }
         }
 

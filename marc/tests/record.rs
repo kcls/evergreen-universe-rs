@@ -61,7 +61,7 @@ fn breaker_round_trip() {
 
 #[test]
 fn mixed_breaker_round_trip() {
-    let record = Record::from_xml(MARC_XML).next().unwrap();
+    let record = Record::from_xml(MARC_XML).next().unwrap().expect("Parse Failed");
 
     let breaker = record.to_breaker();
 
@@ -73,7 +73,7 @@ fn mixed_breaker_round_trip() {
 
 #[test]
 fn mixed_round_trips() {
-    let record1 = Record::from_xml(MARC_XML).next().unwrap();
+    let record1 = Record::from_xml(MARC_XML).next().unwrap().expect("Parse Failed");
     assert_eq!(MARC_XML, record1.to_xml().unwrap());
 
     let breaker1 = record1.to_breaker();
@@ -96,7 +96,7 @@ fn mixed_round_trips() {
 
 #[test]
 fn xml_round_trip() {
-    let record = Record::from_xml(MARC_XML).next().unwrap();
+    let record = Record::from_xml(MARC_XML).next().unwrap().expect("Parse Failed");
 
     let xml = record.to_xml().unwrap();
 
@@ -105,7 +105,7 @@ fn xml_round_trip() {
 
 #[test]
 fn all_round_trip() {
-    let record = Record::from_xml(MARC_XML).next().unwrap();
+    let record = Record::from_xml(MARC_XML).next().unwrap().expect("Parse Failed");
 
     let breaker = record.to_breaker();
 
@@ -117,26 +117,25 @@ fn all_round_trip() {
 
 #[test]
 fn odd_records() {
-    let record = Record::from_xml(EMPTY_MARC_XML).next().unwrap();
+    let record = Record::from_xml(EMPTY_MARC_XML).next().unwrap().expect("Parse Failed");
 
     let brk = record.to_breaker();
     assert_eq!(brk, format!("=LDR {}", Record::new().leader()));
 
-    let op = Record::from_breaker(&brk);
-    assert!(op.is_ok());
+    let res = Record::from_breaker(&brk);
+    assert!(res.is_ok());
 
-    let xml_op = op.unwrap().to_xml();
+    let xml_op = res.unwrap().to_xml();
     assert!(xml_op.is_ok());
 
     assert_eq!(EMPTY_MARC_XML, xml_op.unwrap());
 
-    let op = Record::from_xml(r#"<record><controlfield tag="123">"#).next();
-    assert!(op.is_none());
+    let res = Record::from_xml(r#"<record><controlfield tag="123">"#).next().unwrap();
+    assert!(res.is_err());
 
-    let op =
-        Record::from_xml(r#"<record><controlfield tag="1234"></controlfield></record>"#).next();
-
-    assert!(op.is_none());
+    let res =
+        Record::from_xml(r#"<record><controlfield tag="1234"></controlfield></record>"#).next().unwrap();
+    assert!(res.is_err());
 }
 
 #[test]
@@ -158,7 +157,7 @@ fn binary() {
 fn set_values() {
     let v = "Hello, Mars!";
 
-    let mut record = Record::from_xml(MARC_XML).next().unwrap();
+    let mut record = Record::from_xml(MARC_XML).next().unwrap().expect("Parse Failed");
 
     let breaker1 = record.to_breaker();
     let field = &mut record.get_fields_mut("028")[0];
@@ -175,7 +174,7 @@ fn set_values() {
 
 #[test]
 fn delete_values() {
-    let mut record = Record::from_xml(MARC_XML).next().unwrap();
+    let mut record = Record::from_xml(MARC_XML).next().unwrap().expect("Parse Failed");
     let field = &mut record.get_fields_mut("028")[0];
     assert_eq!(field.subfields().len(), 3);
 
@@ -187,7 +186,7 @@ fn delete_values() {
 
 #[test]
 fn delete_fields() {
-    let mut record = Record::from_xml(MARC_XML).next().unwrap();
+    let mut record = Record::from_xml(MARC_XML).next().unwrap().expect("Parse Failed");
 
     let field = record.add_data_field("200").unwrap();
     field.add_subfield("a", "baz").unwrap();

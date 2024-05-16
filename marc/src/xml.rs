@@ -73,7 +73,7 @@ pub enum XmlRecordIterator {
 }
 
 impl Iterator for XmlRecordIterator {
-    type Item = Record;
+    type Item = Result<Record, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut context = XmlParseContext {
@@ -85,7 +85,7 @@ impl Iterator for XmlRecordIterator {
             doc_complete: false,
         };
 
-        self.read_next(&mut context)
+        self.read_next(&mut context).transpose()
     }
 }
 
@@ -104,37 +104,30 @@ impl XmlRecordIterator {
     }
 
     /// Pull the next Record from the data source.
-    fn read_next(&mut self, context: &mut XmlParseContext) -> Option<Record> {
+    fn read_next(&mut self, context: &mut XmlParseContext) -> Result<Option<Record>, String> {
         loop {
             let evt_res = match *self {
                 XmlRecordIterator::FileReader(ref mut reader) => reader.next(),
                 XmlRecordIterator::ByteReader(ref mut reader) => reader.next(),
             };
 
-            let evt = match evt_res {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("Error processing XML: {e}");
-                    return None;
-                }
-            };
+            let evt = evt_res.map_err(|e| format!("Error processing XML: {e}"))?;
 
             if let Err(e) = self.handle_xml_event(context, evt) {
-                eprintln!("Error processing XML: {e}");
-                return None;
+                return Err(format!("Error processing XML: {e}"));
             }
 
             if context.record_complete {
-                let r = std::mem::replace(&mut context.record, Record::new());
-                return Some(r);
+                // Return the compiled record and replace it with a new one.
+                return Ok(Some(std::mem::replace(&mut context.record, Record::new())));
+
             } else if context.doc_complete {
                 // If we had a doc in progress, discard it.
                 context.record = Record::new();
 
-                return None;
+                // All done.  Get outta here.
+                return Ok(None);
             }
-
-            // Keep processing events...
         }
     }
 

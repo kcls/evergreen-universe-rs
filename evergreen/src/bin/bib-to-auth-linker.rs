@@ -519,7 +519,7 @@ impl BibLinker {
             let xml = bre["marc"].as_str().unwrap();
 
             let mut record = match marc::Record::from_xml(xml).next() {
-                Some(r) => r,
+                Some(r) => r?,
                 None => {
                     log::error!("MARC parsing returned no usable record for {rec_id}");
                     continue;

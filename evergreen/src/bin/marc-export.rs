@@ -484,7 +484,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
             let record_id: i64 = row.get("id");
 
             let mut record = match Record::from_xml(&marc_xml).next() {
-                Some(r) => r,
+                Some(r) => r?,
                 None => {
                     eprintln!("No record built from XML: record={record_id} \n{marc_xml}");
                     continue;

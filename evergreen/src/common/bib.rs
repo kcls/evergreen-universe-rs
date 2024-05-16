@@ -321,9 +321,10 @@ pub fn record_urls(
         }
     };
 
-    let record = marc::Record::from_xml(xml)
-        .next()
-        .ok_or_else(|| format!("Cannot parse MARC XML"))?;
+    let record = match marc::Record::from_xml(xml).next() {
+        Some(result) => result?,
+        None => return Err(format!("MARC XML parsing returned no result").into()),
+    };
 
     let mut urls_maybe = None;
 
