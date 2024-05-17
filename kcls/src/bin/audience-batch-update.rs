@@ -1,8 +1,13 @@
-//! Tool to apply Target Audience codes (008 22) to on order bib records.
+//! Tool to apply Target Audience codes (008 #22) to on-order bib records.
 use eg::db::DatabaseConnection;
 use evergreen as eg;
 use getopts::Options;
 use marc::Record;
+
+const XML_EXPORT_OPTIONS: marc::xml::XmlOptions = marc::xml::XmlOptions {
+    formatted: false,
+    with_xml_declaration: false,
+};
 
 /// actor.usr ID
 const RECORD_EDITOR: i32 = 1;
@@ -31,6 +36,7 @@ const UPDATE_BIB_SQL: &str = r#"
     WHERE id = $3
 "#;
 
+/// Maps on-order call numbers to the desired target audience code.
 #[derive(Debug)]
 struct AudienceMap {
     audience: &'static str,
@@ -77,6 +83,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
 
+    // If --commit is set, changes will be saved; rolled back otherwise.
     opts.optflag("", "commit", "");
 
     // See DatabaseConnection for command line options
@@ -148,17 +155,24 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap, ops: &getop
             &content[22..23]
         );
 
+        if map.audience.len() != 1 {
+            // Sanity check the audience value so we don't blow up
+            // the MARC 008 fixed-length field.
+            panic!("Invalid audience value: '{}'", map.audience);
+        }
+
         // Replace 1 character at index 22.
         content.replace_range(22..23, map.audience);
 
         cf008.set_content(content);
 
-        let new_xml = record
-            .to_xml_ops(marc::xml::XmlOptions {
-                formatted: false,
-                with_xml_declaration: false,
-            })
-            .expect("Failed to Generate XML");
+        let new_xml = match record.to_xml_ops(&XML_EXPORT_OPTIONS) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Could not generate XML for {id}: {e}");
+                continue;
+            }
+        };
 
         db.xact_begin().expect("Begin Failed");
 
@@ -173,9 +187,12 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap, ops: &getop
 
         if ops.opt_present("commit") {
             println!("Committing changes to record {id}");
-            db.xact_commit().expect("Commit Failed");
+            if let Err(err) = db.xact_commit() {
+                eprintln!("Error updating record {id}: {err}");
+            }
         } else {
-            println!("Rolling back changes to record {id}");
+            println!("Rolling back changes to record {id}. Use --commit to save changes");
+            // Exit if there's a rollback error since that would be odd.
             db.xact_rollback().expect("Rollback Failed");
         }
     }
