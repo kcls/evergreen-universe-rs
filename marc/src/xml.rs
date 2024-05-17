@@ -16,18 +16,22 @@ const MARCXML_SCHEMA_LOCATION: &str =
 
 /// Replace non-ASCII characters and special characters with escaped
 /// XML entities.
+///
+/// * is_attr - If true, also escape single and double quotes.
+///
 /// ```
 /// use marc::xml;
-/// assert_eq!(xml::escape_xml("<É>").as_str(), "&lt;&#xC9;&gt;");
+/// assert_eq!(xml::escape_xml("<'É'>", false).as_str(), "&lt;'&#xC9;'&gt;");
+/// assert_eq!(xml::escape_xml("<'É'>", true).as_str(), "&lt;&apos;&#xC9;&apos;&gt;");
 /// ```
-pub fn escape_xml(value: &str) -> String {
+pub fn escape_xml(value: &str, is_attr: bool) -> String {
     let mut buf = String::new();
     for c in value.chars() {
         if c == '&' {
             buf.push_str("&amp;");
-        } else if c == '\'' {
+        } else if c == '\'' && is_attr {
             buf.push_str("&apos;");
-        } else if c == '"' {
+        } else if c == '"' && is_attr {
             buf.push_str("&quot;");
         } else if c == '>' {
             buf.push_str("&gt;");
@@ -305,7 +309,7 @@ impl Record {
         // Leader
 
         format(options.formatted, &mut xml, 2);
-        xml += &format!("<leader>{}</leader>", &escape_xml(self.leader()));
+        xml += &format!("<leader>{}</leader>", &escape_xml(self.leader(), false));
 
         // Control Fields
 
@@ -314,8 +318,8 @@ impl Record {
 
             xml += &format!(
                 r#"<controlfield tag="{}">{}</controlfield>"#,
-                escape_xml(cfield.tag()),
-                escape_xml(cfield.content()),
+                escape_xml(cfield.tag(), true),
+                escape_xml(cfield.content(), false),
             );
         }
 
@@ -326,9 +330,9 @@ impl Record {
 
             xml += &format!(
                 r#"<datafield tag="{}" ind1="{}" ind2="{}">"#,
-                escape_xml(field.tag()),
-                escape_xml(field.ind1()),
-                escape_xml(field.ind2()),
+                escape_xml(field.tag(), true),
+                escape_xml(field.ind1(), true),
+                escape_xml(field.ind2(), true),
             );
 
             for sf in field.subfields() {
@@ -336,8 +340,8 @@ impl Record {
 
                 xml += &format!(
                     r#"<subfield code="{}">{}</subfield>"#,
-                    &escape_xml(sf.code()),
-                    &escape_xml(sf.content())
+                    &escape_xml(sf.code(), true),
+                    &escape_xml(sf.content(), false)
                 );
             }
 

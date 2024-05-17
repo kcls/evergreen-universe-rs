@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd">
-  <leader>07649cim a2200913 i 4500</leader>
+  <leader>07651cim a2200913 i 4500</leader>
   <controlfield tag="001">233</controlfield>
   <controlfield tag="003">CONS</controlfield>
   <controlfield tag="005">20140128084328.0</controlfield>
@@ -408,7 +408,7 @@
     <subfield code="s">Vocal score.</subfield>
   </datafield>
   <datafield tag="830" ind1=" " ind2="0">
-    <subfield code="a">G. Schirmer opera anthology.</subfield>
+    <subfield code="a">G. "Schirmer" opera anthology.</subfield>
   </datafield>
   <datafield tag="906" ind1=" " ind2=" ">
     <subfield code="a">0</subfield>
