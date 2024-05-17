@@ -501,7 +501,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
                     with_xml_declaration: false,
                 };
 
-                let xml = match record.to_xml_ops(options) {
+                let xml = match record.to_xml_ops(&options) {
                     Ok(s) => s,
                     Err(e) => {
                         eprintln!("Error creating XML from record: record={record_id} {e}");

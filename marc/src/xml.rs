@@ -264,7 +264,7 @@ impl Record {
 
     /// Creates the XML representation of a MARC record as a String.
     pub fn to_xml(&self) -> Result<String, String> {
-        self.to_xml_ops(XmlOptions {
+        self.to_xml_ops(&XmlOptions {
             formatted: false,
             with_xml_declaration: true,
         })
@@ -273,13 +273,13 @@ impl Record {
     /// Creates the XML representation of a MARC record as a formatted
     /// string using 2-space indentation.
     pub fn to_xml_formatted(&self) -> Result<String, String> {
-        self.to_xml_ops(XmlOptions {
+        self.to_xml_ops(&XmlOptions {
             formatted: true,
             with_xml_declaration: true,
         })
     }
 
-    pub fn to_xml_ops(&self, options: XmlOptions) -> Result<String, String> {
+    pub fn to_xml_ops(&self, options: &XmlOptions) -> Result<String, String> {
         // We could use XmlWriter here, but manual creation works fine
         // and offers more flexibility.
 
