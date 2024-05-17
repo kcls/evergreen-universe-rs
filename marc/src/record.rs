@@ -27,6 +27,17 @@ impl Controlfield {
     /// Create a Controlfield with the provided tag and content.
     ///
     /// * `tag` - Must have the correct byte count.
+    ///
+    /// ```
+    /// let control_field = marc::Controlfield::new("008", "12345").unwrap();
+    /// assert_eq!(control_field.tag(), "008");
+    /// ```
+    /// ```
+    /// let control_field = marc::Controlfield::new("010", "12345");
+    ///
+    /// assert_eq!(control_field.is_err(), true);
+    /// assert_eq!(control_field.unwrap_err(), "Invalid Controlfield tag: 010");
+    /// ```
     pub fn new<T, S>(tag: T, content: S) -> Result<Self, String>
     where
         T: Into<String>,
