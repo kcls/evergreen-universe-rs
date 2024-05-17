@@ -12,7 +12,7 @@ const XML_EXPORT_OPTIONS: marc::xml::XmlOptions = marc::xml::XmlOptions {
 /// actor.usr ID
 const RECORD_EDITOR: i32 = 1;
 
-/// Bib records with a NULL cataloging date, containing the specified call 
+/// Bib records with a NULL cataloging date, containing the specified call
 /// number, and an audience value that does not match a desired value.
 const TARGET_RECORDS_SQL: &str = r#"
     SELECT bre.id, bre.marc
@@ -83,8 +83,14 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
 
-    // If --commit is set, changes will be saved; rolled back otherwise.
+    // Save changes; rolled back otherwise.
     opts.optflag("", "commit", "");
+
+    // Print the source MARC XML to stdout for debugging / review.
+    opts.optflag("", "print-source", "");
+
+    // Print the generated MARC XML to stdout for debugging / review.
+    opts.optflag("", "print-result", "");
 
     // See DatabaseConnection for command line options
     DatabaseConnection::append_options(&mut opts);
@@ -105,95 +111,113 @@ fn main() {
 fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap, ops: &getopts::Matches) {
     println!("Processing: {map:?}");
 
-    let rows = db
+    let records = db
         .client()
         .query(TARGET_RECORDS_SQL, &[&map.call_number, &map.audience])
         .expect("Query Failed");
 
-    for row in rows {
-        let id: i64 = row.get("id");
-        let xml: &str = row.get("marc");
+    for rec in records {
+        let id: i64 = rec.get("id");
+        let xml: &str = rec.get("marc");
 
-        let mut record = match Record::from_xml(&xml).next() {
-            Some(result) => match result {
-                Ok(rec) => rec,
-                Err(err) => {
-                    eprintln!("Error parsing MARC XML for record {id}: {err}");
-                    continue;
-                }
-            },
-            None => {
-                eprintln!("MARC XML parsed no content for record {id}");
-                continue;
+        process_one_record(db, map, id, &xml, ops);
+    }
+}
+
+fn process_one_record(
+    db: &mut DatabaseConnection,
+    map: &AudienceMap,
+    id: i64,
+    xml: &str,
+    ops: &getopts::Matches,
+) {
+    if ops.opt_present("print-source") {
+        println!("{xml}");
+    }
+
+    let mut record = match Record::from_xml(&xml).next() {
+        Some(result) => match result {
+            Ok(rec) => rec,
+            Err(err) => {
+                eprintln!("Error parsing MARC XML for record {id}: {err}");
+                return;
             }
-        };
-
-        // We're not concerned with 006 values for this script.
-        let cf008 = match record
-            .control_fields_mut()
-            .iter_mut()
-            .filter(|cf| cf.tag() == "008")
-            .next()
-        {
-            Some(cf) => cf,
-            None => {
-                eprintln!("Record {id} has no 008 value?");
-                continue;
-            }
-        };
-
-        let mut content = cf008.content().to_string();
-
-        if content.len() < 23 {
-            eprintln!("Record {id} has invalid 008 content: '{content}'");
-            continue;
+        },
+        None => {
+            eprintln!("MARC XML parsed no content for record {id}");
+            return;
         }
+    };
 
-        println!(
-            "Updating record {id} ({}) with current audience value '{}'",
-            map.call_number,
-            &content[22..23]
-        );
-
-        if map.audience.len() != 1 {
-            // Sanity check the audience value so we don't blow up
-            // the MARC 008 fixed-length field.
-            panic!("Invalid audience value: '{}'", map.audience);
+    // We're not concerned with 006 values for this script.
+    let cf008 = match record
+        .control_fields_mut()
+        .iter_mut()
+        .filter(|cf| cf.tag() == "008")
+        .next()
+    {
+        Some(cf) => cf,
+        None => {
+            eprintln!("Record {id} has no 008 value?");
+            return;
         }
+    };
 
-        // Replace 1 character at index 22.
-        content.replace_range(22..23, map.audience);
+    let mut content = cf008.content().to_string();
 
-        cf008.set_content(content);
+    if content.len() < 23 {
+        eprintln!("Record {id} has invalid 008 content: '{content}'");
+        return;
+    }
 
-        let new_xml = match record.to_xml_ops(&XML_EXPORT_OPTIONS) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("Could not generate XML for {id}: {e}");
-                continue;
-            }
-        };
+    println!(
+        "Updating record {id} ({}) with current audience value '{}'",
+        map.call_number,
+        &content[22..23]
+    );
 
-        db.xact_begin().expect("Begin Failed");
+    if map.audience.len() != 1 {
+        // Sanity check the audience value so we don't blow up
+        // the MARC 008 fixed-length field.
+        panic!("Invalid audience value: '{}'", map.audience);
+    }
 
-        if let Err(err) = db
-            .client()
-            .query(UPDATE_BIB_SQL, &[&new_xml, &RECORD_EDITOR, &id])
-        {
+    // Replace 1 character at index 22.
+    content.replace_range(22..23, map.audience);
+
+    cf008.set_content(content);
+
+    let new_xml = match record.to_xml_ops(&XML_EXPORT_OPTIONS) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Could not generate XML for {id}: {e}");
+            return;
+        }
+    };
+
+    if ops.opt_present("print-result") {
+        println!("{new_xml}");
+    }
+
+    db.xact_begin().expect("Begin Failed");
+
+    if let Err(err) = db
+        .client()
+        .query(UPDATE_BIB_SQL, &[&new_xml, &RECORD_EDITOR, &id])
+    {
+        eprintln!("Error updating record {id}: {err}");
+        db.xact_rollback().expect("Rollback Failed");
+        return;
+    }
+
+    if ops.opt_present("commit") {
+        println!("Committing changes to record {id}");
+        if let Err(err) = db.xact_commit() {
             eprintln!("Error updating record {id}: {err}");
-            db.xact_rollback().expect("Rollback Failed");
-            continue;
         }
-
-        if ops.opt_present("commit") {
-            println!("Committing changes to record {id}");
-            if let Err(err) = db.xact_commit() {
-                eprintln!("Error updating record {id}: {err}");
-            }
-        } else {
-            println!("Rolling back changes to record {id}. Use --commit to save changes");
-            // Exit if there's a rollback error since that would be odd.
-            db.xact_rollback().expect("Rollback Failed");
-        }
+    } else {
+        println!("Rolling back changes to record {id}. Use --commit to save changes");
+        // Exit if there's a rollback error since that would be odd.
+        db.xact_rollback().expect("Rollback Failed");
     }
 }
