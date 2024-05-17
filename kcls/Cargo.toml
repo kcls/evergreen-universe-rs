@@ -12,5 +12,5 @@ log = "0.4"
 getopts = "0.2"
 
 [[bin]]
-name = "kcls-audience-batch-update"
-path = "src/bin/audience-batch-update.rs"
+name = "kcls-on-order-audience-repairs"
+path = "src/bin/on-order-audience-repairs.rs"
