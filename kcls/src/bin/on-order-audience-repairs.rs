@@ -27,10 +27,7 @@ const TARGET_RECORDS_SQL: &str = r#"
         AND bre.id > 0
         AND bre.cataloging_date IS NULL
         AND mife.value = $1  -- call number
-        AND (
-            mraf.id IS NULL     -- ' ' values are not stored.
-            OR mraf.value != $2 -- audience
-        )
+        AND mraf.value IS DISTINCT FROM $2 -- audience is null or different
 "#;
 
 const UPDATE_BIB_SQL: &str = r#"
