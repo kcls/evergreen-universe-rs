@@ -15,7 +15,7 @@ const RECORD_EDITOR: i32 = 1;
 /// Bib records with a NULL cataloging date, containing the specified call
 /// number, and an audience value that does not match a desired value.
 const TARGET_RECORDS_SQL: &str = r#"
-    SELECT bre.id, bre.marc
+    SELECT DISTINCT bre.id, bre.marc
     FROM biblio.record_entry bre
     LEFT JOIN metabib.record_attr_flat mraf ON (mraf.id = bre.id AND mraf.attr = 'audience')
     JOIN metabib.identifier_field_entry mife ON (
