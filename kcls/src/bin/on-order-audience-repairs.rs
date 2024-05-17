@@ -36,6 +36,27 @@ const UPDATE_BIB_SQL: &str = r#"
     WHERE id = $3
 "#;
 
+const HELP_TEXT: &str = r#"
+    Apply "Target Audience" values (MARC 008 #22) to select
+    on-order MARC records based on the record's call number.
+
+    Options
+
+        --commit
+            Commit changes to the database.  Otherwise, the script
+            operates in dry-run mode and each transaction
+            is rolled back.
+
+        --print-source
+            Print the original MARC record XML to STDOUT for debugging.
+
+        --print-result
+            Print the resulting MARC record XML to STDOUT for debugging.
+
+        -h, --help
+            Show this message
+"#;
+
 /// Maps on-order call numbers to the desired target audience code.
 #[derive(Debug)]
 struct AudienceMap {
@@ -83,6 +104,8 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut opts = Options::new();
 
+    opts.optflag("h", "help", "");
+
     // Save changes; rolled back otherwise.
     opts.optflag("", "commit", "");
 
@@ -96,6 +119,11 @@ fn main() {
     DatabaseConnection::append_options(&mut opts);
 
     let params = opts.parse(&args[1..]).expect("Cannot Parse Options");
+
+    if params.opt_present("help") {
+        println!("{HELP_TEXT}");
+        return;
+    }
 
     let mut connection = DatabaseConnection::new_from_options(&params);
 
