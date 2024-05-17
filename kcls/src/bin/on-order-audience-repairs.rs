@@ -17,7 +17,7 @@ const RECORD_EDITOR: i32 = 1;
 const TARGET_RECORDS_SQL: &str = r#"
     SELECT bre.id, bre.marc
     FROM biblio.record_entry bre
-    JOIN metabib.record_attr_flat mraf ON (mraf.id = bre.id AND mraf.attr = 'audience')
+    LEFT JOIN metabib.record_attr_flat mraf ON (mraf.id = bre.id AND mraf.attr = 'audience')
     JOIN metabib.identifier_field_entry mife ON (
         mife.source = bre.id
         AND mife.field = 25
@@ -27,7 +27,10 @@ const TARGET_RECORDS_SQL: &str = r#"
         AND bre.id > 0
         AND bre.cataloging_date IS NULL
         AND mife.value = $1  -- call number
-        AND mraf.value != $2 -- audience
+        AND (
+            mraf.id IS NULL     -- ' ' values are not stored.
+            OR mraf.value != $2 -- audience
+        )
 "#;
 
 const UPDATE_BIB_SQL: &str = r#"
