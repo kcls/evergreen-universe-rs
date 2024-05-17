@@ -101,3 +101,17 @@ install-sip2mediator-config:
 	cp ./systemd/eg-sip2-mediator.service ${SYSTEMD_DIR}/ 
 	systemctl daemon-reload 
 
+# --- KCLS ---
+
+build-kcls:
+	cargo build -j ${BUILD_THREADS} --package kcls
+
+build-kcls-release:
+	cargo build -j ${BUILD_THREADS} --package kcls --release
+
+install-kcls:
+	cp ./target/debug/kcls-on-order-audience-repairs ${TARGET}/bin
+
+install-kcls-release:
+	cp ./target/release/kcls-on-order-audience-repairs ${TARGET}/bin
+
