@@ -17,11 +17,11 @@ const RECORD_EDITOR: i32 = 1;
 const TARGET_RECORDS_SQL: &str = r#"
     SELECT DISTINCT bre.id, bre.marc
     FROM biblio.record_entry bre
-    LEFT JOIN metabib.record_attr_flat mraf ON (mraf.id = bre.id AND mraf.attr = 'audience')
     JOIN metabib.identifier_field_entry mife ON (
         mife.source = bre.id
         AND mife.field = 25
     )
+    LEFT JOIN metabib.record_attr_flat mraf ON (mraf.id = bre.id AND mraf.attr = 'audience')
     WHERE
         NOT bre.deleted
         AND bre.id > 0
