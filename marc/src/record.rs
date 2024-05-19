@@ -38,11 +38,7 @@ impl Controlfield {
     /// assert_eq!(control_field.is_err(), true);
     /// assert_eq!(control_field.unwrap_err(), "Invalid Controlfield tag: 010");
     /// ```
-    pub fn new<T, S>(tag: T, content: S) -> Result<Self, String>
-    where
-        T: Into<String>,
-        S: Into<String>,
-    {
+    pub fn new(tag: impl Into<String>, content: impl Into<String>) -> Result<Self, String> {
         let tag = tag.into();
         check_byte_count(&tag, TAG_SIZE)?;
 
@@ -67,10 +63,7 @@ impl Controlfield {
     }
 
     /// Set the Controlfield content.
-    pub fn set_content<T>(&mut self, content: T)
-    where
-        T: Into<String>,
-    {
+    pub fn set_content(&mut self, content: impl Into<String>) {
         self.content = content.into();
     }
 }
@@ -86,11 +79,7 @@ impl Subfield {
     /// Create a Subfield with the provided code and content.
     ///
     /// * `code` - Must have the correct byte count.
-    pub fn new<T, S>(code: T, content: S) -> Result<Self, String>
-    where
-        T: Into<String>,
-        S: Into<String>,
-    {
+    pub fn new(code: impl Into<String>, content: impl Into<String>) -> Result<Self, String> {
         let code = code.into();
         check_byte_count(&code, CODE_SIZE)?;
         Ok(Subfield {
@@ -103,10 +92,7 @@ impl Subfield {
         &self.content
     }
     /// Set the Subfield content.
-    pub fn set_content<T>(&mut self, content: T)
-    where
-        T: Into<String>,
-    {
+    pub fn set_content(&mut self, content: impl Into<String>) {
         self.content = content.into();
     }
     /// Get the Subfield code.
@@ -114,10 +100,7 @@ impl Subfield {
         &self.code
     }
     /// Set the Subfield code.
-    pub fn set_code<T>(&mut self, code: T) -> Result<(), String>
-    where
-        T: Into<String>,
-    {
+    pub fn set_code(&mut self, code: impl Into<String>) -> Result<(), String> {
         let code: String = code.into();
         check_byte_count(&code, CODE_SIZE)?;
         self.code = code;
@@ -138,10 +121,7 @@ impl Field {
     /// Create a Field with the provided tag.
     ///
     /// * `tag` - Must have the correct byte count.
-    pub fn new<T>(tag: T) -> Result<Self, String>
-    where
-        T: Into<String>,
-    {
+    pub fn new(tag: impl Into<String>) -> Result<Self, String> {
         let tag = tag.into();
         check_byte_count(&tag, TAG_SIZE)?;
 
@@ -180,10 +160,7 @@ impl Field {
     /// Set the indicator-1 value.
     ///
     /// * `ind` - Must have the correct byte count.
-    pub fn set_ind1<T>(&mut self, ind: T) -> Result<(), String>
-    where
-        T: Into<String>,
-    {
+    pub fn set_ind1(&mut self, ind: impl Into<String>) -> Result<(), String> {
         let ind = ind.into();
         check_byte_count(&ind, CODE_SIZE)?;
         self.ind1 = Some(ind);
@@ -193,10 +170,7 @@ impl Field {
     /// Set the indicator-2 value.
     ///
     /// * `ind` - Must have the correct byte count.
-    pub fn set_ind2<T>(&mut self, ind: T) -> Result<(), String>
-    where
-        T: Into<String>,
-    {
+    pub fn set_ind2(&mut self, ind: impl Into<String>) -> Result<(), String> {
         let ind = ind.into();
         check_byte_count(&ind, CODE_SIZE)?;
         self.ind2 = Some(ind);
@@ -227,11 +201,11 @@ impl Field {
     /// Adds a new Subfield to this field using the provided code and content.
     ///
     /// * `code` - Must have the correct byte count.
-    pub fn add_subfield<T, S>(&mut self, code: T, content: S) -> Result<(), String>
-    where
-        T: Into<String>,
-        S: Into<String>,
-    {
+    pub fn add_subfield(
+        &mut self,
+        code: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Result<(), String> {
         self.subfields.push(Subfield::new(code, content)?);
         Ok(())
     }
@@ -290,10 +264,7 @@ impl Record {
     ///
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
-    pub fn set_leader<T>(&mut self, leader: T) -> Result<(), String>
-    where
-        T: Into<String>,
-    {
+    pub fn set_leader(&mut self, leader: impl Into<String>) -> Result<(), String> {
         let leader = leader.into();
         check_byte_count(&leader, LEADER_SIZE)?;
         self.leader = leader;
@@ -388,10 +359,7 @@ impl Record {
     /// Create a new Field with the provided tag, insert it into the
     /// record, then return a mut ref so the field may be additionally
     /// modified.
-    pub fn add_data_field<T>(&mut self, tag: T) -> Result<&mut Field, String>
-    where
-        T: Into<String>,
-    {
+    pub fn add_data_field(&mut self, tag: impl Into<String>) -> Result<&mut Field, String> {
         let pos = self.insert_field(Field::new(tag)?);
         Ok(self.fields_mut().get_mut(pos).unwrap())
     }
