@@ -1,5 +1,10 @@
 # Evergreen SIP2 Server in Rust
 
+> **_NOTE:_** This code may soon be deprecated since Evergreen now 
+officially supports [SIP2 Mediator](../sip2-mediator/README.md).  Parts of 
+this code, however, may later be used in a Rust implementation of the 
+sip2-mediator backend.
+
 ## Supported Message Pairs
 
 * 99/98 ACS/SC Status
