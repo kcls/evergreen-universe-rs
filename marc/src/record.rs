@@ -53,16 +53,36 @@ impl Controlfield {
     }
 
     /// Get the tag
+    /// ```
+    /// use marc::Controlfield;
+    /// 
+    /// let control_field = Controlfield::new("008", "12345").unwrap();
+    /// assert_eq!(control_field.tag(), "008");
+    /// ``` 
     pub fn tag(&self) -> &str {
         &self.tag
     }
+    
 
     /// Get the content
+    /// ```
+    /// use marc::Controlfield;
+    /// 
+    /// let control_field = Controlfield::new("008", "12345").unwrap();
+    /// assert_eq!(control_field.content(), "12345");
+    /// ```
     pub fn content(&self) -> &str {
         &self.content
     }
 
     /// Set the Controlfield content.
+    /// ```
+    /// use marc::Controlfield;
+    /// 
+    /// let mut control_field = Controlfield::new("008", "12345").unwrap();
+    /// control_field.set_content("6789");
+    /// assert_eq!(control_field.content(), "6789");
+    /// ```
     pub fn set_content(&mut self, content: impl Into<String>) {
         self.content = content.into();
     }
