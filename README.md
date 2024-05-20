@@ -33,12 +33,91 @@ SIP2 Mediator
 
 [README](./sip2-mediator/README.md)
 
-### SIP2-Server
+## Evergreen Rust Primer
 
-SIP2 server custom built for Evergreen.
+Currently assumes Ubuntu 22.04.
 
-[README](./sip2-server/README.md)
+### Setup
 
-## Quick Start
+Actions that communicate via OpenSRF require the OpenSRF/Evergreen
+Redis branches be installed and running.
 
-See the [Primer](./PRIMER.md)
+Other actions, e.g. eg-marc-export, which communicate via database 
+connection do not require special OpenSRF/Evergreen code.
+
+#### Install OpenSRF / Evergreen with Redis
+
+#### Ansible Version
+
+Follow [these ansible instructions](
+    https://github.com/berick/evergreen-ansible-installer/tree/working/ubuntu-22.04-redis)
+to install on a server/VM.
+
+#### Docker Version
+
+Follow [these unstructions](https://github.com/mcoia/eg-docker) to create
+a Docker container.
+
+#### Setup Rust
+
+```sh
+sudo apt install rust-all 
+git clone github.com:kcls/evergreen-universe-rs                                
+```
+
+### Build Everything and Run Tests
+
+#### Makefile Note
+
+Build and install commands are compiled into a Makefile for convenience
+and documentation.  See the Makefile for individual `cargo` commands.
+
+#### Build and Test
+
+```sh
+cd evergreen-universe-rs
+
+# This will also download and compile dependencies.
+make build
+
+# Run unit tests
+make test
+
+# To also run the live tests.
+# These require a locally running Evergreen instance with
+# Concerto data.
+cargo test --package evergreen --test live -- --ignored --nocapture
+
+# OPTIONAL: Install compiled binaries to /usr/local/bin/
+sudo make install-bin
+```
+
+### Example: Running egsh ("eggshell")
+
+`egsh` is an Evergreen-aware srfsh clone
+
+```sh
+cargo run --package evergreen --bin egsh
+```
+
+> **_NOTE:_** If binaries are installed, the above command may be shortened to just `egsh`.
+
+#### Some Commands
+
+```sh
+egsh# help
+
+egsh# login admin demo123
+
+# This uses the authtoken stored from last successful use of 'login'
+# as the implicit first parameter to the pcrud API call.
+egsh# reqauth open-ils.pcrud open-ils.pcrud.retrieve.au 1
+
+egsh# req opensrf.settings opensrf.system.echo {"a b c":123} "12" [1,2,3]
+
+egsh# cstore retrieve actor::user 1
+
+egsh# cstore search aou {"shortname":"BR1"}
+```
+
+
