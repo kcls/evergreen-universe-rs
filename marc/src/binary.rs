@@ -150,8 +150,8 @@ impl Record {
     ///
     /// # References
     ///
-    /// https://www.loc.gov/marc/bibliographic/bdleader.html
-    /// https://www.loc.gov/marc/bibliographic/bddirectory.html
+    /// * https://www.loc.gov/marc/bibliographic/bdleader.html
+    /// * https://www.loc.gov/marc/bibliographic/bddirectory.html
     pub fn from_binary(rec_bytes: &[u8]) -> Result<Record, String> {
         let mut record = Record::new();
 
