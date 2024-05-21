@@ -28,6 +28,8 @@ impl Controlfield {
     ///
     /// * `tag` - Must have the correct byte count.
     ///
+    /// # Examples
+    ///
     /// ```
     /// let control_field = marc::Controlfield::new("008", "12345").unwrap();
     /// assert_eq!(control_field.tag(), "008");
@@ -53,21 +55,27 @@ impl Controlfield {
     }
 
     /// Get the tag
+    ///
+    /// # Examples
+    ///
     /// ```
     /// use marc::Controlfield;
-    /// 
+    ///
     /// let control_field = Controlfield::new("008", "12345").unwrap();
     /// assert_eq!(control_field.tag(), "008");
-    /// ``` 
+    /// ```
     pub fn tag(&self) -> &str {
         &self.tag
     }
-    
+
 
     /// Get the content
+    ///
+    /// # Examples
+    ///
     /// ```
     /// use marc::Controlfield;
-    /// 
+    ///
     /// let control_field = Controlfield::new("008", "12345").unwrap();
     /// assert_eq!(control_field.content(), "12345");
     /// ```
@@ -76,9 +84,12 @@ impl Controlfield {
     }
 
     /// Set the Controlfield content.
+    ///
+    /// # Examples
+    ///
     /// ```
     /// use marc::Controlfield;
-    /// 
+    ///
     /// let mut control_field = Controlfield::new("008", "12345").unwrap();
     /// control_field.set_content("6789");
     /// assert_eq!(control_field.content(), "6789");
