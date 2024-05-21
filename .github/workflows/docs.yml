@@ -30,7 +30,7 @@ jobs:
       - name: Clean docs folder
         run: cargo clean --doc
       - name: Build docs
-        run: cargo doc --no-deps --all
+        run: cargo doc --no-deps --all --lib
 
 # This can be used to manually generate a simple index file.
 #      - name: Add redirect
