@@ -68,7 +68,6 @@ impl Controlfield {
         &self.tag
     }
 
-
     /// Get the content
     ///
     /// # Examples

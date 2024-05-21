@@ -51,7 +51,7 @@ impl Iterator for BinaryRecordIterator {
         }
 
         if bytes.len() > 0 {
-            match Record::from_binary(&bytes) {
+            match Record::from_binary(bytes.as_slice()) {
                 Ok(r) => return Some(Ok(r)),
                 Err(e) => return Some(Err(format!("Error processing bytes: {:?} {}", bytes, e))),
             }
@@ -141,32 +141,24 @@ impl DirectoryEntry {
 }
 
 impl Record {
-    // Creates a Record from a MARC binary data file.
+    /// Returns an iterator over MARC records produced from a binary file.
     pub fn from_binary_file(filename: &str) -> Result<BinaryRecordIterator, String> {
         BinaryRecordIterator::new(filename)
     }
 
-    /// Creates a Rrecord from MARC binary data.
-    //
-    // https://www.loc.gov/marc/bibliographic/bdleader.html
-    // 24-byte leader
-    //   5-byte record length
-    //   other stuff
-    //   5-byte data start index
-    //   other stuff
-    //
-    // https://www.loc.gov/marc/bibliographic/bddirectory.html
-    // 12-byte field directory entries
-    //
-    // Control fields and data fields.
-    pub fn from_binary(bytes: &Vec<u8>) -> Result<Record, String> {
+    /// Creates a single MARC Record from a series of bytes.
+    ///
+    /// # References
+    ///
+    /// https://www.loc.gov/marc/bibliographic/bdleader.html
+    /// https://www.loc.gov/marc/bibliographic/bddirectory.html
+    pub fn from_binary(rec_bytes: &[u8]) -> Result<Record, String> {
         let mut record = Record::new();
 
-        let rec_bytes = bytes.as_slice();
         let rec_byte_count = rec_bytes.len();
 
         if rec_byte_count < LEADER_SIZE {
-            return Err(format!("Binary record is too short: {:?}", bytes));
+            return Err(format!("Binary record is too short: {:?}", rec_bytes));
         }
 
         let leader_bytes = &rec_bytes[0..LEADER_SIZE];

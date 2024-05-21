@@ -158,7 +158,7 @@ fn odd_records() {
 
 #[test]
 fn binary() {
-    let src_bytes = MARC_BINARY.as_bytes().to_vec();
+    let src_bytes = MARC_BINARY.as_bytes();
 
     let record = Record::from_binary(&src_bytes).unwrap();
 
