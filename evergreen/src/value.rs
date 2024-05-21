@@ -512,7 +512,7 @@ impl EgValue {
     }
 
     /// Returns an owned String if this value is a string.
-    /// https://docs.rs/json/latest/src/json/value/mod.rs.html#367-381
+    /// <https://docs.rs/json/latest/src/json/value/mod.rs.html#367-381>
     pub fn take_string(&mut self) -> Option<String> {
         let mut placeholder = Self::Null;
 
