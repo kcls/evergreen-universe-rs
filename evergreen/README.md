@@ -1,5 +1,9 @@
 # Evergreen Rust...  Featuring OpenSRF
 
+## API Docs
+
+[https://kcls.github.io/evergreen-universe-rs/evergreen/index.html](https://kcls.github.io/evergreen-universe-rs/evergreen/index.html)
+
 ## There's an Editor
 
 ```rs

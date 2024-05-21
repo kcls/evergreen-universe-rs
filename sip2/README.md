@@ -3,6 +3,10 @@
 Rust [SIP2](https://en.wikipedia.org/wiki/Standard_Interchange_Protocol)
 Client Library
 
+## API Docs
+
+[https://kcls.github.io/evergreen-universe-rs/sip2/index.html](https://kcls.github.io/evergreen-universe-rs/sip2/index.html)
+
 ## Two Modes of Operation
 
 ### Connection API

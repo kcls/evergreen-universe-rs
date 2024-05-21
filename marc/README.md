@@ -1,5 +1,9 @@
 # Rust MARC XML / Breaker / Binary Library
 
+## API Docs
+
+[https://kcls.github.io/evergreen-universe-rs/marc/index.html](https://kcls.github.io/evergreen-universe-rs/marc/index.html)
+
 ## Synopsis
 
 See [Examples](./examples/roundtrip.rs) and [Tests](./tests/record.rs) for examples.
