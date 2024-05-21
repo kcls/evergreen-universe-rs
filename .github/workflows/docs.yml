@@ -31,18 +31,28 @@ jobs:
         run: cargo clean --doc
       - name: Build docs
         run: cargo doc --no-deps --all
+
+# This can be used to manually generate a simple index file.
 #      - name: Add redirect
 #        run: echo '<meta http-equiv="refresh" content="0;url=aoc/index.html">' > target/doc/index.html
+#
+# May one day be useful for generating the index file
+# https://github.com/rust-lang/cargo/issues/8229
+
+# This will create a directory listing, which works, but it's a 
+# lot to look at.
+#      - name: Generate Directory Listings
+#        uses: jayanta525/github-pages-directory-listing@v4.0.0
+#        with:
+#          FOLDER: target/doc # directory to generate index
+
       - name: Remove lock file
         run: rm target/doc/.lock
-      - name: Generate Directory Listings
-        uses: jayanta525/github-pages-directory-listing@v4.0.0
-        with:
-          FOLDER: target/doc # directory to generate index
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: target/doc
+
 
   deploy:
     name: Deploy
