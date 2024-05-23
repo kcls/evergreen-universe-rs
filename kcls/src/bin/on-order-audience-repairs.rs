@@ -21,13 +21,16 @@ const TARGET_RECORDS_SQL: &str = r#"
         mife.source = bre.id
         AND mife.field = 25
     )
-    LEFT JOIN metabib.record_attr_flat mraf ON (mraf.id = bre.id AND mraf.attr = 'audience')
+    LEFT JOIN metabib.record_attr_flat mraf ON (
+        mraf.id = bre.id 
+        AND mraf.attr = 'audience'
+    )
     WHERE
         NOT bre.deleted
         AND bre.id > 0
         AND bre.cataloging_date IS NULL
-        AND mife.value = $1  -- call number
-        AND mraf.value IS DISTINCT FROM $2 -- audience is null or different
+        AND mife.value = $1                 -- call number
+        AND mraf.value IS DISTINCT FROM $2  -- audience is null or different
 "#;
 
 const UPDATE_BIB_SQL: &str = r#"
@@ -44,8 +47,7 @@ const HELP_TEXT: &str = r#"
 
         --commit
             Commit changes to the database.  Otherwise, the script
-            operates in dry-run mode and each transaction
-            is rolled back.
+            operates in dry-run mode and each transaction is rolled back.
 
         --print-source
             Print the original MARC record XML to STDOUT for debugging.
@@ -58,6 +60,8 @@ const HELP_TEXT: &str = r#"
 "#;
 
 /// Maps on-order call numbers to the desired target audience code.
+///
+/// Could use [(&str, &str), ...] instead but this is easier to follow.
 #[derive(Debug)]
 struct AudienceMap {
     audience: &'static str,
@@ -239,7 +243,6 @@ fn process_one_record(
     }
 
     if ops.opt_present("commit") {
-        println!("Committing changes to record {id}");
         if let Err(err) = db.xact_commit() {
             eprintln!("Error updating record {id}: {err}");
         }
