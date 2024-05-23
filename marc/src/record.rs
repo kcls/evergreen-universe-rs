@@ -109,6 +109,23 @@ impl Subfield {
     /// Create a Subfield with the provided code and content.
     ///
     /// * `code` - Must have the correct byte count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::Subfield;
+    /// let subfield: Subfield = match Subfield::new("a", "Στη σκιά της πεταλούδας") {
+    ///   Ok(sf) => sf,
+    ///   Err(_) => todo!()
+    /// };
+    /// assert_eq!(subfield.content(), "Στη σκιά της πεταλούδας");
+    /// ```
+    ///
+    /// ```should_panic
+    /// use marc::Subfield;
+    /// Subfield::new("🦋", "Στη σκιά της πεταλούδας").unwrap();
+    /// ```
+    ///
     pub fn new(code: impl Into<String>, content: impl Into<String>) -> Result<Self, String> {
         let code = code.into();
         check_byte_count(&code, CODE_SIZE)?;
