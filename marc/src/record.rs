@@ -203,6 +203,22 @@ impl Field {
     /// Create a Field with the provided tag.
     ///
     /// * `tag` - Must have the correct byte count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Field;
+    /// 
+    /// let field: Field = match Field::new("245") {
+    ///   Ok(f) => f,
+    ///   Err(e) => panic!("Field::new() failed with: {}", e),
+    /// };
+    /// assert_eq!(field.tag(), "245");
+    /// assert_eq!(field.ind1(), " ");
+    /// assert_eq!(field.ind2(), " ");
+    /// assert_eq!(field.subfields().len(), 0);
+    /// ```
+    /// 
     pub fn new(tag: impl Into<String>) -> Result<Self, String> {
         let tag = tag.into();
         check_byte_count(&tag, TAG_SIZE)?;
