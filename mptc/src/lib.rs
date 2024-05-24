@@ -8,16 +8,18 @@ pub use server::Server;
 /// etc. signals.
 pub const SIGNAL_POLL_INTERVAL: u64 = 3;
 
-/// Keep at least this many threads alive at a time.
+/// Default minimum number of worker threads.
 pub const DEFAULT_MIN_WORKERS: usize = 5;
 
-/// Avoid spawning more than this many threads.
+/// Default maximum number of worker threads.
 pub const DEFAULT_MAX_WORKERS: usize = 256;
 
-/// Each thread processes this many requests before exiting.
+/// By default, a worker will exit once it has handled this many requests.
+///
 /// A value of 0 means there is no max.
 pub const DEFAULT_MAX_WORKER_REQS: usize = 10_000;
 
+/// Models a single request to be passed to a worker for handling.
 pub trait Request: Send + std::any::Any {
     /// Needed for downcasting a generic Request into the
     /// specific type used by the implementor.
@@ -25,6 +27,7 @@ pub trait Request: Send + std::any::Any {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
+/// Trait implemented by code that wishes to handle requests.
 pub trait RequestHandler: Send {
     /// Called from within each worker thread just after spawning.
     fn worker_start(&mut self) -> Result<(), String>;
@@ -34,8 +37,8 @@ pub trait RequestHandler: Send {
 
     /// Process a single request.
     ///
-    /// Returns Err of String if request processing failed.  The string
-    /// will simply be logged.
+    /// Returns Err of String if request processing failed.  The error
+    /// string will be logged.
     fn process(&mut self, request: Box<dyn Request>) -> Result<(), String>;
 }
 
