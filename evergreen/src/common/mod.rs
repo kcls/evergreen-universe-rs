@@ -15,6 +15,7 @@ pub mod org;
 pub mod penalty;
 pub mod renew;
 pub mod settings;
+pub mod sip2;
 pub mod targeter;
 pub mod transit;
 pub mod trigger;
