@@ -116,7 +116,7 @@ impl Subfield {
     /// use marc::Subfield;
     /// let subfield: Subfield = match Subfield::new("a", "Στη σκιά της πεταλούδας") {
     ///   Ok(sf) => sf,
-    ///   Err(_) => todo!()
+    ///   Err(e) => panic!("Subfield::new() failed with: {}", e),
     /// };
     /// assert_eq!(subfield.content(), "Στη σκιά της πεταλούδας");
     /// ```
