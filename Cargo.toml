@@ -9,7 +9,12 @@ members = [
   "kcls",
 ]
 exclude = [
-    "sip2-server",
+  # Keeping for reference
+  "sip2-server",
 ]
 default-members = [
+  "mptc",
+  "marc",
+  "sip2",
+  "evergreen",
 ]
