@@ -55,7 +55,7 @@ to install on a server/VM.
 
 #### Docker Version
 
-Follow [these unstructions](https://github.com/mcoia/eg-docker) to create
+Follow [these instructions](https://github.com/mcoia/eg-docker) to create
 a Docker container.
 
 #### Setup Rust
