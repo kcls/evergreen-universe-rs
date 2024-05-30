@@ -161,12 +161,7 @@ impl Session {
     ///
     /// Blocks waiting for a response.
     fn osrf_round_trip(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
-        let msg_json = match msg.to_json_value() {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(format!("{self} Failed translating SIP message to JSON: {e}").into())
-            }
-        };
+        let msg_json = msg.to_json_value();
 
         log::debug!("{self} posting message: {msg_json}");
 
