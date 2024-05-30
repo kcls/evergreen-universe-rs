@@ -19,6 +19,7 @@ const MAX_LOCALE_LEN: usize = 16;
 // adopt that value as our new thread-scoped locale.
 thread_local! {
     static THREAD_LOCALE: RefCell<String> = RefCell::new(DEFAULT_LOCALE.to_string());
+    static THREAD_INGRESS: RefCell<String> = RefCell::new(DEFAULT_INGRESS.to_string());
 }
 
 /// Set the locale for the current thread.
@@ -45,6 +46,16 @@ pub fn set_thread_locale(locale: &str) {
         }
 
         *lc.borrow_mut() = locale.to_string();
+    });
+}
+
+/// Set the locale for the current thread.
+pub fn set_thread_ingress(ingress: &str) {
+    THREAD_INGRESS.with(|lc| {
+        if lc.borrow().as_str() == ingress {
+            return;
+        }
+        *lc.borrow_mut() = ingress.to_string();
     });
 }
 
@@ -473,8 +484,8 @@ impl Message {
         self.timezone = Some(timezone.to_string())
     }
 
-    pub fn ingress(&self) -> &str {
-        self.ingress.as_deref().unwrap_or(DEFAULT_INGRESS)
+    pub fn ingress(&self) -> Option<&str> {
+        self.ingress.as_deref()
     }
 
     pub fn set_ingress(&mut self, ingress: &str) {
@@ -515,6 +526,7 @@ impl Message {
         }
 
         if let Some(ing) = msg_hash["ingress"].as_str() {
+            set_thread_ingress(ing);
             msg.set_ingress(ing);
         }
 
@@ -561,8 +573,15 @@ impl Message {
             locale: thread_locale(),
             timezone: self.timezone(),
             api_level: self.api_level(),
-            ingress: self.ingress(),
         };
+
+        if let Some(ing) = self.ingress() {
+            obj["ingress"] = ing.into();
+        } else {
+            // Pull the ingress from the value stored in the thread.
+            // It will use the default if none is set.
+            THREAD_INGRESS.with(|lc| obj["ingress"] = lc.borrow().as_str().into());
+        }
 
         match self.payload {
             // Avoid adding the "payload" key for non-payload messages.
