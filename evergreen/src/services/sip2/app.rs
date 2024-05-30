@@ -1,5 +1,6 @@
 use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::message;
+use eg::osrf::cache::Cache;
 use eg::osrf::method::MethodDef;
 use eg::Client;
 use eg::EgError;
@@ -102,6 +103,7 @@ impl ApplicationWorker for Sip2Worker {
         client: Client,
         methods: Arc<HashMap<String, MethodDef>>,
     ) -> EgResult<()> {
+        Cache::init_cache("global")?;
         self.client = Some(client);
         self.methods = Some(methods);
         Ok(())
