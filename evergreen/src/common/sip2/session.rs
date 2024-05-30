@@ -40,7 +40,7 @@ pub type SupportedMessages = [&'static str; SUPPORTED_MESSAGES_LEN];
 /// Currently hard-coded, since it's based on availabilty of
 /// functionality in the code, but it could be moved into the database
 /// to limit access for specific setting groups.
-const INSTITUTION_SUPPORTS: [&'static str; SUPPORTED_MESSAGES_LEN] = [
+pub const INSTITUTION_SUPPORTS: SupportedMessages = [
     "Y", // patron status request,
     "Y", // checkout,
     "Y", // checkin,
@@ -59,6 +59,7 @@ const INSTITUTION_SUPPORTS: [&'static str; SUPPORTED_MESSAGES_LEN] = [
     "N", // renew all,
 ];
 
+#[derive(Debug)]
 pub struct SipFilter {
     /// 2-character SIP field code.
     identifier: String,
@@ -82,9 +83,10 @@ impl SipFilter {
     }
 }
 
+#[derive(Debug)]
 pub struct Config {
     institution: String,
-    supports: [&'static str; SUPPORTED_MESSAGES_LEN],
+    supports: SupportedMessages,
     settings: HashMap<String, EgValue>,
     filters: Vec<SipFilter>,
 }
@@ -93,8 +95,11 @@ impl Config {
     pub fn institution(&self) -> &str {
         &self.institution
     }
-    pub fn supports(&self) -> &[&'static str; SUPPORTED_MESSAGES_LEN] {
+    pub fn supports(&self) -> &SupportedMessages {
         &self.supports
+    }
+    pub fn default_supports() -> &'static SupportedMessages {
+        &INSTITUTION_SUPPORTS
     }
     pub fn settings(&self) -> &HashMap<String, EgValue> {
         &self.settings
@@ -108,7 +113,7 @@ pub struct Session {
     editor: Editor,
     seskey: String,
     sip_account: EgValue,
-    config: Option<Config>,
+    config: Config,
 }
 
 impl fmt::Display for Session {
@@ -123,13 +128,18 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    pub fn new(editor: &Editor, seskey: &str, sip_account: EgValue) -> Self {
-        Session {
-            editor: editor.clone(),
+    pub fn new(editor: &Editor, seskey: &str, sip_account: EgValue) -> EgResult<Self> {
+        let mut editor = editor.clone();
+        let config = Session::load_config(&mut editor, sip_account["setting_group"].int()?)?;
+
+        log::debug!("Session {seskey} loaded config: {:?}", config);
+
+        Ok(Session {
             seskey: seskey.to_string(),
+            editor: editor,
             sip_account,
-            config: None,
-        }
+            config,
+        })
     }
 
     pub fn editor(&mut self) -> &mut Editor {
@@ -144,11 +154,11 @@ impl Session {
         &self.sip_account
     }
 
-    pub fn config(&self) -> Option<&Config> {
-        self.config.as_ref()
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
-    pub fn load_config(&mut self) -> EgResult<()> {
+    fn load_config(editor: &mut Editor, setting_group: i64) -> EgResult<Config> {
         let flesh = eg::hash! {
             "flesh": 1,
             "flesh_fields": {
@@ -156,10 +166,9 @@ impl Session {
             }
         };
 
-        let group = self
-            .editor
-            .retrieve_with_ops("sipsetg", self.sip_account["setting_group"].int()?, flesh)?
-            .ok_or_else(|| self.editor.die_event())?;
+        let group = editor
+            .retrieve_with_ops("sipsetg", setting_group, flesh)?
+            .ok_or_else(|| editor.die_event())?;
 
         let mut config = Config {
             institution: group["institution"].string()?,
@@ -187,9 +196,7 @@ impl Session {
             }
         }
 
-        log::debug!("{self} loaded settings: {:?}", config.settings);
-
-        Ok(())
+        Ok(config)
     }
 
     /// Load the session from the cache by session key.
@@ -208,7 +215,7 @@ impl Session {
             .as_str()
             .ok_or_else(|| format!("Cached session has no authtoken string"))?;
 
-        let mut session = Session::new(editor, seskey, sip_account);
+        let mut session = Session::new(editor, seskey, sip_account)?;
         session.editor.set_authtoken(auth_token);
 
         // Make sure our auth session is still valid and set the 'requestor'

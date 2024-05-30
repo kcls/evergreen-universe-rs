@@ -1,6 +1,6 @@
 use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
-use eg::osrf::message;
 use eg::osrf::cache::Cache;
+use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::Client;
 use eg::EgError;
