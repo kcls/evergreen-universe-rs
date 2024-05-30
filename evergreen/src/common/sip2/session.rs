@@ -1,9 +1,9 @@
 use crate as eg;
-use eg::EgValue;
-use eg::EgResult;
-use eg::Editor;
 use eg::common::auth;
 use eg::osrf::cache::Cache;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -113,7 +113,12 @@ pub struct Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Session ({}) [{}]", self.seskey, self.sip_account["sip_username"].str().unwrap())
+        write!(
+            f,
+            "Session ({}) [{}]",
+            self.seskey,
+            self.sip_account["sip_username"].str().unwrap()
+        )
     }
 }
 
@@ -127,7 +132,7 @@ impl Session {
         }
     }
 
-    pub fn editor(&mut self) ->  &mut Editor {
+    pub fn editor(&mut self) -> &mut Editor {
         &mut self.editor
     }
 
@@ -151,11 +156,10 @@ impl Session {
             }
         };
 
-        let group = self.editor.retrieve_with_ops(
-            "sipsetg",
-            self.sip_account["setting_group"].int()?,
-            flesh
-        )?.ok_or_else(|| self.editor.die_event())?;
+        let group = self
+            .editor
+            .retrieve_with_ops("sipsetg", self.sip_account["setting_group"].int()?, flesh)?
+            .ok_or_else(|| self.editor.die_event())?;
 
         let mut config = Config {
             institution: group["institution"].string()?,
@@ -169,7 +173,7 @@ impl Session {
                 setting["name"].string()?,
                 EgValue::parse(setting["value"].str()?)?,
             );
-        };
+        }
 
         for filter in group["filters"].members() {
             if filter["enabled"].boolish() {
@@ -200,7 +204,8 @@ impl Session {
 
         let sip_account = cached["sip_account"].take();
 
-        let auth_token = cached["ils_token"].as_str()
+        let auth_token = cached["ils_token"]
+            .as_str()
             .ok_or_else(|| format!("Cached session has no authtoken string"))?;
 
         let mut session = Session::new(editor, seskey, sip_account);
@@ -212,12 +217,14 @@ impl Session {
             session.refresh_auth_token()?;
         }
 
-        return Ok(Some(session))
+        return Ok(Some(session));
     }
 
     /// Put this session in to the cache.
     pub fn to_cache(&self) -> EgResult<()> {
-        let authtoken = self.editor.authtoken()
+        let authtoken = self
+            .editor
+            .authtoken()
             .ok_or_else(|| format!("Cannot cache session with no authoken"))?;
 
         let cache_val = eg::hash! {
@@ -233,7 +240,7 @@ impl Session {
     ///
     /// This is necessary when creating a new session or when a session
     /// is pulled from the cache and its authtoken has expired.
-    fn refresh_auth_token(&mut self) -> EgResult<()> {
+    pub fn refresh_auth_token(&mut self) -> EgResult<()> {
         let user_id = self.sip_account["usr"].int()?;
 
         let mut auth_args = auth::InternalLoginArgs::new(user_id, auth::LoginType::Staff);
@@ -242,8 +249,9 @@ impl Session {
             auth_args.set_workstation(ws);
         }
 
-        let auth_ses = auth::Session::internal_session_api(self.editor.client_mut(), &auth_args)?
-            .ok_or_else(|| format!("Cannot create internal auth session for usr {user_id}"))?;
+        let auth_ses =
+            auth::Session::internal_session_api(self.editor.client_mut(), &auth_args)?
+                .ok_or_else(|| format!("Cannot create internal auth session for usr {user_id}"))?;
 
         self.editor.set_authtoken(auth_ses.token());
 
@@ -254,4 +262,3 @@ impl Session {
         }
     }
 }
-
