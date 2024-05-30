@@ -36,6 +36,15 @@ impl FixedField {
         &self.value
     }
 
+    pub fn set_value(&mut self, value: &str) -> Result<(), Error> {
+        if value.len() == self.spec.length {
+            self.value = value.to_string();
+            Ok(())
+        } else {
+            Err(Error::FixedFieldLengthError)
+        }
+    }
+
     /// Translate a FixedField into a string which can be inserted into
     /// a SIP message.
     ///
@@ -139,10 +148,7 @@ impl Message {
     ///
     /// Returns an error if the fixed field values provided are not
     /// the correct length for the specified message type.
-    pub fn from_ff_values(
-        msg_code: &str,
-        fixed_fields: &[&str],
-    ) -> Result<Message, Error> {
+    pub fn from_ff_values(msg_code: &str, fixed_fields: &[&str]) -> Result<Message, Error> {
         let msg_spec = match spec::Message::from_code(msg_code) {
             Some(s) => s,
             None => {
@@ -263,6 +269,10 @@ impl Message {
 
     pub fn fixed_fields(&self) -> &Vec<FixedField> {
         &self.fixed_fields
+    }
+
+    pub fn fixed_fields_mut(&mut self) -> &mut Vec<FixedField> {
+        &mut self.fixed_fields
     }
 
     /// Create a SIP string of a message.
