@@ -140,9 +140,17 @@ impl Message {
     /// Returns an error if the fixed field values provided are not
     /// the correct length for the specified message type.
     pub fn from_ff_values(
-        msg_spec: &'static spec::Message,
+        msg_code: &str,
         fixed_fields: &[&str],
     ) -> Result<Message, Error> {
+        let msg_spec = match spec::Message::from_code(msg_code) {
+            Some(s) => s,
+            None => {
+                log::error!("Unknown message code: {msg_code}");
+                return Err(Error::UnknownMessageError);
+            }
+        };
+
         let mut ff: Vec<FixedField> = Vec::new();
 
         for (idx, ff_spec) in msg_spec.fixed_fields.iter().enumerate() {
@@ -168,11 +176,11 @@ impl Message {
 
     /// Create a new message from a list of fixed field and field string values.
     pub fn from_values(
-        spec: &'static spec::Message,
+        msg_code: &str,
         fixed_fields: &[&str],
         fields: &[(&str, &str)],
     ) -> Result<Message, Error> {
-        let mut msg = Message::from_ff_values(spec, fixed_fields)?;
+        let mut msg = Message::from_ff_values(msg_code, fixed_fields)?;
         for field in fields {
             msg.add_field(field.0, field.1);
         }

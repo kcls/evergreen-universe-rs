@@ -54,7 +54,7 @@ impl Message {
     ///     ]
     /// );
     ///
-    /// let json_val = msg.to_json_value().unwrap();
+    /// let json_val = msg.to_json_value();
     /// let expected = json::object!{
     ///   "code":"93",
     ///   "fixed_fields":["0","0"],
@@ -62,7 +62,7 @@ impl Message {
     ///
     /// assert_eq!(expected, json_val);
     /// ```
-    pub fn to_json_value(&self) -> Result<json::JsonValue, SipJsonError> {
+    pub fn to_json_value(&self) -> json::JsonValue {
         let ff: Vec<String> = self
             .fixed_fields()
             .iter()
@@ -77,11 +77,11 @@ impl Message {
             fields.push(map);
         }
 
-        Ok(json::object! {
+        json::object! {
             "code": self.spec().code,
             "fixed_fields": ff,
             "fields": fields
-        })
+        }
     }
 
     /// Translate a SIP Message into a JSON string.
@@ -102,18 +102,15 @@ impl Message {
     ///     ]
     /// );
     ///
-    /// let json_str = msg.to_json().unwrap();
+    /// let json_str = msg.to_json();
     ///
     /// // Comparing JSON strings is nontrivial with hashes.
     /// // Assume completion means success.  See to_json_value() for
     /// // more rigorous testing.
     /// assert_eq!(true, true);
     /// ```
-    pub fn to_json(&self) -> Result<String, SipJsonError> {
-        match self.to_json_value() {
-            Ok(jv) => Ok(jv.dump()),
-            Err(e) => Err(e),
-        }
+    pub fn to_json(&self) -> String {
+        self.to_json_value().dump()
     }
 
     /// Translate a JSON object into a SIP Message.

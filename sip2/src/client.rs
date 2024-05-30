@@ -226,7 +226,7 @@ impl Client {
             .ok_or_else(|| Error::MissingParamsError)?;
 
         let mut req = Message::from_values(
-            &spec::M_CHECKOUT,
+            &spec::M_CHECKOUT.code,
             &[
                 "N",                   // renewal policy
                 "N",                   // no block
@@ -259,7 +259,7 @@ impl Client {
         let item_id = params.item_id().ok_or_else(|| Error::MissingParamsError)?;
 
         let mut req = Message::from_values(
-            &spec::M_CHECKIN,
+            &spec::M_CHECKIN.code,
             &[
                 "N",                   // no block
                 &util::sip_date_now(), // transaction date
