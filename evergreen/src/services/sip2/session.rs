@@ -1,4 +1,4 @@
-use crate as eg;
+use evergreen as eg;
 use eg::common::auth;
 use eg::osrf::cache::Cache;
 use eg::Editor;

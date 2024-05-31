@@ -1,10 +1,10 @@
-use crate as eg;
-use eg::common::sip2::session::Session;
+use evergreen as eg;
 use eg::constants as C;
 use eg::date;
 use eg::EgResult;
 use eg::EgValue;
 use std::fmt;
+use crate::session::Session;
 
 pub struct Item {
     pub barcode: String,

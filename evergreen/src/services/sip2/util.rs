@@ -1,5 +1,5 @@
-use crate as eg;
-use eg::common::sip2::session::Session;
+use crate::session::Session;
+use evergreen as eg;
 use eg::result::EgResult;
 use eg::EgValue;
 

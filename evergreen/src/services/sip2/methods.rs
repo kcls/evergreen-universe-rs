@@ -1,5 +1,3 @@
-use eg::common::sip2::session::Config;
-use eg::common::sip2::session::Session;
 use eg::common::user;
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
@@ -14,6 +12,8 @@ use sip2::Message;
 
 // Import our local app module
 use crate::app;
+use crate::session::Config;
+use crate::session::Session;
 
 /// List of method definitions we know at compile time.
 pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
