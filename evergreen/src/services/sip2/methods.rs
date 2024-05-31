@@ -86,7 +86,7 @@ pub fn dispatch_sip_request(
     let response = match msg_code {
         //        "01" => handle_block(&mut sip_ses, sip_msg)?,
         //        "09" => handle_checkin(&mut sip_ses, sip_msg)?,
-        //        "11" => handle_checkout(&mut sip_ses, sip_msg)?,
+        "11" => handle_checkout(&mut sip_ses, sip_msg)?,
         //        "15" => handle_hold(&mut sip_ses, sip_msg)?,
         "17" => handle_item_info(&mut sip_ses, sip_msg)?,
         "23" => handle_patron_status(&mut sip_ses, sip_msg)?,
@@ -450,6 +450,10 @@ fn patron_response_common(
     resp.maybe_add_field("BE", patron.email.as_deref());
 
     Ok(resp)
+}
+
+fn handle_checkout(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    sip_ses.handle_checkout(&sip_msg)
 }
 
 /// This is a no-op.  Just returns the expected response.
