@@ -535,7 +535,7 @@ impl Worker {
 
         // Call the API
         if let Err(err) = (method_def.handler())(appworker, self.session_mut(), &method_call) {
-            let msg = format!("{self} method {} failed with {err}", method_call.method());
+            let msg = format!("{self} method {} exited: \"{err}\"", method_call.method());
             log::error!("{msg}");
             appworker.api_call_error(&method_call, err);
             self.reply_server_error(&msg)?;

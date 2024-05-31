@@ -144,6 +144,10 @@ impl Message {
         msg
     }
 
+    pub fn from_code(msg_code: &str) -> Result<Message, Error> {
+        Message::from_ff_values(msg_code, &[])
+    }
+
     /// Creates a new message from a set of fixed field values.
     ///
     /// Returns an error if the fixed field values provided are not

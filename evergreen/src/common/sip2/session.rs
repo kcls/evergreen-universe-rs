@@ -31,33 +31,26 @@ use std::fmt;
 
 const CACHE_PFX: &str = "sip2";
 
-const SUPPORTED_MESSAGES_LEN: usize = 16;
-
-pub type SupportedMessages = [&'static str; SUPPORTED_MESSAGES_LEN];
-
 /// Supported Messages (BX)
 ///
-/// Currently hard-coded, since it's based on availabilty of
-/// functionality in the code, but it could be moved into the database
-/// to limit access for specific setting groups.
-pub const INSTITUTION_SUPPORTS: SupportedMessages = [
-    "Y", // patron status request,
-    "Y", // checkout,
-    "Y", // checkin,
-    "N", // block patron,
-    "Y", // acs status,
-    "N", // request sc/acs resend,
-    "Y", // login,
-    "Y", // patron information,
-    "N", // end patron session,
-    "Y", // fee paid,
-    "Y", // item information,
-    "N", // item status update,
-    "N", // patron enable,
-    "N", // hold,
-    "Y", // renew,
-    "N", // renew all,
-];
+/// By order of appearance in the INSTITUTION_SUPPORTS string:
+/// patron status request
+/// checkout
+/// checkin
+/// block patron
+/// acs status
+/// request sc/acs resend
+/// login
+/// patron information
+/// end patron session
+/// fee paid
+/// item information
+/// item status update
+/// patron enable
+/// hold
+/// renew
+/// renew all
+const INSTITUTION_SUPPORTS: &str = "YYYNYNYYNYYNNNYN";
 
 #[derive(Debug)]
 pub struct SipFilter {
@@ -86,7 +79,7 @@ impl SipFilter {
 #[derive(Debug)]
 pub struct Config {
     institution: String,
-    supports: SupportedMessages,
+    supports: &'static str,
     settings: HashMap<String, EgValue>,
     filters: Vec<SipFilter>,
 }
@@ -95,17 +88,25 @@ impl Config {
     pub fn institution(&self) -> &str {
         &self.institution
     }
-    pub fn supports(&self) -> &SupportedMessages {
-        &self.supports
+    pub fn supports(&self) -> &'static str {
+        self.supports
     }
-    pub fn default_supports() -> &'static SupportedMessages {
-        &INSTITUTION_SUPPORTS
+    pub fn default_supports() -> &'static str {
+        INSTITUTION_SUPPORTS
     }
     pub fn settings(&self) -> &HashMap<String, EgValue> {
         &self.settings
     }
     pub fn filters(&self) -> &Vec<SipFilter> {
         &self.filters
+    }
+
+    pub fn setting_is_true(&self, name: &str) -> bool {
+        if let Some(val) = self.settings.get(name) {
+            val.boolish()
+        } else {
+            false
+        }
     }
 }
 
@@ -114,6 +115,9 @@ pub struct Session {
     seskey: String,
     sip_account: EgValue,
     config: Config,
+
+    /// Any time we encounter a new org unit, add it here.
+    org_cache: HashMap<i64, EgValue>,
 }
 
 impl fmt::Display for Session {
@@ -139,7 +143,16 @@ impl Session {
             editor: editor,
             sip_account,
             config,
+            org_cache: HashMap::new(),
         })
+    }
+
+    pub fn org_cache(&self) -> &HashMap<i64, EgValue> {
+        &self.org_cache
+    }
+
+    pub fn org_cache_mut(&mut self) -> &mut HashMap<i64, EgValue> {
+        &mut self.org_cache
     }
 
     pub fn editor(&mut self) -> &mut Editor {
