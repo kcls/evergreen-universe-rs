@@ -877,37 +877,4 @@ impl Session {
         log::debug!("{self} verifying password for user ID {user_id}");
         eg::common::user::verify_migrated_password(self.editor(), user_id, password, false)
     }
-
-    /*
-    pub fn handle_patron_status(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
-        let barcode = msg
-            .get_field_value("AA")
-            .ok_or_else(|| format!("handle_patron_status() missing patron barcode"))?;
-
-        let password_op = msg.get_field_value("AD"); // optional
-
-        let patron_op = self.get_patron_details(&barcode, password_op.as_deref(), None)?;
-        self.patron_response_common(
-            &sip2::spec::M_PATRON_STATUS_RESP,
-            &barcode,
-            patron_op.as_ref(),
-        )
-    }
-    */
-
-    /*
-    pub fn handle_end_patron_session(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
-        let resp = sip2::Message::from_values(
-            &sip2::spec::M_END_PATRON_SESSION_RESP,
-            &[sip2::util::sip_bool(true), &sip2::util::sip_date_now()],
-            &[
-                ("AO", self.config().institution()),
-                ("AA", msg.get_field_value("AA").unwrap_or("")),
-            ],
-        )
-        .unwrap();
-
-        Ok(resp)
-    }
-    */
 }

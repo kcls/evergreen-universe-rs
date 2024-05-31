@@ -52,5 +52,5 @@ fn parse_opensrf_message() {
     let msg_op = Message::from_json_value(body, true);
     assert!(msg_op.is_ok());
     let msg = msg_op.unwrap();
-    assert_eq!(msg.ingress(), "opensrf");
+    assert_eq!(msg.ingress(), Some("opensrf"));
 }

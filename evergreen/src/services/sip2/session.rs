@@ -256,6 +256,10 @@ impl Session {
         Cache::set_global(&format!("{CACHE_PFX}:{}", self.seskey), cache_val)
     }
 
+    pub fn remove_from_cache(&self) -> EgResult<()> {
+        Cache::del_global(&format!("{CACHE_PFX}:{}", self.seskey))
+    }
+
     /// Get a new authtoken from the ILS.
     ///
     /// This is necessary when creating a new session or when a session

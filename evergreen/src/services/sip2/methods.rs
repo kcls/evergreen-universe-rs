@@ -89,14 +89,14 @@ pub fn dispatch_sip_request(
         //        "11" => handle_checkout(&mut sip_ses, sip_msg)?,
         //        "15" => handle_hold(&mut sip_ses, sip_msg)?,
         "17" => handle_item_info(&mut sip_ses, sip_msg)?,
-        //        "23" => handle_patron_status(&mut sip_ses, sip_msg)?,
+        "23" => handle_patron_status(&mut sip_ses, sip_msg)?,
         //        "29" => handle_renew(&mut sip_ses, sip_msg)?,
-        //        "35" => handle_end_patron_session(&mut sip_ses, sip_msg)?,
+        "35" => handle_end_patron_session(&mut sip_ses, sip_msg)?,
         //        "37" => handle_payment(&mut sip_ses, sip_msg)?,
         "63" => handle_patron_info(&mut sip_ses, sip_msg)?,
         //        "65" => handle_renew_all(&mut sip_ses, sip_msg)?,
         //        "97" => handle_resend(&mut sip_ses, sip_msg)?,
-        //        "XS" => handle_end_session(&mut sip_ses, sip_msg)?,
+        "XS" => handle_end_session(&mut sip_ses, sip_msg)?,
         _ => return Err(format!("SIP message {msg_code} not implemented").into()),
     };
 
@@ -272,11 +272,7 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<s
 }
 
 fn handle_patron_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
-    let barcode = match sip_msg.get_field_value("AA") {
-        Some(b) => b,
-        None => return Ok(patron_response_common(sip_ses, "64", "", None)?),
-    };
-
+    let barcode = sip_msg.get_field_value("AA").unwrap_or("");
     let password_op = sip_msg.get_field_value("AD"); // optional
 
     let mut start_item = None;
@@ -348,6 +344,15 @@ fn handle_patron_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult
     };
 
     Ok(resp)
+}
+
+fn handle_patron_status(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    let barcode = sip_msg.get_field_value("AA").unwrap_or("");
+    let password_op = sip_msg.get_field_value("AD"); // optional
+
+    let patron_op = sip_ses.get_patron_details(&barcode, password_op.as_deref(), None)?;
+
+    patron_response_common(sip_ses, "24", &barcode, patron_op.as_ref())
 }
 
 fn patron_response_common(
@@ -445,4 +450,30 @@ fn patron_response_common(
     resp.maybe_add_field("BE", patron.email.as_deref());
 
     Ok(resp)
+}
+
+/// This is a no-op.  Just returns the expected response.
+fn handle_end_patron_session(
+    sip_ses: &mut Session,
+    sip_msg: sip2::Message,
+) -> EgResult<sip2::Message> {
+    let resp = sip2::Message::from_values(
+        "36",
+        &[sip2::util::sip_bool(true), &sip2::util::sip_date_now()],
+        &[
+            ("AO", sip_ses.config().institution()),
+            ("AA", sip_msg.get_field_value("AA").unwrap_or("")),
+        ],
+    )
+    .unwrap();
+
+    Ok(resp)
+}
+
+/// Remove the cached session data and auth data.
+///
+/// No removal of sip.account here since we never create those.
+fn handle_end_session(sip_ses: &mut Session, _sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    sip_ses.editor().clear_auth()?;
+    Ok(sip2::Message::from_code("XT").unwrap())
 }

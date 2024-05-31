@@ -173,6 +173,23 @@ impl Editor {
         Ok(false)
     }
 
+    /// Delete the auth session and remove any trace of the login session
+    /// from within.
+    pub fn clear_auth(&mut self) -> EgResult<()> {
+        self.requestor = None;
+
+        let token = match self.authtoken.take() {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        let service = "open-ils.auth";
+        let method = "open-ils.auth.session.retrieve";
+
+        let mut ses = self.client.session(service);
+        ses.request(method, token).map(|_| ())
+    }
+
     pub fn personality(&self) -> &Personality {
         &self.personality
     }

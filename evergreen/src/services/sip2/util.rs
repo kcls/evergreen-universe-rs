@@ -86,14 +86,15 @@ impl Session {
         for part in PATRON_NAME_PARTS {
             if let Some(n) = user[&format!("pref_{part}")]
                 .as_str()
-                .or(user[part].as_str())
+                .or_else(|| user[part].as_str())
             {
                 if first {
                     first = false;
                 } else {
-                    name += " ";
+                    name.push(' ');
                 }
-                name += n;
+
+                name.push_str(n);
             }
         }
 
@@ -103,34 +104,25 @@ impl Session {
     /// Format an address as a single line value
     pub fn format_address(&self, address: &EgValue) -> String {
         let mut addr = String::new();
-        if let Some(v) = address["street1"].as_str() {
-            addr += v;
-        }
-        if let Some(v) = address["street2"].as_str() {
-            if v.len() > 0 {
-                addr += " ";
-                addr += v;
+
+        let parts = [
+            "street1",
+            "street2",
+            "city",
+            "state",
+            "country",
+            "post_code",
+        ];
+
+        for &part in &parts {
+            if let Some(v) = address[part].as_str() {
+                if !v.is_empty() {
+                    if !addr.is_empty() {
+                        addr.push(' ');
+                    }
+                    addr.push_str(v);
+                }
             }
-        }
-        if let Some(v) = address["city"].as_str() {
-            addr += " ";
-            addr += v;
-        }
-        if let Some(v) = address["state"].as_str() {
-            if v.len() > 0 {
-                addr += " ";
-                addr += v;
-            }
-        }
-        if let Some(v) = address["country"].as_str() {
-            if v.len() > 0 {
-                addr += " ";
-                addr += v;
-            }
-        }
-        if let Some(v) = address["post_code"].as_str() {
-            addr += " ";
-            addr += v;
         }
 
         addr
