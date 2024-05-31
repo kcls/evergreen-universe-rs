@@ -1,10 +1,10 @@
-use evergreen as eg;
+use crate::session::Session;
 use eg::constants as C;
 use eg::date;
 use eg::EgResult;
 use eg::EgValue;
+use evergreen as eg;
 use std::fmt;
-use crate::session::Session;
 
 pub struct Item {
     pub barcode: String,

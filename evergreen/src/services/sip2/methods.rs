@@ -7,11 +7,13 @@ use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
-use sip2::util as sip_util;
-use sip2::Message;
+use sip2;
 
 // Import our local app module
 use crate::app;
+use crate::patron::Patron;
+use crate::patron::SummaryListOptions;
+use crate::patron::SummaryListType;
 use crate::session::Config;
 use crate::session::Session;
 
@@ -28,9 +30,9 @@ pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
             desc: "SIP2 Client Session Key",
         },
         StaticParam {
-            name: "Message",
+            name: "sip2::Message",
             datatype: ParamDataType::Object,
-            desc: "SIP2 Message JSON Value",
+            desc: "SIP2 sip2::Message JSON Value",
         },
     ],
 }];
@@ -46,7 +48,7 @@ pub fn dispatch_sip_request(
 
     let seskey = method.param(0).str()?;
 
-    let sip_msg = Message::from_json_value(&method.param(1).clone().into_json_value())
+    let sip_msg = sip2::Message::from_json_value(&method.param(1).clone().into_json_value())
         .map_err(|e| format!("Error parsing SIP message: {e}"))?;
 
     let mut editor = Editor::new(worker.client());
@@ -71,7 +73,7 @@ pub fn dispatch_sip_request(
             if msg_code == "XS" {
                 // End-session signal.  May as well handle it gracefully
 
-                let response = Message::from_code("XT").unwrap();
+                let response = sip2::Message::from_code("XT").unwrap();
 
                 let value = EgValue::from_json_value(response.to_json_value())?;
                 return session.respond_complete(value);
@@ -91,7 +93,7 @@ pub fn dispatch_sip_request(
         //        "29" => handle_renew(&mut sip_ses, sip_msg)?,
         //        "35" => handle_end_patron_session(&mut sip_ses, sip_msg)?,
         //        "37" => handle_payment(&mut sip_ses, sip_msg)?,
-        //        "63" => handle_patron_info(&mut sip_ses, sip_msg)?,
+        "63" => handle_patron_info(&mut sip_ses, sip_msg)?,
         //        "65" => handle_renew_all(&mut sip_ses, sip_msg)?,
         //        "97" => handle_resend(&mut sip_ses, sip_msg)?,
         //        "XS" => handle_end_session(&mut sip_ses, sip_msg)?,
@@ -103,9 +105,13 @@ pub fn dispatch_sip_request(
     session.respond_complete(value)
 }
 
-fn handle_login(editor: &mut Editor, seskey: &str, sip_msg: Message) -> EgResult<Message> {
+fn handle_login(
+    editor: &mut Editor,
+    seskey: &str,
+    sip_msg: sip2::Message,
+) -> EgResult<sip2::Message> {
     // Start with a login-failed response.
-    let mut response = Message::from_ff_values("94", &["0"]).unwrap();
+    let mut response = sip2::Message::from_ff_values("94", &["0"]).unwrap();
 
     let sip_username = sip_msg
         .get_field_value("CN")
@@ -149,20 +155,24 @@ fn handle_login(editor: &mut Editor, seskey: &str, sip_msg: Message) -> EgResult
     Ok(response)
 }
 
-fn handle_sc_status(editor: &mut Editor, seskey: &str, _sip_msg: Message) -> EgResult<Message> {
-    let mut response = Message::from_ff_values(
+fn handle_sc_status(
+    editor: &mut Editor,
+    seskey: &str,
+    _sip_msg: sip2::Message,
+) -> EgResult<sip2::Message> {
+    let mut response = sip2::Message::from_ff_values(
         "98",
         &[
-            sip_util::sip_bool(true),  // online_status
-            sip_util::sip_bool(true),  // checkin_ok
-            sip_util::sip_bool(true),  // checkout_ok
-            sip_util::sip_bool(true),  // acs_renewal_policy
-            sip_util::sip_bool(false), // status_update_ok
-            sip_util::sip_bool(false), // offline_ok
-            "999",                     // timeout_period
-            "999",                     // retries_allowed
-            &sip_util::sip_date_now(), // transaction date
-            "2.00",                    // protocol_version
+            sip2::util::sip_bool(true),  // online_status
+            sip2::util::sip_bool(true),  // checkin_ok
+            sip2::util::sip_bool(true),  // checkout_ok
+            sip2::util::sip_bool(true),  // acs_renewal_policy
+            sip2::util::sip_bool(false), // status_update_ok
+            sip2::util::sip_bool(false), // offline_ok
+            "999",                       // timeout_period
+            "999",                       // retries_allowed
+            &sip2::util::sip_date_now(), // transaction date
+            "2.00",                      // protocol_version
         ],
     )
     .unwrap();
@@ -201,7 +211,7 @@ fn handle_sc_status(editor: &mut Editor, seskey: &str, _sip_msg: Message) -> EgR
     Ok(response)
 }
 
-fn handle_item_info(sip_ses: &mut Session, sip_msg: Message) -> EgResult<Message> {
+fn handle_item_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
     let barcode = sip_msg.get_field_value("AB").unwrap_or("");
 
     let item = match sip_ses.get_item_details(barcode)? {
@@ -210,13 +220,13 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: Message) -> EgResult<Message
         None => {
             log::info!("{sip_ses} No copy found with barcode: {barcode}");
 
-            return Ok(Message::from_values(
+            return Ok(sip2::Message::from_values(
                 "18",
                 &[
-                    "01",                      // circ status: other/Unknown
-                    "01",                      // security marker: other/unknown
-                    "01",                      // fee type: other/unknown
-                    &sip_util::sip_date_now(), // transaction date
+                    "01",                        // circ status: other/Unknown
+                    "01",                        // security marker: other/unknown
+                    "01",                        // fee type: other/unknown
+                    &sip2::util::sip_date_now(), // transaction date
                 ],
                 &[("AB", barcode), ("AJ", "")],
             )
@@ -237,7 +247,7 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: Message) -> EgResult<Message
             item.circ_status,
             "02", // security marker
             &item.fee_type,
-            &sip_util::sip_date_now(),
+            &sip2::util::sip_date_now(),
         ],
         &[
             ("AB", &item.barcode),
@@ -257,6 +267,182 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: Message) -> EgResult<Message
     resp.maybe_add_field("CM", item.hold_pickup_date.as_deref());
     resp.maybe_add_field("CY", item.hold_patron_barcode.as_deref());
     resp.maybe_add_field("AH", item.due_date.as_deref());
+
+    Ok(resp)
+}
+
+fn handle_patron_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    let barcode = match sip_msg.get_field_value("AA") {
+        Some(b) => b,
+        None => return Ok(patron_response_common(sip_ses, "64", "", None)?),
+    };
+
+    let password_op = sip_msg.get_field_value("AD"); // optional
+
+    let mut start_item = None;
+    let mut end_item = None;
+
+    if let Some(s) = sip_msg.get_field_value("BP") {
+        if let Ok(v) = s.parse::<usize>() {
+            start_item = Some(v);
+        }
+    }
+
+    if let Some(s) = sip_msg.get_field_value("BQ") {
+        if let Ok(v) = s.parse::<usize>() {
+            end_item = Some(v);
+        }
+    }
+
+    // fixed fields are required for correctly formatted messages.
+    let summary_ff = &sip_msg.fixed_fields()[2];
+
+    // Position of the "Y" value, of which there should only be 1,
+    // indicates which type of extra summary data to include.
+    let list_type = match summary_ff.value().find("Y") {
+        Some(idx) => match idx {
+            0 => SummaryListType::HoldItems,
+            1 => SummaryListType::OverdueItems,
+            2 => SummaryListType::ChargedItems,
+            3 => SummaryListType::FineItems,
+            5 => SummaryListType::UnavailHoldItems,
+            _ => SummaryListType::Unsupported,
+        },
+        None => SummaryListType::Unsupported,
+    };
+
+    let list_ops = SummaryListOptions {
+        list_type: list_type.clone(),
+        start_item,
+        end_item,
+    };
+
+    let patron_op =
+        sip_ses.get_patron_details(&barcode, password_op.as_deref(), Some(&list_ops))?;
+
+    let mut resp = patron_response_common(sip_ses, "64", &barcode, patron_op.as_ref())?;
+
+    let patron = match patron_op {
+        Some(p) => p,
+        None => return Ok(resp),
+    };
+
+    resp.maybe_add_field("AQ", patron.home_lib.as_deref());
+    resp.maybe_add_field("BF", patron.phone.as_deref());
+    resp.maybe_add_field("PB", patron.dob.as_deref());
+    resp.maybe_add_field("PA", patron.expire_date.as_deref());
+    resp.maybe_add_field("PI", patron.net_access.as_deref());
+    resp.maybe_add_field("PC", patron.profile.as_deref());
+
+    if let Some(detail_items) = patron.detail_items {
+        let code = match list_type {
+            SummaryListType::HoldItems => "AS",
+            SummaryListType::OverdueItems => "AT",
+            SummaryListType::ChargedItems => "AU",
+            SummaryListType::FineItems => "AV",
+            SummaryListType::UnavailHoldItems => "CD",
+            _ => "",
+        };
+
+        detail_items.iter().for_each(|i| resp.add_field(code, i));
+    };
+
+    Ok(resp)
+}
+
+fn patron_response_common(
+    sip_ses: &mut Session,
+    msg_code: &str,
+    barcode: &str,
+    patron_op: Option<&Patron>,
+) -> EgResult<sip2::Message> {
+    let sbool = |v| sip2::util::space_bool(v); // local shorthand
+    let sipdate = sip2::util::sip_date_now();
+
+    if patron_op.is_none() {
+        log::warn!("Replying to patron lookup for not-found patron");
+
+        let resp = sip2::Message::from_values(
+            msg_code,
+            &[
+                "YYYY          ", // patron status
+                "000",            // language
+                &sipdate,
+                "0000", // holds count
+                "0000", // overdue count
+                "0000", // out count
+                "0000", // fine count
+                "0000", // recall count
+                "0000", // unavail holds count
+            ],
+            &[
+                ("AO", sip_ses.config().institution()),
+                ("AA", barcode),
+                ("AE", ""),  // Name
+                ("BL", "N"), // valid patron
+                ("CQ", "N"), // valid patron password
+            ],
+        )
+        .unwrap();
+
+        return Ok(resp);
+    }
+
+    let patron = patron_op.unwrap();
+
+    let summary = format!(
+        "{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+        sbool(patron.charge_denied),
+        sbool(patron.renew_denied),
+        sbool(patron.recall_denied),
+        sbool(patron.holds_denied),
+        sbool(!patron.card_active),
+        " ", // max charged
+        sbool(patron.max_overdue),
+        " ", // max renewals
+        " ", // max claims returned
+        " ", // max lost
+        sbool(patron.max_fines),
+        sbool(patron.max_fines),
+        " ", // recall overdue
+        sbool(patron.max_fines)
+    );
+
+    let cur_set = sip_ses.config().settings().get("currency");
+    let currency = if let Some(cur) = cur_set {
+        cur.str()?
+    } else {
+        "USD"
+    };
+
+    let mut resp = sip2::Message::from_values(
+        msg_code,
+        &[
+            &summary,
+            "000", // language
+            &sipdate,
+            &sip2::util::sip_count4(patron.holds_count),
+            &sip2::util::sip_count4(patron.items_overdue_count),
+            &sip2::util::sip_count4(patron.items_out_count),
+            &sip2::util::sip_count4(patron.fine_count),
+            &sip2::util::sip_count4(patron.recall_count),
+            &sip2::util::sip_count4(patron.unavail_holds_count),
+        ],
+        &[
+            ("AO", sip_ses.config().institution()),
+            ("AA", barcode),
+            ("AE", &patron.name),
+            ("BH", currency),
+            ("BL", sip2::util::sip_bool(true)), // valid patron
+            ("BV", &format!("{:.2}", patron.balance_owed)),
+            ("CQ", sip2::util::sip_bool(patron.password_verified)),
+            ("XI", &format!("{}", patron.id)),
+        ],
+    )
+    .unwrap();
+
+    resp.maybe_add_field("BD", patron.address.as_deref());
+    resp.maybe_add_field("BE", patron.email.as_deref());
 
     Ok(resp)
 }

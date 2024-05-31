@@ -1,9 +1,10 @@
 use eg::osrf::server::Server;
 use evergreen as eg;
 pub mod app;
-pub mod methods;
-pub mod session;
 pub mod item;
+pub mod methods;
+pub mod patron;
+pub mod session;
 pub mod util;
 
 fn main() {
