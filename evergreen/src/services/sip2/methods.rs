@@ -40,15 +40,20 @@ pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
 pub fn dispatch_sip_request(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: message::MethodCall,
+    mut method: message::MethodCall,
 ) -> EgResult<()> {
     message::set_thread_ingress("sip2");
-
     let worker = app::Sip2Worker::downcast(worker)?;
 
-    let seskey = method.param(0).str()?;
+    let mut params = method.take_params();
 
-    let sip_msg = sip2::Message::from_json_value(&method.param(1).clone().into_json_value())
+    // These 2 params are guaranteed to exist
+    let seskey_param = params.remove(0);
+    let sip_msg_param = params.remove(0);
+
+    let seskey = seskey_param.str()?;
+
+    let sip_msg = sip2::Message::from_json_value(sip_msg_param.into_json_value())
         .map_err(|e| format!("Error parsing SIP message: {e}"))?;
 
     let mut editor = Editor::new(worker.client());
