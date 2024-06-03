@@ -6,6 +6,7 @@ pub mod checkout;
 pub mod item;
 pub mod methods;
 pub mod patron;
+pub mod payment;
 pub mod session;
 pub mod util;
 

@@ -94,7 +94,7 @@ pub fn dispatch_sip_request(
         "23" => handle_patron_status(&mut sip_ses, sip_msg)?,
         "29" => handle_renew(&mut sip_ses, sip_msg)?,
         "35" => handle_end_patron_session(&mut sip_ses, sip_msg)?,
-        //        "37" => handle_payment(&mut sip_ses, sip_msg)?,
+        "37" => handle_payment(&mut sip_ses, sip_msg)?,
         "63" => handle_patron_info(&mut sip_ses, sip_msg)?,
         "65" => handle_renew_all(&mut sip_ses, sip_msg)?,
         //        "97" => handle_resend(&mut sip_ses, sip_msg)?,
@@ -321,4 +321,8 @@ fn handle_end_patron_session(
 fn handle_end_session(sip_ses: &mut Session, _sip_msg: sip2::Message) -> EgResult<sip2::Message> {
     sip_ses.editor().clear_auth()?;
     Ok(sip2::Message::from_code("XT").unwrap())
+}
+
+fn handle_payment(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    sip_ses.handle_payment(sip_msg)
 }

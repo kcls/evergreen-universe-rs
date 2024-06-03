@@ -13,6 +13,12 @@ use std::sync::Arc;
 /// for shutdown, etc. signals.
 const SIG_POLL_INTERVAL: u64 = 5;
 
+// TODO make configurable?
+//const EG_SERVICE: &str = "open-ils.sip2";
+//const EG_METHOD: &str = "open-ils.sip2.request";
+const EG_SERVICE: &str = "open-ils.rs-sip2";
+const EG_METHOD: &str = "open-ils.rs-sip2.request";
+
 /// Manages the connection between a SIP client and the Evergreen backend.
 pub struct Session {
     sip_connection: sip2::Connection,
@@ -172,7 +178,7 @@ impl Session {
         // Uses the default request timeout (probably 60 seconds).
         let response = self
             .client
-            .send_recv_one("open-ils.sip2", "open-ils.sip2.request", params)?
+            .send_recv_one(EG_SERVICE, EG_METHOD, params)?
             .ok_or_else(|| format!("{self} no response received"))?;
 
         log::debug!("{self} ILS response JSON: {response}");
