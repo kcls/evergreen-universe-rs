@@ -452,8 +452,11 @@ impl Worker {
         let param_count = method_call.params().len();
         let api_name = method_call.method().to_string();
 
-        let log_params =
-            util::stringify_params(&api_name, method_call.params(), conf::config().log_protect());
+        let log_params = util::stringify_params(
+            &api_name,
+            method_call.params(),
+            conf::config().log_protect(),
+        );
 
         // Log the API call
         log::info!("CALL: {} {}", api_name, log_params);

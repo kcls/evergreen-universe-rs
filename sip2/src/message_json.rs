@@ -144,7 +144,8 @@ impl Message {
     pub fn from_json_value(mut json_value: json::JsonValue) -> Result<Message, SipJsonError> {
         // Start with a message that's just the code plus fixed fields
         // as a SIP string.
-        let mut strbuf = json_value["code"].take_string()
+        let mut strbuf = json_value["code"]
+            .take_string()
             .ok_or_else(|| SipJsonError::MessageFormatError(format!("Message requires a code")))?;
 
         while json_value["fixed_fields"].len() > 0 {

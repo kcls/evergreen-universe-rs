@@ -123,6 +123,5 @@ impl ApplicationWorker for HoldTargeterWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _api_name: &str, _error: EgError) {
-    }
+    fn api_call_error(&mut self, _api_name: &str, _error: EgError) {}
 }
