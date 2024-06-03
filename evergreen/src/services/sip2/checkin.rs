@@ -8,50 +8,13 @@ use eg::EgValue;
 use evergreen as eg;
 use std::collections::HashMap;
 
-// TODO move AlerType into sip2::spec
-pub enum AlertType {
-    Unknown,
-    LocalHold,
-    RemoteHold,
-    Ill,
-    Transit,
-    Other,
-}
-
-impl From<&str> for AlertType {
-    fn from(v: &str) -> AlertType {
-        match v {
-            "00" => Self::Unknown,
-            "01" => Self::LocalHold,
-            "02" => Self::RemoteHold,
-            "03" => Self::Ill,
-            "04" => Self::Transit,
-            "99" => Self::Other,
-            _ => panic!("Unknown alert type: {}", v),
-        }
-    }
-}
-
-impl From<AlertType> for &str {
-    fn from(a: AlertType) -> &'static str {
-        match a {
-            AlertType::Unknown => "00",
-            AlertType::LocalHold => "01",
-            AlertType::RemoteHold => "02",
-            AlertType::Ill => "03",
-            AlertType::Transit => "04",
-            AlertType::Other => "99",
-        }
-    }
-}
-
 pub struct CheckinResult {
     ok: bool,
     current_loc: String,
     permanent_loc: String,
     destination_loc: Option<String>,
     patron_barcode: Option<String>,
-    alert_type: Option<AlertType>,
+    alert_type: Option<sip2::spec::CheckinAlert>,
     hold_patron_name: Option<String>,
     hold_patron_barcode: Option<String>,
 }
@@ -164,7 +127,7 @@ impl Session {
             permanent_loc: item.permanent_loc.to_string(),
             destination_loc: None,
             patron_barcode: None,
-            alert_type: Some(AlertType::Other),
+            alert_type: Some(sip2::spec::CheckinAlert::Other),
             hold_patron_name: None,
             hold_patron_barcode: None,
         })
@@ -183,7 +146,7 @@ impl Session {
             &[
                 ("AB", &barcode),
                 ("AO", self.config().institution()),
-                ("CV", AlertType::Unknown.into()),
+                ("CV", sip2::spec::CheckinAlert::Unknown.into()),
             ],
         )
         .unwrap()
@@ -347,12 +310,12 @@ impl Session {
         } else if evt.textcode().eq("ROUTE_ITEM") {
             result.ok = true;
             if result.alert_type.is_none() {
-                result.alert_type = Some(AlertType::Transit);
+                result.alert_type = Some(sip2::spec::CheckinAlert::Transit);
             }
         } else {
             result.ok = false;
             if result.alert_type.is_none() {
-                result.alert_type = Some(AlertType::Unknown);
+                result.alert_type = Some(sip2::spec::CheckinAlert::Unknown);
             }
         }
 
@@ -510,12 +473,12 @@ impl Session {
         } else if evt.textcode().eq("ROUTE_ITEM") {
             result.ok = true;
             if result.alert_type.is_none() {
-                result.alert_type = Some(AlertType::Transit);
+                result.alert_type = Some(sip2::spec::CheckinAlert::Transit);
             }
         } else {
             result.ok = false;
             if result.alert_type.is_none() {
-                result.alert_type = Some(AlertType::Unknown);
+                result.alert_type = Some(sip2::spec::CheckinAlert::Unknown);
             }
         }
 
@@ -566,9 +529,9 @@ impl Session {
         }
 
         if pickup_lib_id == self.editor().perm_org() {
-            result.alert_type = Some(AlertType::LocalHold);
+            result.alert_type = Some(sip2::spec::CheckinAlert::LocalHold);
         } else {
-            result.alert_type = Some(AlertType::RemoteHold);
+            result.alert_type = Some(sip2::spec::CheckinAlert::RemoteHold);
         }
 
         Ok(())

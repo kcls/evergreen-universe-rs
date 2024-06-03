@@ -40,6 +40,7 @@ pub fn dispatch_sip_request(
     mut method: message::MethodCall,
 ) -> EgResult<()> {
     message::set_thread_ingress("sip2");
+
     let worker = app::Sip2Worker::downcast(worker)?;
 
     let mut params = method.take_params();
@@ -86,10 +87,10 @@ pub fn dispatch_sip_request(
     };
 
     let response = match msg_code {
-        //        "01" => handle_block(&mut sip_ses, sip_msg)?,
+        // "01" => handle_block(&mut sip_ses, sip_msg)?,
         "09" => handle_checkin(&mut sip_ses, sip_msg)?,
         "11" => handle_checkout(&mut sip_ses, sip_msg)?,
-        //        "15" => handle_hold(&mut sip_ses, sip_msg)?,
+        // "15" => handle_hold(&mut sip_ses, sip_msg)?,
         "17" => handle_item_info(&mut sip_ses, sip_msg)?,
         "23" => handle_patron_status(&mut sip_ses, sip_msg)?,
         "29" => handle_renew(&mut sip_ses, sip_msg)?,
@@ -97,9 +98,9 @@ pub fn dispatch_sip_request(
         "37" => handle_payment(&mut sip_ses, sip_msg)?,
         "63" => handle_patron_info(&mut sip_ses, sip_msg)?,
         "65" => handle_renew_all(&mut sip_ses, sip_msg)?,
-        //        "97" => handle_resend(&mut sip_ses, sip_msg)?,
+        // "97" => handle_resend(&mut sip_ses, sip_msg)?,
         "XS" => handle_end_session(&mut sip_ses, sip_msg)?,
-        _ => return Err(format!("SIP message {msg_code} not implemented").into()),
+        _ => return Err(format!("SIP message '{msg_code}' not implemented").into()),
     };
 
     let value = EgValue::from_json_value(response.to_json_value())?;
