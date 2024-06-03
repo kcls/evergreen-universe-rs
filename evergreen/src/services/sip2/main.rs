@@ -1,6 +1,7 @@
 use eg::osrf::server::Server;
 use evergreen as eg;
 pub mod app;
+pub mod checkin;
 pub mod checkout;
 pub mod item;
 pub mod methods;
