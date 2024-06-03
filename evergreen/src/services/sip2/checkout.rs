@@ -35,12 +35,16 @@ impl CheckoutResult {
 }
 
 impl Session {
-    pub fn handle_checkout(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
+    fn checkout_renew_common(
+        &mut self,
+        msg: &sip2::Message,
+        is_explicit_renewal: bool,
+    ) -> EgResult<sip2::Message> {
         let item_barcode = match msg.get_field_value("AB") {
             Some(v) => v,
             None => {
                 log::error!("checkout() missing item barcode");
-                return Ok(self.checkout_item_not_found("", ""));
+                return Ok(self.checkout_item_not_found("", "", is_explicit_renewal));
             }
         };
 
@@ -48,7 +52,7 @@ impl Session {
             Some(v) => v,
             None => {
                 log::error!("checkout() missing patron barcode");
-                return Ok(self.checkout_item_not_found(&item_barcode, ""));
+                return Ok(self.checkout_item_not_found(&item_barcode, "", is_explicit_renewal));
             }
         };
 
@@ -58,26 +62,46 @@ impl Session {
 
         let item = match self.get_item_details(&item_barcode)? {
             Some(c) => c,
-            None => return Ok(self.checkout_item_not_found(&item_barcode, &patron_barcode)),
+            None => {
+                return Ok(self.checkout_item_not_found(
+                    &item_barcode,
+                    &patron_barcode,
+                    is_explicit_renewal,
+                ))
+            }
         };
 
         let patron = match self.get_patron_details(&patron_barcode, None, None)? {
             Some(c) => c,
-            None => return Ok(self.checkout_item_not_found(&item_barcode, &patron_barcode)),
+            None => {
+                return Ok(self.checkout_item_not_found(
+                    &item_barcode,
+                    &patron_barcode,
+                    is_explicit_renewal,
+                ))
+            }
         };
 
+        let same_patron = item.circ_patron_id == Some(patron.id);
         let renew_ok = msg.fixed_fields()[0].value().eq("Y");
-        let same_patron = item.circ_patron_id.unwrap_or(-1) == patron.id;
 
         let result = self.checkout(
             &item_barcode,
             &patron_barcode,
             fee_ack_op.is_some(),
-            renew_ok && same_patron, // is_renewal
+            is_explicit_renewal || (renew_ok && same_patron), // is_renewal
             self.config().setting_is_true("checkout_override_all"),
         )?;
 
-        self.compile_checkout_response(&item, &patron, &result)
+        self.compile_checkout_response(&item, &patron, &result, is_explicit_renewal)
+    }
+
+    pub fn handle_checkout(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
+        self.checkout_renew_common(msg, false)
+    }
+
+    pub fn handle_renew(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
+        self.checkout_renew_common(msg, true)
     }
 
     fn compile_checkout_response(
@@ -85,11 +109,13 @@ impl Session {
         item: &Item,
         patron: &Patron,
         result: &CheckoutResult,
+        is_explicit_renewal: bool,
     ) -> EgResult<sip2::Message> {
         let magnetic = item.magnetic_media;
+        let msg_code = if is_explicit_renewal { "30" } else { "12" };
 
         let mut resp = sip2::Message::from_values(
-            "12",
+            msg_code,
             &[
                 sip2::util::num_bool(result.circ_id.is_some()), // checkin ok
                 sip2::util::sip_bool(result.was_renewal),       // renew ok
@@ -127,9 +153,12 @@ impl Session {
         &self,
         item_barcode: &str,
         patron_barcode: &str,
+        is_explicit_renewal: bool,
     ) -> sip2::Message {
+        let msg_code = if is_explicit_renewal { "30" } else { "12" };
+
         sip2::Message::from_values(
-            "12",
+            msg_code,
             &[
                 "0",                         // checkin ok
                 "N",                         // renew ok
@@ -221,7 +250,10 @@ impl Session {
                 result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
-                if self.config().setting_is_true("due_date_use_sip_date_format") {
+                if self
+                    .config()
+                    .setting_is_true("due_date_use_sip_date_format")
+                {
                     let due_dt = date::parse_datetime(iso_date)?;
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
@@ -234,7 +266,9 @@ impl Session {
             }
         }
 
-        let can_override = self.config().setting_is_true(&format!("checkout.override.{}", evt.textcode()));
+        let can_override = self
+            .config()
+            .setting_is_true(&format!("checkout.override.{}", evt.textcode()));
 
         if !ovride && can_override {
             return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
@@ -250,14 +284,15 @@ impl Session {
         }
 
         if evt.textcode().eq("OPEN_CIRCULATION_EXISTS") {
-            let msg = self.editor()
+            let msg = self
+                .editor()
                 .retrieve("sipsm", "checkout.open_circ_exists")?
                 .ok_or_else(|| self.editor().die_event())?;
 
             result.screen_msg = Some(msg["message"].string()?)
-
         } else {
-            let msg = self.editor()
+            let msg = self
+                .editor()
                 .retrieve("sipsm", "checkout.patron_not_allowed")?
                 .ok_or_else(|| self.editor().die_event())?;
 
@@ -328,7 +363,10 @@ impl Session {
                 result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
-                if self.config().setting_is_true("due_date_use_sip_date_format") {
+                if self
+                    .config()
+                    .setting_is_true("due_date_use_sip_date_format")
+                {
                     let due_dt = date::parse_datetime(iso_date)?;
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
@@ -341,7 +379,9 @@ impl Session {
             }
         }
 
-        let can_override = self.config().setting_is_true(&format!("checkout.override.{}", evt.textcode()));
+        let can_override = self
+            .config()
+            .setting_is_true(&format!("checkout.override.{}", evt.textcode()));
 
         if !ovride && can_override {
             return self.checkout(item_barcode, patron_barcode, fee_ack, is_renewal, true);
@@ -357,14 +397,15 @@ impl Session {
         }
 
         if evt.textcode().eq("OPEN_CIRCULATION_EXISTS") {
-            let msg = self.editor()
+            let msg = self
+                .editor()
                 .retrieve("sipsm", "checkout.open_circ_exists")?
                 .ok_or_else(|| self.editor().die_event())?;
 
             result.screen_msg = Some(msg["message"].string()?)
-
         } else {
-            let msg = self.editor()
+            let msg = self
+                .editor()
                 .retrieve("sipsm", "checkout.patron_not_allowed")?
                 .ok_or_else(|| self.editor().die_event())?;
 

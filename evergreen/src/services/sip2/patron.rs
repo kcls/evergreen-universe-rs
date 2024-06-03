@@ -877,4 +877,185 @@ impl Session {
         log::debug!("{self} verifying password for user ID {user_id}");
         eg::common::user::verify_migrated_password(self.editor(), user_id, password, false)
     }
+
+    pub fn handle_patron_status(&mut self, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+        let barcode = sip_msg.get_field_value("AA").unwrap_or("");
+        let password_op = sip_msg.get_field_value("AD"); // optional
+
+        let patron_op = self.get_patron_details(&barcode, password_op.as_deref(), None)?;
+
+        self.patron_response_common("24", &barcode, patron_op.as_ref())
+    }
+
+    pub fn handle_patron_info(&mut self, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+        let barcode = sip_msg.get_field_value("AA").unwrap_or("");
+        let password_op = sip_msg.get_field_value("AD"); // optional
+
+        let mut start_item = None;
+        let mut end_item = None;
+
+        if let Some(s) = sip_msg.get_field_value("BP") {
+            if let Ok(v) = s.parse::<usize>() {
+                start_item = Some(v);
+            }
+        }
+
+        if let Some(s) = sip_msg.get_field_value("BQ") {
+            if let Ok(v) = s.parse::<usize>() {
+                end_item = Some(v);
+            }
+        }
+
+        // fixed fields are required for correctly formatted messages.
+        let summary_ff = &sip_msg.fixed_fields()[2];
+
+        // Position of the "Y" value, of which there should only be 1,
+        // indicates which type of extra summary data to include.
+        let list_type = match summary_ff.value().find("Y") {
+            Some(idx) => match idx {
+                0 => SummaryListType::HoldItems,
+                1 => SummaryListType::OverdueItems,
+                2 => SummaryListType::ChargedItems,
+                3 => SummaryListType::FineItems,
+                5 => SummaryListType::UnavailHoldItems,
+                _ => SummaryListType::Unsupported,
+            },
+            None => SummaryListType::Unsupported,
+        };
+
+        let list_ops = SummaryListOptions {
+            list_type: list_type.clone(),
+            start_item,
+            end_item,
+        };
+
+        let patron_op =
+            self.get_patron_details(&barcode, password_op.as_deref(), Some(&list_ops))?;
+
+        let mut resp = self.patron_response_common("64", &barcode, patron_op.as_ref())?;
+
+        let patron = match patron_op {
+            Some(p) => p,
+            None => return Ok(resp),
+        };
+
+        resp.maybe_add_field("AQ", patron.home_lib.as_deref());
+        resp.maybe_add_field("BF", patron.phone.as_deref());
+        resp.maybe_add_field("PB", patron.dob.as_deref());
+        resp.maybe_add_field("PA", patron.expire_date.as_deref());
+        resp.maybe_add_field("PI", patron.net_access.as_deref());
+        resp.maybe_add_field("PC", patron.profile.as_deref());
+
+        if let Some(detail_items) = patron.detail_items {
+            let code = match list_type {
+                SummaryListType::HoldItems => "AS",
+                SummaryListType::OverdueItems => "AT",
+                SummaryListType::ChargedItems => "AU",
+                SummaryListType::FineItems => "AV",
+                SummaryListType::UnavailHoldItems => "CD",
+                _ => "",
+            };
+
+            detail_items.iter().for_each(|i| resp.add_field(code, i));
+        };
+
+        Ok(resp)
+    }
+
+    fn patron_response_common(
+        &mut self,
+        msg_code: &str,
+        barcode: &str,
+        patron_op: Option<&Patron>,
+    ) -> EgResult<sip2::Message> {
+        let sbool = |v| sip2::util::space_bool(v); // local shorthand
+        let sipdate = sip2::util::sip_date_now();
+
+        if patron_op.is_none() {
+            log::warn!("Replying to patron lookup for not-found patron");
+
+            let resp = sip2::Message::from_values(
+                msg_code,
+                &[
+                    "YYYY          ", // patron status
+                    "000",            // language
+                    &sipdate,
+                    "0000", // holds count
+                    "0000", // overdue count
+                    "0000", // out count
+                    "0000", // fine count
+                    "0000", // recall count
+                    "0000", // unavail holds count
+                ],
+                &[
+                    ("AO", self.config().institution()),
+                    ("AA", barcode),
+                    ("AE", ""),  // Name
+                    ("BL", "N"), // valid patron
+                    ("CQ", "N"), // valid patron password
+                ],
+            )
+            .unwrap();
+
+            return Ok(resp);
+        }
+
+        let patron = patron_op.unwrap();
+
+        let summary = format!(
+            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+            sbool(patron.charge_denied),
+            sbool(patron.renew_denied),
+            sbool(patron.recall_denied),
+            sbool(patron.holds_denied),
+            sbool(!patron.card_active),
+            " ", // max charged
+            sbool(patron.max_overdue),
+            " ", // max renewals
+            " ", // max claims returned
+            " ", // max lost
+            sbool(patron.max_fines),
+            sbool(patron.max_fines),
+            " ", // recall overdue
+            sbool(patron.max_fines)
+        );
+
+        let cur_set = self.config().settings().get("currency");
+        let currency = if let Some(cur) = cur_set {
+            cur.str()?
+        } else {
+            "USD"
+        };
+
+        let mut resp = sip2::Message::from_values(
+            msg_code,
+            &[
+                &summary,
+                "000", // language
+                &sipdate,
+                &sip2::util::sip_count4(patron.holds_count),
+                &sip2::util::sip_count4(patron.items_overdue_count),
+                &sip2::util::sip_count4(patron.items_out_count),
+                &sip2::util::sip_count4(patron.fine_count),
+                &sip2::util::sip_count4(patron.recall_count),
+                &sip2::util::sip_count4(patron.unavail_holds_count),
+            ],
+            &[
+                ("AO", self.config().institution()),
+                ("AA", barcode),
+                ("AE", &patron.name),
+                ("BH", currency),
+                ("BL", sip2::util::sip_bool(true)), // valid patron
+                ("BV", &format!("{:.2}", patron.balance_owed)),
+                ("CQ", sip2::util::sip_bool(patron.password_verified)),
+                ("XI", &format!("{}", patron.id)),
+            ],
+        )
+        .unwrap();
+
+        resp.maybe_add_field("BD", patron.address.as_deref());
+        resp.maybe_add_field("BE", patron.email.as_deref());
+
+        Ok(resp)
+    }
 }

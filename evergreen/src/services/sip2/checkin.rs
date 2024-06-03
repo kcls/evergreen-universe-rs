@@ -145,7 +145,10 @@ impl Session {
     fn handle_block_on_checked_out(&self, item: &item::Item) -> Option<CheckinResult> {
         // There is no seed data for checkin_block_on_checked_out, so this will
         // always be false unless locally modified.
-        if !self.config().setting_is_true("checkin_block_on_checked_out") {
+        if !self
+            .config()
+            .setting_is_true("checkin_block_on_checked_out")
+        {
             return None;
         }
 
@@ -254,7 +257,8 @@ impl Session {
         let params = vec![EgValue::from(self.editor().authtoken().unwrap()), args];
 
         let mut resp =
-            match self.editor()
+            match self
+                .editor()
                 .client_mut()
                 .send_recv_one("open-ils.circ", method, params)?
             {
@@ -273,7 +277,9 @@ impl Session {
         let evt = eg::event::EgEvent::parse(&evt_json)
             .ok_or(format!("API call {method} failed to return an event"))?;
 
-        let can_override = self.config().setting_is_true(&format!("checkin.override.{}", evt.textcode()));
+        let can_override = self
+            .config()
+            .setting_is_true(&format!("checkin.override.{}", evt.textcode()));
 
         if !ovride && can_override {
             return self.checkin(item, current_loc_op, return_date, cancel, true);
@@ -398,7 +404,10 @@ impl Session {
         }
 
         if !options.contains_key("circ_lib") {
-            options.insert("circ_lib".to_string(), EgValue::from(self.editor().perm_org()));
+            options.insert(
+                "circ_lib".to_string(),
+                EgValue::from(self.editor().perm_org()),
+            );
         }
 
         log::info!("{self} checkin with params: {:?}", options);
@@ -430,7 +439,9 @@ impl Session {
             }
         };
 
-        let can_override = self.config().setting_is_true(&format!("checkin.override.{}", evt.textcode()));
+        let can_override = self
+            .config()
+            .setting_is_true(&format!("checkin.override.{}", evt.textcode()));
 
         if !ovride && can_override {
             return self.checkin(item, current_loc_op, return_date, cancel, true);
