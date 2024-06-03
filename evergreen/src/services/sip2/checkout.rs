@@ -35,6 +35,88 @@ impl CheckoutResult {
 }
 
 impl Session {
+    pub fn handle_renew_all(&mut self, sip_msg: &sip2::Message) -> EgResult<sip2::Message> {
+        let patron_barcode = sip_msg
+            .get_field_value("AA")
+            .ok_or_else(|| format!("{self} checkout message has no patron barcode value"))?;
+
+        let password_op = sip_msg.get_field_value("AD"); // optional
+        let fee_ack_op = sip_msg.get_field_value("BO");
+
+        let patron = match self.get_patron_details(&patron_barcode, password_op, None)? {
+            Some(c) => c,
+            None => {
+                // Stub response
+                let response = sip2::Message::from_values(
+                    "66",
+                    &[
+                        "0",
+                        &sip2::util::sip_count4(0), // renewed count
+                        &sip2::util::sip_count4(0), // unrenewed count
+                        &sip2::util::sip_date_now(),
+                    ],
+                    &[("AA", patron_barcode), ("AO", self.config().institution())],
+                )
+                .unwrap();
+
+                return Ok(response);
+            }
+        };
+
+        let mut items_renewed = Vec::new();
+        let mut items_unrenewed = Vec::new();
+
+        for item_id in patron
+            .items_overdue_ids
+            .iter()
+            .chain(patron.items_out_ids.iter())
+        {
+            let item = self
+                .editor()
+                .retrieve("acp", *item_id)?
+                .ok_or_else(|| self.editor().die_event())?;
+
+            let item_barcode = item["barcode"].str()?;
+
+            let result = self.checkout(
+                &item_barcode,
+                &patron_barcode,
+                fee_ack_op.is_some(),
+                true, // is_explicit_renewal
+                self.config().setting_is_true("checkout_override_all"),
+            )?;
+
+            // Presence of circ id indicates success
+            if result.circ_id.is_some() {
+                items_renewed.push(item_barcode.to_string());
+            } else {
+                items_unrenewed.push(item_barcode.to_string());
+            }
+        }
+
+        let mut response = sip2::Message::from_values(
+            "66",
+            &[
+                "1", // success
+                &sip2::util::sip_count4(items_renewed.len()),
+                &sip2::util::sip_count4(items_unrenewed.len()),
+                &sip2::util::sip_date_now(),
+            ],
+            &[("AA", patron_barcode), ("AO", self.config().institution())],
+        )
+        .unwrap();
+
+        for barcode in items_renewed {
+            response.add_field("BM", &barcode);
+        }
+
+        for barcode in items_unrenewed {
+            response.add_field("BN", &barcode);
+        }
+
+        Ok(response)
+    }
+
     fn checkout_renew_common(
         &mut self,
         msg: &sip2::Message,

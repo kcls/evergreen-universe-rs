@@ -96,7 +96,7 @@ pub fn dispatch_sip_request(
         "35" => handle_end_patron_session(&mut sip_ses, sip_msg)?,
         //        "37" => handle_payment(&mut sip_ses, sip_msg)?,
         "63" => handle_patron_info(&mut sip_ses, sip_msg)?,
-        //        "65" => handle_renew_all(&mut sip_ses, sip_msg)?,
+        "65" => handle_renew_all(&mut sip_ses, sip_msg)?,
         //        "97" => handle_resend(&mut sip_ses, sip_msg)?,
         "XS" => handle_end_session(&mut sip_ses, sip_msg)?,
         _ => return Err(format!("SIP message {msg_code} not implemented").into()),
@@ -291,6 +291,10 @@ fn handle_checkin(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip
 
 fn handle_renew(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
     sip_ses.handle_renew(&sip_msg)
+}
+
+fn handle_renew_all(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    sip_ses.handle_renew_all(&sip_msg)
 }
 
 /// This is a no-op.  Just returns the expected response.
