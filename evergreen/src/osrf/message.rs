@@ -467,6 +467,11 @@ impl Message {
     pub fn payload_mut(&mut self) -> &mut Payload {
         &mut self.payload
     }
+    /// Returns the message payload, replacing the value on the
+    /// message with Payload::NoPayload.
+    pub fn take_payload(&mut self) -> Payload {
+        std::mem::replace(&mut self.payload, Payload::NoPayload)
+    }
 
     pub fn api_level(&self) -> u8 {
         self.api_level

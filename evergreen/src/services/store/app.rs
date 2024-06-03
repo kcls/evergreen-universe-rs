@@ -2,7 +2,6 @@ use eg::db::{DatabaseConnection, DatabaseConnectionBuilder};
 use eg::idl;
 use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::conf;
-use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::osrf::sclient::HostSettings;
 use eg::Client;
@@ -327,7 +326,7 @@ impl ApplicationWorker for RsStoreWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::MethodCall, error: EgError) {
+    fn api_call_error(&mut self, _api_name: &str, error: EgError) {
         log::debug!("API failed: {error}");
         self.end_session().ok(); // ignore additional errors
     }

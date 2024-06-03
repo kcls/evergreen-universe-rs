@@ -1,5 +1,4 @@
 use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
-use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::Client;
 use eg::EgError;
@@ -124,7 +123,6 @@ impl ApplicationWorker for HoldTargeterWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::MethodCall, error: EgError) {
-        log::debug!("API failed: {error}");
+    fn api_call_error(&mut self, _api_name: &str, _error: EgError) {
     }
 }

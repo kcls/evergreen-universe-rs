@@ -508,7 +508,7 @@ impl Server {
 fn system_method_echo(
     _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let count = method.params().len();
     for (idx, val) in method.params().iter().enumerate() {
@@ -527,7 +527,7 @@ fn system_method_echo(
 fn system_method_time(
     _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    _method: &message::MethodCall,
+    _method: message::MethodCall,
 ) -> EgResult<()> {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => session.respond_complete(t.as_secs()),
@@ -538,7 +538,7 @@ fn system_method_time(
 fn system_method_introspect(
     worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let prefix = match method.params().get(0) {
         Some(p) => p.as_str(),

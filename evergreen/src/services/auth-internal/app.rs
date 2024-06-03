@@ -1,6 +1,5 @@
 use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::cache::Cache;
-use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::Client;
 use eg::EgError;
@@ -132,5 +131,5 @@ impl ApplicationWorker for RsAuthInternalWorker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::MethodCall, _error: EgError) {}
+    fn api_call_error(&mut self, _api_name: &str, _error: EgError) {}
 }

@@ -63,7 +63,7 @@ pub static METHODS: &[StaticMethodDef] = &[
 pub fn catalog_record_summary(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsSearchWorker::downcast(worker)?;
 
