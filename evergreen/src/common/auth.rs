@@ -65,6 +65,17 @@ pub struct LoginArgs {
 }
 
 impl LoginArgs {
+    /// # Examples
+    /// ```
+    /// use evergreen::common::auth;
+    /// let args = auth::LoginArgs::new(
+    ///   "my-staff-username",
+    ///   "my-staff-password",
+    ///   auth::LoginType::Staff,
+    ///   Some("branch1-circ-workstation")
+    /// );
+    /// assert_eq!(args.username(), "my-staff-username");
+    /// ```
     pub fn new(
         username: &str,
         password: &str,
