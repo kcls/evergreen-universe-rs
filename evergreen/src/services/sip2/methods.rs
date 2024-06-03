@@ -87,7 +87,7 @@ pub fn dispatch_sip_request(
     };
 
     let response = match msg_code {
-        // "01" => handle_block(&mut sip_ses, sip_msg)?,
+        "01" => handle_block_patron(&mut sip_ses, sip_msg)?,
         "09" => handle_checkin(&mut sip_ses, sip_msg)?,
         "11" => handle_checkout(&mut sip_ses, sip_msg)?,
         // "15" => handle_hold(&mut sip_ses, sip_msg)?,
@@ -326,4 +326,8 @@ fn handle_end_session(sip_ses: &mut Session, _sip_msg: sip2::Message) -> EgResul
 
 fn handle_payment(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
     sip_ses.handle_payment(sip_msg)
+}
+
+fn handle_block_patron(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    sip_ses.handle_block_patron(sip_msg)
 }

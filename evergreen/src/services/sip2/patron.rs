@@ -1,6 +1,7 @@
 use crate::session::Session;
 use eg::date;
 use eg::result::EgResult;
+use eg::EgEvent;
 use eg::EgValue;
 use evergreen as eg;
 
@@ -1057,5 +1058,94 @@ impl Session {
         resp.maybe_add_field("BE", patron.email.as_deref());
 
         Ok(resp)
+    }
+
+    pub fn handle_block_patron(&mut self, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+        let barcode = sip_msg.get_field_value("AA").unwrap_or("");
+        let block_msg_op = sip_msg.get_field_value("AL");
+
+        let patron = match self.get_patron_details(&barcode, None, None)? {
+            Some(p) => p,
+            None => return self.patron_response_common("24", &barcode, None),
+        };
+
+        if !patron.card_active {
+            log::info!("{self} patron {barcode} is already inactive");
+            return self.patron_response_common("24", &barcode, Some(&patron));
+        }
+
+        let mut card = self
+            .editor()
+            .search("ac", eg::hash! {"barcode": barcode})?
+            .pop()
+            // should not be able to get here.
+            .ok_or_else(|| format!("Patron card search returned nothing"))?;
+
+        self.editor().xact_begin()?;
+
+        card["active"] = "f".into();
+        self.editor().update(card)?;
+
+        let penalty = eg::blessed! {
+            "_classname": "ausp",
+            "usr": patron.id,
+            "org_unit": self.editor().perm_org(),
+            "set_date": "now",
+            "staff": self.editor().requestor_id().unwrap(),
+            "standing_penalty": 20, // ALERT_NOTE
+        }?;
+
+        let msg = self
+            .editor()
+            .retrieve("sipsm", "patron_block.penalty_note")?
+            .ok_or_else(|| self.editor().die_event())?;
+
+        let penalty_message = if let Some(block_msg) = block_msg_op {
+            format!("{}\n{block_msg}", msg["message"].str()?)
+        } else {
+            msg["message"].string()?
+        };
+
+        let msg = self
+            .editor()
+            .retrieve("sipsm", "patron_block.title")?
+            .ok_or_else(|| self.editor().die_event())?;
+
+        let penalty_title = msg["message"].str()?;
+
+        let penalty_message = eg::hash! {
+            "title": penalty_title,
+            "message": penalty_message
+        };
+
+        let params = vec![
+            EgValue::from(self.editor().authtoken().unwrap()),
+            EgValue::from(penalty),
+            EgValue::from(penalty_message),
+        ];
+
+        let penalty_result = self
+            .editor()
+            .client_mut()
+            .send_recv_one(
+                "open-ils.actor",
+                "open-ils.actor.user.penalty.apply",
+                params,
+            )?
+            .ok_or_else(|| self.editor().die_event())?;
+
+        if let Some(evt) = EgEvent::parse(&penalty_result) {
+            log::error!("{self} blocking patron failed with {evt}");
+            self.editor().rollback()?;
+        } else {
+            self.editor().commit()?;
+        }
+
+        // Update our patron so the response data can indicate the
+        // card is now inactive.
+        let patron = self.get_patron_details(&barcode, None, None)?.unwrap();
+
+        // SIP message 01 wants a message 24 (patron status) response.
+        self.patron_response_common("24", &barcode, Some(&patron))
     }
 }
