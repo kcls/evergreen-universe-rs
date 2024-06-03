@@ -40,7 +40,7 @@ pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
 pub fn dispatch_sip_request(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     message::set_thread_ingress("sip2");
 

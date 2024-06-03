@@ -1,6 +1,5 @@
 use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
 use eg::osrf::cache::Cache;
-use eg::osrf::message;
 use eg::osrf::method::MethodDef;
 use eg::Client;
 use eg::EgError;
@@ -116,7 +115,6 @@ impl ApplicationWorker for Sip2Worker {
     /// Called after all requests are handled and the worker is
     /// shutting down.
     fn worker_end(&mut self) -> EgResult<()> {
-        log::debug!("Thread ending");
         Ok(())
     }
 
@@ -132,5 +130,5 @@ impl ApplicationWorker for Sip2Worker {
         Ok(())
     }
 
-    fn api_call_error(&mut self, _request: &message::MethodCall, _error: EgError) {}
+    fn api_call_error(&mut self, _api_name: &str, _error: EgError) {}
 }
