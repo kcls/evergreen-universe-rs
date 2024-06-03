@@ -5,7 +5,6 @@ pub const SIP_PROTOCOL_VERSION: &str = "2.00";
 pub const LINE_TERMINATOR: &str = "\r";
 pub const SIP_DATE_FORMAT: &str = "%Y%m%d    %H%M%S";
 
-
 /// Fixed field definition with label and field length
 #[derive(PartialEq, Debug)]
 pub struct FixedField {
@@ -961,7 +960,6 @@ pub const M_END_SESSION_RESP: Message = Message {
 // NOTE: when adding new message types, be sure to also add the new
 // message to Message::from_code()
 
-
 #[derive(Debug, PartialEq)]
 pub enum CheckinAlert {
     Unknown,
@@ -975,7 +973,7 @@ pub enum CheckinAlert {
 impl TryFrom<&str> for CheckinAlert {
     type Error = super::error::Error;
 
-    fn try_from(v: &str) -> Result<Self, Self::Error>  {
+    fn try_from(v: &str) -> Result<Self, Self::Error> {
         match v {
             "00" => Ok(Self::Unknown),
             "01" => Ok(Self::LocalHold),
