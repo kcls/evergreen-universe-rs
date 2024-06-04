@@ -139,49 +139,49 @@ impl Subfield {
         &self.content
     }
     /// Set the Subfield content.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use marc::Subfield;
     /// let mut subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// subfield.set_content("cheese");
     /// assert_eq!(subfield.content(), "cheese");
     /// ```
-    /// 
+    ///
     pub fn set_content(&mut self, content: impl Into<String>) {
         self.content = content.into();
     }
     /// Get the Subfield code.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use marc::Subfield;
     /// let subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// assert_eq!(subfield.code(), "a");
     /// ```
-    /// 
+    ///
     pub fn code(&self) -> &str {
         &self.code
     }
     /// Set the Subfield code.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use marc::Subfield;
     /// let mut subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// subfield.set_code("q");
     /// assert_eq!(subfield.code(), "q");
     /// ```
-    /// 
+    ///
     /// ```should_panic
     /// use marc::Subfield;
     /// let mut subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// subfield.set_code("🥔").unwrap();
     /// ```
-    /// 
+    ///
     pub fn set_code(&mut self, code: impl Into<String>) -> Result<(), String> {
         let code: String = code.into();
         check_byte_count(&code, CODE_SIZE)?;
@@ -208,7 +208,7 @@ impl Field {
     ///
     /// ```
     /// use marc::record::Field;
-    /// 
+    ///
     /// let field: Field = match Field::new("245") {
     ///   Ok(f) => f,
     ///   Err(e) => panic!("Field::new() failed with: {}", e),
@@ -218,7 +218,7 @@ impl Field {
     /// assert_eq!(field.ind2(), " ");
     /// assert_eq!(field.subfields().len(), 0);
     /// ```
-    /// 
+    ///
     pub fn new(tag: impl Into<String>) -> Result<Self, String> {
         let tag = tag.into();
         check_byte_count(&tag, TAG_SIZE)?;
