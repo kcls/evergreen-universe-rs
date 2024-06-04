@@ -54,7 +54,7 @@ impl Message {
     ///     ]
     /// );
     ///
-    /// let json_val = msg.to_json_value().unwrap();
+    /// let json_val = msg.to_json_value();
     /// let expected = json::object!{
     ///   "code":"93",
     ///   "fixed_fields":["0","0"],
@@ -62,7 +62,7 @@ impl Message {
     ///
     /// assert_eq!(expected, json_val);
     /// ```
-    pub fn to_json_value(&self) -> Result<json::JsonValue, SipJsonError> {
+    pub fn to_json_value(&self) -> json::JsonValue {
         let ff: Vec<String> = self
             .fixed_fields()
             .iter()
@@ -77,11 +77,11 @@ impl Message {
             fields.push(map);
         }
 
-        Ok(json::object! {
+        json::object! {
             "code": self.spec().code,
             "fixed_fields": ff,
             "fields": fields
-        })
+        }
     }
 
     /// Translate a SIP Message into a JSON string.
@@ -102,18 +102,15 @@ impl Message {
     ///     ]
     /// );
     ///
-    /// let json_str = msg.to_json().unwrap();
+    /// let json_str = msg.to_json();
     ///
     /// // Comparing JSON strings is nontrivial with hashes.
     /// // Assume completion means success.  See to_json_value() for
     /// // more rigorous testing.
     /// assert_eq!(true, true);
     /// ```
-    pub fn to_json(&self) -> Result<String, SipJsonError> {
-        match self.to_json_value() {
-            Ok(jv) => Ok(jv.dump()),
-            Err(e) => Err(e),
-        }
+    pub fn to_json(&self) -> String {
+        self.to_json_value().dump()
     }
 
     /// Translate a JSON object into a SIP Message.
@@ -140,16 +137,19 @@ impl Message {
     ///   "fixed_fields":["0","0"],
     ///   "fields":[{"CN":"sip_username"},{"CO":"sip_password"}]};
     ///
-    /// let msg = Message::from_json_value(&json_val).unwrap();
+    /// let msg = Message::from_json_value(json_val).unwrap();
     ///
     /// assert_eq!(expected, msg);
     /// ```
-    pub fn from_json_value(json_value: &json::JsonValue) -> Result<Message, SipJsonError> {
+    pub fn from_json_value(mut json_value: json::JsonValue) -> Result<Message, SipJsonError> {
         // Start with a message that's just the code plus fixed fields
         // as a SIP string.
-        let mut strbuf = format!("{}", json_value["code"]);
-        for value in json_value["fixed_fields"].members() {
-            strbuf += &format!("{}", value);
+        let mut strbuf = json_value["code"]
+            .take_string()
+            .ok_or_else(|| SipJsonError::MessageFormatError(format!("Message requires a code")))?;
+
+        while json_value["fixed_fields"].len() > 0 {
+            strbuf += &format!("{}", json_value["fixed_fields"].array_remove(0));
         }
 
         // Since we're creating this partial SIP string from raw
@@ -165,6 +165,9 @@ impl Message {
                 )))
             }
         };
+
+        // TODO this code could take better advantage of the fact
+        // that we're consuming the JsonValue.
 
         for field in json_value["fields"].members() {
             for (code, value) in field.entries() {
@@ -225,6 +228,6 @@ impl Message {
             }
         };
 
-        Message::from_json_value(&json_value)
+        Message::from_json_value(json_value)
     }
 }

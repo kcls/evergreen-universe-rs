@@ -959,3 +959,45 @@ pub const M_END_SESSION_RESP: Message = Message {
 
 // NOTE: when adding new message types, be sure to also add the new
 // message to Message::from_code()
+
+#[derive(Debug, PartialEq)]
+pub enum CheckinAlert {
+    Unknown,
+    LocalHold,
+    RemoteHold,
+    Ill,
+    Transit,
+    Other,
+}
+
+impl TryFrom<&str> for CheckinAlert {
+    type Error = super::error::Error;
+
+    fn try_from(v: &str) -> Result<Self, Self::Error> {
+        match v {
+            "00" => Ok(Self::Unknown),
+            "01" => Ok(Self::LocalHold),
+            "02" => Ok(Self::RemoteHold),
+            "03" => Ok(Self::Ill),
+            "04" => Ok(Self::Transit),
+            "99" => Ok(Self::Other),
+            _ => {
+                log::error!("Invalid checkin alert code: {v}");
+                return Err(Self::Error::MessageFormatError);
+            }
+        }
+    }
+}
+
+impl From<CheckinAlert> for &str {
+    fn from(a: CheckinAlert) -> &'static str {
+        match a {
+            CheckinAlert::Unknown => "00",
+            CheckinAlert::LocalHold => "01",
+            CheckinAlert::RemoteHold => "02",
+            CheckinAlert::Ill => "03",
+            CheckinAlert::Transit => "04",
+            CheckinAlert::Other => "99",
+        }
+    }
+}

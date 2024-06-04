@@ -36,6 +36,15 @@ impl FixedField {
         &self.value
     }
 
+    pub fn set_value(&mut self, value: &str) -> Result<(), Error> {
+        if value.len() == self.spec.length {
+            self.value = value.to_string();
+            Ok(())
+        } else {
+            Err(Error::FixedFieldLengthError)
+        }
+    }
+
     /// Translate a FixedField into a string which can be inserted into
     /// a SIP message.
     ///
@@ -135,14 +144,23 @@ impl Message {
         msg
     }
 
+    pub fn from_code(msg_code: &str) -> Result<Message, Error> {
+        Message::from_ff_values(msg_code, &[])
+    }
+
     /// Creates a new message from a set of fixed field values.
     ///
     /// Returns an error if the fixed field values provided are not
     /// the correct length for the specified message type.
-    pub fn from_ff_values(
-        msg_spec: &'static spec::Message,
-        fixed_fields: &[&str],
-    ) -> Result<Message, Error> {
+    pub fn from_ff_values(msg_code: &str, fixed_fields: &[&str]) -> Result<Message, Error> {
+        let msg_spec = match spec::Message::from_code(msg_code) {
+            Some(s) => s,
+            None => {
+                log::error!("Unknown message code: {msg_code}");
+                return Err(Error::UnknownMessageError);
+            }
+        };
+
         let mut ff: Vec<FixedField> = Vec::new();
 
         for (idx, ff_spec) in msg_spec.fixed_fields.iter().enumerate() {
@@ -168,11 +186,11 @@ impl Message {
 
     /// Create a new message from a list of fixed field and field string values.
     pub fn from_values(
-        spec: &'static spec::Message,
+        msg_code: &str,
         fixed_fields: &[&str],
         fields: &[(&str, &str)],
     ) -> Result<Message, Error> {
-        let mut msg = Message::from_ff_values(spec, fixed_fields)?;
+        let mut msg = Message::from_ff_values(msg_code, fixed_fields)?;
         for field in fields {
             msg.add_field(field.0, field.1);
         }
@@ -255,6 +273,10 @@ impl Message {
 
     pub fn fixed_fields(&self) -> &Vec<FixedField> {
         &self.fixed_fields
+    }
+
+    pub fn fixed_fields_mut(&mut self) -> &mut Vec<FixedField> {
+        &mut self.fixed_fields
     }
 
     /// Create a SIP string of a message.
