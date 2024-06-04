@@ -90,7 +90,7 @@ pub fn dispatch_sip_request(
         "01" => handle_block_patron(&mut sip_ses, sip_msg)?,
         "09" => handle_checkin(&mut sip_ses, sip_msg)?,
         "11" => handle_checkout(&mut sip_ses, sip_msg)?,
-        // "15" => handle_hold(&mut sip_ses, sip_msg)?,
+        "15" => handle_hold(&mut sip_ses, sip_msg)?,
         "17" => handle_item_info(&mut sip_ses, sip_msg)?,
         "23" => handle_patron_status(&mut sip_ses, sip_msg)?,
         "29" => handle_renew(&mut sip_ses, sip_msg)?,
@@ -98,7 +98,6 @@ pub fn dispatch_sip_request(
         "37" => handle_payment(&mut sip_ses, sip_msg)?,
         "63" => handle_patron_info(&mut sip_ses, sip_msg)?,
         "65" => handle_renew_all(&mut sip_ses, sip_msg)?,
-        // "97" => handle_resend(&mut sip_ses, sip_msg)?,
         "XS" => handle_end_session(&mut sip_ses, sip_msg)?,
         _ => return Err(format!("SIP message '{msg_code}' not implemented").into()),
     };
@@ -330,4 +329,8 @@ fn handle_payment(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip
 
 fn handle_block_patron(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
     sip_ses.handle_block_patron(sip_msg)
+}
+
+fn handle_hold(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
+    sip_ses.handle_hold(sip_msg)
 }

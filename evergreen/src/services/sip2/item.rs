@@ -7,8 +7,11 @@ use evergreen as eg;
 use std::fmt;
 
 pub struct Item {
+    pub id: i64,
     pub barcode: String,
     pub circ_lib: i64,
+    pub record_id: i64,
+    pub call_number_id: i64,
     pub due_date: Option<String>,
     pub copy_status: i64,
     pub circ_status: &'static str,
@@ -131,6 +134,7 @@ impl Session {
         let title = title.unwrap_or(String::new());
 
         Ok(Some(Item {
+            id: copy.id()?,
             barcode: barcode.to_string(),
             due_date,
             title,
@@ -149,6 +153,8 @@ impl Session {
             hold_pickup_date: hold_pickup_date_op,
             hold_patron_barcode: hold_patron_barcode_op,
             circ_patron_id,
+            record_id: copy["call_number"]["record"].id()?,
+            call_number_id: copy["call_number"].id()?,
         }))
     }
 

@@ -36,10 +36,7 @@ impl CheckoutResult {
 
 impl Session {
     pub fn handle_renew_all(&mut self, sip_msg: &sip2::Message) -> EgResult<sip2::Message> {
-        let patron_barcode = sip_msg
-            .get_field_value("AA")
-            .ok_or_else(|| format!("{self} checkout message has no patron barcode value"))?;
-
+        let patron_barcode = sip_msg.get_field_value("AA").unwrap_or("");
         let password_op = sip_msg.get_field_value("AD"); // optional
         let fee_ack_op = sip_msg.get_field_value("BO");
 

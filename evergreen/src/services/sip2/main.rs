@@ -3,6 +3,7 @@ use evergreen as eg;
 pub mod app;
 pub mod checkin;
 pub mod checkout;
+pub mod holds;
 pub mod item;
 pub mod methods;
 pub mod patron;

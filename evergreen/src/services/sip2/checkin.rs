@@ -303,7 +303,7 @@ impl Session {
             }
         }
 
-        self.handle_hold(&evt, &mut result)?;
+        self.handle_checkin_hold(&evt, &mut result)?;
 
         if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
             result.ok = true;
@@ -466,7 +466,7 @@ impl Session {
             }
         }
 
-        self.handle_hold(&evt, &mut result)?;
+        self.handle_checkin_hold(&evt, &mut result)?;
 
         if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
             result.ok = true;
@@ -487,7 +487,7 @@ impl Session {
 
     /// See if checkin resulted in a hold capture and collect
     /// related info.
-    fn handle_hold(
+    fn handle_checkin_hold(
         &mut self,
         evt: &eg::event::EgEvent,
         result: &mut CheckinResult,

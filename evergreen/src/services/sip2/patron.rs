@@ -183,6 +183,11 @@ impl Session {
     ) -> EgResult<Option<Patron>> {
         log::info!("{self} SIP patron details for {barcode}");
 
+        if barcode == "" {
+            // May as well skip the query if it's empty.
+            return Ok(None);
+        }
+
         let user = match self.get_user(barcode)? {
             Some(u) => u,
             None => {
