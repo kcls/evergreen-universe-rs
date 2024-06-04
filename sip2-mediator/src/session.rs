@@ -13,6 +13,12 @@ use std::sync::Arc;
 /// for shutdown, etc. signals.
 const SIG_POLL_INTERVAL: u64 = 5;
 
+// TODO make configurable?
+//const EG_SERVICE: &str = "open-ils.sip2";
+//const EG_METHOD: &str = "open-ils.sip2.request";
+const EG_SERVICE: &str = "open-ils.rs-sip2";
+const EG_METHOD: &str = "open-ils.rs-sip2.request";
+
 /// Manages the connection between a SIP client and the Evergreen backend.
 pub struct Session {
     sip_connection: sip2::Connection,
@@ -109,7 +115,7 @@ impl Session {
             // Relay the request to the Evergreen backend and wait for a
             // response.  If an error occurs, all we can do is exit and
             // cleanup, since SIP has no concept of an error response.
-            let sip_resp = match self.osrf_round_trip(&sip_req) {
+            let sip_resp = match self.osrf_round_trip(sip_req) {
                 Ok(r) => r,
                 Err(e) => {
                     log::error!("{self} error routing ILS message: {e}");
@@ -154,19 +160,14 @@ impl Session {
 
         let msg = sip2::Message::new(&msg_spec, vec![], vec![]);
 
-        self.osrf_round_trip(&msg).map(|_| ())
+        self.osrf_round_trip(msg).map(|_| ())
     }
 
     /// Send a SIP client request to the ILS backend for processing.
     ///
     /// Blocks waiting for a response.
-    fn osrf_round_trip(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
-        let msg_json = match msg.to_json_value() {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(format!("{self} Failed translating SIP message to JSON: {e}").into())
-            }
-        };
+    fn osrf_round_trip(&mut self, msg: sip2::Message) -> EgResult<sip2::Message> {
+        let msg_json = msg.to_json_value();
 
         log::debug!("{self} posting message: {msg_json}");
 
@@ -177,7 +178,7 @@ impl Session {
         // Uses the default request timeout (probably 60 seconds).
         let response = self
             .client
-            .send_recv_one("open-ils.sip2", "open-ils.sip2.request", params)?
+            .send_recv_one(EG_SERVICE, EG_METHOD, params)?
             .ok_or_else(|| format!("{self} no response received"))?;
 
         log::debug!("{self} ILS response JSON: {response}");
@@ -186,7 +187,7 @@ impl Session {
             return Err(format!("SIP request failed with event: {evt}").into());
         }
 
-        match sip2::Message::from_json_value(&response.into()) {
+        match sip2::Message::from_json_value(response.into()) {
             Ok(m) => Ok(m),
             Err(e) => Err(format!("{self} error translating JSON to SIP: {e}").into()),
         }

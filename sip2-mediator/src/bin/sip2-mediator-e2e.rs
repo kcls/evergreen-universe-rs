@@ -197,7 +197,7 @@ fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {
 
 fn test_invalid_login(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_LOGIN,
+        &sip2::spec::M_LOGIN.code,
         &[
             "0", // UID algo
             "0", // PW algo
@@ -225,7 +225,7 @@ fn test_invalid_login(tester: &mut Tester) -> Result<(), String> {
 
 fn test_valid_login(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_LOGIN,
+        &sip2::spec::M_LOGIN.code,
         &[
             "0", // UID algo
             "0", // PW algo
@@ -253,7 +253,7 @@ fn test_valid_login(tester: &mut Tester) -> Result<(), String> {
 
 fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_ff_values(
-        &sip2::spec::M_SC_STATUS,
+        &sip2::spec::M_SC_STATUS.code,
         &[
             "0",   // status code
             "999", // max print width
@@ -279,7 +279,7 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
     let dummy = "I-AM-BAD-BARCODE";
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_ITEM_INFO,
+        &sip2::spec::M_ITEM_INFO.code,
         &[&sip2::util::sip_date_now()],
         &[("AB", dummy), ("AO", &tester.institution)],
     )
@@ -309,7 +309,7 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
 
 fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_ITEM_INFO,
+        &sip2::spec::M_ITEM_INFO.code,
         &[&sip2::util::sip_date_now()],
         &[
             ("AB", &tester.samples.acp_barcode),
@@ -367,7 +367,7 @@ fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
 
 fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_PATRON_STATUS,
+        &sip2::spec::M_PATRON_STATUS.code,
         &["000", &sip2::util::sip_date_now()],
         &[
             ("AA", &tester.samples.au_barcode),
@@ -411,7 +411,7 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let summary = "          ";
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_PATRON_INFO,
+        &sip2::spec::M_PATRON_INFO.code,
         &["000", &sip2::util::sip_date_now(), summary],
         &[
             ("AA", &tester.samples.au_barcode),
@@ -470,7 +470,7 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
 
 fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKOUT,
+        &sip2::spec::M_CHECKOUT.code,
         &[
             "Y", // renewal allowed if needed
             "N", // previously checked out offline / no block
@@ -517,7 +517,7 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
 
 fn test_checkin(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKIN,
+        &sip2::spec::M_CHECKIN.code,
         &[
             "N", // renewal policy
             &sip2::util::sip_date_now(),
@@ -573,7 +573,7 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     tester.editor.commit()?;
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKIN,
+        &sip2::spec::M_CHECKIN.code,
         &[
             "N", // renewal policy
             &sip2::util::sip_date_now(),
@@ -621,7 +621,7 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     // complete the transit.
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKIN,
+        &sip2::spec::M_CHECKIN.code,
         &[
             "N", // renewal policy
             &sip2::util::sip_date_now(),
