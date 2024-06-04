@@ -1,5 +1,4 @@
 use crate::osrf::client;
-use crate::osrf::message;
 use crate::osrf::method;
 use crate::EgError;
 use crate::EgResult;
@@ -58,7 +57,7 @@ pub trait ApplicationWorker: Any {
     fn keepalive_timeout(&mut self) -> EgResult<()>;
 
     /// Called on the worker when a MethodCall invocation exits with an Err.
-    fn api_call_error(&mut self, request: &message::MethodCall, error: EgError);
+    fn api_call_error(&mut self, api_name: &str, error: EgError);
 
     /// Called every time our worker wakes up to check for signals,
     /// timeouts, etc.

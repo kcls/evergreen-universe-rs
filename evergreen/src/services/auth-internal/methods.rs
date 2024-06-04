@@ -42,7 +42,7 @@ pub static METHODS: &[StaticMethodDef] = &[
 pub fn create_auth_session(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsAuthInternalWorker::downcast(worker)?;
     let options = method.param(0);
@@ -67,7 +67,7 @@ pub fn create_auth_session(
 pub fn validate_user(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsAuthInternalWorker::downcast(worker)?;
     let options = method.param(0);

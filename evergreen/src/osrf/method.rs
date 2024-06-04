@@ -9,7 +9,7 @@ use std::fmt;
 pub type MethodHandler = fn(
     &mut Box<dyn app::ApplicationWorker>,
     &mut session::ServerSession,
-    &message::MethodCall,
+    message::MethodCall,
 ) -> EgResult<()>;
 
 #[derive(Debug, Copy, Clone, PartialEq)]

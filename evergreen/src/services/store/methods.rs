@@ -157,7 +157,7 @@ fn get_idl_class(apiname: &str) -> EgResult<String> {
 pub fn retrieve(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let classname = get_idl_class(method.method())?;
@@ -183,7 +183,7 @@ pub fn retrieve(
 pub fn search(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let classname = get_idl_class(method.method())?;
@@ -210,7 +210,7 @@ pub fn search(
 pub fn delete(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let classname = get_idl_class(method.method())?;
@@ -230,7 +230,7 @@ pub fn delete(
 pub fn create(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let obj = method.param(0);
@@ -248,7 +248,7 @@ pub fn create(
 pub fn update(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let obj = method.param(0);
@@ -270,7 +270,7 @@ pub fn update(
 pub fn manage_xact(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let db = worker.database();
@@ -296,7 +296,7 @@ pub fn manage_xact(
 pub fn json_query(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::MethodCall,
+    method: message::MethodCall,
 ) -> EgResult<()> {
     let worker = app::RsStoreWorker::downcast(worker)?;
     let query = method.param(0);
