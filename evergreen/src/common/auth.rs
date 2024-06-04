@@ -146,6 +146,9 @@ impl InternalLoginArgs {
     pub fn set_org_unit(&mut self, org_unit: i64) {
         self.org_unit = Some(org_unit);
     }
+    pub fn set_workstation(&mut self, workstation: &str) {
+        self.workstation = Some(workstation.to_string());
+    }
 
     pub fn to_eg_value(&self) -> EgValue {
         let lt: &str = (&self.login_type).into();
