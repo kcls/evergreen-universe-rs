@@ -156,20 +156,18 @@ impl Timer {
 /// assert_eq!(s.as_str(), util::REDACTED_PARAMS_STR);
 /// ```
 pub fn stringify_params(method: &str, params: &Vec<EgValue>, log_protect: &Vec<String>) -> String {
-    if log_protect
-        .iter()
-        .filter(|m| method.starts_with(&m[..]))
-        .next()
-        .is_none()
-    {
+    // Check if the method should be protected
+    let is_protected = log_protect.iter().any(|m| method.starts_with(m));
+
+    if is_protected {
+        REDACTED_PARAMS_STR.to_string()
+    } else {
         params
             .iter()
             // EgValue.dump() consumes the value, hence the clone.
             .map(|p| p.clone().dump())
             .collect::<Vec<_>>()
             .join(", ")
-    } else {
-        REDACTED_PARAMS_STR.to_string()
     }
 }
 
