@@ -109,5 +109,9 @@ path = "src/services/store/main.rs"
 name = "eg-service-rs-auth-internal"
 path = "src/services/auth-internal/main.rs"
 
+[[bin]]
+name = "eg-service-rs-sip2"
+path = "src/services/sip2/main.rs"
+
 
 

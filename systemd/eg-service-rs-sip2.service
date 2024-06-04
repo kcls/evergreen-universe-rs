@@ -1,0 +1,10 @@
+[Unit]
+Description=Evergreen Service open-ils.rs-sip2
+
+[Service]
+Type=simple
+User=opensrf
+Group=opensrf
+ExecStart=/usr/local/bin/eg-service-rs-sip2
+ExecReload=/bin/kill -HUP $MAINPID
+

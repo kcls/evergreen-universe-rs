@@ -48,6 +48,7 @@ install-evergreen-bin:
 	cp ./target/debug/eg-websockets ${TARGET}/bin
 	cp ./target/debug/eg-service-rs-actor ${TARGET}/bin
 	cp ./target/debug/eg-service-rs-circ ${TARGET}/bin
+	cp ./target/debug/eg-service-rs-sip2 ${TARGET}/bin
 
 install-evergreen-release: install-evergreen-config install-evergreen-bin-release
 
@@ -58,6 +59,7 @@ install-evergreen-bin-release:
 	cp ./target/release/eg-websockets ${TARGET}/bin
 	cp ./target/release/eg-service-rs-actor ${TARGET}/bin
 	cp ./target/release/eg-service-rs-circ ${TARGET}/bin
+	cp ./target/release/eg-service-rs-sip2 ${TARGET}/bin
 
 install-evergreen-config:
 	cp ./systemd/eg-router.service ${SYSTEMD_DIR}/
@@ -65,6 +67,7 @@ install-evergreen-config:
 	cp ./systemd/eg-websockets.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-service-rs-actor.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-service-rs-circ.service ${SYSTEMD_DIR}/
+	cp ./systemd/eg-service-rs-sip2.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
 # --- SIP2 Mediator ---
