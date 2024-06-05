@@ -1,4 +1,5 @@
 use crate::session::Session;
+use eg::constants as C;
 use eg::date;
 use eg::result::EgResult;
 use eg::EgEvent;
@@ -331,8 +332,8 @@ impl Session {
     }
 
     fn add_fine_item(&mut self, xact: &EgValue) -> EgResult<String> {
-        let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
-        let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
+        let is_circ = xact["xact_type"].as_str() == Some("circulation");
+        let last_billing_type = xact["last_billing_type"].str()?;
 
         let xact_id = xact.id()?;
         let balance_owed = xact["balance_owed"].float()?;
@@ -340,11 +341,27 @@ impl Session {
         let mut title: Option<String> = None;
         let mut author: Option<String> = None;
 
-        let fee_type = if last_btype.eq("Lost Materials") {
-            // XXX ugh @ parsing billing type labels
-            // TODO: get the btype from the billing row.
+        let search = eg::hash! {
+            "xact": xact_id,
+            "voided": "f",
+        };
+
+        let flesh = eg::hash! {
+            "order_by": {"mb": "payment_ts DESC"}
+        };
+
+        let billing = self
+            .editor()
+            .search_with_ops("mb", search, flesh)?
+            .pop()
+            // Should not be possible to get here since each transaction has a balance
+            .ok_or_else(|| format!("{self} transaction {xact_id} has no payments?"))?;
+
+        let last_btype = billing["btype"].int()?;
+
+        let fee_type = if last_btype == C::BTYPE_LOST_MATERIALS {
             "LOST"
-        } else if last_btype.starts_with("Overdue") {
+        } else if last_btype == C::BTYPE_OVERDUE_MATERIALS {
             "FINE"
         } else {
             "FEE"
@@ -365,7 +382,7 @@ impl Session {
 
         match av_format {
             AvFormat::Legacy => {
-                line = format!("{:.2} {}", balance_owed, last_btype);
+                line = format!("{:.2} {}", balance_owed, last_billing_type);
                 if is_circ {
                     line += &format!(" {} / {}", title, author);
                 }
@@ -377,7 +394,7 @@ impl Session {
                 if is_circ {
                     line += title;
                 } else {
-                    line += last_btype;
+                    line += last_billing_type;
                 }
             }
 
@@ -390,7 +407,7 @@ impl Session {
                 if is_circ {
                     line += &format!(", Title: {}", title);
                 } else {
-                    line += &format!(", Title: {}", last_btype);
+                    line += &format!(", Title: {}", last_billing_type);
                 }
             }
         }
