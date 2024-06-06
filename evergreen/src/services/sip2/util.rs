@@ -6,9 +6,9 @@ use evergreen as eg;
 const PATRON_NAME_PARTS: [&str; 3] = ["first_given_name", "second_given_name", "family_name"];
 
 impl Session {
-    /// This one comes up a lot...
+    /// Extract the title and author info from a copy object.
     ///
-    /// Assumes copy is fleshed out to the bib simple_record.
+    /// Assumes copy is fleshed to the bib simple_record.
     pub fn get_copy_title_author(
         &self,
         copy: &EgValue,
@@ -38,6 +38,7 @@ impl Session {
         Ok(resp)
     }
 
+    /// Get an org unit (by cache or net) via its ID.
     pub fn org_from_id(&mut self, id: i64) -> EgResult<Option<&EgValue>> {
         if self.org_cache().contains_key(&id) {
             return Ok(self.org_cache().get(&id));
@@ -51,6 +52,7 @@ impl Session {
         Ok(None)
     }
 
+    /// Get an org unit (by cache or net) via its shortname.
     pub fn org_from_sn(&mut self, sn: &str) -> EgResult<Option<&EgValue>> {
         for (id, org) in self.org_cache() {
             if org["shortname"].as_str().unwrap().eq(sn) {
@@ -69,6 +71,7 @@ impl Session {
         return Ok(None);
     }
 
+    /// Fetch a user account with card fleshed.
     pub fn get_user_and_card(&mut self, user_id: i64) -> EgResult<Option<EgValue>> {
         let ops = eg::hash! {
             "flesh": 1,
@@ -78,23 +81,32 @@ impl Session {
         self.editor().retrieve_with_ops("au", user_id, ops)
     }
 
+    /// Format a patron name for display.
     pub fn format_user_name(&self, user: &EgValue) -> String {
         let mut name = String::new();
 
-        // TODO The pref logic is reversed for KCLS.
-        let mut first = true;
-        for part in PATRON_NAME_PARTS {
-            if let Some(n) = user[&format!("pref_{part}")]
-                .as_str()
-                .or_else(|| user[part].as_str())
-            {
-                if first {
-                    first = false;
-                } else {
-                    name.push(' ');
-                }
+        // Reverse priority of pref name vs non-pref name.
+        // This likely affects only KCLS.
+        let inverse = self.config().setting_is_true("patron_inverse_pref_names");
 
-                name.push_str(n);
+        for part in PATRON_NAME_PARTS {
+            let name_op = if inverse {
+                user[part]
+                    .as_str()
+                    .or_else(|| user[&format!("pref_{part}")].as_str())
+            } else {
+                user[&format!("pref_{part}")]
+                    .as_str()
+                    .or_else(|| user[part].as_str())
+            };
+
+            if let Some(n) = name_op {
+                if !n.is_empty() {
+                    if !name.is_empty() {
+                        name.push(' ');
+                    }
+                    name.push_str(n);
+                }
             }
         }
 
@@ -128,6 +140,7 @@ impl Session {
         addr
     }
 
+    /// Add a stat cat value to a message using the provided code.
     pub fn _format_stat_cat_sip_field(
         &self,
         code: &str,
