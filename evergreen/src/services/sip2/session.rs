@@ -19,13 +19,14 @@ use std::fmt;
 // data or loss of cache server. auth type can still be "staff" since
 // backend will re-login as needed.
 //
-// Can get rid of the "persist" flag on sip.account
+// Can get rid of the "persist" flag on sip.account.  If accounts are
+// cache-only, this is unnecesssary.
 //
 // sip sessions are removed from the cache by the mediator every
 // time a client disconnects so they won't linger for long time
 // in the cache.
 //
-// current/Perl implementation is compliated/over-engineered and
+// current/Perl implementation is unnecessarily complicated and
 // opens the door to leaving sip session data in the database indefinitely
 // on mediator error since there's no timeout mechanism there.
 
@@ -50,7 +51,7 @@ const CACHE_PFX: &str = "sip2";
 /// hold
 /// renew
 /// renew all
-const INSTITUTION_SUPPORTS: &str = "YYYNYNYYNYYNNNYN";
+const INSTITUTION_SUPPORTS: &str = "YYYYYNYYYYYNNNYY";
 
 #[derive(Debug)]
 pub struct SipFilter {
