@@ -25,7 +25,26 @@ impl Normalizer {
         Normalizer::new().naco_normalize(value)
     }
 
-    // See Evergreen/Open-ILS/src/perlmods/lib/OpenILS/Utils/Normalize.pm
+    /// See Evergreen/Open-ILS/src/perlmods/lib/OpenILS/Utils/Normalize.pm
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use evergreen::norm::Normalizer;
+    ///
+    /// let normalizer = Normalizer::new();
+    /// assert_eq!(normalizer.naco_normalize("Café"), normalizer.naco_normalize("cafe"));
+    /// assert_eq!(
+    ///     normalizer.naco_normalize(concat!("\u{009C}", "Pushkin")),
+    ///     normalizer.naco_normalize("Pushkin")
+    /// );
+    /// assert_eq!(
+    ///     normalizer.naco_normalize(concat!("Library", "\u{009C}")),
+    ///     normalizer.naco_normalize("Library")
+    /// );
+    /// assert_eq!(normalizer.naco_normalize("‘Hello’"), normalizer.naco_normalize("Hello"));
+    /// assert_eq!(normalizer.naco_normalize("Ægis"), normalizer.naco_normalize("aegis"));
+    /// ```
     pub fn naco_normalize(&self, value: &str) -> String {
         self.normalize_codes(&self.normalize_substitutions(value))
     }
