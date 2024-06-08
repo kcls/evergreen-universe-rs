@@ -157,6 +157,23 @@ impl EgEvent {
         self.payload = payload
     }
 
+    /// Get the description of the EgEvent
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use evergreen::EgEvent;
+    ///
+    /// let mut event = EgEvent::new("INTERNAL_SERVER_ERROR");
+    /// assert!(event.desc().is_none());
+    ///
+    /// event.set_desc("Server Error: it did not go well :-(");
+    /// let new_description = event.desc();
+    /// if let Some(d) = new_description {
+    ///   println!("The event is described thusly: {}", d)
+    /// }
+    /// assert_eq!(new_description, Some("Server Error: it did not go well :-("));
+    /// ```
     pub fn desc(&self) -> Option<&str> {
         self.desc.as_deref()
     }
