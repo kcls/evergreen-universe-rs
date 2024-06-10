@@ -1,24 +1,36 @@
 use regex::Regex;
+use std::sync::OnceLock;
 
-const REGEX_CONTROL_CODES: &str = r#"[\p{Cc}\p{Cf}\p{Co}\p{Lm}\p{Mc}\p{Me}\p{Mn}]"#;
-const REGEX_PUNCTUATION: &str =
+/// Store these globally to avoid repititive regex recompilation.
+static REGEX_CONTROL_CODES: OnceLock<Regex> = OnceLock::new();
+static REGEX_PUNCTUATION: OnceLock<Regex> = OnceLock::new();
+static REGEX_MULTI_SPACES: OnceLock<Regex> = OnceLock::new();
+
+const REGEX_CONTROL_CODES_PATTERN: &str = r#"[\p{Cc}\p{Cf}\p{Co}\p{Lm}\p{Mc}\p{Me}\p{Mn}]"#;
+const REGEX_PUNCTUATION_PATTERN: &str =
     r#"[\p{Pc}\p{Pd}\p{Pe}\p{Pf}\p{Pi}\p{Po}\p{Ps}\p{Sk}\p{Sm}\p{So}\p{Zl}\p{Zp}\p{Zs}]"#;
 
-/// Container for precompiled regexes so we're not forced to compile
-/// them repetitively, which is very innefficient.
-pub struct Normalizer {
-    regex_control_codes: Regex,
-    regex_puncutation: Regex,
-    regex_multi_spaces: Regex,
-}
+/// As is, this struct is no longer necessary but retained for backwards compat.
+pub struct Normalizer {}
 
 impl Normalizer {
-    pub fn new() -> Normalizer {
-        Normalizer {
-            regex_control_codes: Regex::new(REGEX_CONTROL_CODES).unwrap(),
-            regex_puncutation: Regex::new(REGEX_PUNCTUATION).unwrap(),
-            regex_multi_spaces: Regex::new("\\s+").unwrap(),
+    pub fn init() {
+        if REGEX_CONTROL_CODES.get().is_some() {
+            return;
         }
+        // The above check should make the outer unwrap()'s below succeed.
+        REGEX_CONTROL_CODES
+            .set(Regex::new(REGEX_CONTROL_CODES_PATTERN).unwrap())
+            .unwrap();
+        REGEX_PUNCTUATION
+            .set(Regex::new(REGEX_PUNCTUATION_PATTERN).unwrap())
+            .unwrap();
+        REGEX_MULTI_SPACES.set(Regex::new("\\s+").unwrap()).unwrap();
+    }
+
+    pub fn new() -> Normalizer {
+        Normalizer::init();
+        Normalizer {}
     }
 
     pub fn naco_normalize_once(value: &str) -> String {
@@ -89,10 +101,11 @@ impl Normalizer {
     }
 
     fn normalize_codes(&self, value: &str) -> String {
-        let mut value = self
-            .regex_control_codes
-            .replace_all(&value, "")
-            .into_owned();
+        let mut value = if let Some(reg) = REGEX_CONTROL_CODES.get() {
+            reg.replace_all(&value, "").into_owned()
+        } else {
+            unreachable!();
+        };
 
         // Set aside some chars for safe keeping.
         value = value
@@ -103,7 +116,9 @@ impl Normalizer {
             .replace("\u{266F}", "\u{05}")
             .replace("#", "\u{06}");
 
-        value = self.regex_puncutation.replace_all(&value, " ").into_owned();
+        if let Some(reg) = REGEX_PUNCTUATION.get() {
+            value = reg.replace_all(&value, " ").into_owned();
+        }
 
         // Now put them back
         value = value
@@ -120,10 +135,9 @@ impl Normalizer {
         $str =~ tr/\x{0660}-\x{0669}\x{06F0}-\x{06F9}\x{07C0}-\x{07C9}\x{0966}-\x{096F}\x{09E6}-\x{09EF}\x{0A66}-\x{0A6F}\x{0AE6}-\x{0AEF}\x{0B66}-\x{0B6F}\x{0BE6}-\x{0BEF}\x{0C66}-\x{0C6F}\x{0CE6}-\x{0CEF}\x{0D66}-\x{0D6F}\x{0E50}-\x{0E59}\x{0ED0}-\x{0ED9}\x{0F20}-\x{0F29}\x{1040}-\x{1049}\x{1090}-\x{1099}\x{17E0}-\x{17E9}\x{1810}-\x{1819}\x{1946}-\x{194F}\x{19D0}-\x{19D9}\x{1A80}-\x{1A89}\x{1A90}-\x{1A99}\x{1B50}-\x{1B59}\x{1BB0}-\x{1BB9}\x{1C40}-\x{1C49}\x{1C50}-\x{1C59}\x{A620}-\x{A629}\x{A8D0}-\x{A8D9}\x{A900}-\x{A909}\x{A9D0}-\x{A9D9}\x{AA50}-\x{AA59}\x{ABF0}-\x{ABF9}\x{FF10}-\x{FF19}/0-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-9/;
         */
 
-        value = self
-            .regex_multi_spaces
-            .replace_all(&value, " ")
-            .into_owned();
+        if let Some(reg) = REGEX_MULTI_SPACES.get() {
+            value = reg.replace_all(&value, " ").into_owned();
+        }
 
         // leaing / trailing spaces
         value.trim().to_lowercase()
