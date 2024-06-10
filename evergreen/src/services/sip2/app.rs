@@ -34,13 +34,11 @@ impl Application for Sip2Application {
         Ok(())
     }
 
-    /// Tell the Server what methods we want to publish.
     fn register_methods(&self, _client: Client) -> EgResult<Vec<MethodDef>> {
         let mut methods: Vec<MethodDef> = Vec::new();
 
         // Create Method objects from our static method definitions.
         for def in methods::METHODS.iter() {
-            log::info!("Registering method: {}", def.name());
             methods.push(def.into_method(APPNAME));
         }
 
@@ -66,10 +64,7 @@ impl Sip2Worker {
         }
     }
 
-    /// Cast a generic ApplicationWorker into our Sip2Worker.
-    ///
-    /// This is necessary to access methods/fields on our Sip2Worker that
-    /// are not part of the ApplicationWorker trait.
+    /// Casts a generic ApplicationWorker into our Sip2Worker.
     pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut Sip2Worker> {
         match w.as_any_mut().downcast_mut::<Sip2Worker>() {
             Some(eref) => Ok(eref),
@@ -112,8 +107,6 @@ impl ApplicationWorker for Sip2Worker {
         Ok(())
     }
 
-    /// Called after all requests are handled and the worker is
-    /// shutting down.
     fn worker_end(&mut self) -> EgResult<()> {
         Ok(())
     }
