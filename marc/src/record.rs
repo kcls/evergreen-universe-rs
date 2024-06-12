@@ -224,7 +224,11 @@ impl Field {
         check_byte_count(&tag, TAG_SIZE)?;
 
         if tag.as_str() < "010" || tag.as_str() > "999" {
-            return Err(format!("Invalid tag for data field: {tag}"));
+            // Of note, OCLC sometimes creates MARC records with data
+            // fields using the tag "DAT".  For our purposes, the only
+            // thing that really matters is the byte count (checked
+            // above), so just warn for unexpected tags.
+            eprintln!("Unexpected tag for data field: '{tag}'");
         }
 
         Ok(Field {
