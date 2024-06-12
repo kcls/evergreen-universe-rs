@@ -462,6 +462,7 @@ impl Editor {
         )
     }
 
+    /// Format a set of API parameters for debug logging.
     fn args_to_string(&self, params: &ApiParams) -> String {
         let mut buf = String::new();
         for p in params.params().iter() {
@@ -476,7 +477,7 @@ impl Editor {
                 buf.push_str(&p.dump());
             }
 
-            buf.push_str(" ");
+            buf.push(' ');
         }
 
         buf.trim().to_string()
@@ -555,10 +556,12 @@ impl Editor {
         Err(format!("Cannot determine fieldmapper from {classname}").into())
     }
 
+    /// Execute an atomic json_query call.
     pub fn json_query(&mut self, query: EgValue) -> EgResult<Vec<EgValue>> {
         self.json_query_with_ops(query, EgValue::Null)
     }
 
+    /// Execute an atomic json_query call with additional query params.
     pub fn json_query_with_ops(&mut self, query: EgValue, ops: EgValue) -> EgResult<Vec<EgValue>> {
         let method = self.app_method(&format!("json_query.atomic"));
 
@@ -576,6 +579,7 @@ impl Editor {
         Err(format!("Unexpected response to method {method}").into())
     }
 
+    /// Retrieve an IDL object by its primary key value.
     pub fn retrieve(
         &mut self,
         idlclass: &str,
@@ -584,6 +588,8 @@ impl Editor {
         self.retrieve_with_ops(idlclass, id, EgValue::Null)
     }
 
+    /// Retrieve an IDL object by its primary key value with additional
+    /// query parameters.
     pub fn retrieve_with_ops(
         &mut self,
         idlclass: &str,

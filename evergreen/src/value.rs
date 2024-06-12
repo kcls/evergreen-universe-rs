@@ -1159,7 +1159,7 @@ impl EgValue {
         Ok(())
     }
 
-    /// Iterator over the real IDL fields for this blessed value.
+    /// List of real IDL fields for this blessed value.
     ///
     /// Empty iterator if this is not a blessed value.
     pub fn real_fields(&self) -> Vec<&idl::Field> {

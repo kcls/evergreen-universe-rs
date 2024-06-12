@@ -332,13 +332,3 @@ pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<Tcp
     Ok(socket.into())
 }
 
-#[deprecated(note = "See EgValue::as_int()")]
-pub fn json_int(v: &EgValue) -> EgResult<i64> {
-    Ok(v.as_int()
-        .ok_or_else(|| format!("Cannot coerce to int: {}", v.dump()))?)
-}
-
-#[deprecated(note = "See EgValue::as_bool() / boolish()")]
-pub fn json_bool(v: &EgValue) -> bool {
-    v.boolish()
-}
