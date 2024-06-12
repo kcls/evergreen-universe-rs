@@ -331,4 +331,3 @@ pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<Tcp
 
     Ok(socket.into())
 }
-

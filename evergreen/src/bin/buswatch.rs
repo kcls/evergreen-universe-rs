@@ -1,36 +1,50 @@
 //! Watch the message bus for stale messages and apply a TTL value
-//! so they may be removed.
-use eg::date;
+//! so they may be automatically removed over time.
 use eg::osrf::bus;
 use eg::osrf::conf;
 use eg::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 use std::env;
 use std::fmt;
 use std::thread;
 use std::time::Duration;
 
-// The 'watch' account requires permissions:
-// +keys +ttl +expire +llen
+// If a key exists on the bus for at least DEFAULT_WAIT_TIME seconds,
+// apply a time-to-live value of DEFAULT_KEY_EXPIRE_SECS so that it
+// may delete itself after it expires.
 
-/// How often we wake and check for stale keys.
-const DEFAULT_WAIT_TIME: u64 = 60; // 1 minute
+// The 'watch' account requires permissions: +keys +ttl +expire +llen +lrange
+
+/// How often to wake and scan for keys
+const DEFAULT_WAIT_TIME: u64 = 600; // 10 minutes
 
 /// Set the expire time to this many seconds when a stale key is found.
 ///
 /// Redis lists are deleted every time the last value in the list is
-/// popped.  If a list key persists for many minutes, it means the list
-/// is never fully drained, suggesting the backend responsible for
-/// popping values from the list is no longer alive or is under constant
-/// load.  Tell keys to delete themselves after
-/// this many seconds of being unable to drain the list.
+/// popped.  If a list key persists, it means the list is never fully
+/// drained, suggesting the backend responsible for popping values from
+/// the list is no longer alive or is under constant load.  Tell keys to
+/// delete themselves after this many seconds of being unable to drain
+/// the list.
+///
+/// Scenarios where a valid message could be deleted under these circumstances:
+///
+/// 1. Requests are coming into a server at a rate where there
+/// is a perpetual backlog for at least DEFAULT_WAIT_TIME +
+/// DEFAULT_KEY_EXPIRE_SECS seconds
+///
+/// 2. A worker/drone receives a request that takes longer than
+/// DEFAULT_WAIT_TIME + DEFAULT_KEY_EXPIRE_SECS to process and receives
+/// additional requests (from the same client) in the meantime, causing
+/// the follow-up requests to linger.
+///
 const DEFAULT_KEY_EXPIRE_SECS: u64 = 7200; // 2 hours
 
 struct BusWatch {
     bus: bus::Bus,
     wait_time: u64,
     ttl: u64,
+    entries: Vec<String>,
 }
 
 impl fmt::Display for BusWatch {
@@ -51,56 +65,50 @@ impl BusWatch {
         BusWatch {
             bus,
             wait_time,
+            entries: Vec::new(),
             ttl: DEFAULT_KEY_EXPIRE_SECS,
         }
     }
 
     pub fn watch(&mut self) -> EgResult<()> {
-        let mut obj = eg::hash! {};
-
         loop {
-            thread::sleep(Duration::from_secs(self.wait_time));
+            for key in self.bus.keys("opensrf:*")?.drain(..) {
+                let ttl = self.bus.ttl(&key)?;
 
-            // Check all opensrf keys.
-            let keys = self.bus.keys("opensrf:*")?;
+                if ttl > -1 {
+                    // We only care about keys that don't already have a TTL.
+                    continue;
+                }
 
-            if keys.len() == 0 {
-                continue;
-            }
+                match self.entries.iter().position(|k| k == &key) {
+                    Some(idx) => {
+                        // We're already tracking this key, which it means it's
+                        // been on the bus for at least self.wait_time seconds.
+                        // Give it an expire time.
 
-            obj["stats"] = EgValue::new_object();
+                        log::warn!("Setting TTL {} for stale key {key}", self.ttl);
+                        self.bus.set_key_timeout(&key, self.ttl)?;
 
-            for key in keys.iter() {
-                let l = self.bus.llen(key)?;
+                        // Now that it has a timeout, we can stop tracking it.
+                        self.entries.remove(idx);
 
-                // The list may have cleared in the time between the
-                // time we called keys() and llen().
-                if l > 0 {
-                    obj["stats"][key]["count"] = EgValue::from(l);
-
-                    // Uncomment this chunk to see the next
-                    // message in the queue for this key as JSON.
-
-                    if let Ok(list) = self.bus.lrange(key, 0, 1) {
-                        if let Some(s) = list.get(0) {
-                            obj["stats"][key]["next_value"] = EgValue::from(s.as_str());
+                        // This can fail if the value at key is not a list,
+                        // which generally only happens during manual testing.
+                        if let Ok(mut list) = self.bus.lrange(&key, 0, 1) {
+                            if let Some(value) = list.pop() {
+                                log::debug!("Message set to expire: {value}");
+                            }
                         }
                     }
-                }
 
-                let ttl = self.bus.ttl(key)?;
-
-                obj["stats"][key]["ttl"] = EgValue::from(ttl);
-
-                if ttl == -1 {
-                    log::warn!("Setting TTL {} for stale key {key}", self.ttl);
-                    self.bus.set_key_timeout(key, self.ttl)?;
-                }
+                    None => {
+                        log::debug!("Tracking new bus key {key}");
+                        self.entries.push(key);
+                    }
+                };
             }
 
-            obj["time"] = EgValue::from(date::epoch_secs_str());
-
-            log::info!("{}", obj.dump());
+            thread::sleep(Duration::from_secs(self.wait_time));
         }
     }
 }
@@ -113,7 +121,7 @@ fn main() {
 
     let mut watcher = BusWatch::new();
 
-    if let Ok(v) = env::var("OSRF_BUSWATCH_TTL") {
+    if let Ok(v) = env::var("EG_BUSWATCH_TTL") {
         if let Ok(v2) = v.parse::<u64>() {
             watcher.ttl = v2;
         }

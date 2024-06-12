@@ -42,8 +42,9 @@ build-evergreen-release:
 install-evergreen: install-evergreen-config install-evergreen-bin
 
 install-evergreen-bin:
-	cp ./target/debug/eg-router ${TARGET}/bin
 	cp ./target/debug/egsh ${TARGET}/bin
+	cp ./target/debug/eg-router ${TARGET}/bin
+	cp ./target/debug/eg-buswatch ${TARGET}/bin
 	cp ./target/debug/eg-http-gateway ${TARGET}/bin
 	cp ./target/debug/eg-websockets ${TARGET}/bin
 	cp ./target/debug/eg-service-rs-actor ${TARGET}/bin
@@ -53,8 +54,9 @@ install-evergreen-bin:
 install-evergreen-release: install-evergreen-config install-evergreen-bin-release
 
 install-evergreen-bin-release: 
-	cp ./target/release/eg-router ${TARGET}/bin
 	cp ./target/release/egsh ${TARGET}/bin
+	cp ./target/release/eg-router ${TARGET}/bin
+	cp ./target/release/eg-buswatch ${TARGET}/bin
 	cp ./target/release/eg-http-gateway ${TARGET}/bin
 	cp ./target/release/eg-websockets ${TARGET}/bin
 	cp ./target/release/eg-service-rs-actor ${TARGET}/bin
@@ -63,6 +65,7 @@ install-evergreen-bin-release:
 
 install-evergreen-config:
 	cp ./systemd/eg-router.service ${SYSTEMD_DIR}/
+	cp ./systemd/eg-buswatch.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-http-gateway.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-websockets.service ${SYSTEMD_DIR}/
 	cp ./systemd/eg-service-rs-actor.service ${SYSTEMD_DIR}/
