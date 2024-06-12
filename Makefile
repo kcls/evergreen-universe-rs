@@ -6,8 +6,8 @@ SYSTEMD_DIR = /lib/systemd/system
 # Number of test threads to run in parallel.
 # Inline doc tests are compiler-heavy so having a limit here
 # helps ensure things don't get out of hand ram/cpu/disk-wise.
-TEST_THREADS = 8
-BUILD_THREADS = 8
+TEST_THREADS = 4
+BUILD_THREADS = 4
 
 build: build-evergreen build-sip2mediator
 
