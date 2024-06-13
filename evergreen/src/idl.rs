@@ -623,7 +623,10 @@ impl Parser {
         let field = match node.attribute("field") {
             Some(v) => v.to_string(),
             None => {
-                log::warn!("IDL link for class '{}' has no 'field' attr", class.classname);
+                log::warn!(
+                    "IDL link for class '{}' has no 'field' attr",
+                    class.classname
+                );
                 return;
             }
         };
@@ -639,7 +642,10 @@ impl Parser {
         let lclass = match node.attribute("class") {
             Some(v) => v.to_string(),
             None => {
-                log::warn!("IDL link for class '{}' has no 'class' attr", class.classname);
+                log::warn!(
+                    "IDL link for class '{}' has no 'class' attr",
+                    class.classname
+                );
                 return;
             }
         };
