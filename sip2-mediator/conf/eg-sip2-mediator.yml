@@ -10,20 +10,14 @@ sip2-mediator:
     sip-address: 127.0.0.1
     sip-port: 6001
 
-    # Full URL of the HTTP backend server which processes requests.
-    http-url: https://localhost/sip2-mediator
-
-    syslog-facility: local4
-    syslog-level: debug
-
     # Maximum number of allowed SIP client connections.  Once reached,
     # new connection attempts are rejected.
     max-clients: 128
 
-    # If true, remove non-ASCII characters from SIP response messages, 
-    # i.e. those delivered back to a SIP client in response to a request.
-    ascii: true
+    # Mumber of worker threads to launch at start and the minimum
+    # number to maintain throughout.
+    min-workers: 8
 
-    # Turn this on to communicate with an HTTP backend that uses
-    # a self-signed, expired, etc. certificate.
-    ignore-ssl-errors: false
+    # If true, replace non-ASCII characters in SIP responses with their
+    # rough equivalent.  See https://docs.rs/deunicode/latest/deunicode/
+    ascii: true
