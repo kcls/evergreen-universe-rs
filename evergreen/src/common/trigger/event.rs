@@ -18,6 +18,12 @@ pub enum EventState {
     Error,
 }
 
+/// # Examples
+/// ```
+/// use evergreen::common::trigger::EventState;
+/// assert!(EventState::try_from("complete").is_ok());
+/// assert!(EventState::try_from("alligator").is_err());
+/// ```
 impl TryFrom<&str> for EventState {
     type Error = EgError;
     fn try_from(value: &str) -> Result<Self, EgError> {
