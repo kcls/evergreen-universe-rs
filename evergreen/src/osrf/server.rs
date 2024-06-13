@@ -27,6 +27,8 @@ const SHUTDOWN_MAX_WAIT: i32 = 30;
 const DEFAULT_MIN_WORKERS: usize = 3;
 const DEFAULT_MAX_WORKERS: usize = 30;
 const DEFAULT_MIN_IDLE_WORKERS: usize = 1;
+/// How often do we log our idle/active thread counts.
+const LOG_THREAD_STATS_FREQUENCY: i32 = 10;
 
 #[derive(Debug)]
 pub struct WorkerThread {
@@ -329,6 +331,7 @@ impl Server {
         self.sig_tracker.track_reload();
 
         let duration = Duration::from_secs(IDLE_WAKE_TIME);
+        let mut log_timer = util::Timer::new(LOG_THREAD_STATS_FREQUENCY);
 
         loop {
             // Wait for worker thread state updates
@@ -359,12 +362,42 @@ impl Server {
                 // tasks were performed during this loop iter.
                 self.perform_idle_worker_maint();
             }
+
+            self.log_thread_counts(&mut log_timer);
         }
 
         self.unregister_routers()?;
         self.shutdown();
 
         Ok(())
+    }
+
+    /// Periodically report our active/idle thread disposition
+    /// so monitoring tools can keep track.
+    ///
+    /// Nothing is logged if all threads are idle.
+    ///
+    /// You can also do things via command line like: $ ps huH p $pid
+    fn log_thread_counts(&self, timer: &mut util::Timer) {
+        if !timer.done() {
+            return;
+        }
+
+        let active_count = self.active_thread_count();
+
+        if active_count == 0 {
+            return;
+        }
+
+        log::info!(
+            "Service {} max-threads={} active-threads={} idle-threads={}",
+            self.application.name(),
+            self.max_workers,
+            active_count,
+            self.idle_thread_count(),
+        );
+
+        timer.reset();
     }
 
     /// Add additional idle workers if needed.

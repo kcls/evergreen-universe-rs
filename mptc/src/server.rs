@@ -5,6 +5,10 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use std::time::Instant;
+
+/// How often do we log our idle/active thread counts.
+const LOG_THREAD_STATS_FREQUENCY: i32 = 10;
 
 pub struct Server {
     worker_id_gen: u64,
@@ -246,6 +250,8 @@ impl Server {
 
         self.start_workers();
 
+        let mut log_timer = Instant::now();
+
         loop {
             match self.stream.next() {
                 Ok(req_op) => {
@@ -262,9 +268,40 @@ impl Server {
             if self.housekeeping(false) {
                 break;
             }
+
+            self.log_thread_counts(&mut log_timer);
         }
 
         self.stop_workers();
+    }
+
+    /// Periodically report our active/idle thread disposition
+    /// so monitoring tools can keep track.
+    ///
+    /// Nothing is logged if all threads are idle.
+    ///
+    /// You can also do things via command line like: $ ps huH p $pid
+    fn log_thread_counts(&self, timer: &mut Instant) {
+        let elapsed = timer.elapsed().as_secs() as i32;
+
+        if LOG_THREAD_STATS_FREQUENCY - elapsed > 0 {
+            return;
+        }
+
+        let active_count = self.active_worker_count();
+
+        if active_count == 0 {
+            return;
+        }
+
+        log::info!(
+            "MPTC max-threads={} active-threads={} idle-threads={}",
+            self.max_workers,
+            active_count,
+            self.idle_worker_count(),
+        );
+
+        *timer = Instant::now();
     }
 
     fn dispatch_request(&mut self, request: Box<dyn Request>) {
