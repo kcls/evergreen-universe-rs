@@ -1616,7 +1616,10 @@ impl Index<&str> for EgValue {
                 if key.starts_with("_") || o.idl_class.has_field(key) {
                     o.values.get(key).unwrap_or(&eg::NULL)
                 } else {
-                    let err = format!("IDL class {} has no field {key}", self.classname().unwrap());
+                    let err = format!(
+                        "Indexing IDL class '{}': No field named '{key}'",
+                        self.classname().unwrap()
+                    );
                     log::error!("{err}");
                     panic!("{}", err);
                 }
@@ -1645,7 +1648,10 @@ impl IndexMut<&str> for EgValue {
 
         if is_classed {
             if !has_field || key.starts_with("_") {
-                let err = format!("IDL class {} has no field {key}", self.classname().unwrap());
+                let err = format!(
+                    "Indexing IDL class '{}': No field named '{key}'",
+                    self.classname().unwrap()
+                );
                 log::error!("{err}");
                 panic!("{}", err);
             }
