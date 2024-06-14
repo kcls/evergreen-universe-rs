@@ -225,9 +225,7 @@ impl RouterDomain {
         if has_any {
             self.route_count += 1;
             self.services
-                .iter_mut()
-                .filter(|s| s.name().eq(name))
-                .next()
+                .iter_mut().find(|s| s.name().eq(name))
         } else {
             None
         }
@@ -240,7 +238,7 @@ impl RouterDomain {
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
             svc.remove_instance(address);
 
-            if svc.instances.len() == 0 {
+            if svc.instances.is_empty() {
                 log::debug!(
                     "Removing registration for service={} on removal of last instance address={}",
                     service,
@@ -346,7 +344,7 @@ impl Router {
         let busconf = router_conf.client();
 
         let addr = BusAddress::for_router(busconf.username(), busconf.domain().name());
-        let primary_domain = RouterDomain::new(&busconf);
+        let primary_domain = RouterDomain::new(busconf);
 
         log::info!("Router listening for requests at {}", addr.as_str());
 
@@ -426,7 +424,7 @@ impl Router {
             // domain as a whole intact since we'll likely need it again.
             // Remove services and instances as necessary, though.
 
-            self.primary_domain.remove_service(service, &address);
+            self.primary_domain.remove_service(service, address);
             return Ok(());
         }
 
@@ -438,7 +436,7 @@ impl Router {
         for r_domain in &mut self.remote_domains {
             if r_domain.domain().eq(domain) {
                 r_domain.remove_service(service, address);
-                if r_domain.services.len() == 0 {
+                if r_domain.services.is_empty() {
                     // Cannot remove here since it would be modifying
                     // self.remote_domains while it's aready mutably borrowed.
                     rem_pos_op = Some(idx);
@@ -555,7 +553,7 @@ impl Router {
             }
         }
 
-        return services;
+        services
     }
 
     /// Listen for inbound messages and dispatch each as needed.
@@ -593,7 +591,7 @@ impl Router {
         let addr = BusAddress::from_str(to)?;
 
         if addr.is_service() {
-            return self.route_api_request(&addr, tm);
+            self.route_api_request(&addr, tm)
         } else if addr.is_router() {
             return self.handle_router_command(tm);
         } else {
@@ -678,7 +676,7 @@ impl Router {
         ));
 
         let mut trace = 0;
-        if let Some(body) = tm.body().get(0) {
+        if let Some(body) = tm.body().first() {
             // It would be odd, but not impossible to receive a
             // transport message destined for a service that has no
             // messages body.
@@ -719,7 +717,7 @@ impl Router {
                 }
             };
 
-            let value = self.process_router_api_request(&method)?;
+            let value = self.process_router_api_request(method)?;
 
             let reply = Message::new(
                 MessageType::Result,
@@ -734,7 +732,7 @@ impl Router {
 
             let myaddr = match &self.primary_domain.bus {
                 Some(b) => b.address(),
-                None => return Err(format!("Primary domain has no bus!").into()),
+                None => return Err("Primary domain has no bus!".to_string().into()),
             };
 
             let mut tmsg = TransportMessage::with_body(from, myaddr.as_str(), tm.thread(), reply);
@@ -804,7 +802,7 @@ impl Router {
             "unregister" => self.handle_unregister(&from_addr, router_class),
             _ => {
                 log::warn!("{self} unknown router command: {router_command}");
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -842,18 +840,18 @@ fn main() {
     let config = conf::config();
 
     let mut domains = match env::var("OSRF_ROUTER_DOMAIN") {
-        Ok(v) => v.split(",").map(str::to_string).collect(),
+        Ok(v) => v.split(',').map(str::to_string).collect(),
         _ => Vec::new(),
     };
 
-    if domains.len() == 0 {
+    if domains.is_empty() {
         domains = config
             .routers()
             .iter()
             .map(|r| r.client().domain().name().to_string())
             .collect();
 
-        if domains.len() == 0 {
+        if domains.is_empty() {
             panic!("Router requries at least one domain");
         }
     }
@@ -886,7 +884,7 @@ fn main() {
 }
 
 fn start_one_domain(domain: String) -> thread::JoinHandle<()> {
-    return thread::spawn(move || {
+    thread::spawn(move || {
         loop {
             // A router instance will exit if it encounters a
             // non-recoverable bus error.  This can happen, e.g., when
@@ -907,5 +905,5 @@ fn start_one_domain(domain: String) -> thread::JoinHandle<()> {
                 break;
             }
         }
-    });
+    })
 }

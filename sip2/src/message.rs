@@ -20,7 +20,7 @@ impl FixedField {
     pub fn new(spec: &'static spec::FixedField, value: &str) -> Result<Self, Error> {
         if value.len() == spec.length {
             Ok(FixedField {
-                spec: spec,
+                spec,
                 value: value.to_string(),
             })
         } else {
@@ -252,7 +252,7 @@ impl Message {
 
     /// Return the first value with the specified field code.
     pub fn get_field_value(&self, code: &str) -> Option<&str> {
-        if let Some(f) = self.fields().iter().filter(|f| f.code() == code).next() {
+        if let Some(f) = self.fields().iter().find(|f| f.code() == code) {
             Some(f.value.as_str())
         } else {
             None
@@ -399,11 +399,11 @@ impl Message {
         }
 
         // Not all messages have fixed fields and/or fields
-        if msg_text.len() == 0 {
+        if msg_text.is_empty() {
             return Ok(msg);
         }
 
-        for part in msg_text.split("|") {
+        for part in msg_text.split('|') {
             if part.len() > 1 {
                 let val = match part.len() > 2 {
                     true => &part[2..],
@@ -420,17 +420,17 @@ impl Message {
 /// Message display support for logging / debugging.
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {}\n", self.spec.code, self.spec.label)?;
+        writeln!(f, "{} {}", self.spec.code, self.spec.label)?;
 
         for ff in self.fixed_fields.iter() {
-            write!(f, "   {:.<35} {}\n", ff.spec.label, ff.value)?;
+            writeln!(f, "   {:.<35} {}", ff.spec.label, ff.value)?;
         }
 
         for field in self.fields.iter() {
             if let Some(spec) = spec::Field::from_code(&field.code) {
-                write!(f, "{} {:.<35} {}\n", spec.code, spec.label, field.value)?;
+                writeln!(f, "{} {:.<35} {}", spec.code, spec.label, field.value)?;
             } else {
-                write!(f, "{} {:.<35} {}\n", field.code, "custom", field.value)?;
+                writeln!(f, "{} {:.<35} {}", field.code, "custom", field.value)?;
             }
         }
 

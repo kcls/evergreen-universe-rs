@@ -13,7 +13,7 @@ use log::error;
 /// ```
 ///
 pub fn sip_string(text: &str) -> String {
-    text.replace("|", "")
+    text.replace('|', "")
 }
 
 /// Current date + time in SIP format
@@ -45,7 +45,7 @@ pub fn sip_date(iso_date: &str) -> Result<String, error::Error> {
         Ok(dt) => Ok(dt.format(spec::SIP_DATE_FORMAT).to_string()),
         Err(s) => {
             error!("Error parsing sip date: {} : {}", iso_date, s);
-            return Err(error::Error::DateFormatError);
+            Err(error::Error::DateFormatError)
         }
     }
 }

@@ -27,17 +27,17 @@ impl Session {
         .unwrap();
 
         // At present, hold cancelation is the only supported operation.
-        if sip_msg.fixed_fields().get(0).map(|f| f.value()) != Some("-") {
+        if sip_msg.fixed_fields().first().map(|f| f.value()) != Some("-") {
             log::warn!("{self} unsupported hold operation");
             return Ok(response);
         }
 
-        let patron = match self.get_patron_details(&patron_barcode, None, None)? {
+        let patron = match self.get_patron_details(patron_barcode, None, None)? {
             Some(p) => p,
             None => return Ok(response),
         };
 
-        let item = match self.get_item_details(&item_barcode)? {
+        let item = match self.get_item_details(item_barcode)? {
             Some(i) => i,
             None => return Ok(response),
         };
@@ -82,7 +82,7 @@ impl Session {
         )?;
 
         if resp.is_none() || EgEvent::parse(&resp.unwrap()).is_some() {
-            return Ok(false);
+            Ok(false)
         } else {
             Ok(true)
         }

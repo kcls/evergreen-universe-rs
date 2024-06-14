@@ -50,9 +50,9 @@ pub fn escape_xml(value: &str, is_attr: bool) -> String {
 
 fn format(formatted: bool, value: &mut String, depth: u8) {
     if formatted {
-        value.push_str("\n");
+        value.push('\n');
         for _ in 0..depth {
-            value.push_str(" ");
+            value.push(' ');
         }
     }
 }
@@ -196,28 +196,24 @@ impl XmlRecordIterator {
 
             "controlfield" => {
                 if let Some(t) = attributes
-                    .iter()
-                    .filter(|a| a.name.local_name.eq("tag"))
-                    .next()
+                    .iter().find(|a| a.name.local_name.eq("tag"))
                 {
                     record
                         .control_fields_mut()
                         .push(Controlfield::new(&t.value, "")?);
                     context.in_cfield = true;
                 } else {
-                    return Err(format!("Controlfield has no tag"));
+                    return Err("Controlfield has no tag".to_string());
                 }
             }
 
             "datafield" => {
                 let mut field = match attributes
-                    .iter()
-                    .filter(|a| a.name.local_name.eq("tag"))
-                    .next()
+                    .iter().find(|a| a.name.local_name.eq("tag"))
                 {
                     Some(attr) => Field::new(&attr.value)?,
                     None => {
-                        return Err(format!("Data field has no tag"));
+                        return Err("Data field has no tag".to_string());
                     }
                 };
 
@@ -236,7 +232,7 @@ impl XmlRecordIterator {
                 let field_op = record.fields_mut().last_mut();
 
                 if field_op.is_none() {
-                    return Err(format!("Encounted <subfield/> without a field"));
+                    return Err("Encounted <subfield/> without a field".to_string());
                 }
 
                 let field = field_op.unwrap();
@@ -258,7 +254,7 @@ impl XmlRecordIterator {
 impl Record {
     /// Returns an iterator over the XML file which emits Records.
     pub fn from_xml_file(filename: &str) -> Result<XmlRecordIterator, String> {
-        Ok(XmlRecordIterator::from_file(filename)?)
+        XmlRecordIterator::from_file(filename)
     }
 
     /// Returns an iterator over the XML string which emits Records.

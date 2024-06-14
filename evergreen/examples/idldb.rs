@@ -4,7 +4,6 @@ use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, T
 use eg::util::Pager;
 use eg::EgValue;
 use evergreen as eg;
-use getopts;
 use std::env;
 
 fn main() -> Result<(), String> {

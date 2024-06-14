@@ -7,7 +7,6 @@ use eg::osrf::session::ServerSession;
 use eg::Editor;
 use eg::EgEvent;
 use eg::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 
 // Import our local app module
@@ -120,8 +119,8 @@ pub fn validate_user(
     };
 
     // For backwards compat, login permission checks are always global.
-    if !editor.allowed(&permission)? {
-        return session.respond(EgValue::from(editor.event()));
+    if !editor.allowed(permission)? {
+        return session.respond(editor.event());
     }
 
     session.respond(EgEvent::success_value())

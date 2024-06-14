@@ -58,7 +58,7 @@ impl Session {
         let copies = self.editor().search_with_ops("acp", search, flesh)?;
 
         // Will be zero or one.
-        if copies.len() == 0 {
+        if copies.is_empty() {
             return Ok(None);
         }
 
@@ -68,7 +68,7 @@ impl Session {
         let mut circ_patron_id: Option<i64> = None;
         let mut due_date: Option<String> = None;
 
-        if let Some(circ) = self.get_copy_circ(&copy, copy_status)? {
+        if let Some(circ) = self.get_copy_circ(copy, copy_status)? {
             circ_patron_id = Some(circ["usr"].int()?);
 
             if let Some(iso_date) = circ["due_date"].as_str() {
@@ -117,10 +117,8 @@ impl Session {
         let deposit_amount = copy["deposit_amount"].float()?;
 
         let mut fee_type = "01";
-        if copy["deposit"].as_str().unwrap().eq("f") {
-            if deposit_amount > 0.0 {
-                fee_type = "06";
-            }
+        if copy["deposit"].as_str().unwrap().eq("f") && deposit_amount > 0.0 {
+            fee_type = "06";
         }
 
         let circ_status = self.circ_status(copy_status);
@@ -129,7 +127,7 @@ impl Session {
             .unwrap_or("001");
         let magnetic_media = copy["circ_modifier"]["magnetic_media"].boolish();
 
-        let (title, _) = self.get_copy_title_author(&copy)?;
+        let (title, _) = self.get_copy_title_author(copy)?;
         let title = title.unwrap_or(String::new());
 
         Ok(Some(Item {
@@ -137,13 +135,13 @@ impl Session {
             barcode: barcode.to_string(),
             due_date,
             title,
-            copy_status: copy_status,
+            copy_status,
             circ_lib: circ_lib_id,
             deposit_amount,
             hold_queue_length,
             magnetic_media,
-            fee_type: fee_type,
-            circ_status: circ_status,
+            fee_type,
+            circ_status,
             current_loc: circ_lib.to_string(),
             permanent_loc: circ_lib.to_string(),
             destination_loc: dest_location,

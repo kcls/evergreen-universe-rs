@@ -31,6 +31,12 @@ pub struct SignalTracker {
     reload_tracked: bool,
 }
 
+impl Default for SignalTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SignalTracker {
     pub fn new() -> SignalTracker {
         SignalTracker {

@@ -285,7 +285,7 @@ impl Field {
     }
 
     pub fn first_subfield(&self, code: &str) -> Option<&Subfield> {
-        self.subfields.iter().filter(|f| f.code() == code).next()
+        self.subfields.iter().find(|f| f.code() == code)
     }
 
     pub fn has_subfield(&self, code: &str) -> bool {
@@ -347,6 +347,12 @@ pub struct Record {
 }
 
 /// A MARC record with leader, control fields, and data fields.
+impl Default for Record {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Record {
     /// Create a new Record with a default leader and no content.
     pub fn new() -> Self {
@@ -378,11 +384,9 @@ impl Record {
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
     pub fn set_leader_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
-        let s = std::str::from_utf8(bytes).or_else(|e| {
-            Err(format!(
+        let s = std::str::from_utf8(bytes).map_err(|e| format!(
                 "Leader is not a valid UTF-8 string: {e} bytes={bytes:?}"
-            ))
-        })?;
+            ))?;
         self.set_leader(s)
     }
 
@@ -449,11 +453,11 @@ impl Record {
         match self.fields().iter().position(|f| f.tag() > field.tag()) {
             Some(idx) => {
                 self.fields_mut().insert(idx, field);
-                return idx;
+                idx
             }
             None => {
                 self.fields_mut().push(field);
-                return 0;
+                0
             }
         }
     }

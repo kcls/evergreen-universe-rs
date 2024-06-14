@@ -101,7 +101,7 @@ impl Session {
             return Ok(self.org_cache().get(&id));
         }
 
-        return Ok(None);
+        Ok(None)
     }
 
     /// Fetch a user account with card fleshed.
@@ -184,7 +184,7 @@ impl Session {
             let flen = format.len();
 
             // Regex formats are couched in "|" wrappers.
-            if flen > 1 && format.starts_with("|") && format.ends_with("|") {
+            if flen > 1 && format.starts_with('|') && format.ends_with('|') {
                 // Got a regex.
                 todo!();
             } else {
@@ -195,7 +195,7 @@ impl Session {
             }
         }
 
-        if value.len() > 0 {
+        if !value.is_empty() {
             Some(sip2::Field::new(code, value))
         } else {
             None

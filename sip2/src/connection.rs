@@ -39,7 +39,7 @@ impl Connection {
             }),
             Err(s) => {
                 log::error!("Connection::new() failed: {}", s);
-                return Err(Error::NetworkError);
+                Err(Error::NetworkError)
             }
         }
     }
@@ -47,7 +47,7 @@ impl Connection {
     pub fn from_stream(tcp_stream: TcpStream) -> Self {
         Connection {
             ascii: false,
-            tcp_stream: tcp_stream,
+            tcp_stream,
         }
     }
 
@@ -63,7 +63,7 @@ impl Connection {
             Ok(_) => Ok(()),
             Err(s) => {
                 log::error!("disconnect() failed: {}", s);
-                return Err(Error::NetworkError);
+                Err(Error::NetworkError)
             }
         }
     }
@@ -75,17 +75,17 @@ impl Connection {
         if self.ascii {
             // https://crates.io/crates/deunicode
             // "Some transliterations do produce \n characters."
-            msg_sip = deunicode(&msg_sip).replace("\n", "");
+            msg_sip = deunicode(&msg_sip).replace('\n', "");
         }
 
         // No need to redact here since SIP replies do not include passwords.
         log::info!("OUTBOUND: {}", msg_sip);
 
-        match self.tcp_stream.write(&msg_sip.as_bytes()) {
+        match self.tcp_stream.write(msg_sip.as_bytes()) {
             Ok(_) => Ok(()),
             Err(s) => {
                 log::error!("send() failed: {}", s);
-                return Err(Error::NetworkError);
+                Err(Error::NetworkError)
             }
         }
     }
@@ -153,7 +153,7 @@ impl Connection {
             }
         }
 
-        if text.len() == 0 {
+        if text.is_empty() {
             // Receiving none with no timeout indicates either an error
             // or the client simply disconnected.
             log::debug!("Reading TCP stream returned 0 bytes");
@@ -167,7 +167,7 @@ impl Connection {
             Some(s) => {
                 let msg = Message::from_sip(s)?;
                 log::info!("INBOUND: {}", msg.to_sip_redacted());
-                return Ok(Some(msg));
+                Ok(Some(msg))
             }
             None => Err(Error::MessageFormatError),
         }

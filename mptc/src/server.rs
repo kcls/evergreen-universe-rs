@@ -324,9 +324,7 @@ impl Server {
         // 1. Find an idle worker
         if let Some((k, _)) = self
             .workers
-            .iter()
-            .filter(|(_, w)| w.state() == &WorkerState::Idle)
-            .next()
+            .iter().find(|(_, w)| w.state() == &WorkerState::Idle)
         {
             return *k; // &u64
         }
@@ -344,9 +342,7 @@ impl Server {
 
             if let Some((k, _)) = self
                 .workers
-                .iter()
-                .filter(|(_, w)| w.state() == &WorkerState::Idle)
-                .next()
+                .iter().find(|(_, w)| w.state() == &WorkerState::Idle)
             {
                 return *k; // &u64
             }

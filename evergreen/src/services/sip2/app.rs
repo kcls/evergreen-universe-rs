@@ -17,6 +17,12 @@ const APPNAME: &str = "open-ils.rs-sip2";
 /// Our main application class.
 pub struct Sip2Application {}
 
+impl Default for Sip2Application {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sip2Application {
     pub fn new() -> Self {
         Sip2Application {}
@@ -56,6 +62,12 @@ pub struct Sip2Worker {
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
+impl Default for Sip2Worker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sip2Worker {
     pub fn new() -> Self {
         Sip2Worker {
@@ -68,7 +80,7 @@ impl Sip2Worker {
     pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut Sip2Worker> {
         match w.as_any_mut().downcast_mut::<Sip2Worker>() {
             Some(eref) => Ok(eref),
-            None => Err(format!("Cannot downcast").into()),
+            None => Err("Cannot downcast".to_string().into()),
         }
     }
 
@@ -89,7 +101,7 @@ impl ApplicationWorker for Sip2Worker {
     }
 
     fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        &self.methods.as_ref().unwrap()
+        self.methods.as_ref().unwrap()
     }
 
     fn worker_start(

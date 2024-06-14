@@ -23,7 +23,7 @@ impl Session {
     pub fn handle_checkin(&mut self, msg: &sip2::Message) -> EgResult<sip2::Message> {
         let barcode = msg
             .get_field_value("AB")
-            .ok_or_else(|| format!("handle_item_info() missing item barcode"))?;
+            .ok_or_else(|| "handle_item_info() missing item barcode".to_string())?;
 
         let current_loc_op = msg.get_field_value("AP");
         let return_date = &msg.fixed_fields()[2];
@@ -37,10 +37,10 @@ impl Session {
 
         log::info!("{self} Checking in item {barcode}");
 
-        let item = match self.get_item_details(&barcode)? {
+        let item = match self.get_item_details(barcode)? {
             Some(c) => c,
             None => {
-                return Ok(self.return_checkin_item_not_found(&barcode));
+                return Ok(self.return_checkin_item_not_found(barcode));
             }
         };
 
@@ -69,13 +69,13 @@ impl Session {
                 &sip2::util::sip_date_now(),
             ],
             &[
-                ("AB", &barcode),
+                ("AB", barcode),
                 ("AO", self.config().institution()),
                 ("AJ", &item.title),
                 ("AP", &result.current_loc),
                 ("AQ", &result.permanent_loc),
                 ("BG", &item.owning_loc),
-                ("BT", &item.fee_type),
+                ("BT", (item.fee_type)),
                 ("CI", "N"), // security inhibit
             ],
         )
@@ -144,7 +144,7 @@ impl Session {
                 &sip2::util::sip_date_now(),
             ],
             &[
-                ("AB", &barcode),
+                ("AB", barcode),
                 ("AO", self.config().institution()),
                 ("CV", sip2::spec::CheckinAlert::Unknown.into()),
             ],
@@ -192,7 +192,7 @@ impl Session {
 
             // Use NaiveDate since SIP dates don't typically include a
             // time zone value.
-            if let Some(sip_date) = NaiveDateTime::parse_from_str(return_date, fmt).ok() {
+            if let Ok(sip_date) = NaiveDateTime::parse_from_str(return_date, fmt) {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("{self} Checking in with backdate: {iso_date}");
 
@@ -348,7 +348,7 @@ impl Session {
 
             // Use NaiveDate since SIP dates don't typically include a
             // time zone value.
-            if let Some(sip_date) = NaiveDateTime::parse_from_str(return_date, fmt).ok() {
+            if let Ok(sip_date) = NaiveDateTime::parse_from_str(return_date, fmt) {
                 let iso_date = sip_date.format("%Y-%m-%d").to_string();
                 log::info!("{self} Checking in with backdate: {iso_date}");
 
@@ -391,9 +391,8 @@ impl Session {
             Ok(()) => {
                 circulator.commit()?;
                 circulator
-                    .events()
-                    .get(0)
-                    .ok_or_else(|| format!("API call failed to return an event"))?
+                    .events().first()
+                    .ok_or_else(|| "API call failed to return an event".to_string())?
             }
             Err(err) => {
                 circulator.rollback()?;
@@ -466,7 +465,7 @@ impl Session {
             }
         }
 
-        self.handle_checkin_hold(&evt, &mut result)?;
+        self.handle_checkin_hold(evt, &mut result)?;
 
         if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
             result.ok = true;

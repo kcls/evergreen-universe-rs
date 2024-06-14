@@ -117,11 +117,11 @@ fn handle_login(
 
     let sip_username = sip_msg
         .get_field_value("CN")
-        .ok_or_else(|| format!("'CN' field required"))?;
+        .ok_or_else(|| "'CN' field required".to_string())?;
 
     let sip_password = sip_msg
         .get_field_value("CO")
-        .ok_or_else(|| format!("'CO' field required"))?;
+        .ok_or_else(|| "'CO' field required".to_string())?;
 
     let flesh = eg::hash! {
         "flesh": 1,
@@ -204,7 +204,7 @@ fn handle_sc_status(
         let flag = editor
             .search("cgf", query)?
             .pop()
-            .ok_or_else(|| format!("SC Status message requires login"))?;
+            .ok_or_else(|| "SC Status message requires login".to_string())?;
 
         response.add_field("AO", flag["value"].str()?);
         response.add_field("BX", Config::default_supports());
@@ -248,7 +248,7 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<s
         &[
             item.circ_status,
             "02", // security marker
-            &item.fee_type,
+            (item.fee_type),
             &sip2::util::sip_date_now(),
         ],
         &[

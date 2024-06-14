@@ -22,6 +22,12 @@ pub struct ParamSet {
     summary: Option<usize>,
 }
 
+impl Default for ParamSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ParamSet {
     pub fn new() -> Self {
         ParamSet {

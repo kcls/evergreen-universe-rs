@@ -51,7 +51,7 @@ fn main() {
         let start = Instant::now();
 
         while handles.len() < THREAD_COUNT {
-            handles.push(thread::spawn(|| run_thread()));
+            handles.push(thread::spawn(run_thread));
         }
 
         // Wait for all threads to finish.
@@ -143,7 +143,7 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
 }
 
 fn unpack_response(text: &str) -> Option<EgValue> {
-    let mut ws_msg = json::parse(&text).unwrap();
+    let mut ws_msg = json::parse(text).unwrap();
     let mut osrf_list = ws_msg["osrf_msg"].take();
     let osrf_msg = osrf_list[0].take();
 

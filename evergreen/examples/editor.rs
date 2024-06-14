@@ -32,7 +32,7 @@ fn main() -> eg::EgResult<()> {
     let org_list = editor.search("aou", eg::hash! {"shortname": "TEST"})?;
 
     // If found, log it
-    if let Some(org) = org_list.get(0) {
+    if let Some(org) = org_list.first() {
         println!("Add Org: {org} email={}", org["email"]);
     }
 

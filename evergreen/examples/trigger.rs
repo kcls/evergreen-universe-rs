@@ -37,7 +37,7 @@ fn main() -> eg::EgResult<()> {
     println!("Created events: {event_ids:?}");
 
     if let Some(list) = event_ids {
-        if let Some(id) = list.get(0) {
+        if let Some(id) = list.first() {
             trigger::processor::Processor::process_event_once(&mut editor, *id)?;
         }
     }

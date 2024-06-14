@@ -6,8 +6,6 @@ use eg::osrf::logging::Logger;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
-use httparse;
-use mptc;
 use std::any::Any;
 use std::env;
 use std::io::{Read, Write};
@@ -93,7 +91,7 @@ impl GatewayHandler {
 
                     // Log the call before we relay it to OpenSRF in case the
                     // request exits early on a failure.
-                    self.log_request(&request, http_req.as_ref().unwrap());
+                    self.log_request(request, http_req.as_ref().unwrap());
 
                     match self.relay_to_osrf(http_req.as_mut().unwrap()) {
                         Ok(list) => {
@@ -126,7 +124,7 @@ impl GatewayHandler {
         let response = match http_method {
             "HEAD" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n"),
             "GET" | "POST" => format!("{leader}\r\n{HTTP_CONTENT_TYPE}\r\n{length}\r\n\r\n{data}"),
-            _ => format!("HTTP/1.1 405 Method Not Allowed\r\n"),
+            _ => "HTTP/1.1 405 Method Not Allowed\r\n".to_string(),
         };
 
         if let Err(e) = request.stream.write_all(response.as_bytes()) {
@@ -237,8 +235,7 @@ impl GatewayHandler {
                     }
 
                     // Parse the collected chunks as a the final JSON value.
-                    content = EgValue::parse(&buf)
-                        .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
+                    content = EgValue::parse(&buf).map_err(|e| format!("Error reconstituting partial message: {e}"))?;
                 }
 
                 if format.is_hash() {
@@ -291,8 +288,7 @@ impl GatewayHandler {
 
             let num_bytes = request
                 .stream
-                .read(&mut buffer)
-                .or_else(|e| Err(format!("Error reading HTTP stream: {e}")))?;
+                .read(&mut buffer).map_err(|e| format!("Error reading HTTP stream: {e}"))?;
 
             log::trace!("Read {num_bytes} from the TCP stream");
 
@@ -316,8 +312,7 @@ impl GatewayHandler {
                 );
 
                 let res = req
-                    .parse(chars.as_slice())
-                    .or_else(|e| Err(format!("Error readong HTTP headers: {e}")))?;
+                    .parse(chars.as_slice()).map_err(|e| format!("Error readong HTTP headers: {e}"))?;
 
                 if res.is_partial() {
                     // We haven't read enough header data yet.
@@ -331,7 +326,7 @@ impl GatewayHandler {
 
                 for header in req.headers.iter() {
                     if header.name.to_lowercase().as_str() == "content-length" {
-                        let len = String::from_utf8_lossy(&header.value);
+                        let len = String::from_utf8_lossy(header.value);
                         if let Ok(size) = len.parse::<usize>() {
                             content_length = size;
                             break;
@@ -342,12 +337,12 @@ impl GatewayHandler {
                 let method = req
                     .method
                     .map(|v| v.to_string())
-                    .ok_or(format!("Invalid HTTP request"))?;
+                    .ok_or("Invalid HTTP request".to_string())?;
 
                 let path = req
                     .path
                     .map(|v| v.to_string())
-                    .ok_or(format!("Invalid HTTP request"))?;
+                    .ok_or("Invalid HTTP request".to_string())?;
 
                 parsed_req = Some(ParsedHttpRequest {
                     method,
@@ -384,7 +379,7 @@ impl GatewayHandler {
             }
 
             if body_byte_count > content_length {
-                return Err(format!("Content exceeds Content-Length header value").into());
+                return Err("Content exceeds Content-Length header value".to_string().into());
             }
 
             // Keep reading data until body_byte_count >= content_length
@@ -404,8 +399,7 @@ impl GatewayHandler {
             None => format!("{}{}", DUMMY_BASE_URL, &http_req.path),
         };
 
-        let parsed_url = Url::parse(&url_params)
-            .or_else(|e| Err(format!("Error parsing request params: {e}")))?;
+        let parsed_url = Url::parse(&url_params).map_err(|e| format!("Error parsing request params: {e}"))?;
 
         let mut method: Option<String> = None;
         let mut service: Option<String> = None;
@@ -425,8 +419,7 @@ impl GatewayHandler {
                 "method" => method = Some(v.to_string()),
                 "service" => service = Some(v.to_string()),
                 "param" => {
-                    let jval = json::parse(&v)
-                        .or_else(|e| Err(format!("Cannot parse parameter: {e} : {v}")))?;
+                    let jval = json::parse(&v).map_err(|e| format!("Cannot parse parameter: {e} : {v}"))?;
 
                     let val;
                     if format.is_hash() {
@@ -447,15 +440,15 @@ impl GatewayHandler {
 
         let method = method
             .as_ref()
-            .ok_or(format!("Request contains no method name"))?;
+            .ok_or("Request contains no method name".to_string())?;
 
-        let service = service.ok_or(format!("Request contains no service name"))?;
+        let service = service.ok_or("Request contains no service name".to_string())?;
 
         let osrf_method = eg::osrf::message::MethodCall::new(method, params);
 
         Ok(ParsedGatewayRequest {
             format,
-            service: service,
+            service,
             method: Some(osrf_method),
             http_method: http_req.method.to_string(),
         })
@@ -503,18 +496,17 @@ impl mptc::RequestHandler for GatewayHandler {
     }
 
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
-        let mut request = GatewayRequest::downcast(&mut request);
+        let request = GatewayRequest::downcast(&mut request);
 
         log::debug!("[{}] Gateway request received", request.address);
 
-        let result = self.handle_request(&mut request);
+        let result = self.handle_request(request);
 
         // Always try to shut down the request stream regardless of
         // what happened in our request handler.
         request
             .stream
-            .shutdown(std::net::Shutdown::Both)
-            .or_else(|e| Err(format!("Error shutting down worker stream socket: {e}")))?;
+            .shutdown(std::net::Shutdown::Both).map_err(|e| format!("Error shutting down worker stream socket: {e}"))?;
 
         result.map_err(|e| format!("{e}"))
     }
@@ -529,11 +521,9 @@ impl GatewayStream {
         log::info!("EG Gateway listening at {address}:{port}");
 
         let listener =
-            eg::util::tcp_listener(address, port, GATEWAY_POLL_TIMEOUT).or_else(|e| {
-                Err(format!(
+            eg::util::tcp_listener(address, port, GATEWAY_POLL_TIMEOUT).map_err(|e| format!(
                     "Cannot listen for connections on {address}:{port} {e}"
-                ))
-            })?;
+                ))?;
 
         let stream = GatewayStream { listener };
 
@@ -549,7 +539,7 @@ impl mptc::RequestStream for GatewayStream {
             Err(e) => match e.kind() {
                 // socket read timeout.
                 std::io::ErrorKind::WouldBlock => return Ok(None),
-                _ => return Err(format!("accept() failed: {e}").into()),
+                _ => return Err(format!("accept() failed: {e}")),
             },
         };
 
@@ -562,7 +552,7 @@ impl mptc::RequestStream for GatewayStream {
             start_time: date::now(),
         };
 
-        return Ok(Some(Box::new(request)));
+        Ok(Some(Box::new(request)))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {

@@ -1,5 +1,4 @@
 use super::Message;
-use json;
 use std::collections::HashMap;
 use std::error;
 use std::fmt;
@@ -146,9 +145,9 @@ impl Message {
         // as a SIP string.
         let mut strbuf = json_value["code"]
             .take_string()
-            .ok_or_else(|| SipJsonError::MessageFormatError(format!("Message requires a code")))?;
+            .ok_or_else(|| SipJsonError::MessageFormatError("Message requires a code".to_string()))?;
 
-        while json_value["fixed_fields"].len() > 0 {
+        while !json_value["fixed_fields"].is_empty() {
             strbuf += &format!("{}", json_value["fixed_fields"].array_remove(0));
         }
 

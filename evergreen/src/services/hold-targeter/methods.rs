@@ -40,7 +40,7 @@ pub fn target(
     let mut find_copy = None;
 
     // Apply user-supplied options if we have any.
-    if let Some(options) = method.params().get(0) {
+    if let Some(options) = method.params().first() {
         return_count = options["return_count"].boolish();
 
         if let Ok(t) = options["return_throttle"].int() {
