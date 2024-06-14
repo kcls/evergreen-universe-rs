@@ -1,4 +1,4 @@
-///! Models a MARC record with associated components.
+//! Models a MARC record with associated components.
 const TAG_SIZE: usize = 3;
 const LEADER_SIZE: usize = 24;
 const CODE_SIZE: usize = 1;
