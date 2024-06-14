@@ -69,7 +69,7 @@ impl Connection {
     }
 
     /// Send a SIP message
-    pub fn send(&mut self, msg: &Message) -> Result<(), Error> {
+    #[allow(clippy::unused_io_amount)] pub fn send(&mut self, msg: &Message) -> Result<(), Error> {
         let mut msg_sip = msg.to_sip();
 
         if self.ascii {

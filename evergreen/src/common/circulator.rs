@@ -594,7 +594,6 @@ impl<'a> Circulator<'a> {
         Ok(())
     }
 
-    ///
     pub fn load_system_copy_alerts(&mut self) -> EgResult<()> {
         if self.copy_id == 0 {
             return Ok(());

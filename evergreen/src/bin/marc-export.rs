@@ -602,7 +602,7 @@ fn add_items(
     Ok(())
 }
 
-fn write(writer: &mut Box<dyn Write>, bytes: &[u8]) -> Result<(), String> {
+#[allow(clippy::unused_io_amount)] fn write(writer: &mut Box<dyn Write>, bytes: &[u8]) -> Result<(), String> {
     match writer.write(bytes) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Error writing bytes: {e}")),

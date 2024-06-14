@@ -196,7 +196,7 @@ impl Settings {
     }
 
     /// Returns a setting value for the provided context.
-    pub fn get_context_value(
+    #[allow(clippy::unnecessary_get_then_check)] pub fn get_context_value(
         &mut self,
         context: &SettingContext,
         name: &str,

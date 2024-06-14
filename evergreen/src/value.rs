@@ -1665,7 +1665,7 @@ impl Index<&str> for EgValue {
 /// assert_eq!(v["blarg"], EgValue::String("b".to_string()));
 /// ```
 impl IndexMut<&str> for EgValue {
-    fn index_mut(&mut self, key: &str) -> &mut Self::Output {
+    #[allow(clippy::unnecessary_get_then_check)] fn index_mut(&mut self, key: &str) -> &mut Self::Output {
         let (is_classed, has_field) = match self {
             Self::Blessed(o) => (true, o.idl_class.has_field(key)),
             _ => (false, false),

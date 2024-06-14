@@ -45,7 +45,7 @@ pub fn thread_id() -> u64 {
 /// let n = util::random_number(12);
 /// assert_eq!(n.len(), 12);
 /// ```
-pub fn random_number(size: u8) -> String {
+#[allow(clippy::legacy_numeric_constants)] pub fn random_number(size: u8) -> String {
     let mut rng = rand::thread_rng();
     let num: u64 = rng.gen_range(0..std::u64::MAX);
     format!("{:0width$}", num, width = size as usize)[0..size as usize].to_string()

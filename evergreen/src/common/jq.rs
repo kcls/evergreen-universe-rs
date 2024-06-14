@@ -62,7 +62,7 @@ pub struct JsonQueryCompiler {
 }
 
 impl Clone for JsonQueryCompiler {
-    fn clone(self: &JsonQueryCompiler) -> JsonQueryCompiler {
+    #[allow(clippy::assigning_clones)] fn clone(self: &JsonQueryCompiler) -> JsonQueryCompiler {
         let mut new = JsonQueryCompiler::new();
 
         new.locale = self.locale.clone();
@@ -202,7 +202,7 @@ impl JsonQueryCompiler {
     ///
     /// If you don't need an owned value, idl::get_class() will sufffice.
     fn get_idl_class(&self, classname: &str) -> EgResult<Arc<idl::Class>> {
-        idl::get_class(classname).map(|a| a.clone())
+        idl::get_class(classname).cloned()
     }
 
     /// Returns the base IDL class, i.e. the root class of the FROM clause.
@@ -605,7 +605,7 @@ impl JsonQueryCompiler {
             if let Some(xform) = fdef["transform"].as_str() {
                 let mut sql = String::new();
 
-                sql += &self.check_identifier(xform)?;
+                sql += self.check_identifier(xform)?;
                 sql += "(";
 
                 if fdef["distinct"].boolish() {

@@ -1025,11 +1025,7 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
     };
 
     let charge_on_zero_op = settings.get_value("circ.charge_lost_on_zero")?.as_bool();
-    let charge_on_zero = if let Some(b) = charge_on_zero_op {
-        b
-    } else {
-        false
-    };
+    let charge_on_zero = charge_on_zero_op.unwrap_or_default();
 
     // Retain the price as a json value for now because null is important.
     let mut price = if primary_field == "cost" {
