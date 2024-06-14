@@ -323,16 +323,27 @@ impl Field {
 
     /// Remove all subfields with the specified code and returns
     /// the count of removed subfields.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Field;
+    /// let mut field = Field::new("505").unwrap();
+    /// let _ = field.add_subfield("t", "Chapter 1 /");
+    /// let _ = field.add_subfield("r", "Cool author --");
+    /// let _ = field.add_subfield("t", "Chapter 2.");
+    /// assert_eq!(field.subfields().len(), 3);
+    ///
+    /// assert_eq!(field.remove_subfields("t"), 2);
+    ///
+    /// assert_eq!(field.subfields().len(), 1);
+    /// ```
     pub fn remove_subfields(&mut self, code: &str) -> usize {
         let mut removed = 0;
 
-        loop {
-            if let Some(index) = self.subfields.iter().position(|s| s.code.eq(code)) {
-                self.subfields.remove(index);
-                removed += 1;
-            } else {
-                break;
-            }
+        while let Some(index) = self.subfields.iter().position(|s| s.code.eq(code)) {
+            self.subfields.remove(index);
+            removed += 1;
         }
 
         removed
