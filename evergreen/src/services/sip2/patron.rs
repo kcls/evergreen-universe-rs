@@ -421,8 +421,6 @@ impl Session {
             flesh_fields: {
                 circ: ["target_copy"],
                 acp: ["call_number"],
-                acn: ["record"],
-                bre: ["flat_display_entries"],
             }
         };
 

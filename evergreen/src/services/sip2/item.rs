@@ -50,8 +50,7 @@ impl Session {
             flesh_fields: {
                 acp: ["circ_lib", "call_number",
                     "stat_cat_entry_copy_maps", "circ_modifier"],
-                acn: ["owning_lib", "record"],
-                bre: ["flat_display_entries"],
+                acn: ["owning_lib"],
                 ascecm: ["stat_cat", "stat_cat_entry"],
             }
         };
@@ -153,7 +152,7 @@ impl Session {
             hold_pickup_date: hold_pickup_date_op,
             hold_patron_barcode: hold_patron_barcode_op,
             circ_patron_id,
-            record_id: copy["call_number"]["record"].id()?,
+            record_id: copy["call_number"]["record"].int()?,
             call_number_id: copy["call_number"].id()?,
         }))
     }

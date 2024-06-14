@@ -10,7 +10,7 @@ impl Session {
     ///
     /// Assumes copy is fleshed to the bib with flat_display_entries.
     pub fn get_copy_title_author(
-        &self,
+        &mut self,
         copy: &EgValue,
     ) -> EgResult<(Option<String>, Option<String>)> {
         let mut resp = (None, None);
@@ -26,36 +26,49 @@ impl Session {
             return Ok(resp);
         }
 
-        resp.0 = self.get_bib_display_value(copy, "title");
-        resp.1 = self.get_bib_display_value(copy, "author");
+        let title_setting = "title_display_field";
+        let author_setting = "author_display_field";
 
-        Ok(resp)
-    }
+        let mut title_field_setting = None;
+        let mut author_field_setting = None;
 
-    /// Extract the display field value for the provided field (e.g. "title"),
-    /// honoring the related SIP setting to override the default display
-    /// field when present.
-    fn get_bib_display_value(&self, copy: &EgValue, field: &str) -> Option<String> {
-        let setting = format!("{field}_display_field");
-        let display_entries = &copy["call_number"]["record"]["flat_display_entries"];
-
-        let display_field =
-            if let Some(Some(df)) = self.config().settings().get(&setting).map(|v| v.as_str()) {
-                df
-            } else {
-                field
-            };
-
-        if let Some(Some(value)) = display_entries
-            .members()
-            .filter(|e| e["name"].as_str() == Some(display_field))
-            .map(|e| e["value"].as_str())
-            .next()
+        if let Some(Some(field)) = self
+            .config()
+            .settings()
+            .get(title_setting)
+            .map(|v| v.as_str())
         {
-            return Some(value.to_string());
+            title_field_setting = Some(field.to_string());
         }
 
-        None
+        if let Some(Some(field)) = self
+            .config()
+            .settings()
+            .get(author_setting)
+            .map(|v| v.as_str())
+        {
+            author_field_setting = Some(field.to_string());
+        }
+
+        let title_field = title_field_setting.as_deref().unwrap_or("title");
+        let author_field = author_field_setting.as_deref().unwrap_or("author");
+
+        let query = eg::hash! {
+            "source": copy["call_number"]["record"].int()?,
+            "name": [title_field, author_field],
+        };
+
+        let mut entries = self.editor().search("mfde", query)?;
+
+        for entry in entries.iter_mut() {
+            if entry["name"].str()? == title_field {
+                resp.0 = entry["value"].take_string();
+            } else if entry["name"].str()? == author_field {
+                resp.1 = entry["value"].take_string();
+            }
+        }
+
+        Ok(resp)
     }
 
     /// Get an org unit (by cache or net) via its ID.
