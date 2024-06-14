@@ -284,6 +284,21 @@ impl Record {
     }
 
     /// Generates the binary form of a MARC record as a vector of bytes.
+    ///
+    /// # Examples
+    /// ```
+    /// use marc::Record;
+    /// let mut my_record = Record::new();
+    /// my_record
+    ///     .add_data_field("245")
+    ///     .unwrap()
+    ///     .add_subfield("a", "My favorite book")
+    ///     .unwrap();
+    /// assert_eq!(
+    ///     my_record.to_binary().unwrap(),
+    ///     "00059       00037       245002100000\x1E  \x1FaMy favorite book\x1E\x1D".as_bytes()
+    /// );
+    /// ```
     pub fn to_binary(&self) -> Result<Vec<u8>, String> {
         let mut bytes: Vec<u8> = Vec::new();
 
@@ -387,7 +402,7 @@ impl Record {
 
     /// Sync the byte count and data offset values in the leader to
     /// match the record just created.
-    fn sync_leader(&self, num_dirs: usize, bytes: &mut Vec<u8>) -> Result<(), String> {
+    fn sync_leader(&self, num_dirs: usize, bytes: &mut [u8]) -> Result<(), String> {
         let blen = bytes.len();
 
         if blen > MAX_RECORD_BYTES {
