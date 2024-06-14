@@ -15,12 +15,20 @@ pub enum WorkerState {
     Done,
 }
 
+/// # Examples
+///
+/// ```
+/// use mptc::worker::WorkerState;
+///
+/// let state = WorkerState::Active;
+/// assert_eq!(state.to_string(), "Active");
+/// ```
 impl From<&WorkerState> for &'static str {
     fn from(e: &WorkerState) -> &'static str {
         match e {
-            &WorkerState::Idle => "Idle",
-            &WorkerState::Active => "Active",
-            &WorkerState::Done => "Done",
+            WorkerState::Idle => "Idle",
+            WorkerState::Active => "Active",
+            WorkerState::Done => "Done",
         }
     }
 }
