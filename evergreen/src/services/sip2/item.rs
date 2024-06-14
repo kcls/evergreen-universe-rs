@@ -51,7 +51,7 @@ impl Session {
                 acp: ["circ_lib", "call_number",
                     "stat_cat_entry_copy_maps", "circ_modifier"],
                 acn: ["owning_lib", "record"],
-                bre: ["simple_record"],
+                bre: ["flat_display_entries"],
                 ascecm: ["stat_cat", "stat_cat_entry"],
             }
         };

@@ -422,7 +422,7 @@ impl Session {
                 circ: ["target_copy"],
                 acp: ["call_number"],
                 acn: ["record"],
-                bre: ["simple_record"]
+                bre: ["flat_display_entries"],
             }
         };
 

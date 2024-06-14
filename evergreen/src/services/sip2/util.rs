@@ -8,7 +8,7 @@ const PATRON_NAME_PARTS: [&str; 3] = ["first_given_name", "second_given_name", "
 impl Session {
     /// Extract the title and author info from a copy object.
     ///
-    /// Assumes copy is fleshed to the bib simple_record.
+    /// Assumes copy is fleshed to the bib with flat_display_entries.
     pub fn get_copy_title_author(
         &self,
         copy: &EgValue,
@@ -26,16 +26,36 @@ impl Session {
             return Ok(resp);
         }
 
-        let simple_rec = &copy["call_number"]["record"]["simple_record"];
-
-        if let Some(title) = simple_rec["title"].as_str() {
-            resp.0 = Some(title.to_string());
-        }
-        if let Some(author) = simple_rec["author"].as_str() {
-            resp.1 = Some(author.to_string());
-        }
+        resp.0 = self.get_bib_display_value(copy, "title");
+        resp.1 = self.get_bib_display_value(copy, "author");
 
         Ok(resp)
+    }
+
+    /// Extract the display field value for the provided field (e.g. "title"),
+    /// honoring the related SIP setting to override the default display
+    /// field when present.
+    fn get_bib_display_value(&self, copy: &EgValue, field: &str) -> Option<String> {
+        let setting = format!("{field}_display_field");
+        let display_entries = &copy["call_number"]["record"]["flat_display_entries"];
+
+        let display_field =
+            if let Some(Some(df)) = self.config().settings().get(&setting).map(|v| v.as_str()) {
+                df
+            } else {
+                field
+            };
+
+        if let Some(Some(value)) = display_entries
+            .members()
+            .filter(|e| e["name"].as_str() == Some(display_field))
+            .map(|e| e["value"].as_str())
+            .next()
+        {
+            return Some(value.to_string());
+        }
+
+        None
     }
 
     /// Get an org unit (by cache or net) via its ID.
