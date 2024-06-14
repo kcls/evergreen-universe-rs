@@ -90,10 +90,10 @@ fn main() {
 
     let duration = start.elapsed().unwrap().as_millis();
     let seconds = (duration as f64) / 1000.0;
-    let count = parallel * repeat;
+    let count = parallel * repeat * messages.len();
     let thput = count as f64 / seconds;
 
-    println!("{count} requests processed in {seconds:.3} seconds; ~{thput:.3} reqs / second");
+    println!("{count} messages processed in {seconds:.3} seconds; ~{thput:.3} reqs / second");
 }
 
 fn run_one_thread(
