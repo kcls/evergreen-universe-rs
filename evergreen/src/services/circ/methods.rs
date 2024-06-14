@@ -314,7 +314,7 @@ pub fn prev_renewal_chain_summary(
 
     let prev_circ = editor.search_with_ops("aacs", query, flesh)?;
 
-    if prev_circ.len() == 0 {
+    if prev_circ.is_empty() {
         // No previous circ chain
         return Ok(());
     }

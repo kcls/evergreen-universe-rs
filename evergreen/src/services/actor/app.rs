@@ -16,6 +16,12 @@ const APPNAME: &str = "open-ils.rs-actor";
 /// Our main application class.
 pub struct RsActorApplication {}
 
+impl Default for RsActorApplication {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RsActorApplication {
     pub fn new() -> Self {
         RsActorApplication {}
@@ -57,6 +63,12 @@ pub struct RsActorWorker {
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
+impl Default for RsActorWorker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RsActorWorker {
     pub fn new() -> Self {
         RsActorWorker {
@@ -72,7 +84,7 @@ impl RsActorWorker {
     pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsActorWorker> {
         match w.as_any_mut().downcast_mut::<RsActorWorker>() {
             Some(eref) => Ok(eref),
-            None => Err(format!("Cannot downcast").into()),
+            None => Err("Cannot downcast".to_string().into()),
         }
     }
 
@@ -93,7 +105,7 @@ impl ApplicationWorker for RsActorWorker {
     }
 
     fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        &self.methods.as_ref().unwrap()
+        self.methods.as_ref().unwrap()
     }
 
     fn worker_start(

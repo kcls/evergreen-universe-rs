@@ -1,7 +1,6 @@
 use eg::date;
 use eg::db::DatabaseConnection;
 use evergreen as eg;
-use getopts;
 use marc::Record;
 use postgres_cursor::Cursor;
 use rust_decimal::Decimal;
@@ -400,7 +399,7 @@ fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
     }
 
     ids.pop(); // remove trailing ","
-    if ids.len() > 0 {
+    if !ids.is_empty() {
         ops.record_ids = Some(ids);
     }
 
@@ -409,14 +408,14 @@ fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
 
 /// Translate library filter shortnames into org unit IDs
 fn set_library_ids(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), String> {
-    if ops.libraries.len() == 0 {
+    if ops.libraries.is_empty() {
         return Ok(());
     }
 
     let mut ids = String::new();
     let query = "select id from actor.org_unit where shortname=any($1::text[])";
 
-    for row in con.client().query(&query[..], &[&ops.libraries]).unwrap() {
+    for row in con.client().query(query, &[&ops.libraries]).unwrap() {
         ids += &format!("{},", row.get::<&str, i32>("id"));
     }
 
@@ -444,11 +443,11 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
     set_pipe_ids(ops)?;
 
     if ops.to_xml {
-        write(&mut writer, &XML_COLLECTION_HEADER.as_bytes())?;
+        write(&mut writer, XML_COLLECTION_HEADER.as_bytes())?;
     }
 
     let items_query = if ops.export_items {
-        Some(create_items_sql(&ops))
+        Some(create_items_sql(ops))
     } else {
         None
     };
@@ -483,7 +482,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
             let marc_xml: &str = row.get("marc");
             let record_id: i64 = row.get("id");
 
-            let mut record = match Record::from_xml(&marc_xml).next() {
+            let mut record = match Record::from_xml(marc_xml).next() {
                 Some(r) => r?,
                 None => {
                     eprintln!("No record built from XML: record={record_id} \n{marc_xml}");
@@ -492,7 +491,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
             };
 
             if let Some(items_sql) = &items_query {
-                add_items(record_id, con, ops, &mut record, &items_sql)?;
+                add_items(record_id, con, ops, &mut record, items_sql)?;
             }
 
             if ops.to_xml {
@@ -535,7 +534,7 @@ fn export(con: &mut DatabaseConnection, ops: &mut ExportOptions) -> Result<(), S
         if ops.pretty_print_xml {
             write(&mut writer, "\n".as_bytes())?;
         }
-        write(&mut writer, &XML_COLLECTION_FOOTER.as_bytes())?;
+        write(&mut writer, XML_COLLECTION_FOOTER.as_bytes())?;
     }
 
     Ok(())
@@ -561,7 +560,7 @@ fn add_items(
 
         for (subfield, fname) in ITEM_SUBFIELD_MAP {
             if let Ok(value) = row.try_get::<&str, &str>(fname) {
-                if value != "" {
+                if !value.is_empty() {
                     field.add_subfield(subfield, value)?;
                 }
             }
@@ -571,7 +570,7 @@ fn add_items(
         let price: Option<Decimal> = row.get("price");
         let price_binding;
         if let Some(p) = price {
-            price_binding = format!("{}{}", ops.currency_symbol, p.to_string());
+            price_binding = format!("{}{}", ops.currency_symbol, p);
             field.add_subfield("y", price_binding.as_str())?;
         }
 
@@ -612,9 +611,7 @@ fn write(writer: &mut Box<dyn Write>, bytes: &[u8]) -> Result<(), String> {
 
 fn check_options(ops: &ExportOptions) -> Result<(), String> {
     if ops.verbose && ops.destination == ExportDestination::Stdout {
-        return Err(format!(
-            "--verbose is not compatible with exporting to STDOUT"
-        ));
+        return Err("--verbose is not compatible with exporting to STDOUT".to_string());
     }
 
     if ops.limit_to_visible && !ops.export_items {

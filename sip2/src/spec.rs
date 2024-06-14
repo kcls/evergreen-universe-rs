@@ -983,7 +983,7 @@ impl TryFrom<&str> for CheckinAlert {
             "99" => Ok(Self::Other),
             _ => {
                 log::error!("Invalid checkin alert code: {v}");
-                return Err(Self::Error::MessageFormatError);
+                Err(Self::Error::MessageFormatError)
             }
         }
     }

@@ -1,4 +1,3 @@
-use getopts;
 use sip2::*;
 use std::env;
 use std::sync::Arc;
@@ -177,11 +176,11 @@ fn read_options() -> getopts::Matches {
 
     opts.optmulti("", "message-type", "Message Type", "");
 
-    let matches = opts
-        .parse(&args[1..]) // skip the command name
-        .expect("Error parsing command line options");
+    
 
-    matches
+    opts
+        .parse(&args[1..]) // skip the command name
+        .expect("Error parsing command line options")
 }
 
 /// Create the SIP paramater set from the command line arguments.

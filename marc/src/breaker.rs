@@ -18,7 +18,7 @@ pub fn unescape_from_breaker(value: &str) -> String {
 
 impl Controlfield {
     pub fn to_breaker(&self) -> String {
-        if self.content().len() > 0 {
+        if !self.content().is_empty() {
             format!("={} {}", self.tag(), escape_to_breaker(self.content()))
         } else {
             format!("={}", self.tag())
@@ -124,16 +124,16 @@ impl Record {
         let mut field = Field::new(tag)?;
 
         if len > 4 {
-            field.set_ind1(line[4..5].replace("\\", " "))?;
+            field.set_ind1(line[4..5].replace('\\', " "))?;
         }
 
         if len > 5 {
-            field.set_ind2(line[5..6].replace("\\", " "))?;
+            field.set_ind2(line[5..6].replace('\\', " "))?;
         }
 
         if len > 6 {
             for sf in line[6..].split(MARC_BREAKER_SF_DELIMITER) {
-                if sf.len() == 0 {
+                if sf.is_empty() {
                     continue;
                 }
                 let subfield = Subfield::new(&sf[..1], if sf.len() > 1 { &sf[1..] } else { "" })?;

@@ -49,7 +49,7 @@ impl Iterator for BinaryRecordIterator {
             }
         }
 
-        if bytes.len() > 0 {
+        if !bytes.is_empty() {
             match Record::from_binary(bytes.as_slice()) {
                 Ok(r) => return Some(Ok(r)),
                 Err(e) => return Some(Err(format!("Error processing bytes: {:?} {}", bytes, e))),
@@ -73,7 +73,7 @@ impl BinaryRecordIterator {
 
 /// bytes => String => usize
 fn bytes_to_usize(bytes: &[u8]) -> Result<usize, String> {
-    match std::str::from_utf8(&bytes) {
+    match std::str::from_utf8(bytes) {
         Ok(bytes_str) => match bytes_str.parse::<usize>() {
             Ok(num) => Ok(num),
             Err(e) => Err(format!(
@@ -172,7 +172,7 @@ impl Record {
         let size_bytes = &leader_bytes[0..RECORD_SIZE_ENTRY];
 
         // Repported size of the record as a number
-        let rec_size = bytes_to_usize(&size_bytes)?;
+        let rec_size = bytes_to_usize(size_bytes)?;
 
         if rec_byte_count != rec_size {
             return Err(format!(
@@ -181,7 +181,7 @@ impl Record {
             ));
         }
 
-        record.set_leader_bytes(&leader_bytes)?;
+        record.set_leader_bytes(leader_bytes)?;
 
         // Where in this pile of bytes do the control/data fields tart.
         let data_offset_bytes =
@@ -204,9 +204,9 @@ impl Record {
         let mut dir_idx = 0;
 
         while dir_idx < dir_count {
-            let dir_entry = DirectoryEntry::new(dir_idx, data_start_idx, &dir_bytes)?;
+            let dir_entry = DirectoryEntry::new(dir_idx, data_start_idx, dir_bytes)?;
 
-            if let Err(e) = record.process_directory_entry(&rec_bytes, rec_byte_count, &dir_entry) {
+            if let Err(e) = record.process_directory_entry(rec_bytes, rec_byte_count, &dir_entry) {
                 return Err(format!(
                     "Error processing directory entry index={} {}",
                     dir_idx, e
@@ -242,7 +242,7 @@ impl Record {
         let field_bytes = &rec_bytes[dir_entry.field_start_idx..dir_entry.field_end_idx];
 
         // Turn said bytes into a string
-        let field_str = match std::str::from_utf8(&field_bytes) {
+        let field_str = match std::str::from_utf8(field_bytes) {
             Ok(s) => s,
             Err(e) => {
                 return Err(format!(
@@ -253,7 +253,7 @@ impl Record {
         };
 
         if dir_entry.tag.as_str() < "010" {
-            let content = if field_str.len() > 0 { field_str } else { "" };
+            let content = if !field_str.is_empty() { field_str } else { "" };
 
             let cf = Controlfield::new(&dir_entry.tag, content)?;
             self.control_fields_mut().push(cf);
@@ -334,7 +334,7 @@ impl Record {
 
             bytes.append(&mut s.as_bytes().to_vec());
 
-            prev_end_idx = prev_end_idx + field_len;
+            prev_end_idx += field_len;
         }
 
         for field in self.fields() {
@@ -358,7 +358,7 @@ impl Record {
 
             bytes.append(&mut s.as_bytes().to_vec());
 
-            prev_end_idx = prev_end_idx + field_len;
+            prev_end_idx += field_len;
         }
 
         num_dirs
@@ -399,7 +399,7 @@ impl Record {
         let size_str = format!("{:0w$}", blen, w = RECORD_SIZE_ENTRY);
         let size_bytes = size_str.as_bytes();
 
-        bytes[0..RECORD_SIZE_ENTRY].copy_from_slice(&size_bytes);
+        bytes[0..RECORD_SIZE_ENTRY].copy_from_slice(size_bytes);
 
         // Set the start index of the body of the record
         let data_start_idx = LEADER_SIZE + (num_dirs * DIRECTORY_ENTRY_LEN) + 1; // end-of-field
@@ -408,7 +408,7 @@ impl Record {
         let dstart = DATA_OFFSET_START;
         let dend = dstart + DATA_OFFSET_SIZE;
 
-        bytes[dstart..dend].copy_from_slice(&data_start_str.as_bytes());
+        bytes[dstart..dend].copy_from_slice(data_start_str.as_bytes());
 
         Ok(())
     }

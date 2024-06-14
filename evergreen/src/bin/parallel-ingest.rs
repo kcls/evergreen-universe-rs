@@ -115,7 +115,7 @@ fn create_sql(options: &IngestOptions) -> String {
 fn get_record_ids(connection: &mut DatabaseConnection, sql: &str) -> Vec<i64> {
     let mut ids = Vec::new();
 
-    for row in connection.client().query(&sql[..], &[]).unwrap() {
+    for row in connection.client().query(sql, &[]).unwrap() {
         let id: i64 = row.get("id");
         ids.push(id);
     }
@@ -316,7 +316,7 @@ fn reingest_field_entries(
         )
     "#;
 
-    let stmt = connection.client().prepare(&sql).unwrap();
+    let stmt = connection.client().prepare(sql).unwrap();
 
     for id in ids {
         if let Err(e) = connection

@@ -8,7 +8,6 @@ use eg::init;
 use eg::norm::Normalizer;
 use eg::EgValue;
 use evergreen as eg;
-use getopts;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -159,7 +158,7 @@ impl BibLinker {
 
         let bib_fields = self.editor.search_with_ops("acsbf", search, flesh)?;
 
-        let linkable_tag_prefixes = vec!["1", "6", "7", "8"];
+        let linkable_tag_prefixes = ["1", "6", "7", "8"];
 
         // Skip these for non-6XX fields
         let scrub_subfields1 = ["v", "x", "y", "z"];
@@ -279,7 +278,7 @@ impl BibLinker {
             // subject thesaurus code is embedded in the bib field subfield 2
             is_local = true;
 
-            let thesaurus = match bib_field.get_subfields("2").get(0) {
+            let thesaurus = match bib_field.get_subfields("2").first() {
                 Some(sf) => sf.content(),
                 None => "",
             };
@@ -289,9 +288,7 @@ impl BibLinker {
             // if we have no special remapping value for the found thesaurus,
             // fall back to ind2 => 7=Other.
             bib_ind2 = match REMAP_BIB_SF2_TO_IND2
-                .iter()
-                .filter(|(k, _)| k == &thesaurus)
-                .next()
+                .iter().find(|(k, _)| k == &thesaurus)
             {
                 Some((_, v)) => v,
                 None => "7",
@@ -320,9 +317,7 @@ impl BibLinker {
             }
 
             if let Some((_, ind)) = AUTH_TO_BIB_IND2
-                .iter()
-                .filter(|(t, _)| t == &thesaurus)
-                .next()
+                .iter().find(|(t, _)| t == &thesaurus)
             {
                 if ind == &bib_ind2 {
                     log::debug!(
@@ -360,7 +355,7 @@ impl BibLinker {
 
         if bib_field.ind2() == "7" {
             // Field controlled by "other"
-            if let Some(sf) = bib_field.get_subfields("2").get(0) {
+            if let Some(sf) = bib_field.get_subfields("2").first() {
                 return sf.content() == "fast";
             }
         }
@@ -403,7 +398,7 @@ impl BibLinker {
             .filter(|cf| &cf.bib_tag == bib_tag)
             .collect();
 
-        if controlled.len() == 0 {
+        if controlled.is_empty() {
             return Ok(auth_ids);
         }
 
@@ -415,10 +410,7 @@ impl BibLinker {
 
         for bib_sf in bib_field.subfields() {
             if controlled
-                .iter()
-                .filter(|cf| &cf.subfield == bib_sf.code())
-                .next()
-                .is_some()
+                .iter().any(|cf| &cf.subfield == bib_sf.code())
             {
                 searches.push((bib_sf.code(), bib_sf.content()));
             }
@@ -564,7 +556,7 @@ impl BibLinker {
             for bib_field in record.get_fields_mut(&cfield.bib_tag) {
                 let bib_tag = bib_field.tag().to_string(); // mut borrow
 
-                let is_fast_heading = self.is_fast_heading(&bib_field);
+                let is_fast_heading = self.is_fast_heading(bib_field);
 
                 if let Some(sf0) = bib_field.get_subfields("0").first() {
                     let sfcode = sf0.code();
@@ -587,7 +579,7 @@ impl BibLinker {
                 }
 
                 let mut auth_matches =
-                    self.find_potential_auth_matches(&control_fields, &bib_field)?;
+                    self.find_potential_auth_matches(control_fields, bib_field)?;
 
                 log::info!(
                     "Found {} potential authority matches for bib {} tag={}",
@@ -596,7 +588,7 @@ impl BibLinker {
                     bib_tag
                 );
 
-                if auth_matches.len() == 0 {
+                if auth_matches.is_empty() {
                     continue;
                 }
 
@@ -611,7 +603,7 @@ impl BibLinker {
 
                 let mut auth_leaders: Vec<AuthLeader> = Vec::new();
 
-                if bib_tag.starts_with("1") || bib_tag.starts_with("6") || bib_tag.starts_with("7")
+                if bib_tag.starts_with('1') || bib_tag.starts_with('6') || bib_tag.starts_with('7')
                 {
                     // For 1XX, 6XX, and 7XX bib fields, only link to
                     // authority records whose leader/008 positions 14
@@ -627,17 +619,14 @@ impl BibLinker {
                     }
                 }
 
-                let mut auth_id = match auth_matches.get(0) {
-                    Some(id) => Some(*id),
-                    None => None,
-                };
+                let mut auth_id = auth_matches.first().copied();
 
                 if bib_tag.eq("650") || bib_tag.eq("651") || bib_tag.eq("655") {
                     // Using the indicator-2 value from the  controlled bib
                     // field, find the first authority in the list of matches
                     // that uses the same thesaurus.  If no such authority
                     // is found, no matching occurs.
-                    auth_id = self.find_matching_auth_for_thesaurus(&bib_field, &auth_leaders)?;
+                    auth_id = self.find_matching_auth_for_thesaurus(bib_field, &auth_leaders)?;
                 }
 
                 // Avoid exiting here just because we have no matchable

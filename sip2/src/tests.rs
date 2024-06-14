@@ -5,12 +5,12 @@ use super::spec;
 
 #[test]
 fn invalid_fixed_field() {
-    assert_eq!(FixedField::new(&spec::FF_STATUS_CODE, "123").is_err(), true);
+    assert!(FixedField::new(&spec::FF_STATUS_CODE, "123").is_err());
 }
 
 #[test]
 fn ok_fixed_field() {
-    assert_eq!(FixedField::new(&spec::FF_STATUS_CODE, "3").is_ok(), true);
+    assert!(FixedField::new(&spec::FF_STATUS_CODE, "3").is_ok());
 }
 
 #[test]
@@ -21,7 +21,7 @@ fn sc_status_message() {
         vec![
             FixedField::new(&spec::FF_STATUS_CODE, "0").unwrap(),
             FixedField::new(&spec::FF_MAX_PRINT_WIDTH, "999").unwrap(),
-            FixedField::new(&spec::FF_PROTOCOL_VERSION, &spec::SIP_PROTOCOL_VERSION).unwrap(),
+            FixedField::new(&spec::FF_PROTOCOL_VERSION, spec::SIP_PROTOCOL_VERSION).unwrap(),
         ],
         vec![],
     );

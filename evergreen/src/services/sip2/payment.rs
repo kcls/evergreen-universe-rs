@@ -30,7 +30,7 @@ impl Session {
             }
         };
 
-        let mut result = PaymentResult::new(&patron_barcode);
+        let mut result = PaymentResult::new(patron_barcode);
 
         let pay_amount_str = match msg.get_field_value("BV") {
             Some(v) => v,
@@ -62,7 +62,7 @@ impl Session {
         let ops = eg::hash! { flesh: 1u8, flesh_fields: {ac: ["usr"]} };
         let mut cards = self.editor().search_with_ops("ac", search, ops)?;
 
-        if cards.len() == 0 {
+        if cards.is_empty() {
             return Ok(self.compile_payment_response(&result));
         }
 
@@ -86,7 +86,7 @@ impl Session {
             payments = self.compile_multi_xacts(&user, pay_amount, &mut result)?;
         }
 
-        if payments.len() == 0 {
+        if payments.is_empty() {
             return Ok(self.compile_payment_response(&result));
         }
 
@@ -161,13 +161,13 @@ impl Session {
         result: &mut PaymentResult,
     ) -> EgResult<Vec<(i64, f64)>> {
         let mut payments: Vec<(i64, f64)> = Vec::new();
-        let mut patron = Patron::new(&result.patron_barcode, self.format_user_name(&user));
+        let mut patron = Patron::new(&result.patron_barcode, self.format_user_name(user));
 
         patron.id = user.id()?;
 
         let xacts = self.get_patron_xacts(&patron, None)?; // see patron mod
 
-        if xacts.len() == 0 {
+        if xacts.is_empty() {
             result.screen_msg = Some("No transactions to pay".to_string());
             return Ok(payments);
         }
@@ -237,7 +237,7 @@ impl Session {
             log::info!("{self} SIP sent register login string as {rl}");
 
             // Scrub the Windows domain if present ("DOMAIN\user")
-            let mut parts = rl.split("\\");
+            let mut parts = rl.split('\\');
             let p0 = parts.next();
 
             let login = if let Some(l) = parts.next() {
@@ -297,7 +297,7 @@ impl Session {
             vec![authtoken, args, EgValue::from(last_xact_id)],
         )?;
 
-        let resp = resp.ok_or_else(|| format!("Payment API returned no response"))?;
+        let resp = resp.ok_or_else(|| "Payment API returned no response".to_string())?;
 
         if let Some(evt) = eg::event::EgEvent::parse(&resp) {
             if let Some(d) = evt.desc() {

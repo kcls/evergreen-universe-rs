@@ -22,6 +22,12 @@ pub struct CheckoutResult {
     was_renewal: bool,
 }
 
+impl Default for CheckoutResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CheckoutResult {
     pub fn new() -> CheckoutResult {
         CheckoutResult {
@@ -40,7 +46,7 @@ impl Session {
         let password_op = sip_msg.get_field_value("AD"); // optional
         let fee_ack_op = sip_msg.get_field_value("BO");
 
-        let patron = match self.get_patron_details(&patron_barcode, password_op, None)? {
+        let patron = match self.get_patron_details(patron_barcode, password_op, None)? {
             Some(c) => c,
             None => {
                 // Stub response
@@ -76,8 +82,8 @@ impl Session {
             let item_barcode = item["barcode"].str()?;
 
             let result = self.checkout(
-                &item_barcode,
-                &patron_barcode,
+                item_barcode,
+                patron_barcode,
                 fee_ack_op.is_some(),
                 true, // is_explicit_renewal
                 self.config().setting_is_true("checkout_override_all"),
@@ -131,7 +137,7 @@ impl Session {
             Some(v) => v,
             None => {
                 log::error!("checkout() missing patron barcode");
-                return Ok(self.checkout_item_not_found(&item_barcode, "", is_explicit_renewal));
+                return Ok(self.checkout_item_not_found(item_barcode, "", is_explicit_renewal));
             }
         };
 
@@ -139,23 +145,23 @@ impl Session {
 
         let fee_ack_op = msg.get_field_value("BO");
 
-        let item = match self.get_item_details(&item_barcode)? {
+        let item = match self.get_item_details(item_barcode)? {
             Some(c) => c,
             None => {
                 return Ok(self.checkout_item_not_found(
-                    &item_barcode,
-                    &patron_barcode,
+                    item_barcode,
+                    patron_barcode,
                     is_explicit_renewal,
                 ))
             }
         };
 
-        let patron = match self.get_patron_details(&patron_barcode, None, None)? {
+        let patron = match self.get_patron_details(patron_barcode, None, None)? {
             Some(c) => c,
             None => {
                 return Ok(self.checkout_item_not_found(
-                    &item_barcode,
-                    &patron_barcode,
+                    item_barcode,
+                    patron_barcode,
                     is_explicit_renewal,
                 ))
             }
@@ -165,8 +171,8 @@ impl Session {
         let renew_ok = msg.fixed_fields()[0].value().eq("Y");
 
         let result = self.checkout(
-            &item_barcode,
-            &patron_barcode,
+            item_barcode,
+            patron_barcode,
             fee_ack_op.is_some(),
             is_explicit_renewal || (renew_ok && same_patron), // is_renewal
             self.config().setting_is_true("checkout_override_all"),
@@ -207,7 +213,7 @@ impl Session {
                 ("AB", &item.barcode),
                 ("AJ", &item.title),
                 ("AO", self.config().institution()),
-                ("BT", &item.fee_type),
+                ("BT", (item.fee_type)),
                 ("CI", "N"), // security inhibit
                 ("CK", &item.media_type),
             ],
@@ -246,8 +252,8 @@ impl Session {
                 &sip2::util::sip_date_now(), // timestamp
             ],
             &[
-                ("AA", &patron_barcode),
-                ("AB", &item_barcode),
+                ("AA", patron_barcode),
+                ("AB", item_barcode),
                 ("AO", self.config().institution()),
             ],
         )
@@ -415,9 +421,8 @@ impl Session {
             Ok(()) => {
                 circulator.commit()?;
                 circulator
-                    .events()
-                    .get(0)
-                    .ok_or_else(|| format!("API call failed to return an event"))?
+                    .events().first()
+                    .ok_or_else(|| "API call failed to return an event".to_string())?
             }
             Err(err) => {
                 circulator.rollback()?;

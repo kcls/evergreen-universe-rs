@@ -17,9 +17,7 @@ use self::Error::*;
 
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            _ => None,
-        }
+        None
     }
 }
 

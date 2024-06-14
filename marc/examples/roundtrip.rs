@@ -1,4 +1,3 @@
-use getopts;
 use marc::Record;
 use std::env;
 

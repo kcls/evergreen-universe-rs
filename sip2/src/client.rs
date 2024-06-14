@@ -89,14 +89,14 @@ impl Client {
             vec![
                 FixedField::new(&spec::FF_STATUS_CODE, "0").unwrap(),
                 FixedField::new(&spec::FF_MAX_PRINT_WIDTH, "999").unwrap(),
-                FixedField::new(&spec::FF_PROTOCOL_VERSION, &spec::SIP_PROTOCOL_VERSION).unwrap(),
+                FixedField::new(&spec::FF_PROTOCOL_VERSION, spec::SIP_PROTOCOL_VERSION).unwrap(),
             ],
             vec![],
         );
 
         let resp = self.connection.sendrecv(&req)?;
 
-        if resp.fixed_fields().len() > 0 && resp.fixed_fields()[0].value() == "Y" {
+        if !resp.fixed_fields().is_empty() && resp.fixed_fields()[0].value() == "Y" {
             Ok(SipResponse::new(resp, true))
         } else {
             Ok(SipResponse::new(resp, false))
@@ -201,7 +201,7 @@ impl Client {
         let mut req = Message::new(
             &spec::M_ITEM_INFO,
             vec![FixedField::new(&spec::FF_DATE, &util::sip_date_now()).unwrap()],
-            vec![Field::new(spec::F_ITEM_IDENT.code, &item_id)],
+            vec![Field::new(spec::F_ITEM_IDENT.code, item_id)],
         );
 
         req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
@@ -210,7 +210,7 @@ impl Client {
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(title_val) = resp.get_field_value(spec::F_TITLE_IDENT.code) {
-            if title_val != "" {
+            if !title_val.is_empty() {
                 return Ok(SipResponse::new(resp, true));
             }
         }
@@ -220,13 +220,13 @@ impl Client {
 
     /// Send a CHECKOUT request
     pub fn checkout(&mut self, params: &ParamSet) -> Result<SipResponse, Error> {
-        let item_id = params.item_id().ok_or_else(|| Error::MissingParamsError)?;
+        let item_id = params.item_id().ok_or(Error::MissingParamsError)?;
         let patron_id = params
             .patron_id()
-            .ok_or_else(|| Error::MissingParamsError)?;
+            .ok_or(Error::MissingParamsError)?;
 
         let mut req = Message::from_values(
-            &spec::M_CHECKOUT.code,
+            spec::M_CHECKOUT.code,
             &[
                 "N",                   // renewal policy
                 "N",                   // no block
@@ -234,8 +234,8 @@ impl Client {
                 &util::sip_date_now(), // no block due date
             ],
             &[
-                (spec::F_ITEM_IDENT.code, &item_id),
-                (spec::F_PATRON_IDENT.code, &patron_id),
+                (spec::F_ITEM_IDENT.code, item_id),
+                (spec::F_PATRON_IDENT.code, patron_id),
             ],
         )?;
 
@@ -245,7 +245,7 @@ impl Client {
 
         let resp = self.connection.sendrecv(&req)?;
 
-        if let Some(status) = resp.fixed_fields().get(0) {
+        if let Some(status) = resp.fixed_fields().first() {
             if status.value() == "1" {
                 return Ok(SipResponse::new(resp, true));
             }
@@ -256,16 +256,16 @@ impl Client {
 
     /// Send a CHECKIN request
     pub fn checkin(&mut self, params: &ParamSet) -> Result<SipResponse, Error> {
-        let item_id = params.item_id().ok_or_else(|| Error::MissingParamsError)?;
+        let item_id = params.item_id().ok_or(Error::MissingParamsError)?;
 
         let mut req = Message::from_values(
-            &spec::M_CHECKIN.code,
+            spec::M_CHECKIN.code,
             &[
                 "N",                   // no block
                 &util::sip_date_now(), // transaction date
                 &util::sip_date_now(), // no block due date
             ],
-            &[(spec::F_ITEM_IDENT.code, &item_id)],
+            &[(spec::F_ITEM_IDENT.code, item_id)],
         )?;
 
         req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
@@ -273,7 +273,7 @@ impl Client {
 
         let resp = self.connection.sendrecv(&req)?;
 
-        if let Some(status) = resp.fixed_fields().get(0) {
+        if let Some(status) = resp.fixed_fields().first() {
             if status.value() == "1" {
                 return Ok(SipResponse::new(resp, true));
             }

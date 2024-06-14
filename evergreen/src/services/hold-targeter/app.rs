@@ -16,6 +16,12 @@ const APPNAME: &str = "open-ils.rs-hold-targeter";
 /// Our main application class.
 pub struct HoldTargeterApplication {}
 
+impl Default for HoldTargeterApplication {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HoldTargeterApplication {
     pub fn new() -> Self {
         HoldTargeterApplication {}
@@ -57,6 +63,12 @@ pub struct HoldTargeterWorker {
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
+impl Default for HoldTargeterWorker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HoldTargeterWorker {
     pub fn new() -> Self {
         HoldTargeterWorker {
@@ -77,7 +89,7 @@ impl HoldTargeterWorker {
     pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut HoldTargeterWorker> {
         match w.as_any_mut().downcast_mut::<HoldTargeterWorker>() {
             Some(eref) => Ok(eref),
-            None => Err(format!("Cannot downcast").into()),
+            None => Err("Cannot downcast".to_string().into()),
         }
     }
 }
@@ -88,7 +100,7 @@ impl ApplicationWorker for HoldTargeterWorker {
     }
 
     fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        &self.methods.as_ref().unwrap()
+        self.methods.as_ref().unwrap()
     }
 
     fn worker_start(

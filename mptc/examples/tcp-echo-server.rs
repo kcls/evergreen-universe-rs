@@ -1,4 +1,3 @@
-use mptc;
 use std::any::Any;
 use std::io::{Read, Write}; // needed by TcpStream
 use std::net::{TcpListener, TcpStream};
@@ -48,7 +47,7 @@ impl mptc::RequestHandler for TcpEchoHandler {
         request.stream.read(&mut buffer).expect("Stream.read()");
 
         // Trim the null bytes from our read buffer.
-        let buffer: Vec<u8> = buffer.iter().map(|c| *c).filter(|c| c != &0u8).collect();
+        let buffer: Vec<u8> = buffer.iter().copied().filter(|c| c != &0u8).collect();
 
         request
             .stream
@@ -72,10 +71,9 @@ impl mptc::RequestStream for TcpEchoStream {
     fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
         let (stream, _addr) = self
             .listener
-            .accept()
-            .or_else(|e| Err(format!("Accept failed: {e}")))?;
+            .accept().map_err(|e| format!("Accept failed: {e}"))?;
 
-        let request = TcpEchoRequest { stream: stream };
+        let request = TcpEchoRequest { stream };
         Ok(Some(Box::new(request)))
     }
 

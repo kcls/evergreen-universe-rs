@@ -160,7 +160,7 @@ fn odd_records() {
 fn binary() {
     let src_bytes = MARC_BINARY.as_bytes();
 
-    let record = Record::from_binary(&src_bytes).unwrap();
+    let record = Record::from_binary(src_bytes).unwrap();
 
     let author = record.get_values("100", "a").pop().unwrap();
 

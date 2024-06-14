@@ -15,6 +15,12 @@ const APPNAME: &str = "open-ils.rs-circ";
 /// Our main application class.
 pub struct RsCircApplication {}
 
+impl Default for RsCircApplication {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RsCircApplication {
     pub fn new() -> Self {
         RsCircApplication {}
@@ -56,6 +62,12 @@ pub struct RsCircWorker {
     methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
+impl Default for RsCircWorker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RsCircWorker {
     pub fn new() -> Self {
         RsCircWorker {
@@ -76,7 +88,7 @@ impl RsCircWorker {
     pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsCircWorker> {
         match w.as_any_mut().downcast_mut::<RsCircWorker>() {
             Some(eref) => Ok(eref),
-            None => Err(format!("Cannot downcast").into()),
+            None => Err("Cannot downcast".to_string().into()),
         }
     }
 }
@@ -87,7 +99,7 @@ impl ApplicationWorker for RsCircWorker {
     }
 
     fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        &self.methods.as_ref().unwrap()
+        self.methods.as_ref().unwrap()
     }
 
     /// Absorb our global dataset.
