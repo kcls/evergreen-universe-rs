@@ -72,14 +72,15 @@ impl Session {
             circ_patron_id = Some(circ["usr"].int()?);
 
             if let Some(iso_date) = circ["due_date"].as_str() {
+                let due_dt = date::parse_datetime(iso_date)?;
                 if self
                     .config()
                     .setting_is_true("due_date_use_sip_date_format")
                 {
-                    let due_dt = date::parse_datetime(iso_date)?;
                     due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
-                    due_date = Some(iso_date.to_string());
+                    // YYYY-MM-DD HH:MM:SS
+                    due_date = Some(due_dt.format("%F %T").to_string());
                 }
             }
         }
