@@ -202,6 +202,8 @@ impl Session {
         let mut patron = Patron::new(barcode, self.format_user_name(&user));
 
         patron.id = user.id()?;
+        // Patron password is an optional field.  Is an undefined password
+        // valid?  This code says no. EG SIPServer says yes.
         patron.password_verified = self.check_password(patron.id, password_op)?;
 
         if let Some(summary) = self.editor().retrieve("mous", patron.id)? {
