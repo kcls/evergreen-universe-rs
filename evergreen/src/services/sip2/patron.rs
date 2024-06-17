@@ -131,6 +131,7 @@ pub struct Patron {
     pub net_access: Option<String>,
     pub profile: Option<String>,
     pub phone: Option<String>,
+    pub screen_msg: Option<String>,
 }
 
 impl Patron {
@@ -171,6 +172,7 @@ impl Patron {
             net_access: None,
             profile: None,
             phone: None,
+            screen_msg: None,
         }
     }
 }
@@ -818,6 +820,10 @@ impl Session {
         // checkout and holds privilege, since both would be needed for recalls.
         patron.recall_denied = patron.charge_denied || patron.renew_denied;
 
+        // Matching EG SIPServer.
+        // Unknown if it serves a purpose.
+        patron.screen_msg = Some("blocked".to_string());
+
         Ok(())
     }
 
@@ -1073,6 +1079,7 @@ impl Session {
         )
         .unwrap();
 
+        resp.maybe_add_field("AF", patron.screen_msg.as_deref());
         resp.maybe_add_field("BD", patron.address.as_deref());
         resp.maybe_add_field("BE", patron.email.as_deref());
 
