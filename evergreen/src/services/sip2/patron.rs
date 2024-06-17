@@ -674,7 +674,7 @@ impl Session {
                 .collect();
 
             patron.items_overdue_count = overdue.len();
-            patron.items_out_count = outs.len();
+            patron.items_out_count = outs.len() + overdue.len();
             patron.items_overdue_ids = overdue;
             patron.items_out_ids = outs;
         }
