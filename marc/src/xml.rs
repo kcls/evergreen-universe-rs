@@ -195,9 +195,7 @@ impl XmlRecordIterator {
             "leader" => context.in_leader = true,
 
             "controlfield" => {
-                if let Some(t) = attributes
-                    .iter().find(|a| a.name.local_name.eq("tag"))
-                {
+                if let Some(t) = attributes.iter().find(|a| a.name.local_name.eq("tag")) {
                     record
                         .control_fields_mut()
                         .push(Controlfield::new(&t.value, "")?);
@@ -208,9 +206,7 @@ impl XmlRecordIterator {
             }
 
             "datafield" => {
-                let mut field = match attributes
-                    .iter().find(|a| a.name.local_name.eq("tag"))
-                {
+                let mut field = match attributes.iter().find(|a| a.name.local_name.eq("tag")) {
                     Some(attr) => Field::new(&attr.value)?,
                     None => {
                         return Err("Data field has no tag".to_string());

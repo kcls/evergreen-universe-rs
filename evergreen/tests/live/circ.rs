@@ -74,7 +74,8 @@ fn checkout(tester: &mut util::Tester) -> EgResult<()> {
     circulator.commit()?;
 
     let evt = circulator
-        .events().first()
+        .events()
+        .first()
         .ok_or("Checkin returned no result!".to_string())?;
 
     assert!(evt.is_success());
@@ -122,7 +123,8 @@ fn checkin_item_at_home(tester: &mut util::Tester) -> EgResult<()> {
     circulator.commit()?;
 
     let evt = circulator
-        .events().first()
+        .events()
+        .first()
         .ok_or("Checkin returned no result!".to_string())?;
 
     assert!(evt.is_success());
@@ -168,7 +170,8 @@ fn checkin_item_remote(tester: &mut util::Tester) -> EgResult<()> {
     circulator.commit()?;
 
     let evt = circulator
-        .events().first()
+        .events()
+        .first()
         .ok_or("Checkin returned no result!".to_string())?;
 
     assert_eq!(evt.textcode(), "ROUTE_ITEM");

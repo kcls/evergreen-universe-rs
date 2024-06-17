@@ -77,7 +77,8 @@ fn main() -> EgResult<()> {
     let args: Vec<String> = std::env::args().collect();
 
     let params = options
-        .parse(&args[1..]).map_err(|e| format!("Error parsing params: {e}"))?;
+        .parse(&args[1..])
+        .map_err(|e| format!("Error parsing params: {e}"))?;
 
     if params.opt_present("help") {
         println!("{HELP_TEXT}");

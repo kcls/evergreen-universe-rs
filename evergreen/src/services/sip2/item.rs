@@ -132,7 +132,8 @@ impl Session {
         let (title, _) = self.get_copy_title_author(copy)?;
         let title = title.unwrap_or(String::new());
 
-        let call_number = format!("{}{}{}",
+        let call_number = format!(
+            "{}{}{}",
             copy["call_number"]["prefix"]["label"].str()?,
             copy["call_number"]["label"].str()?,
             copy["call_number"]["suffix"]["label"].str()?,

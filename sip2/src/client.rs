@@ -221,9 +221,7 @@ impl Client {
     /// Send a CHECKOUT request
     pub fn checkout(&mut self, params: &ParamSet) -> Result<SipResponse, Error> {
         let item_id = params.item_id().ok_or(Error::MissingParamsError)?;
-        let patron_id = params
-            .patron_id()
-            .ok_or(Error::MissingParamsError)?;
+        let patron_id = params.patron_id().ok_or(Error::MissingParamsError)?;
 
         let mut req = Message::from_values(
             spec::M_CHECKOUT.code,

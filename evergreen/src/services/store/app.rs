@@ -72,7 +72,8 @@ impl RsStoreApplication {
                 // basis for each auto-method.  The stubs themselves are
                 // not registered.
                 let stub = methods::METHODS
-                    .iter().find(|m| m.name.eq(&format!("{mtype}-stub")))
+                    .iter()
+                    .find(|m| m.name.eq(&format!("{mtype}-stub")))
                     .unwrap(); // these are hard-coded to exist.
 
                 let mut clone = stub.into_method(APPNAME);
@@ -90,23 +91,17 @@ impl RsStoreApplication {
 
     fn register_xact_methods(&self, methods: &mut Vec<MethodDef>) {
         let api = "transaction.begin";
-        let begin = methods::METHODS
-            .iter().find(|m| m.name.eq(api))
-            .unwrap();
+        let begin = methods::METHODS.iter().find(|m| m.name.eq(api)).unwrap();
 
         methods.push(begin.into_method(APPNAME));
 
         let api = "transaction.rollback";
-        let rollback = methods::METHODS
-            .iter().find(|m| m.name.eq(api))
-            .unwrap();
+        let rollback = methods::METHODS.iter().find(|m| m.name.eq(api)).unwrap();
 
         methods.push(rollback.into_method(APPNAME));
 
         let api = "transaction.commit";
-        let commit = methods::METHODS
-            .iter().find(|m| m.name.eq(api))
-            .unwrap();
+        let commit = methods::METHODS.iter().find(|m| m.name.eq(api)).unwrap();
 
         methods.push(commit.into_method(APPNAME));
     }
@@ -131,7 +126,8 @@ impl Application for RsStoreApplication {
         self.register_xact_methods(&mut methods);
 
         let json_query = methods::METHODS
-            .iter().find(|m| m.name.eq("json_query"))
+            .iter()
+            .find(|m| m.name.eq("json_query"))
             .unwrap();
 
         methods.push(json_query.into_method(APPNAME));

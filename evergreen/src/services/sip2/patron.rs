@@ -289,7 +289,9 @@ impl Session {
             Ok(())
         } else {
             self.editor().rollback()?;
-            Err("Patron activity logging returned no response".to_string().into())
+            Err("Patron activity logging returned no response"
+                .to_string()
+                .into())
         }
     }
 
@@ -948,8 +950,7 @@ impl Session {
             end_item,
         };
 
-        let patron_op =
-            self.get_patron_details(barcode, password_op, Some(&list_ops))?;
+        let patron_op = self.get_patron_details(barcode, password_op, Some(&list_ops))?;
 
         let mut resp = self.patron_response_common("64", barcode, patron_op.as_ref())?;
 

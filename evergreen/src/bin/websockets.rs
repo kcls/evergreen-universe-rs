@@ -257,7 +257,8 @@ impl fmt::Display for Session {
 impl Session {
     fn run(stream: TcpStream, max_parallel: usize, shutdown: Arc<AtomicBool>) -> EgResult<()> {
         let client_ip = stream
-            .peer_addr().map_err(|e| format!("Could not determine client IP address: {e}"))?;
+            .peer_addr()
+            .map_err(|e| format!("Could not determine client IP address: {e}"))?;
 
         log::debug!("Starting new session for {client_ip}");
 
@@ -265,10 +266,12 @@ impl Session {
         // can be managed within its own thread.
         let instream = stream;
         let outstream = instream
-            .try_clone().map_err(|e| format!("Fatal error splitting client streams: {e}"))?;
+            .try_clone()
+            .map_err(|e| format!("Fatal error splitting client streams: {e}"))?;
 
         // Wrap each endpoint in a WebSocket container.
-        let receiver = ws::accept(instream).map_err(|e| format!("Error accepting new connection: {}", e))?;
+        let receiver =
+            ws::accept(instream).map_err(|e| format!("Error accepting new connection: {}", e))?;
 
         let sender = WebSocket::from_raw_socket(outstream, ws::protocol::Role::Server, None);
 
@@ -492,7 +495,8 @@ impl Session {
             WebSocketMessage::Ping(text) => {
                 let message = WebSocketMessage::Pong(text);
                 self.sender
-                    .write_message(message).map_err(|e| format!("{self} Error sending Pong to client: {e}"))?;
+                    .write_message(message)
+                    .map_err(|e| format!("{self} Error sending Pong to client: {e}"))?;
                 Ok(false)
             }
             WebSocketMessage::Close(_) => {
@@ -509,9 +513,8 @@ impl Session {
     /// Wrap a websocket request in an OpenSRF transport message and
     /// put on the OpenSRF bus for delivery.
     fn relay_to_osrf(&mut self, json_text: &str) -> Result<(), String> {
-        let mut wrapper = json::parse(json_text).map_err(|e| format!(
-                "{self} Cannot parse websocket message: {e} {json_text}"
-            ))?;
+        let mut wrapper = json::parse(json_text)
+            .map_err(|e| format!("{self} Cannot parse websocket message: {e} {json_text}"))?;
 
         let thread = wrapper["thread"].take();
         let log_xid = wrapper["log_xid"].take();
@@ -728,9 +731,9 @@ impl Session {
 
         let msg = WebSocketMessage::Text(msg_json);
 
-        self.sender.write_message(msg).map_err(|e| format!(
-                "{self} Error sending response to websocket client: {e}"
-            ))
+        self.sender
+            .write_message(msg)
+            .map_err(|e| format!("{self} Error sending response to websocket client: {e}"))
     }
 
     /// Log an API call, honoring the log-protect configs.
@@ -838,9 +841,8 @@ impl WebsocketStream {
     fn new(client: Client, address: &str, port: u16, max_parallel: usize) -> Result<Self, String> {
         log::info!("EG Websocket listening at {address}:{port}");
 
-        let listener = eg::util::tcp_listener(address, port, SIG_POLL_INTERVAL).map_err(|e| format!(
-                "Cannot listen for connections at {address}:{port} {e}"
-            ))?;
+        let listener = eg::util::tcp_listener(address, port, SIG_POLL_INTERVAL)
+            .map_err(|e| format!("Cannot listen for connections at {address}:{port} {e}"))?;
 
         let stream = WebsocketStream {
             listener,

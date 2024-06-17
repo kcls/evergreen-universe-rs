@@ -71,7 +71,8 @@ impl mptc::RequestStream for TcpEchoStream {
     fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
         let (stream, _addr) = self
             .listener
-            .accept().map_err(|e| format!("Accept failed: {e}"))?;
+            .accept()
+            .map_err(|e| format!("Accept failed: {e}"))?;
 
         let request = TcpEchoRequest { stream };
         Ok(Some(Box::new(request)))

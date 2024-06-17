@@ -7,7 +7,6 @@ use std::io;
 use std::rc::Rc;
 use std::time::Instant;
 
-
 use eg::common::settings;
 use eg::db;
 use eg::db::DatabaseConnection;
@@ -467,7 +466,11 @@ impl Shell {
         let action = args[0]; // retrieve, search, json_query
 
         if action == "json_query" {
-            return self.send_request(&["open-ils.cstore", "open-ils.cstore.json_query", (args[1])]);
+            return self.send_request(&[
+                "open-ils.cstore",
+                "open-ils.cstore.json_query",
+                (args[1]),
+            ]);
         }
 
         // retrieve and search require an additional class specifier
@@ -533,7 +536,8 @@ impl Shell {
         // from our editor / auth info.
         if args.len() > 2 {
             let org_id = args[2]
-                .parse::<i64>().map_err(|_| format!("Invalid org unit ID: {}", args[2]))?;
+                .parse::<i64>()
+                .map_err(|_| format!("Invalid org unit ID: {}", args[2]))?;
 
             sc.set_org_id(org_id);
         } else if let Some(authses) = &self.auth_session {
@@ -581,7 +585,8 @@ impl Shell {
         match pref {
             "json_print_depth" => {
                 let value_num = value
-                    .parse::<u16>().map_err(|e| format!("Invalid value for {pref} {e}"))?;
+                    .parse::<u16>()
+                    .map_err(|e| format!("Invalid value for {pref} {e}"))?;
                 self.json_print_depth = value_num;
             }
             "json_as_wire_protocal" => self.json_as_wire_protocal = value.to_lowercase() == "true",

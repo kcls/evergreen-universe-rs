@@ -391,7 +391,8 @@ impl Session {
             Ok(()) => {
                 circulator.commit()?;
                 circulator
-                    .events().first()
+                    .events()
+                    .first()
                     .ok_or_else(|| "API call failed to return an event".to_string())?
             }
             Err(err) => {

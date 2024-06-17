@@ -287,9 +287,7 @@ impl BibLinker {
 
             // if we have no special remapping value for the found thesaurus,
             // fall back to ind2 => 7=Other.
-            bib_ind2 = match REMAP_BIB_SF2_TO_IND2
-                .iter().find(|(k, _)| k == &thesaurus)
-            {
+            bib_ind2 = match REMAP_BIB_SF2_TO_IND2.iter().find(|(k, _)| k == &thesaurus) {
                 Some((_, v)) => v,
                 None => "7",
             };
@@ -316,9 +314,7 @@ impl BibLinker {
                 authz_leader = Some(leader.clone());
             }
 
-            if let Some((_, ind)) = AUTH_TO_BIB_IND2
-                .iter().find(|(t, _)| t == &thesaurus)
-            {
+            if let Some((_, ind)) = AUTH_TO_BIB_IND2.iter().find(|(t, _)| t == &thesaurus) {
                 if ind == &bib_ind2 {
                     log::debug!(
                         "Found a match on thesaurus '{thesaurus}' for auth {}",
@@ -409,9 +405,7 @@ impl BibLinker {
         let mut searches: Vec<(&str, &str)> = Vec::new();
 
         for bib_sf in bib_field.subfields() {
-            if controlled
-                .iter().any(|cf| &cf.subfield == bib_sf.code())
-            {
+            if controlled.iter().any(|cf| &cf.subfield == bib_sf.code()) {
                 searches.push((bib_sf.code(), bib_sf.content()));
             }
         }

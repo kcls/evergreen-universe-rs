@@ -224,8 +224,7 @@ impl RouterDomain {
 
         if has_any {
             self.route_count += 1;
-            self.services
-                .iter_mut().find(|s| s.name().eq(name))
+            self.services.iter_mut().find(|s| s.name().eq(name))
         } else {
             None
         }

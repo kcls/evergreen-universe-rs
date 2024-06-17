@@ -141,7 +141,9 @@ fn run_one_thread(
             };
 
             // Sort the message fields for consistent output.
-            resp.msg_mut().fields_mut().sort_by(|a, b| a.code().cmp(b.code()));
+            resp.msg_mut()
+                .fields_mut()
+                .sort_by(|a, b| a.code().cmp(b.code()));
 
             // Translate duration micros to millis w/ 3 decimal places.
             let duration = start.elapsed().unwrap().as_micros();
@@ -179,8 +181,7 @@ fn read_options() -> getopts::Matches {
 
     opts.optmulti("", "message-type", "Message Type", "");
 
-    opts
-        .parse(&args[1..]) // skip the command name
+    opts.parse(&args[1..]) // skip the command name
         .expect("Error parsing command line options")
 }
 

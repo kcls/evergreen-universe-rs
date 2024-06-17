@@ -384,9 +384,8 @@ impl Record {
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
     pub fn set_leader_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
-        let s = std::str::from_utf8(bytes).map_err(|e| format!(
-                "Leader is not a valid UTF-8 string: {e} bytes={bytes:?}"
-            ))?;
+        let s = std::str::from_utf8(bytes)
+            .map_err(|e| format!("Leader is not a valid UTF-8 string: {e} bytes={bytes:?}"))?;
         self.set_leader(s)
     }
 
