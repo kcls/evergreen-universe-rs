@@ -794,7 +794,7 @@ impl Session {
 
         let mut block_tags = String::new();
         for pen in penalties.iter() {
-            if let Some(tag) = pen["block_tag"].as_str() {
+            if let Some(tag) = pen["block_list"].as_str() {
                 block_tags += tag;
             }
         }
@@ -804,7 +804,7 @@ impl Session {
             return Ok(());
         }
 
-        patron.holds_denied = blocked || block_tags.contains("HOLDS");
+        patron.holds_denied = blocked || block_tags.contains("HOLD");
 
         if self.config().setting_is_true("patron_status_permit_loans") {
             // We're going to ignore checkout, renewals blocks for now.
@@ -818,7 +818,7 @@ impl Session {
         // doesn't mean they would not have said privilege if the functionality
         // existed.  Base the ability to perform recalls on whether they have
         // checkout and holds privilege, since both would be needed for recalls.
-        patron.recall_denied = patron.charge_denied || patron.renew_denied;
+        patron.recall_denied = patron.charge_denied || patron.holds_denied;
 
         // Matching EG SIPServer.
         // Unknown if it serves a purpose.
