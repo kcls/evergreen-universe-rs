@@ -122,7 +122,7 @@ fn run_one_thread(
         for message in messages.iter() {
             let start = SystemTime::now();
 
-            let resp = match message.as_str() {
+            let mut resp = match message.as_str() {
                 "item-information" => client.item_info(&sip_params).expect("Item Info Requested"),
 
                 "patron-status" => client
@@ -139,6 +139,9 @@ fn run_one_thread(
 
                 _ => panic!("Unsupported message type: {}", message),
             };
+
+            // Sort the message fields for consistent output.
+            resp.msg_mut().fields_mut().sort_by(|a, b| a.code().cmp(b.code()));
 
             // Translate duration micros to millis w/ 3 decimal places.
             let duration = start.elapsed().unwrap().as_micros();
@@ -175,8 +178,6 @@ fn read_options() -> getopts::Matches {
     opts.optflag("q", "quiet", "");
 
     opts.optmulti("", "message-type", "Message Type", "");
-
-    
 
     opts
         .parse(&args[1..]) // skip the command name

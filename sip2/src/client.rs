@@ -308,6 +308,9 @@ impl SipResponse {
     pub fn msg(&self) -> &Message {
         &self.msg
     }
+    pub fn msg_mut(&mut self) -> &mut Message {
+        &mut self.msg
+    }
 
     /// Shortcut for this.resp.msg().get_field_value(code)
     pub fn value(&self, code: &str) -> Option<&str> {
