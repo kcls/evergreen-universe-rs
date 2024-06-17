@@ -11,6 +11,7 @@ pub struct Item {
     pub barcode: String,
     pub circ_lib: i64,
     pub record_id: i64,
+    pub call_number: String,
     pub call_number_id: i64,
     pub due_date: Option<String>,
     pub copy_status: i64,
@@ -50,7 +51,7 @@ impl Session {
             flesh_fields: {
                 acp: ["circ_lib", "call_number",
                     "stat_cat_entry_copy_maps", "circ_modifier"],
-                acn: ["owning_lib"],
+                acn: ["owning_lib", "prefix", "suffix"],
                 ascecm: ["stat_cat", "stat_cat_entry"],
             }
         };
@@ -131,12 +132,19 @@ impl Session {
         let (title, _) = self.get_copy_title_author(copy)?;
         let title = title.unwrap_or(String::new());
 
+        let call_number = format!("{}{}{}",
+            copy["call_number"]["prefix"]["label"].str()?,
+            copy["call_number"]["label"].str()?,
+            copy["call_number"]["suffix"]["label"].str()?,
+        );
+
         Ok(Some(Item {
             id: copy.id()?,
             barcode: barcode.to_string(),
             due_date,
             title,
             copy_status,
+            call_number,
             circ_lib: circ_lib_id,
             deposit_amount,
             hold_queue_length,

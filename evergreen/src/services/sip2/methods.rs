@@ -253,15 +253,16 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<s
         ],
         &[
             ("AB", &item.barcode),
+            ("BG", &item.owning_loc),
             ("AJ", &item.title),
             ("AP", &item.current_loc),
             ("AQ", &item.permanent_loc),
-            ("BG", &item.owning_loc),
-            ("CT", &item.destination_loc),
             ("BH", currency),
             ("BV", &format!("{:.2}", item.deposit_amount)),
             ("CF", &format!("{}", item.hold_queue_length)),
             ("CK", &item.media_type),
+            ("CS", &item.call_number),
+            ("CT", &item.destination_loc),
         ],
     )
     .unwrap();
