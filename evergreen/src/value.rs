@@ -553,12 +553,33 @@ impl EgValue {
         None
     }
 
-    pub fn take_array(&mut self) -> Option<Vec<EgValue>> {
+    /// Returns the inner Vec of this value if it's an Array, None otherwise.
+    ///
+    /// Inner value is replaced with an empty Vec.
+    ///
+    /// # Examples
+    ///
+    ///```
+    /// use evergreen as eg;
+    /// use eg::EgValue;
+    ///
+    /// let mut v = EgValue::from(["hello", "everyone"].as_slice());
+    /// let l = v.take_vec().expect("Is Array");
+    ///
+    /// assert_eq!(l.len(), 2);
+    /// if let EgValue::Array(newl) = v {
+    ///     assert!(newl.is_empty());
+    /// } else {
+    ///     panic!("Something went wrong");
+    /// }
+    /// ```
+    pub fn take_vec(&mut self) -> Option<Vec<EgValue>> {
         let mut placeholder = Self::Null;
 
         mem::swap(self, &mut placeholder);
 
         if let Self::Array(list) = placeholder {
+            *self = Self::Array(Vec::new());
             Some(list)
         } else {
             // This is not an array.
@@ -1372,6 +1393,12 @@ impl From<Option<&str>> for EgValue {
 impl From<Vec<i64>> for EgValue {
     fn from(mut v: Vec<i64>) -> EgValue {
         EgValue::Array(v.drain(..).map(|n| EgValue::from(n)).collect())
+    }
+}
+
+impl From<&[&str]> for EgValue {
+    fn from(l: &[&str]) -> EgValue {
+        EgValue::Array(l.iter().map(|v| EgValue::from(*v)).collect())
     }
 }
 

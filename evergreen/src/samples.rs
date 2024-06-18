@@ -224,7 +224,7 @@ impl SampleData {
             "flesh": 1,
             "flesh_fields": {
                 "mbt": ["billings", "payments"],
-                "mp": PAYMENT_TYPES.iter().map(|t| t.to_string()).collect::<Vec<String>>(),
+                "mp": PAYMENT_TYPES.as_slice(),
             }
         };
 
@@ -235,7 +235,7 @@ impl SampleData {
             let mut payments = xact["payments"].take();
             let mut billings = xact["billings"].take();
 
-            for mut payment_view in payments.take_array().unwrap().drain(..) {
+            for mut payment_view in payments.take_vec().unwrap().drain(..) {
                 for paytype in PAYMENT_TYPES {
                     let payment = payment_view[paytype].take();
                     if payment.is_blessed() {
@@ -245,7 +245,7 @@ impl SampleData {
                 }
             }
 
-            for billing in billings.take_array().unwrap().drain(..) {
+            for billing in billings.take_vec().unwrap().drain(..) {
                 e.delete(billing)?;
             }
 
