@@ -1,4 +1,5 @@
 use crate::util;
+use crate::osrf::logging;
 use crate::{EgResult, EgValue};
 use json::JsonValue;
 use std::cell::RefCell;
@@ -272,7 +273,7 @@ impl TransportMessage {
             to: to.to_string(),
             from: from.to_string(),
             thread: thread.to_string(),
-            osrf_xid: String::from(""),
+            osrf_xid: logging::Logger::get_log_trace(),
             router_command: None,
             router_class: None,
             router_reply: None,
@@ -369,6 +370,7 @@ impl TransportMessage {
         let mut tmsg = TransportMessage::new(to, from, thread);
 
         if let Some(xid) = json_obj["osrf_xid"].as_str() {
+            logging::Logger::set_log_trace(xid);
             tmsg.set_osrf_xid(xid);
         };
 

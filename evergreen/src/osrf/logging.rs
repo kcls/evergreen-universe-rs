@@ -152,16 +152,16 @@ impl Logger {
     }
 
     /// Generate and set a thread-local log trace string.
-    pub fn mk_log_trace() -> String {
+    pub fn mk_log_trace() {
         let t = Logger::build_log_trace();
-        Logger::set_log_trace(&t);
-        t
+        Logger::set_log_trace(t);
     }
 
     /// Set the thread-local log trace string, typically from
     /// a log trace found in an opensrf message.
-    pub fn set_log_trace(trace: &str) {
-        THREAD_LOCAL_LOG_TRACE.with(|tr| *tr.borrow_mut() = trace.to_string());
+    pub fn set_log_trace(trace: impl Into<String>) {
+        let trace = trace.into();
+        THREAD_LOCAL_LOG_TRACE.with(|tr| *tr.borrow_mut() = trace);
     }
 
     /// Returns a clone of the current log trace.
