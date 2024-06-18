@@ -269,7 +269,7 @@ impl Session {
             "01" | "02" => {
                 // '01' is "VISA"; '02' is "credit card"
 
-                args["cc_args"]["terminal_xact"] = match terminal_xact_op {
+                args["cc_args"]["approval_code"] = match terminal_xact_op {
                     Some(tx) => EgValue::from(tx),
                     None => EgValue::from("Not provided by SIP client"),
                 };
