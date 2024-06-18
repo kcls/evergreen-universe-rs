@@ -1,5 +1,7 @@
 use eg::samples::SampleData;
 use eg::EgValue;
+use eg::EgResult;
+use eg::constants as C;
 use evergreen as eg;
 use getopts;
 use sip2;
@@ -141,6 +143,11 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
     test_sc_status(tester)?;
     test_invalid_item_info(tester)?;
     test_item_info(tester, false)?;
+
+    // TODO add patron_status check above that expects the billing seed data.
+    // billing data will be cleared here.
+    test_bill_pay(tester)?;
+
     test_patron_status(tester)?;
     test_patron_info(tester, false)?;
 
@@ -166,6 +173,7 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
 
     test_checkin_with_transit(tester)?;
 
+
     Ok(())
 }
 
@@ -178,6 +186,8 @@ fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
     tester.samples.create_default_acp(e, acn.id()?)?;
     tester.samples.create_default_au(e)?;
 
+    let _ = tester.samples.add_billing(e, C::BTYPE_DAMAGED_ITEM, 25.00)?;
+
     e.commit().map_err(|e| e.to_string())
 }
 
@@ -186,6 +196,7 @@ fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {
 
     e.xact_begin()?;
 
+    tester.samples.delete_user_xacts(e)?;
     tester.samples.delete_default_acp(e)?;
     tester.samples.delete_default_acn(e)?;
     tester.samples.delete_default_au(e)?;
@@ -271,6 +282,43 @@ fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
 
     assert!(resp.fixed_fields().len() > 0);
     assert_eq!(resp.fixed_fields()[0].value(), "Y");
+
+    Ok(())
+}
+
+
+fn test_bill_pay(tester: &mut Tester) -> EgResult<()> {
+    let eg_xact_id = format!("{}", tester.samples.last_xact_id.unwrap());
+
+    let req = sip2::Message::from_values(
+        "37",
+        &[
+            &sip2::util::sip_date_now(),
+            "01",
+            "02",
+            "USD",
+        ],
+        &[
+            ("AA", &tester.samples.au_barcode),
+            ("AO", &tester.institution),
+            ("BV", "25.00"),
+            ("BK", "123456789"), // Client-side transaction ID
+            ("CG", &eg_xact_id),
+            ("RN", ""), // check number
+            ("OR", "example.org/staffusername"), // register login
+        ],
+    )
+    .unwrap();
+
+    let t = Timer::new();
+    let resp = tester
+        .sipcon
+        .sendrecv(&req)
+        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+
+    t.done("test_bill_pay");
+
+    println!("BILL PAY: {}", resp);
 
     Ok(())
 }

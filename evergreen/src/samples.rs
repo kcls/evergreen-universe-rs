@@ -37,6 +37,10 @@ pub struct SampleData {
     pub au_barcode: String,
     pub au_profile: i64,
     pub au_ident_type: i64,
+
+    /// If we create any transactions, this tracks the ID of the most
+    /// recently created transaction.
+    pub last_xact_id: Option<i64>,
 }
 
 impl SampleData {
@@ -52,6 +56,7 @@ impl SampleData {
             au_barcode: AU_BARCODE.to_string(),
             au_profile: AU_PROFILE,
             au_ident_type: AU_IDENT_TYPE,
+            last_xact_id: None,
         }
     }
 
@@ -154,6 +159,80 @@ impl SampleData {
         e.update(au.clone())?;
 
         Ok(au)
+    }
+
+    /// Create a new "grocery" billable transaction with a single billing
+    ///
+    /// Returns the billing value with its "xact" field fleshed.
+    pub fn add_billing(&mut self, e: &mut Editor, btype: i64, amount: f64) -> EgResult<EgValue> {
+        let user_id = self.get_default_user_id(e)?;
+
+        let xact = eg::blessed! {
+            "_classname": "mg",
+            "usr": user_id,
+            "billing_location": self.aou_id,
+        }?;
+
+        let xact = e.create(xact)?;
+
+        self.last_xact_id = Some(xact.id()?);
+
+        let billing = eg::blessed! {
+            "_classname": "mb",
+            "xact": xact.id()?,
+            "btype": btype,
+            "billing_type": "Testing",
+            "amount": amount,
+        }?;
+
+        let mut billing = e.create(billing)?;
+
+        billing["xact"] = xact;
+
+        Ok(billing)
+    }
+
+    fn get_default_user_id(&self, e: &mut Editor) -> EgResult<Option<i64>> {
+        let query = eg::hash! {
+            "barcode": self.au_barcode.as_str(),
+        };
+
+        if let Some(user) = e.search("ac", query)?.pop() {
+            Ok(Some(user.id()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Deletes the transaction and all linked billings and payments.
+    pub fn delete_user_xacts(&self, e: &mut Editor) -> EgResult<()> {
+        let user_id = self.get_default_user_id(e)?;
+
+        let query = eg::hash! {"usr": user_id};
+        let flesh = eg::hash! {
+            "flesh": 1,
+            "flesh_fields": {"mbt": ["billings", "payments"]}
+        };
+
+        let mut xacts = e.search_with_ops("mbt", query, flesh)?;
+
+        for mut xact in xacts.drain(..) {
+            // These are both arrays
+            let mut payments = xact["payments"].take();
+            let mut billings = xact["billings"].take();
+
+            for payment in payments.take_array().unwrap().drain(..) {
+                e.delete(payment)?;
+            }
+
+            for billing in billings.take_array().unwrap().drain(..) {
+                e.delete(billing)?;
+            }
+
+            e.delete(xact)?;
+        }
+
+        Ok(())
     }
 
     /// Purge the default user, including its linked card, transactions, etc.

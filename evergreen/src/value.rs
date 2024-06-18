@@ -553,6 +553,22 @@ impl EgValue {
         None
     }
 
+    pub fn take_array(&mut self) -> Option<Vec<EgValue>> {
+        let mut placeholder = Self::Null;
+
+        mem::swap(self, &mut placeholder);
+
+        if let Self::Array(list) = placeholder {
+            Some(list)
+        } else {
+            // This is not an array.
+            // Put the original value back
+            mem::swap(self, &mut placeholder);
+            None
+        }
+    }
+
+
     /// Turn a value into a JSON string.
     pub fn dump(&self) -> String {
         // into_json_value consumes the value, hence the clone().

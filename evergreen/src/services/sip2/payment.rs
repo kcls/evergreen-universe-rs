@@ -75,6 +75,8 @@ impl Session {
         // Caller can request to pay toward a specific transaction or have
         // the back-end select transactions to pay.
         if let Some(xact_id_str) = msg.get_field_value("CG") {
+            log::info!("{self} applying payment to transaction {xact_id_str}");
+
             if let Ok(xact_id) = xact_id_str.parse::<i64>() {
                 payments = self.compile_one_xact(&user, xact_id, pay_amount, &mut result)?;
             } else {
@@ -289,7 +291,7 @@ impl Session {
         }
 
         let authtoken = EgValue::from(self.editor().authtoken().unwrap());
-        let last_xact_id = user["last_xact_id"].as_str().unwrap(); // required
+        let last_xact_id = user["last_xact_id"].str()?;
 
         let resp = self.editor().client_mut().send_recv_one(
             "open-ils.circ",
