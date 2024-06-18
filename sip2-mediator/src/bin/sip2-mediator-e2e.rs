@@ -318,7 +318,7 @@ fn test_bill_pay(tester: &mut Tester) -> EgResult<()> {
 
     t.done("test_bill_pay");
 
-    println!("BILL PAY: {}", resp);
+    assert_eq!(resp.fixed_fields()[0].value(), "Y");
 
     Ok(())
 }

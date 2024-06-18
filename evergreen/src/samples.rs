@@ -26,6 +26,17 @@ pub const AU_IDENT_TYPE: i64 = 3; // Other
 
 pub const AU_STAFF_ID: i64 = 195; // br1mclark
 
+pub const PAYMENT_TYPES: [&str; 8] = [
+    "credit_card_payment",
+    "credit_payment",
+    "check_payment",
+    "work_payment",
+    "forgive_payment",
+    "goods_payment",
+    "account_adjustment",
+    "debit_card_payment",
+];
+
 pub struct SampleData {
     pub acn_creator: i64,
     pub acn_record: i64,
@@ -211,7 +222,10 @@ impl SampleData {
         let query = eg::hash! {"usr": user_id};
         let flesh = eg::hash! {
             "flesh": 1,
-            "flesh_fields": {"mbt": ["billings", "payments"]}
+            "flesh_fields": {
+                "mbt": ["billings", "payments"],
+                "mp": PAYMENT_TYPES.iter().map(|t| t.to_string()).collect::<Vec<String>>(),
+            }
         };
 
         let mut xacts = e.search_with_ops("mbt", query, flesh)?;
@@ -221,8 +235,13 @@ impl SampleData {
             let mut payments = xact["payments"].take();
             let mut billings = xact["billings"].take();
 
-            for payment in payments.take_array().unwrap().drain(..) {
-                e.delete(payment)?;
+            for mut payment_view in payments.take_array().unwrap().drain(..) {
+                for paytype in PAYMENT_TYPES {
+                    let payment = payment_view[paytype].take();
+                    if payment.is_blessed() { // maybe null
+                        e.delete(payment)?;
+                    }
+                }
             }
 
             for billing in billings.take_array().unwrap().drain(..) {
