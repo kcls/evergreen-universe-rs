@@ -238,7 +238,8 @@ impl SampleData {
             for mut payment_view in payments.take_array().unwrap().drain(..) {
                 for paytype in PAYMENT_TYPES {
                     let payment = payment_view[paytype].take();
-                    if payment.is_blessed() { // maybe null
+                    if payment.is_blessed() {
+                        // maybe null
                         e.delete(payment)?;
                     }
                 }

@@ -1,7 +1,7 @@
-use eg::samples::SampleData;
-use eg::EgValue;
-use eg::EgResult;
 use eg::constants as C;
+use eg::samples::SampleData;
+use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use getopts;
 use sip2;
@@ -173,7 +173,6 @@ fn run_tests(tester: &mut Tester) -> Result<(), String> {
 
     test_checkin_with_transit(tester)?;
 
-
     Ok(())
 }
 
@@ -186,7 +185,9 @@ fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
     tester.samples.create_default_acp(e, acn.id()?)?;
     tester.samples.create_default_au(e)?;
 
-    let _ = tester.samples.add_billing(e, C::BTYPE_DAMAGED_ITEM, 25.00)?;
+    let _ = tester
+        .samples
+        .add_billing(e, C::BTYPE_DAMAGED_ITEM, 25.00)?;
 
     e.commit().map_err(|e| e.to_string())
 }
@@ -286,25 +287,19 @@ fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
     Ok(())
 }
 
-
 fn test_bill_pay(tester: &mut Tester) -> EgResult<()> {
     let eg_xact_id = format!("{}", tester.samples.last_xact_id.unwrap());
 
     let req = sip2::Message::from_values(
         "37",
-        &[
-            &sip2::util::sip_date_now(),
-            "01",
-            "02",
-            "USD",
-        ],
+        &[&sip2::util::sip_date_now(), "01", "02", "USD"],
         &[
             ("AA", &tester.samples.au_barcode),
             ("AO", &tester.institution),
             ("BV", "25.00"),
             ("BK", "123456789"), // Client-side transaction ID
             ("CG", &eg_xact_id),
-            ("RN", ""), // check number
+            ("RN", ""),                          // check number
             ("OR", "example.org/staffusername"), // register login
         ],
     )

@@ -1,5 +1,5 @@
-use crate::util;
 use crate::osrf::logging;
+use crate::util;
 use crate::{EgResult, EgValue};
 use json::JsonValue;
 use std::cell::RefCell;

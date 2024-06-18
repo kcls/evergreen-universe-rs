@@ -568,7 +568,6 @@ impl EgValue {
         }
     }
 
-
     /// Turn a value into a JSON string.
     pub fn dump(&self) -> String {
         // into_json_value consumes the value, hence the clone().

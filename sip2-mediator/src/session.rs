@@ -1,8 +1,8 @@
 use super::conf;
+use eg::osrf::logging;
 use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
-use eg::osrf::logging;
 use evergreen as eg;
 use sip2;
 use std::fmt;
