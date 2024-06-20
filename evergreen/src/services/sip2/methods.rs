@@ -259,6 +259,7 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<s
             ("AQ", &item.permanent_loc),
             ("BH", currency),
             ("BV", &format!("{:.2}", item.deposit_amount)),
+            //("CI", "N"), // security inhibit / not supported
             ("CF", &format!("{}", item.hold_queue_length)),
             ("CK", &item.media_type),
             ("CS", &item.call_number),

@@ -214,7 +214,7 @@ impl Session {
                 ("AJ", &item.title),
                 ("AO", self.config().institution()),
                 ("BT", (item.fee_type)),
-                ("CI", "N"), // security inhibit
+                //("CI", "N"), // security inhibit / not supported
                 ("CK", &item.media_type),
             ],
         )
