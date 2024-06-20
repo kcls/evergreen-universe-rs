@@ -75,8 +75,10 @@ impl Session {
                 ("AP", &result.current_loc),
                 ("AQ", &result.permanent_loc),
                 ("BG", &item.owning_loc),
-                ("BT", (item.fee_type)),
                 ("CI", "N"), // security inhibit
+                ("CK", &item.media_type),
+                ("CR", &item.collection_code),
+                ("CS", &item.call_number),
             ],
         )
         .unwrap();

@@ -22,6 +22,7 @@ pub struct Item {
     pub permanent_loc: String,
     pub destination_loc: String,
     pub owning_loc: String,
+    pub collection_code: String,
     pub deposit_amount: f64,
     pub magnetic_media: bool,
     pub hold_queue_length: usize,
@@ -56,20 +57,17 @@ impl Session {
             }
         };
 
-        let copies = self.editor().search_with_ops("acp", search, flesh)?;
+        let copy = match self.editor().search_with_ops("acp", search, flesh)?.pop() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
 
-        // Will be zero or one.
-        if copies.is_empty() {
-            return Ok(None);
-        }
-
-        let copy = &copies[0]; // should only be one
         let copy_status = copy["status"].int()?;
 
         let mut circ_patron_id: Option<i64> = None;
         let mut due_date: Option<String> = None;
 
-        if let Some(circ) = self.get_copy_circ(copy, copy_status)? {
+        if let Some(circ) = self.get_copy_circ(&copy, copy_status)? {
             circ_patron_id = Some(circ["usr"].int()?);
 
             if let Some(iso_date) = circ["due_date"].as_str() {
@@ -91,7 +89,7 @@ impl Session {
         let owning_lib = copy["call_number"]["owning_lib"]["shortname"].str()?;
 
         let mut dest_location = circ_lib.to_string();
-        let transit_op = self.get_copy_transit(copy, copy_status)?;
+        let transit_op = self.get_copy_transit(&copy, copy_status)?;
 
         if let Some(transit) = &transit_op {
             dest_location = transit["dest"]["shortname"].string()?;
@@ -101,7 +99,7 @@ impl Session {
         let mut hold_patron_barcode_op: Option<String> = None;
         let mut hold_queue_length = 0;
 
-        if let Some(hold) = self.get_copy_hold(copy, &transit_op, copy_status)? {
+        if let Some(hold) = self.get_copy_hold(&copy, &transit_op, copy_status)? {
             hold_queue_length = 1; // copying SIPServer
 
             dest_location = hold["pickup_lib"]["shortname"].string()?;
@@ -129,7 +127,7 @@ impl Session {
             .unwrap_or("001");
         let magnetic_media = copy["circ_modifier"]["magnetic_media"].boolish();
 
-        let (title, _) = self.get_copy_title_author(copy)?;
+        let (title, _) = self.get_copy_title_author(&copy)?;
         let title = title.unwrap_or(String::new());
 
         let call_number = format!(
@@ -138,6 +136,18 @@ impl Session {
             copy["call_number"]["label"].str()?,
             copy["call_number"]["suffix"]["label"].str()?,
         );
+
+        let mut collection_code = self
+            .editor()
+            .retrieve_with_ops(
+                "acpl",
+                copy["location"].int()?,
+                // Use the untranslated copy location for consistency/routing.
+                eg::hash! {"no_i18n": 1},
+            )?
+            .ok_or_else(|| self.editor().die_event())?;
+
+        let collection_code = collection_code["name"].take_string().unwrap();
 
         Ok(Some(Item {
             id: copy.id()?,
@@ -152,6 +162,7 @@ impl Session {
             magnetic_media,
             fee_type,
             circ_status,
+            collection_code,
             current_loc: circ_lib.to_string(),
             permanent_loc: circ_lib.to_string(),
             destination_loc: dest_location,
