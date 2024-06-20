@@ -313,7 +313,7 @@ impl Session {
                 None => Err(format!("API call {method} failed to return a response"))?,
             };
 
-        log::info!("{self} Checkout of {item_barcode} returned: {resp}");
+        log::info!("{self} Checkout of {item_barcode} returned: {}", resp.dump());
 
         let event = if resp.is_array() {
             resp[0].take()

@@ -233,7 +233,7 @@ impl Session {
                 None => Err(format!("API call {method} failed to return a response"))?,
             };
 
-        log::info!("{self} Checkin of {} returned: {resp}", item.barcode);
+        log::info!("{self} Checkin of {} returned: {}", item.barcode, resp.dump());
 
         let evt_json = if resp.is_array() {
             resp[0].take()
