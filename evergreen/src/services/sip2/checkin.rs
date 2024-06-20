@@ -219,6 +219,8 @@ impl Session {
             false => "open-ils.circ.checkin",
         };
 
+        log::info!("{self} checking in items with args: {}", args.dump());
+
         let params = vec![EgValue::from(self.editor().authtoken().unwrap()), args];
 
         let mut resp =
@@ -231,7 +233,7 @@ impl Session {
                 None => Err(format!("API call {method} failed to return a response"))?,
             };
 
-        log::debug!("{self} Checkin of {} returned: {resp}", item.barcode);
+        log::info!("{self} Checkin of {} returned: {resp}", item.barcode);
 
         let evt_json = if resp.is_array() {
             resp[0].take()
