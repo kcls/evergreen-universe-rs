@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 pub struct CheckinResult {
     ok: bool,
-    current_loc: String,
     permanent_loc: String,
     destination_loc: Option<String>,
     patron_barcode: Option<String>,
@@ -25,7 +24,7 @@ impl Session {
             .get_field_value("AB")
             .ok_or_else(|| "handle_item_info() missing item barcode".to_string())?;
 
-        let current_loc_op = msg.get_field_value("AP");
+        let checkin_loc_op = msg.get_field_value("AP");
         let return_date = &msg.fixed_fields()[2];
 
         // KCLS only
@@ -52,7 +51,7 @@ impl Session {
             }
             None => self.checkin(
                 &item,
-                current_loc_op,
+                checkin_loc_op,
                 return_date.value(),
                 undo_hold_fulfillment,
                 self.config().setting_is_true("checkin_override_all"),
@@ -72,7 +71,6 @@ impl Session {
                 ("AB", barcode),
                 ("AO", self.config().institution()),
                 ("AJ", &item.title),
-                ("AP", &result.current_loc),
                 ("AQ", &result.permanent_loc),
                 ("BG", &item.owning_loc),
                 ("CI", "N"), // security inhibit
@@ -125,7 +123,6 @@ impl Session {
 
         Some(CheckinResult {
             ok: false,
-            current_loc: item.current_loc.to_string(),
             permanent_loc: item.permanent_loc.to_string(),
             destination_loc: None,
             patron_barcode: None,
@@ -157,7 +154,7 @@ impl Session {
     fn checkin(
         &mut self,
         item: &item::Item,
-        current_loc_op: Option<&str>,
+        checkin_loc_op: Option<&str>,
         return_date: &str,
         cancel: bool,
         ovride: bool,
@@ -165,9 +162,9 @@ impl Session {
         // There is no seed data for use_native_checkin, so this will
         // always be false unless locally modified.
         if self.config().setting_is_true("use_native_checkin") {
-            self.checkin_native(item, current_loc_op, return_date, cancel, ovride)
+            self.checkin_native(item, checkin_loc_op, return_date, cancel, ovride)
         } else {
-            self.checkin_api(item, current_loc_op, return_date, cancel, ovride)
+            self.checkin_api(item, checkin_loc_op, return_date, cancel, ovride)
         }
     }
 
@@ -175,7 +172,7 @@ impl Session {
     fn checkin_api(
         &mut self,
         item: &item::Item,
-        current_loc_op: Option<&str>,
+        checkin_loc_op: Option<&str>,
         return_date: &str,
         cancel: bool,
         ovride: bool,
@@ -204,7 +201,7 @@ impl Session {
             }
         }
 
-        if let Some(sn) = current_loc_op {
+        if let Some(sn) = checkin_loc_op {
             if let Some(org) = self.org_from_sn(sn)? {
                 args["circ_lib"] = org["id"].clone();
             }
@@ -249,10 +246,9 @@ impl Session {
             .setting_is_true(&format!("checkin.override.{}", evt.textcode()));
 
         if !ovride && can_override {
-            return self.checkin(item, current_loc_op, return_date, cancel, true);
+            return self.checkin(item, checkin_loc_op, return_date, cancel, true);
         }
 
-        let mut current_loc = item.current_loc.to_string(); // item.circ_lib
         let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
         let mut destination_loc = None;
         if let Some(org_id) = evt.org() {
@@ -275,7 +271,6 @@ impl Session {
                 if circ_lib != item.circ_lib {
                     if let Some(org) = self.org_from_id(circ_lib)? {
                         let loc = org["shortname"].as_str().unwrap();
-                        current_loc = loc.to_string();
                         permanent_loc = loc.to_string();
                     }
                 }
@@ -284,7 +279,6 @@ impl Session {
 
         let mut result = CheckinResult {
             ok: false,
-            current_loc,
             permanent_loc,
             destination_loc,
             patron_barcode: None,
@@ -331,7 +325,7 @@ impl Session {
     fn checkin_native(
         &mut self,
         item: &item::Item,
-        current_loc_op: Option<&str>,
+        checkin_loc_op: Option<&str>,
         return_date: &str,
         cancel: bool,
         ovride: bool,
@@ -362,7 +356,7 @@ impl Session {
             }
         }
 
-        if let Some(sn) = current_loc_op {
+        if let Some(sn) = checkin_loc_op {
             if let Some(org) = self.org_from_sn(sn)? {
                 options.insert("circ_lib".to_string(), org["id"].clone());
             } else {
@@ -411,10 +405,9 @@ impl Session {
             .setting_is_true(&format!("checkin.override.{}", evt.textcode()));
 
         if !ovride && can_override {
-            return self.checkin(item, current_loc_op, return_date, cancel, true);
+            return self.checkin(item, checkin_loc_op, return_date, cancel, true);
         }
 
-        let mut current_loc = item.current_loc.to_string(); // item.circ_lib
         let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
 
         let mut destination_loc = None;
@@ -438,7 +431,6 @@ impl Session {
                 if circ_lib != item.circ_lib {
                     if let Some(org) = self.org_from_id(circ_lib)? {
                         let loc = org["shortname"].as_str().unwrap();
-                        current_loc = loc.to_string();
                         permanent_loc = loc.to_string();
                     }
                 }
@@ -447,7 +439,6 @@ impl Session {
 
         let mut result = CheckinResult {
             ok: false,
-            current_loc,
             permanent_loc,
             destination_loc,
             patron_barcode: None,
