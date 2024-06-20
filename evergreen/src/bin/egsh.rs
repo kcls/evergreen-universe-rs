@@ -114,6 +114,8 @@ Commands
             item-information <item-barcode>
             patron-information <patron-barcode>
             patron-status <patron-barcode>
+            checkin <item-barcode>
+            checkout <item-barcode> <patron-barcode>
 
     help
         Show this message
@@ -451,6 +453,25 @@ impl Shell {
                 .as_mut()
                 .unwrap()
                 .patron_status(&sip_params)
+                .map_err(|e| e.to_string())?
+        } else if command == "checkin" {
+            self.args_min_length(args, 3)?; //  item barcode
+            sip_params.set_item_id(args[2]);
+
+            self.sip_client
+                .as_mut()
+                .unwrap()
+                .checkin(&sip_params)
+                .map_err(|e| e.to_string())?
+        } else if command == "checkout" {
+            self.args_min_length(args, 4)?; //  item barcode, patron barcode
+            sip_params.set_item_id(args[2]);
+            sip_params.set_patron_id(args[3]);
+
+            self.sip_client
+                .as_mut()
+                .unwrap()
+                .checkout(&sip_params)
                 .map_err(|e| e.to_string())?
         } else {
             return Err(format!("Unsupported SIP command {command}"));
