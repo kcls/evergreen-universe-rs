@@ -1,3 +1,4 @@
+use super::session::DEFAULT_DUE_DATE_FORMAT;
 use crate::item::Item;
 use crate::patron::Patron;
 use crate::session::Session;
@@ -313,7 +314,10 @@ impl Session {
                 None => Err(format!("API call {method} failed to return a response"))?,
             };
 
-        log::info!("{self} Checkout of {item_barcode} returned: {}", resp.dump());
+        log::info!(
+            "{self} Checkout of {item_barcode} returned: {}",
+            resp.dump()
+        );
 
         let event = if resp.is_array() {
             resp[0].take()
@@ -344,7 +348,7 @@ impl Session {
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
                     // YYYY-MM-DD HH:MM:SS
-                    result.due_date = Some(due_dt.format("%F %T").to_string());
+                    result.due_date = Some(due_dt.format(DEFAULT_DUE_DATE_FORMAT).to_string());
                 }
 
                 return Ok(result);
@@ -459,7 +463,7 @@ impl Session {
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
                     // YYYY-MM-DD HH:MM:SS
-                    result.due_date = Some(due_dt.format("%F %T").to_string());
+                    result.due_date = Some(due_dt.format(DEFAULT_DUE_DATE_FORMAT).to_string());
                 }
 
                 return Ok(result);

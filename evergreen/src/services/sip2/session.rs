@@ -53,6 +53,8 @@ const CACHE_PFX: &str = "sip2";
 /// renew all
 const INSTITUTION_SUPPORTS: &str = "YYYYYNYYYYYNNNYY";
 
+pub const DEFAULT_DUE_DATE_FORMAT: &str = "%F %T";
+
 #[derive(Debug)]
 pub struct SipFilter {
     /// 2-character SIP field code.

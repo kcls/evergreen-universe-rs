@@ -1,3 +1,4 @@
+use super::session::DEFAULT_DUE_DATE_FORMAT;
 use crate::session::Session;
 use eg::constants as C;
 use eg::date;
@@ -79,7 +80,7 @@ impl Session {
                     due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
                     // YYYY-MM-DD HH:MM:SS
-                    due_date = Some(due_dt.format("%F %T").to_string());
+                    due_date = Some(due_dt.format(DEFAULT_DUE_DATE_FORMAT).to_string());
                 }
             }
         }
