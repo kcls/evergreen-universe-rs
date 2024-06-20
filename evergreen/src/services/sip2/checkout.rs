@@ -335,14 +335,16 @@ impl Session {
                 result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
+                let due_dt = date::parse_datetime(iso_date)?;
+
                 if self
                     .config()
                     .setting_is_true("due_date_use_sip_date_format")
                 {
-                    let due_dt = date::parse_datetime(iso_date)?;
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
-                    result.due_date = Some(iso_date.to_string());
+                    // YYYY-MM-DD HH:MM:SS
+                    result.due_date = Some(due_dt.format("%F %T").to_string());
                 }
 
                 return Ok(result);
@@ -448,14 +450,16 @@ impl Session {
                 result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
+                let due_dt = date::parse_datetime(iso_date)?;
+
                 if self
                     .config()
                     .setting_is_true("due_date_use_sip_date_format")
                 {
-                    let due_dt = date::parse_datetime(iso_date)?;
                     result.due_date = Some(sip2::util::sip_date_from_dt(&due_dt));
                 } else {
-                    result.due_date = Some(iso_date.to_string());
+                    // YYYY-MM-DD HH:MM:SS
+                    result.due_date = Some(due_dt.format("%F %T").to_string());
                 }
 
                 return Ok(result);
