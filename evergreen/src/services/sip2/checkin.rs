@@ -72,7 +72,6 @@ impl Session {
                 ("AO", self.config().institution()),
                 ("AJ", &item.title),
                 ("AQ", &result.permanent_loc),
-                ("CI", "N"), // security inhibit
                 ("CK", &item.media_type),
                 ("CR", &item.collection_code),
                 ("CS", &item.call_number),
