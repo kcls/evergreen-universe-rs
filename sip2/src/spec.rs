@@ -11,6 +11,7 @@ pub enum PayType {
     Cash,
     Visa,
     CreditCard,
+    Check,
 }
 
 impl TryFrom<&str> for PayType {
@@ -21,6 +22,7 @@ impl TryFrom<&str> for PayType {
             "00" => Ok(Self::Cash),
             "01" => Ok(Self::Visa),
             "02" => Ok(Self::CreditCard),
+            "05" => Ok(Self::Check),
             _ => Err(format!("Unknown payment type code: {pt}")),
         }
     }
@@ -32,6 +34,7 @@ impl From<PayType> for &'static str {
             PayType::Cash => "00",
             PayType::Visa => "01",
             PayType::CreditCard => "02",
+            PayType::Check => "05",
         }
     }
 }

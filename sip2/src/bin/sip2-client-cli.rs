@@ -40,7 +40,12 @@ Message Parameters:
     --patron-pass <password>
     --item-barcode <barcode>
     --pay-amount <amount>
+
+    --fee-id <id>
+        Transaction ID within the ILS.
+
     --transaction-id <id>
+        Transaction ID provided by the payer.
 
     --message-type <mtype> [Repeatable]
 
@@ -183,6 +188,7 @@ fn read_options() -> getopts::Matches {
 
     opts.optopt("", "pay-amount", "Fee Paid Amount", "");
     opts.optopt("", "transaction-id", "Fee Paid Transaction ID", "");
+    opts.optopt("", "fee-id", "Fee Paid Fee ID", "");
 
     opts.optflag("h", "help", "");
     opts.optflag("q", "quiet", "");
@@ -233,6 +239,10 @@ fn setup_params(options: &getopts::Matches) -> ParamSet {
 
     if let Some(ref amount) = options.opt_str("pay-amount") {
         params.set_pay_amount(amount);
+    }
+
+    if let Some(ref id) = options.opt_str("fee-id") {
+        params.set_fee_id(id);
     }
 
     if let Some(ref id) = options.opt_str("transaction-id") {

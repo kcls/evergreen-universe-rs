@@ -24,7 +24,10 @@ pub struct ParamSet {
 
     fee_type: Option<spec::FeeType>,
 
-    /// Fee Paid Transaction ID
+    /// Fee Paid ILS Transaction ID
+    fee_id: Option<String>,
+
+    /// Fee Paid SIP Client / External Transaction ID
     transaction_id: Option<String>,
 
     /// Indicates which position (if any) of the patron summary string
@@ -55,6 +58,7 @@ impl ParamSet {
             summary: None,
             pay_amount: None,
             transaction_id: None,
+            fee_id: None,
             pay_type: None,
             fee_type: None,
         }
@@ -98,6 +102,9 @@ impl ParamSet {
     }
     pub fn transaction_id(&self) -> Option<&str> {
         self.transaction_id.as_deref()
+    }
+    pub fn fee_id(&self) -> Option<&str> {
+        self.fee_id.as_deref()
     }
     pub fn pay_type(&self) -> Option<spec::PayType> {
         self.pay_type
@@ -158,6 +165,10 @@ impl ParamSet {
     }
     pub fn set_transaction_id(&mut self, id: &str) -> &mut Self {
         self.transaction_id = Some(id.to_string());
+        self
+    }
+    pub fn set_fee_id(&mut self, id: &str) -> &mut Self {
+        self.fee_id = Some(id.to_string());
         self
     }
     pub fn set_pay_type(&mut self, pt: spec::PayType) -> &mut Self {

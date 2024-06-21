@@ -216,7 +216,8 @@ impl Session {
 
         if amount_remaining > 0.0 {
             result.screen_msg = Some("Overpayment not allowed".to_string());
-            return Ok(payments);
+            // An overpayment results in no payments at all.
+            return Ok(Vec::new());
         }
 
         Ok(payments)
@@ -236,7 +237,7 @@ impl Session {
         log::info!("{self} applying payments: {payments:?}");
 
         // Add the register login to the payment note if present.
-        let note = if let Some(rl) = register_login_op {
+        let mut note = if let Some(rl) = register_login_op {
             log::info!("{self} SIP sent register login string as {rl}");
 
             // Scrub the Windows domain if present ("DOMAIN\user")
@@ -262,7 +263,6 @@ impl Session {
 
         let mut args = eg::hash! {
             userid: user.id()?,
-            note: note,
             payments: pay_array,
         };
 
@@ -285,11 +285,26 @@ impl Session {
                     Some(s) => EgValue::from(s),
                     None => EgValue::from("Not provided by SIP client"),
                 };
+
+                if let Some(id) = terminal_xact_op {
+                    note += " : ";
+                    note += id;
+                }
             }
             _ => {
                 args["payment_type"] = EgValue::from("cash_payment");
+
+                // Unlike credit card payments, which have a dedicated
+                // external transaction ID field, cash/check payments
+                // do not. If we have such an ID, toss it into the note.
+                if let Some(id) = terminal_xact_op {
+                    note += " : ";
+                    note += id;
+                }
             }
         }
+
+        args["note"] = note.into();
 
         let authtoken = EgValue::from(self.editor().authtoken().unwrap());
         let last_xact_id = user["last_xact_id"].str()?;

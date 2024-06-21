@@ -309,6 +309,7 @@ impl Client {
         req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
         req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
         req.maybe_add_field(spec::F_TRANSACTION_ID.code, params.transaction_id());
+        req.maybe_add_field(spec::F_FEE_IDENTIFIER.code, params.fee_id());
 
         let resp = self.connection.sendrecv(&req)?;
 
