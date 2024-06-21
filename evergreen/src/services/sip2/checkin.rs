@@ -176,8 +176,8 @@ impl Session {
         ovride: bool,
     ) -> EgResult<CheckinResult> {
         let mut args = eg::hash! {
-            copy_barcode: item.barcode.as_str(),
-            hold_as_transit: self.config().setting_is_true("checkin_holds_as_transits"),
+            "copy_barcode": item.barcode.as_str(),
+            "hold_as_transit": self.config().setting_is_true("checkin_holds_as_transits"),
         };
 
         if cancel {

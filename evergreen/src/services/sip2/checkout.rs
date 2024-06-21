@@ -288,8 +288,8 @@ impl Session {
         let params = vec![
             EgValue::from(self.editor().authtoken().unwrap()),
             eg::hash! {
-                copy_barcode: item_barcode,
-                patron_barcode: patron_barcode,
+                "copy_barcode": item_barcode,
+                "patron_barcode": patron_barcode,
             },
         ];
 

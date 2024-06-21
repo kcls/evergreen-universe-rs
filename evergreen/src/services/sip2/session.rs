@@ -251,8 +251,8 @@ impl Session {
             .ok_or_else(|| "Cannot cache session with no authoken".to_string())?;
 
         let cache_val = eg::hash! {
-            sip_account: self.sip_account.clone(),
-            ils_token: authtoken,
+            "sip_account": self.sip_account.clone(),
+            "ils_token": authtoken,
         };
 
         // Cache the session using the default max cache time.

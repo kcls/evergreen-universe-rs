@@ -423,10 +423,10 @@ impl Session {
 
     fn get_circ_title_author(&mut self, id: i64) -> EgResult<(Option<String>, Option<String>)> {
         let flesh = eg::hash! {
-            flesh: 4,
-            flesh_fields: {
-                circ: ["target_copy"],
-                acp: ["call_number"],
+            "flesh": 4,
+            "flesh_fields": {
+                "circ": ["target_copy"],
+                "acp": ["call_number"],
             }
         };
 
@@ -494,8 +494,8 @@ impl Session {
 
         if format == Msg64SummaryDatatype::Barcode {
             let flesh = eg::hash! {
-                flesh: 1,
-                flesh_fields: {circ: ["target_copy"]},
+                "flesh": 1,
+                "flesh_fields": {"circ": ["target_copy"]},
             };
 
             // If we have a circ ID, we have to have a circ.
@@ -574,8 +574,8 @@ impl Session {
 
         let bib_id = bib_link["bib_record"].int()?;
         let search = eg::hash! {
-            source: bib_id,
-            name: "title",
+            "source": bib_id,
+            "name": "title",
         };
 
         let title_fields = self.editor().search("mfde", search)?;
@@ -612,7 +612,7 @@ impl Session {
         let mut bre_ids: Vec<i64> = Vec::new();
 
         if hold_type.eq("M") {
-            let search = eg::hash! { metarecord: hold_target };
+            let search = eg::hash! {"metarecord": hold_target};
             let maps = self.editor().search("mmrsm", search)?;
             for map in maps {
                 bre_ids.push(map["record"].int()?);
@@ -622,11 +622,11 @@ impl Session {
         }
 
         let query = eg::hash! {
-            select: {acp: ["id"]},
-            from: {acp: "acn"},
-            where: {
-                "+acp": {deleted: "f"},
-                "+acn": {record: bre_ids, deleted: "f"}
+            "select": {"acp": ["id"]},
+            "from": {"acp": "acn"},
+            "where": {
+                "+acp": {"deleted": "f"},
+                "+acn": {"record": bre_ids, "deleted": "f"}
             },
             limit: 1
         };
@@ -642,11 +642,11 @@ impl Session {
 
     fn get_copy_for_vol(&mut self, vol_id: i64) -> EgResult<Option<EgValue>> {
         let search = eg::hash! {
-            call_number: vol_id,
-            deleted: "f",
+            "call_number": vol_id,
+            "deleted": "f",
         };
 
-        let ops = eg::hash! { limit: 1usize };
+        let ops = eg::hash! {"limit": 1};
 
         let mut copies = self.editor().search_with_ops("acp", search, ops)?;
 
@@ -693,13 +693,13 @@ impl Session {
         summary_ops: Option<&SummaryListOptions>,
     ) -> EgResult<Vec<EgValue>> {
         let search = eg::hash! {
-            usr: patron.id,
-            balance_owed: {"<>": 0},
-            total_owed: {">": 0},
+            "usr": patron.id,
+            "balance_owed": {"<>": 0},
+            "total_owed": {">": 0},
         };
 
         let mut ops = eg::hash! {
-            order_by: {mbts: "xact_start"}
+            order_by: {"mbts": "xact_start"}
         };
 
         if let Some(sum_ops) = summary_ops {
@@ -733,9 +733,9 @@ impl Session {
         }
 
         let mut query = eg::hash! {
-            select: {ahr: ["id"]},
-            from: "ahr",
-            where: {"+ahr": search},
+            "select": {"ahr": ["id"]},
+            "from": "ahr",
+            "where": {"+ahr": search},
         };
 
         if let Some(l) = limit {
@@ -847,22 +847,22 @@ impl Session {
             from: {ausp: "csp"},
             where: {
                 "+ausp": {
-                    usr: user_id,
+                    "usr": user_id,
                     "-or": [
-                      {stop_date: EG_NULL},
-                      {stop_date: {">": "now"}},
+                      {"stop_date": EG_NULL},
+                      {"stop_date": {">": "now"}},
                     ],
-                    org_unit: {
-                        in: {
-                            select: {
-                                aou: [{
-                                    transform: "actor.org_unit_full_path",
-                                    column: "id",
-                                    result_field: "id",
+                    "org_unit": {
+                        "in": {
+                            "select": {
+                                "aou": [{
+                                    "transform": "actor.org_unit_full_path",
+                                    "column": "id",
+                                    "result_field": "id",
                                 }]
                             },
-                            from: "aou",
-                            where: {id: ws_org}
+                            "from": "aou",
+                            "where": {"id": ws_org}
                         }
                     }
                 }
@@ -873,15 +873,15 @@ impl Session {
     }
 
     fn get_user(&mut self, barcode: &str) -> EgResult<Option<EgValue>> {
-        let search = eg::hash! { barcode: barcode };
+        let search = eg::hash! {"barcode": barcode};
 
         let flesh = eg::hash! {
-            flesh: 3,
-            flesh_fields: {
-                ac: ["usr"],
-                au: ["billing_address", "mailing_address", "profile",
+            "flesh": 3,
+            "flesh_fields": {
+                "ac": ["usr"],
+                "au": ["billing_address", "mailing_address", "profile",
                     "stat_cat_entries", "home_ou", "net_access_level"],
-                actscecm: ["stat_cat"]
+                "actscecm": ["stat_cat"]
             }
         };
 

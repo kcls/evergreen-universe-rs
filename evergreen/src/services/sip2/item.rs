@@ -44,17 +44,17 @@ impl Session {
     /// Collect a pile of data for a copy by barcode
     pub fn get_item_details(&mut self, barcode: &str) -> EgResult<Option<Item>> {
         let search = eg::hash! {
-            barcode: barcode,
-            deleted: "f",
+            "barcode": barcode,
+            "deleted": "f",
         };
 
         let flesh = eg::hash! {
-            flesh: 3,
-            flesh_fields: {
-                acp: ["circ_lib", "call_number",
+            "flesh": 3,
+            "flesh_fields": {
+                "acp": ["circ_lib", "call_number",
                     "stat_cat_entry_copy_maps", "circ_modifier"],
-                acn: ["owning_lib", "prefix", "suffix"],
-                ascecm: ["stat_cat", "stat_cat_entry"],
+                "acn": ["owning_lib", "prefix", "suffix"],
+                "ascecm": ["stat_cat", "stat_cat_entry"],
             }
         };
 

@@ -57,8 +57,8 @@ impl Session {
         let register_login_op = msg.get_field_value("OR");
         let check_number_op = msg.get_field_value("RN");
 
-        let search = eg::hash! { barcode: patron_barcode };
-        let ops = eg::hash! { flesh: 1u8, flesh_fields: {ac: ["usr"]} };
+        let search = eg::hash! {"barcode": patron_barcode};
+        let ops = eg::hash! {"flesh": 1, "flesh_fields": {"ac": ["usr"]}};
         let mut cards = self.editor().search_with_ops("ac", search, ops)?;
 
         if cards.is_empty() {
@@ -259,10 +259,7 @@ impl Session {
             pay_array.push(sub_array).ok();
         }
 
-        let mut args = eg::hash! {
-            userid: user.id()?,
-            payments: pay_array,
-        };
+        let mut args = eg::hash! {"userid": user.id()?, "payments": pay_array};
 
         match pay_type {
             PayType::Visa | PayType::CreditCard => {
