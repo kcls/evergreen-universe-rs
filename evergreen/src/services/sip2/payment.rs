@@ -2,6 +2,7 @@ use super::patron::Patron;
 use super::session::Session;
 use eg::result::EgResult;
 use eg::EgValue;
+use sip2::spec::PayType;
 use evergreen as eg;
 
 pub struct PaymentResult {
@@ -48,10 +49,7 @@ impl Session {
             }
         };
 
-        // credit card, cash, etc.
-        // TODO see sip2::spec::PayType
-        let pay_type = msg.fixed_fields()[2].value();
-
+        let pay_type: PayType = msg.fixed_fields()[2].value().try_into()?;
         let terminal_xact_op = msg.get_field_value("BK"); // optional
 
         // Envisionware extensions for relaying information about
@@ -228,7 +226,7 @@ impl Session {
         &mut self,
         user: &EgValue,
         result: &mut PaymentResult,
-        pay_type: &str,
+        pay_type: PayType,
         terminal_xact_op: Option<&str>,
         check_number_op: Option<&str>,
         register_login_op: Option<&str>,
@@ -267,20 +265,18 @@ impl Session {
         };
 
         match pay_type {
-            "01" | "02" => {
-                // '01' is "VISA"; '02' is "credit card"
+            PayType::Visa | PayType::CreditCard => {
+                args["payment_type"] = EgValue::from("credit_card_payment");
 
                 args["cc_args"]["approval_code"] = match terminal_xact_op {
                     Some(tx) => EgValue::from(tx),
                     None => EgValue::from("Not provided by SIP client"),
                 };
-
-                args["payment_type"] = EgValue::from("credit_card_payment");
             }
 
-            "05" => {
-                // Check payment
+            PayType::Check => {
                 args["payment_type"] = EgValue::from("check_payment");
+
                 args["check_number"] = match check_number_op {
                     Some(s) => EgValue::from(s),
                     None => EgValue::from("Not provided by SIP client"),
@@ -291,7 +287,7 @@ impl Session {
                     note += id;
                 }
             }
-            _ => {
+            PayType::Cash => {
                 args["payment_type"] = EgValue::from("cash_payment");
 
                 // Unlike credit card payments, which have a dedicated
