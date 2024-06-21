@@ -49,6 +49,7 @@ impl Session {
         };
 
         // credit card, cash, etc.
+        // TODO see sip2::spec::PayType
         let pay_type = msg.fixed_fields()[2].value();
 
         let terminal_xact_op = msg.get_field_value("BK"); // optional

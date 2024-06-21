@@ -39,6 +39,8 @@ Message Parameters:
     --patron-barcode <barcode>
     --patron-pass <password>
     --item-barcode <barcode>
+    --pay-amount <amount>
+    --transaction-id <id>
 
     --message-type <mtype> [Repeatable]
 
@@ -50,6 +52,7 @@ Message Parameters:
             * patron-information
             * checkout
             * checkin
+            * fee-paid
 "#;
 
 #[rustfmt::skip]
@@ -137,6 +140,8 @@ fn run_one_thread(
 
                 "checkin" => client.checkin(&sip_params).expect("Checkin Requested"),
 
+                "fee-paid" => client.fee_paid(&sip_params).expect("Fee Paid Requested"),
+
                 _ => panic!("Unsupported message type: {}", message),
             };
 
@@ -175,6 +180,9 @@ fn read_options() -> getopts::Matches {
     opts.optopt("", "location-code", "Location Code", "");
     opts.optopt("", "repeat", "Repeat Count", "");
     opts.optopt("", "parallel", "Parallel Count", "");
+
+    opts.optopt("", "pay-amount", "Fee Paid Amount", "");
+    opts.optopt("", "transaction-id", "Fee Paid Transaction ID", "");
 
     opts.optflag("h", "help", "");
     opts.optflag("q", "quiet", "");
@@ -221,6 +229,14 @@ fn setup_params(options: &getopts::Matches) -> ParamSet {
 
     if let Some(ref patron_pwd) = options.opt_str("patron-password") {
         params.set_patron_pwd(patron_pwd);
+    }
+
+    if let Some(ref amount) = options.opt_str("pay-amount") {
+        params.set_pay_amount(amount);
+    }
+
+    if let Some(ref id) = options.opt_str("transaction-id") {
+        params.set_transaction_id(id);
     }
 
     params

@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use crate::spec;
 
 /// Collection of friendly-named SIP request parameters for common tasks.
 ///
@@ -15,6 +16,16 @@ pub struct ParamSet {
     item_id: Option<String>,
     start_item: Option<usize>,
     end_item: Option<usize>,
+
+    /// Fee Paid amount
+    pay_amount: Option<String>,
+
+    pay_type: Option<spec::PayType>,
+
+    fee_type: Option<spec::FeeType>,
+
+    /// Fee Paid Transaction ID
+    transaction_id: Option<String>,
 
     /// Indicates which position (if any) of the patron summary string
     /// that should be set to 'Y' (i.e. activated).  Only one summary
@@ -42,6 +53,10 @@ impl ParamSet {
             start_item: None,
             end_item: None,
             summary: None,
+            pay_amount: None,
+            transaction_id: None,
+            pay_type: None,
+            fee_type: None,
         }
     }
 
@@ -77,6 +92,18 @@ impl ParamSet {
     }
     pub fn summary(&self) -> Option<usize> {
         self.summary
+    }
+    pub fn pay_amount(&self) -> Option<&str> {
+        self.pay_amount.as_deref()
+    }
+    pub fn transaction_id(&self) -> Option<&str> {
+        self.transaction_id.as_deref()
+    }
+    pub fn pay_type(&self) -> Option<spec::PayType> {
+        self.pay_type
+    }
+    pub fn fee_type(&self) -> Option<spec::FeeType> {
+        self.fee_type
     }
 
     // ---
@@ -123,6 +150,22 @@ impl ParamSet {
     }
     pub fn set_summary(&mut self, value: usize) -> &mut Self {
         self.summary = Some(value);
+        self
+    }
+    pub fn set_pay_amount(&mut self, amount: &str) -> &mut Self {
+        self.pay_amount = Some(amount.to_string());
+        self
+    }
+    pub fn set_transaction_id(&mut self, id: &str) -> &mut Self {
+        self.transaction_id = Some(id.to_string());
+        self
+    }
+    pub fn set_pay_type(&mut self, pt: spec::PayType) -> &mut Self {
+        self.pay_type = Some(pt);
+        self
+    }
+    pub fn set_fee_type(&mut self, pt: spec::FeeType) -> &mut Self {
+        self.fee_type = Some(pt);
         self
     }
 }

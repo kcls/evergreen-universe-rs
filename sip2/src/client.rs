@@ -279,6 +279,47 @@ impl Client {
 
         Ok(SipResponse::new(resp, false))
     }
+
+    pub fn fee_paid(&mut self, params: &ParamSet) -> Result<SipResponse, Error> {
+        let patron_id = params
+            .patron_id()
+            .ok_or_else(|| Error::MissingParamsError)?;
+        let pay_amount = params
+            .pay_amount()
+            .ok_or_else(|| Error::MissingParamsError)?;
+        let pay_amount = format!("{pay_amount}");
+
+        let fee_type = params.fee_type().unwrap_or(spec::FeeType::OtherUnknown);
+        let pay_type = params.pay_type().unwrap_or(spec::PayType::Cash);
+
+        let mut req = Message::from_values(
+            spec::M_FEE_PAID.code,
+            &[
+                &util::sip_date_now(), // transaction date
+                fee_type.into(),
+                pay_type.into(),
+                "USD", // TODO
+            ],
+            &[
+                (spec::F_PATRON_ID.code, patron_id),
+                (spec::F_FEE_AMOUNT.code, &pay_amount),
+            ],
+        )?;
+
+        req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
+        req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
+        req.maybe_add_field(spec::F_TRANSACTION_ID.code, params.transaction_id());
+
+        let resp = self.connection.sendrecv(&req)?;
+
+        if let Some(status) = resp.fixed_fields().first() {
+            if status.value() == "1" {
+                return Ok(SipResponse::new(resp, true));
+            }
+        }
+
+        Ok(SipResponse::new(resp, false))
+    }
 }
 
 /// Wrapper for holding the SIP response message and a simplistic

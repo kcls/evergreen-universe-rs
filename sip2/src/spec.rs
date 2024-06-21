@@ -5,6 +5,86 @@ pub const SIP_PROTOCOL_VERSION: &str = "2.00";
 pub const LINE_TERMINATOR: &str = "\r";
 pub const SIP_DATE_FORMAT: &str = "%Y%m%d    %H%M%S";
 
+/// Fee Paid Payment Types
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum PayType {
+    Cash,
+    Visa,
+    CreditCard,
+}
+
+impl TryFrom<&str> for PayType {
+    type Error = String;
+
+    fn try_from(pt: &str) -> Result<PayType, Self::Error> {
+        match pt {
+            "00" => Ok(Self::Cash),
+            "01" => Ok(Self::Visa),
+            "02" => Ok(Self::CreditCard),
+            _ => Err(format!("Unknown payment type code: {pt}")),
+        }
+    }
+}
+
+impl From<PayType> for &'static str {
+    fn from(pt: PayType) -> &'static str {
+        match pt {
+            PayType::Cash => "00",
+            PayType::Visa => "01",
+            PayType::CreditCard => "02",
+        }
+    }
+}
+
+/// Fee Paid Fee Types
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum FeeType {
+    OtherUnknown,
+    Administrative,
+    Damage,
+    Overdue,
+    Processing,
+    Rental,
+    Replacement,
+    ComputerAccessCharge,
+    HoldFee,
+}
+
+impl TryFrom<&str> for FeeType {
+    type Error = String;
+
+    fn try_from(ft: &str) -> Result<FeeType, Self::Error> {
+        match ft {
+            "01" => Ok(Self::OtherUnknown),
+            "02" => Ok(Self::Administrative),
+            "03" => Ok(Self::Damage),
+            "04" => Ok(Self::Overdue),
+            "05" => Ok(Self::Processing),
+            "06" => Ok(Self::Rental),
+            "07" => Ok(Self::Replacement),
+            "08" => Ok(Self::ComputerAccessCharge),
+            "09" => Ok(Self::HoldFee),
+            _ => Err(format!("Unknown fee type: {ft}")),
+        }
+    }
+}
+
+impl From<FeeType> for &'static str {
+    fn from(ft: FeeType) -> &'static str {
+        match ft {
+            FeeType::OtherUnknown => "01",
+            FeeType::Administrative => "02",
+            FeeType::Damage => "03",
+            FeeType::Overdue => "04",
+            FeeType::Processing => "05",
+            FeeType::Rental => "06",
+            FeeType::Replacement => "07",
+            FeeType::ComputerAccessCharge => "08",
+            FeeType::HoldFee => "09",
+        }
+    }
+}
+
 /// Fixed field definition with label and field length
 #[derive(PartialEq, Debug)]
 pub struct FixedField {
