@@ -298,9 +298,11 @@ fn test_bill_pay(tester: &mut Tester) -> EgResult<()> {
             ("AO", &tester.institution),
             ("BV", "25.00"),
             ("BK", "123456789"), // Client-side transaction ID
-            ("CG", &eg_xact_id),
-            ("RN", ""),                          // check number
-            ("OR", "example.org/staffusername"), // register login
+            ("CG", &eg_xact_id), // ILS transaction ID
+            ("RN", ""),          // check number
+            // Register login.  Test the scenario where the login
+            // is a Windows domain login.
+            ("OR", "example.org\\staffusername"),
         ],
     )
     .unwrap();

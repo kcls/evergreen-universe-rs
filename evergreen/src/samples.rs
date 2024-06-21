@@ -221,7 +221,7 @@ impl SampleData {
 
         let query = eg::hash! {"usr": user_id};
         let flesh = eg::hash! {
-            "flesh": 1,
+            "flesh": 2,
             "flesh_fields": {
                 "mbt": ["billings", "payments"],
                 "mp": PAYMENT_TYPES.as_slice(),
@@ -238,8 +238,8 @@ impl SampleData {
             for mut payment_view in payments.take_vec().unwrap().drain(..) {
                 for paytype in PAYMENT_TYPES {
                     let payment = payment_view[paytype].take();
+                    // maybe null
                     if payment.is_blessed() {
-                        // maybe null
                         e.delete(payment)?;
                     }
                 }
