@@ -49,6 +49,11 @@ impl Session {
             }
         };
 
+        // msg.fixed_fields()[1] contains the FeeType code, but we do
+        // not support making payments toward transactions of specific
+        // types.  Payments are made toward specific transactions (by
+        // fee ID) or across all viable transaction types.
+
         let pay_type: PayType = msg.fixed_fields()[2].value().try_into()?;
         let terminal_xact_op = msg.get_field_value("BK"); // optional
 
