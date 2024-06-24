@@ -168,9 +168,10 @@ impl XmlRecordIterator {
                 }
             }
 
-            XmlEvent::EndElement { name, .. } => match name.local_name.as_str() {
-                "record" => context.record_complete = true,
-                _ => {}
+            XmlEvent::EndElement { name, .. } => {
+                if name.local_name.as_str() == "record" {
+                    context.record_complete = true;
+                }
             },
 
             XmlEvent::EndDocument => {
