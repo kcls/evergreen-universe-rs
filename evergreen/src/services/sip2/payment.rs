@@ -2,8 +2,8 @@ use super::patron::Patron;
 use super::session::Session;
 use eg::result::EgResult;
 use eg::EgValue;
-use sip2::spec::PayType;
 use evergreen as eg;
+use sip2::spec::PayType;
 
 pub struct PaymentResult {
     success: bool,

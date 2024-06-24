@@ -309,15 +309,25 @@ impl RecordUrl {
     }
 }
 
+/// Extract/compile 856 URL values from a MARC record.
 pub fn record_urls(
-    _editor: &mut Editor, // TODO
-    _bib_id: Option<i64>, // TODO
+    editor: &mut Editor,
+    bib_id: Option<i64>,
     xml: Option<&str>,
 ) -> EgResult<Option<Vec<RecordUrl>>> {
+    let rec_binding;
+
     let xml = match xml.as_ref() {
         Some(x) => x,
         None => {
-            todo!("Fetch Record by ID");
+            if let Some(id) = bib_id {
+                rec_binding = editor
+                    .retrieve("bre", id)?
+                    .ok_or_else(|| editor.die_event())?;
+                rec_binding["marc"].str()?
+            } else {
+                return Err("bib::record_urls requires params".into());
+            }
         }
     };
 
