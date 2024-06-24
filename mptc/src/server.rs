@@ -10,12 +10,18 @@ use std::time::Instant;
 /// How often do we log our idle/active thread counts.
 const LOG_THREAD_STATS_FREQUENCY: i32 = 10;
 
+type RequestSendChannel = mpsc::Sender<Box<dyn Request>>;
+type RequestReceiveChannel = mpsc::Receiver<Box<dyn Request>>;
+
+type StateEventSendChannel = mpsc::Sender<WorkerStateEvent>;
+type StateEventReceiveChannel = mpsc::Receiver<WorkerStateEvent>;
+
 pub struct Server {
     worker_id_gen: u64,
     workers: HashMap<u64, WorkerInstance>,
 
-    to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
-    to_parent_tx: mpsc::Sender<WorkerStateEvent>,
+    to_parent_rx: StateEventReceiveChannel,
+    to_parent_tx: StateEventSendChannel,
 
     min_workers: usize,
     max_workers: usize,
@@ -30,8 +36,8 @@ pub struct Server {
 impl Server {
     pub fn new(stream: Box<dyn RequestStream>) -> Server {
         let (tx, rx): (
-            mpsc::Sender<WorkerStateEvent>,
-            mpsc::Receiver<WorkerStateEvent>,
+            StateEventSendChannel,
+            StateEventReceiveChannel,
         ) = mpsc::channel();
 
         Server {
@@ -69,11 +75,7 @@ impl Server {
     }
 
     fn stop_workers(&mut self) {
-        loop {
-            let id = match self.workers.keys().next() {
-                Some(i) => *i,
-                None => break,
-            };
+        while let Some(id) = self.workers.keys().next().copied() {
             log::debug!("Server cleaning up worker {}", id);
             self.remove_worker(&id, false);
         }
@@ -92,10 +94,7 @@ impl Server {
             self.active_worker_count(),
         );
 
-        let (tx, rx): (
-            mpsc::Sender<Box<dyn Request>>,
-            mpsc::Receiver<Box<dyn Request>>,
-        ) = mpsc::channel();
+        let (tx, rx): (RequestSendChannel, RequestReceiveChannel) = mpsc::channel();
 
         let handle = thread::spawn(move || {
             let mut w = Worker::new(worker_id, max_reqs, sig_tracker, to_parent_tx, rx, handler);
