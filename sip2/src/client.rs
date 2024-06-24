@@ -281,13 +281,10 @@ impl Client {
     }
 
     pub fn fee_paid(&mut self, params: &ParamSet) -> Result<SipResponse, Error> {
-        let patron_id = params
-            .patron_id()
-            .ok_or_else(|| Error::MissingParamsError)?;
-        let pay_amount = params
-            .pay_amount()
-            .ok_or_else(|| Error::MissingParamsError)?;
-        let pay_amount = format!("{pay_amount}");
+        let patron_id = params.patron_id().ok_or(Error::MissingParamsError)?;
+        let pay_amount = params.pay_amount().ok_or(Error::MissingParamsError)?;
+
+        let pay_amount = pay_amount.to_string();
 
         let fee_type = params.fee_type().unwrap_or(spec::FeeType::OtherUnknown);
         let pay_type = params.pay_type().unwrap_or(spec::PayType::Cash);
