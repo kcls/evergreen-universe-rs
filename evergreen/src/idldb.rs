@@ -403,10 +403,10 @@ impl Translator {
 
         // Attach the child data to the fleshed object.
 
-        if children.len() > 0 {
-            if reltype == idl::RelType::HasA || reltype == idl::RelType::MightHave {
-                object[fieldname] = children.remove(0); // len() above
-            }
+        if children.len() > 0
+            && (reltype == idl::RelType::HasA || reltype == idl::RelType::MightHave)
+        {
+            object[fieldname] = children.remove(0); // len() above
         }
 
         if reltype == idl::RelType::HasMany {

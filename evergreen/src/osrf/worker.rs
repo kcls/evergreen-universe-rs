@@ -607,8 +607,8 @@ impl Worker {
 
         self.to_parent_tx
             .send(WorkerStateEvent {
+                state,
                 worker_id: self.worker_id(),
-                state: state,
             })
             .map_err(|e| format!("mpsc::SendError: {e}").into())
     }

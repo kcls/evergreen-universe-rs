@@ -29,14 +29,14 @@ impl DisplayAttrValue {
                 Some(s) => s.as_str(),
                 None => "",
             },
-            Self::List(v) => v.get(0).map(|v| v.as_str()).unwrap_or(""),
+            Self::List(v) => v.first().map(|v| v.as_str()).unwrap_or(""),
         }
     }
 
     pub fn into_value(mut self) -> EgValue {
         match self {
-            Self::Value(ref mut op) => op.take().map(|v| EgValue::from(v)).unwrap_or(EgValue::Null),
-            Self::List(ref mut l) => EgValue::from(l.drain(..).collect::<Vec<String>>()),
+            Self::Value(ref mut op) => op.take().map(EgValue::from).unwrap_or(EgValue::Null),
+            Self::List(ref mut l) => EgValue::from(std::mem::take(l)),
         }
     }
 }
@@ -95,14 +95,11 @@ impl DisplayAttrSet {
     }
 
     pub fn attr(&self, name: &str) -> Option<&DisplayAttr> {
-        self.attrs.iter().filter(|a| a.name.as_str() == name).next()
+        self.attrs.iter().find(|a| a.name.as_str() == name)
     }
 
     pub fn attr_mut(&mut self, name: &str) -> Option<&mut DisplayAttr> {
-        self.attrs
-            .iter_mut()
-            .filter(|a| a.name.as_str() == name)
-            .next()
+        self.attrs.iter_mut().find(|a| a.name.as_str() == name)
     }
 
     /// Returns the first value for an attribute by name.
@@ -156,11 +153,9 @@ pub fn get_display_attrs(
         let bib_id = attr["source"].int()?;
 
         // First time seeing this bib record?
-        if !map.contains_key(&bib_id) {
-            map.insert(bib_id, DisplayAttrSet { attrs: Vec::new() });
-        }
-
-        let attr_set = map.get_mut(&bib_id).unwrap();
+        let attr_set = map
+            .entry(bib_id)
+            .or_insert_with(|| DisplayAttrSet { attrs: Vec::new() });
 
         let attr_name = attr["name"].to_string().expect("Required");
         let attr_label = attr["label"].to_string().expect("Required");
@@ -203,9 +198,9 @@ impl RecordSummary {
             }
         }
 
-        let copy_counts = std::mem::replace(&mut self.copy_counts, vec![]);
+        let copy_counts = std::mem::take(&mut self.copy_counts);
 
-        let hash = eg::hash! {
+        eg::hash! {
             id: self.id,
             record: self.record.take(),
             display: self.display.into_value(),
@@ -219,9 +214,7 @@ impl RecordSummary {
             staff_view_metabib_attributes: eg::hash!{},
             // TODO
             staff_view_metabib_records: eg::array! [],
-        };
-
-        hash
+        }
     }
 }
 
@@ -333,7 +326,7 @@ pub fn record_urls(
 
     let record = match marc::Record::from_xml(xml).next() {
         Some(result) => result?,
-        None => return Err(format!("MARC XML parsing returned no result").into()),
+        None => return Err("MARC XML parsing returned no result".into()),
     };
 
     let mut urls_maybe = None;
@@ -351,7 +344,6 @@ pub fn record_urls(
         let label_sf = field.first_subfield("y");
         let notes_sf = field.first_subfield("z").or(field.first_subfield("3"));
 
-        let mut first = true;
         for href in field.get_subfields("u").iter() {
             if href.content().trim().is_empty() {
                 continue;
@@ -362,19 +354,8 @@ pub fn record_urls(
             // leave any subsequent $u's as unadorned href's.
             // use href/link/note keys to be consistent with args.uri's
 
-            let label = if first && label_sf.is_some() {
-                Some(label_sf.unwrap().content().to_string())
-            } else {
-                None
-            };
-
-            let notes = if first && notes_sf.is_some() {
-                Some(notes_sf.unwrap().content().to_string())
-            } else {
-                None
-            };
-
-            first = false;
+            let label = label_sf.map(|l| l.content().to_string());
+            let notes = notes_sf.map(|v| v.content().to_string());
 
             let url = RecordUrl {
                 label,

@@ -485,17 +485,15 @@ impl ClientSessionInternal {
             self.client_internal_mut()
                 .bus_mut()
                 .send_to(tmsg, router_addr)?;
+        } else if let Some(a) = self.worker_addr() {
+            // Requests directly to client addresses must be routed
+            // to the domain of the client address.
+            self.client_internal_mut()
+                .get_domain_bus(a.domain())?
+                .send(tmsg)?;
         } else {
-            if let Some(a) = self.worker_addr() {
-                // Requests directly to client addresses must be routed
-                // to the domain of the client address.
-                self.client_internal_mut()
-                    .get_domain_bus(a.domain())?
-                    .send(tmsg)?;
-            } else {
-                self.reset();
-                return Err(format!("We are connected, but have no worker_addr()").into());
-            }
+            self.reset();
+            return Err(format!("We are connected, but have no worker_addr()").into());
         }
 
         Ok(trace)

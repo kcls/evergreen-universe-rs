@@ -1,5 +1,5 @@
+//! OpenSRF Syslog
 use crate::date;
-///! OpenSRF Syslog
 use crate::osrf::conf;
 use crate::util;
 use log;

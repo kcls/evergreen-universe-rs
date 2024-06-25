@@ -187,22 +187,16 @@ impl Processor<'_> {
     fn hold_notify_check(&mut self, event: &Event) -> EgResult<bool> {
         let hold = event.target();
 
-        if self.param_value_as_bool("check_email_notify") {
-            if !hold["email_notify"].boolish() {
-                return Ok(false);
-            }
+        if self.param_value_as_bool("check_email_notify") && !hold["email_notify"].boolish() {
+            return Ok(false);
         }
 
-        if self.param_value_as_bool("check_sms_notify") {
-            if !hold["sms_notify"].boolish() {
-                return Ok(false);
-            }
+        if self.param_value_as_bool("check_sms_notify") && !hold["sms_notify"].boolish() {
+            return Ok(false);
         }
 
-        if self.param_value_as_bool("check_phone_notify") {
-            if !hold["phone_notify"].boolish() {
-                return Ok(false);
-            }
+        if self.param_value_as_bool("check_phone_notify") && !hold["phone_notify"].boolish() {
+            return Ok(false);
         }
 
         Ok(true)

@@ -748,11 +748,9 @@ impl<'a> HoldTargeter<'a> {
     fn handle_hopeless_date(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         let marked_hopeless = !context.hold["hopeless_date"].is_null();
 
-        if context.copies.len() == 0 {
-            if !marked_hopeless {
-                log::info!("{self} Marking hold as hopeless");
-                return self.update_hold(context, eg::hash! {"hopeless_date": "now"});
-            }
+        if context.copies.len() == 0 && !marked_hopeless {
+            log::info!("{self} Marking hold as hopeless");
+            return self.update_hold(context, eg::hash! {"hopeless_date": "now"});
         }
 
         // Hope left in any of the statuses?

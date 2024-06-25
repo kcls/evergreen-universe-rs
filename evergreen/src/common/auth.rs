@@ -86,10 +86,7 @@ impl LoginArgs {
             username: username.to_string(),
             password: password.to_string(),
             login_type: login_type.into(),
-            workstation: match workstation {
-                Some(w) => Some(w.to_string()),
-                _ => None,
-            },
+            workstation: workstation.map(|w| w.to_string()),
         }
     }
 
@@ -242,7 +239,7 @@ impl Session {
 
         let eg_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
             Some(v) => v,
-            None => Err(format!("Login Timed Out"))?,
+            None => return Err("Login Timed Out".into()),
         };
 
         Session::handle_auth_response(&args.workstation, &eg_val)
@@ -261,7 +258,7 @@ impl Session {
 
         let eg_val = match req.recv_with_timeout(LOGIN_TIMEOUT)? {
             Some(v) => v,
-            None => Err(format!("Login Timed Out"))?,
+            None => return Err("Login Timed Out".into()),
         };
 
         Session::handle_auth_response(&args.workstation, &eg_val)
@@ -271,11 +268,9 @@ impl Session {
         workstation: &Option<String>,
         response: &EgValue,
     ) -> EgResult<Option<Session>> {
-        let mut evt = match EgEvent::parse(&response) {
+        let mut evt = match EgEvent::parse(response) {
             Some(e) => e,
-            None => {
-                return Err(format!("Unexpected response: {:?}", response).into());
-            }
+            None => return Err(format!("Unexpected response: {:?}", response).into()),
         };
 
         if !evt.is_success() {
@@ -289,7 +284,7 @@ impl Session {
 
         let token = evt.payload_mut()["authtoken"]
             .take_string()
-            .ok_or_else(|| format!("Auth cache value has invalid authtoken"))?;
+            .ok_or_else(|| "Auth cache value has invalid authtoken".to_string())?;
 
         let authtime = evt.payload()["authtime"].int()? as u32;
         let user = evt.payload_mut()["userobj"].take();
@@ -440,7 +435,7 @@ pub fn get_auth_duration(
     if let Some(num) = interval.as_int() {
         Ok(num as u32)
     } else if let Some(s) = interval.as_str() {
-        date::interval_to_seconds(&s).map(|n| n as u32)
+        date::interval_to_seconds(s).map(|n| n as u32)
     } else {
         Ok(0)
     }

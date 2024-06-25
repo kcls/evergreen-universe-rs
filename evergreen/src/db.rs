@@ -12,7 +12,7 @@ const DEFAULT_DB_HOST: &str = "localhost";
 const DEFAULT_DB_USER: &str = "evergreen";
 const DEFAULT_DB_NAME: &str = "evergreen";
 
-const SUPPORTED_OPERATORS: [&'static str; 20] = [
+const SUPPORTED_OPERATORS: [&str; 20] = [
     "IS",
     "IS NOT",
     "IN",
@@ -76,35 +76,25 @@ impl DatabaseConnectionBuilder {
     ///     --db-user
     ///     --db-name
     pub fn set_opts(&mut self, params: &getopts::Matches) {
-        if self.host.is_none() {
-            if params.opt_defined("db-host") {
-                self.host = params.opt_str("db-host");
-            }
+        if self.host.is_none() && params.opt_defined("db-host") {
+            self.host = params.opt_str("db-host");
         }
 
-        if self.user.is_none() {
-            if params.opt_defined("db-user") {
-                self.user = params.opt_str("db-user");
-            }
+        if self.user.is_none() && params.opt_defined("db-user") {
+            self.user = params.opt_str("db-user");
         }
 
-        if self.password.is_none() {
-            if params.opt_defined("db-pass") {
-                self.password = params.opt_str("db-pass");
-            }
+        if self.password.is_none() && params.opt_defined("db-pass") {
+            self.password = params.opt_str("db-pass");
         }
 
-        if self.database.is_none() {
-            if params.opt_defined("db-name") {
-                self.database = params.opt_str("db-name");
-            }
+        if self.database.is_none() && params.opt_defined("db-name") {
+            self.database = params.opt_str("db-name");
         }
 
-        if self.port.is_none() {
-            if params.opt_defined("db-port") {
-                if let Some(v) = params.opt_str("db-port") {
-                    self.port = Some(v.parse::<u16>().unwrap());
-                }
+        if self.port.is_none() && params.opt_defined("db-port") {
+            if let Some(v) = params.opt_str("db-port") {
+                self.port = Some(v.parse::<u16>().unwrap());
             }
         }
     }

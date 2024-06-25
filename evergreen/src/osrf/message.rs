@@ -756,7 +756,7 @@ pub struct MethodCall {
 impl MethodCall {
     pub fn new(method: &str, params: Vec<EgValue>) -> Self {
         MethodCall {
-            params: params,
+            params,
             method: String::from(method),
             msg_class: String::from("osrfMethod"), // only supported value
         }

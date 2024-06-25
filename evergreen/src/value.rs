@@ -1152,12 +1152,10 @@ impl EgValue {
             if field.is_virtual() {
                 // Virtual fields can be fully cleared.
                 self[name] = eg::NULL;
+            } else if let Some(pval) = self[name].pkey_value() {
+                self[name] = pval.clone();
             } else {
-                if let Some(pval) = self[name].pkey_value() {
-                    self[name] = pval.clone();
-                } else {
-                    self[name] = eg::NULL;
-                }
+                self[name] = eg::NULL;
             }
         }
 
