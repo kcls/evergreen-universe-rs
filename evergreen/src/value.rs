@@ -189,8 +189,8 @@ impl EgValue {
         // Pull the map out of the EgValue::Hash so we can inspect
         // it and eventually consume it.
         let map = match self {
-            Self::Hash(ref mut h) => mem::replace(h, HashMap::new()),
-            _ => return Err(format!("Only EgValue::Hash's can be blessed").into()),
+            Self::Hash(ref mut h) => std::mem::take(h),
+            _ => return Err("Only EgValue::Hash's can be blessed".into()),
         };
 
         // Verify the existing data contains only fields that are
@@ -222,10 +222,7 @@ impl EgValue {
     /// NO-OP for non-Blessed values.
     pub fn unbless(&mut self) {
         let (idl_class, mut map) = match self {
-            Self::Blessed(ref mut o) => (
-                &o.idl_class,
-                std::mem::replace(&mut o.values, HashMap::new()),
-            ),
+            Self::Blessed(ref mut o) => (&o.idl_class, std::mem::take(&mut o.values)),
             _ => return,
         };
 
@@ -263,10 +260,7 @@ impl EgValue {
                 h.values_mut().for_each(|v| v.to_classed_hash());
                 return;
             }
-            Self::Blessed(ref mut o) => (
-                &o.idl_class,
-                std::mem::replace(&mut o.values, HashMap::new()),
-            ),
+            Self::Blessed(ref mut o) => (&o.idl_class, std::mem::take(&mut o.values)),
             _ => return,
         };
 
@@ -331,7 +325,7 @@ impl EgValue {
         let idl_class = idl::get_class(classname)?.clone();
 
         let mut map = match self {
-            Self::Hash(ref mut m) => std::mem::replace(m, HashMap::new()),
+            Self::Hash(ref mut m) => std::mem::take(m),
             _ => return Ok(()), // can't get here
         };
 
@@ -443,11 +437,9 @@ impl EgValue {
     /// Un-package a value wrapped in class+payload object and return
     /// the class name and wrapped object.
     pub fn remove_class_wrapper(mut obj: JsonValue) -> Option<(String, JsonValue)> {
-        if let Some(cname) = EgValue::wrapped_classname(&obj) {
-            Some((cname.to_string(), obj[JSON_PAYLOAD_KEY].take()))
-        } else {
-            None
-        }
+        EgValue::wrapped_classname(&obj)
+            .map(|cname| cname.to_string())
+            .map(|cname| (cname, obj[JSON_PAYLOAD_KEY].take()))
     }
 
     /// Return the classname of the wrapped object if one exists.
@@ -609,7 +601,7 @@ impl EgValue {
             list.push(v.into());
             Ok(())
         } else {
-            Err(format!("push() requires an EgValue::Array").into())
+            Err("push() requires an EgValue::Array".into())
         }
     }
 
@@ -649,18 +641,16 @@ impl EgValue {
     /// in the parts of the message that may be Blessed.
     pub fn from_json_value_plain(mut v: JsonValue) -> EgValue {
         match v {
-            JsonValue::Null => return EgValue::Null,
-            JsonValue::Boolean(b) => return EgValue::Boolean(b),
-            JsonValue::Short(_) | JsonValue::String(_) => {
-                return EgValue::String(v.take_string().unwrap())
-            }
-            JsonValue::Number(n) => return EgValue::Number(n),
+            JsonValue::Null => EgValue::Null,
+            JsonValue::Boolean(b) => EgValue::Boolean(b),
+            JsonValue::Short(_) | JsonValue::String(_) => EgValue::String(v.take_string().unwrap()),
+            JsonValue::Number(n) => EgValue::Number(n),
             JsonValue::Array(mut list) => {
                 let mut val_list = Vec::new();
                 for v in list.drain(..) {
                     val_list.push(EgValue::from_json_value_plain(v));
                 }
-                return EgValue::Array(val_list);
+                EgValue::Array(val_list)
             }
             JsonValue::Object(_) => {
                 let mut map = HashMap::new();
@@ -670,9 +660,9 @@ impl EgValue {
                     let val = EgValue::from_json_value_plain(v.remove(&k));
                     map.insert(k, val);
                 }
-                return EgValue::Hash(map);
+                EgValue::Hash(map)
             }
-        };
+        }
     }
 
     /// Transform a JSON value into an EgValue.
@@ -785,54 +775,33 @@ impl EgValue {
     }
 
     pub fn is_number(&self) -> bool {
-        match self {
-            EgValue::Number(_) => true,
-            _ => false,
-        }
+        matches!(self, EgValue::Number(_))
     }
 
     pub fn is_string(&self) -> bool {
-        match self {
-            EgValue::String(_) => true,
-            _ => false,
-        }
+        matches!(self, EgValue::String(_))
     }
 
     pub fn is_boolean(&self) -> bool {
-        match self {
-            EgValue::Boolean(_) => true,
-            _ => false,
-        }
+        matches!(self, EgValue::Boolean(_))
     }
 
     pub fn is_array(&self) -> bool {
-        match self {
-            EgValue::Array(_) => true,
-            _ => false,
-        }
+        matches!(self, EgValue::Array(_))
     }
 
     /// True if this is a vanilla object or a classed object.
     pub fn is_object(&self) -> bool {
-        match self {
-            EgValue::Hash(_) | EgValue::Blessed(_) => true,
-            _ => false,
-        }
+        matches!(self, EgValue::Hash(_) | EgValue::Blessed(_))
     }
 
     pub fn is_hash(&self) -> bool {
-        match self {
-            &EgValue::Hash(_) => true,
-            _ => false,
-        }
+        matches!(self, &EgValue::Hash(_))
     }
 
     /// True if this is an IDL-classed object
     pub fn is_blessed(&self) -> bool {
-        match self {
-            &EgValue::Blessed(_) => true,
-            _ => false,
-        }
+        matches!(self, &EgValue::Blessed(_))
     }
 
     /// Returns the IDL class if this is a blessed object.
@@ -859,7 +828,7 @@ impl EgValue {
             Self::String(ref s) => !s.eq(""),
             Self::Boolean(b) => !b,
             Self::Null => true,
-            Self::Array(ref l) => l.len() == 0,
+            Self::Array(ref l) => l.is_empty(),
             Self::Hash(ref h) => h.is_empty(),
             Self::Blessed(ref h) => h.values.is_empty(),
         }
@@ -1000,7 +969,7 @@ impl EgValue {
         match self {
             EgValue::Boolean(b) => *b,
             EgValue::Number(n) => *n != 0,
-            EgValue::String(ref s) => s.len() > 0 && !s.starts_with("f"),
+            EgValue::String(ref s) => !s.is_empty() && !s.starts_with('f'),
             _ => false,
         }
     }
@@ -1392,7 +1361,7 @@ impl From<Option<&str>> for EgValue {
 
 impl From<Vec<i64>> for EgValue {
     fn from(mut v: Vec<i64>) -> EgValue {
-        EgValue::Array(v.drain(..).map(|n| EgValue::from(n)).collect())
+        EgValue::Array(v.drain(..).map(EgValue::from).collect())
     }
 }
 
@@ -1404,7 +1373,7 @@ impl From<&[&str]> for EgValue {
 
 impl From<Vec<String>> for EgValue {
     fn from(mut v: Vec<String>) -> EgValue {
-        EgValue::Array(v.drain(..).map(|s| EgValue::from(s)).collect())
+        EgValue::Array(v.drain(..).map(EgValue::from).collect())
     }
 }
 
@@ -1655,7 +1624,7 @@ impl Index<&str> for EgValue {
     fn index(&self, key: &str) -> &Self::Output {
         match self {
             Self::Blessed(ref o) => {
-                if key.starts_with("_") || o.idl_class.has_field(key) {
+                if key.starts_with('_') || o.idl_class.has_field(key) {
                     o.values.get(key).unwrap_or(&eg::NULL)
                 } else {
                     let err = format!(
@@ -1689,7 +1658,7 @@ impl IndexMut<&str> for EgValue {
         };
 
         if is_classed {
-            if !has_field || key.starts_with("_") {
+            if !has_field || key.starts_with('_') {
                 let err = format!(
                     "Indexing IDL class '{}': No field named '{key}'",
                     self.classname().unwrap()

@@ -35,10 +35,7 @@ pub struct Server {
 
 impl Server {
     pub fn new(stream: Box<dyn RequestStream>) -> Server {
-        let (tx, rx): (
-            StateEventSendChannel,
-            StateEventReceiveChannel,
-        ) = mpsc::channel();
+        let (tx, rx): (StateEventSendChannel, StateEventReceiveChannel) = mpsc::channel();
 
         Server {
             stream,

@@ -172,7 +172,7 @@ impl XmlRecordIterator {
                 if name.local_name.as_str() == "record" {
                     context.record_complete = true;
                 }
-            },
+            }
 
             XmlEvent::EndDocument => {
                 context.doc_complete = true;
