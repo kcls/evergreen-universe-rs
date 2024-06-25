@@ -297,7 +297,7 @@ impl Session {
         let mut auth_ses = Session {
             user,
             token,
-            authtime: authtime,
+            authtime,
             workstation: None,
             endtime: None,
             reset_interval: None,

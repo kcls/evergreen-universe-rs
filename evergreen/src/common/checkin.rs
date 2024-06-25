@@ -26,10 +26,8 @@ impl Circulator<'_> {
 
         self.init()?;
 
-        if !self.is_renewal() {
-            if !self.editor.allowed_at("COPY_CHECKIN", self.circ_lib)? {
-                return Err(self.editor().die_event());
-            }
+        if !self.is_renewal() && !self.editor.allowed_at("COPY_CHECKIN", self.circ_lib)? {
+            return Err(self.editor().die_event());
         }
 
         log::info!("{self} starting checkin");
@@ -312,17 +310,13 @@ impl Circulator<'_> {
             let hold_type: &str = hold.hold_type().into();
 
             // Copy-level hold that points to a different copy.
-            if hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F") {
-                if target != copy_id {
-                    continue;
-                }
+            if target != copy_id && (hold_type.eq("C") || hold_type.eq("R") || hold_type.eq("F")) {
+                continue;
             }
 
             // Volume-level hold for a different volume
-            if hold_type.eq("V") {
-                if target != vol_id {
-                    continue;
-                }
+            if target != vol_id && hold_type.eq("V") {
+                continue;
             }
 
             if parts.len() > 0 {

@@ -1,4 +1,4 @@
-///! JSON Query Parser
+//! JSON Query Parser
 use crate as eg;
 use eg::db;
 use eg::idl;
@@ -788,10 +788,9 @@ impl JsonQueryCompiler {
             let reltype = idl_link.reltype();
 
             let maybe_left_class = idl_link.class();
-            if reltype != idl::RelType::HasMany {
-                if maybe_left_class == left_class {
-                    left_join_field = Some(idl_link.key());
-                }
+
+            if reltype != idl::RelType::HasMany && maybe_left_class == left_class {
+                left_join_field = Some(idl_link.key());
             }
 
             if left_join_field.is_none() {
@@ -811,10 +810,8 @@ impl JsonQueryCompiler {
             let reltype = idl_link.reltype();
 
             let maybe_right_class = idl_link.class();
-            if reltype != idl::RelType::HasMany {
-                if maybe_right_class == right_class {
-                    right_join_field = Some(idl_link.key());
-                }
+            if reltype != idl::RelType::HasMany && maybe_right_class == right_class {
+                right_join_field = Some(idl_link.key());
             }
 
             if right_join_field.is_none() {

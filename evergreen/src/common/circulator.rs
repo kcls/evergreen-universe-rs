@@ -459,11 +459,9 @@ impl<'a> Circulator<'a> {
                 .pop()
             {
                 self.copy = Some(copy)
-            } else {
-                if self.circ_op != CircOp::Checkout {
-                    // OK to checkout precat copies
-                    self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
-                }
+            } else if self.circ_op != CircOp::Checkout {
+                // OK to checkout precat copies
+                self.exit_err_on_event_code("ASSET_COPY_NOT_FOUND")?;
             }
         }
 
@@ -786,10 +784,8 @@ impl<'a> Circulator<'a> {
             // If we are mid-checkout (not checkin or renew), force
             // a checkin here (which will be no-op) so the item can be
             // reset before the checkout resumes.
-            if CircOp::Checkout == self.circ_op {
-                if checkin_required {
-                    self.checkin()?;
-                }
+            if CircOp::Checkout == self.circ_op && checkin_required {
+                self.checkin()?;
             }
         }
 

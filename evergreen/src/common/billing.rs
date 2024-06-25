@@ -338,7 +338,7 @@ pub fn bill_payment_map_for_xact(
         let amount = bill["amount"].float()?;
 
         let map = BillPaymentMap {
-            bill: bill,
+            bill,
             adjustments: Vec::new(),
             payments: Vec::new(),
             bill_amount: amount,
@@ -702,16 +702,14 @@ pub fn generate_fines_for_xact(
     };
 
     for slot in 0..pending_fine_count {
-        if current_fine_total >= max_fine {
-            if xact_type == BillableTransactionType::Circ {
-                log::info!("Max fines reached for circulation {xact_id}");
+        if current_fine_total >= max_fine && xact_type == BillableTransactionType::Circ {
+            log::info!("Max fines reached for circulation {xact_id}");
 
-                if let Some(mut circ) = editor.retrieve("circ", xact_id)? {
-                    circ["stop_fines"] = EgValue::from("MAXFINES");
-                    circ["stop_fines_time"] = EgValue::from("now");
-                    editor.update(circ)?;
-                    break;
-                }
+            if let Some(mut circ) = editor.retrieve("circ", xact_id)? {
+                circ["stop_fines"] = EgValue::from("MAXFINES");
+                circ["stop_fines_time"] = EgValue::from("now");
+                editor.update(circ)?;
+                break;
             }
         }
 
@@ -1017,10 +1015,8 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
         &copy["price"]
     };
 
-    if price.is_null() || (price.float()? == 0.0 && charge_on_zero) {
-        if secondary_field != "" {
-            price = &copy[secondary_field];
-        }
+    if (price.is_null() || (price.float()? == 0.0 && charge_on_zero)) && secondary_field != "" {
+        price = &copy[secondary_field];
     }
 
     // Fall back to legacy item cost calculation
@@ -1041,14 +1037,10 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
         if price > max_price {
             price = max_price;
         }
-    } else {
-        if let Some(min_price) = settings.get_value("circ.min_item_price")?.as_f64() {
-            if price < min_price {
-                // Let $0 fall through if charge_on_zero is explicitly false.
-                if price != 0.0 || charge_on_zero || charge_on_zero_op.is_none() {
-                    price = min_price;
-                }
-            }
+    } else if let Some(min_price) = settings.get_value("circ.min_item_price")?.as_f64() {
+        // Only let $0 fall through if charge_on_zero is explicitly false.
+        if price < min_price && (price != 0.0 || charge_on_zero || charge_on_zero_op.is_none()) {
+            price = min_price;
         }
     }
 

@@ -89,10 +89,10 @@ impl Circulator<'_> {
 
         let circ_lib = self.set_renewal_circ_lib(orig_circ_lib)?;
 
-        if self.patron_id != self.requestor_id()? {
-            if !self.editor().allowed_at("RENEW_CIRC", circ_lib)? {
-                return Err(self.editor().die_event());
-            }
+        if self.patron_id != self.requestor_id()?
+            && !self.editor().allowed_at("RENEW_CIRC", circ_lib)?
+        {
+            return Err(self.editor().die_event());
         }
 
         if renewal_remaining < 1 {

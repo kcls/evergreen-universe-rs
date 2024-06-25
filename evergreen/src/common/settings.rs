@@ -326,7 +326,7 @@ impl Settings {
             .as_str()
             .ok_or_else(|| format!("Setting has no name"))?;
 
-        let entry = SettingEntry { value: value };
+        let entry = SettingEntry { value };
 
         let hash = match self.cache.get_mut(context) {
             Some(h) => h,

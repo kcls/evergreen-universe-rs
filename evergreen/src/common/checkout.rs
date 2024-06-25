@@ -81,10 +81,8 @@ impl Circulator<'_> {
     fn base_checkout_perms(&mut self) -> EgResult<()> {
         let cl = self.circ_lib;
 
-        if !self.is_renewal() {
-            if !self.editor().allowed_at("COPY_CHECKOUT", cl)? {
-                return Err(self.editor().die_event());
-            }
+        if !self.is_renewal() && !self.editor().allowed_at("COPY_CHECKOUT", cl)? {
+            return Err(self.editor().die_event());
         }
 
         if self.patron_id != self.editor().requestor_id()? {
@@ -143,10 +141,8 @@ impl Circulator<'_> {
     }
 
     fn create_precat_copy(&mut self) -> EgResult<()> {
-        if !self.is_renewal() {
-            if !self.editor().allowed("CREATE_PRECAT")? {
-                return Err(self.editor().die_event());
-            }
+        if !self.is_renewal() && !self.editor().allowed("CREATE_PRECAT")? {
+            return Err(self.editor().die_event());
         }
 
         // We already have a matching precat copy.
@@ -827,10 +823,8 @@ impl Circulator<'_> {
             let cdate = date::parse_datetime(cdate_str)?;
             let force = hdd["forceto"].boolish();
 
-            if cdate > date::now() {
-                if cdate < due_date || force {
-                    due_date = cdate;
-                }
+            if cdate > date::now() && (cdate < due_date || force) {
+                due_date = cdate;
             }
         }
 
@@ -1162,16 +1156,14 @@ impl Circulator<'_> {
         // confirmed above
         let deposit_amount = self.copy()["deposit_amount"].as_f64().unwrap();
 
-        if is_deposit {
-            if self.settings.get_value("skip_deposit_fee")?.boolish() || self.is_deposit_exempt()? {
-                return Ok(());
-            }
+        let skip_deposit_fee = self.settings.get_value("skip_deposit_fee")?.boolish();
+        if is_deposit && (skip_deposit_fee || self.is_deposit_exempt()?) {
+            return Ok(());
         }
 
-        if is_rental {
-            if self.settings.get_value("skip_rental_fee")?.boolish() || self.is_rental_exempt()? {
-                return Ok(());
-            }
+        let skip_rental_fee = self.settings.get_value("skip_rental_fee")?.boolish();
+        if is_rental && (skip_rental_fee | self.is_rental_exempt()?) {
+            return Ok(());
         }
 
         let mut btype = C::BTYPE_DEPOSIT;
