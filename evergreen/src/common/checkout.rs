@@ -98,7 +98,7 @@ impl Circulator<'_> {
     fn checkout_noncat(&mut self) -> EgResult<()> {
         let noncat_type = match self.options.get("noncat_type") {
             Some(v) => v,
-            None => return Err(format!("noncat_type required").into()),
+            None => return Err("noncat_type required".into()),
         };
 
         let circ_lib = match self.options.get("noncat_circ_lib") {
@@ -263,7 +263,7 @@ impl Circulator<'_> {
             "circ_modifier": circ_modifier,
         })?;
 
-        return Ok(());
+        Ok(())
     }
 
     fn set_item_deposit_events(&mut self) -> EgResult<()> {
@@ -458,7 +458,7 @@ impl Circulator<'_> {
 
         log::debug!("{self} {func} returned: {:?}", results);
 
-        if results.len() == 0 {
+        if results.is_empty() {
             return self.exit_err_on_event_code("NO_POLICY_MATCHPOINT");
         };
 
@@ -553,7 +553,7 @@ impl Circulator<'_> {
         self.circ_policy_rules = Some(rules);
         self.circ_policy_results = Some(results);
 
-        return Ok(());
+        Ok(())
     }
 
     /// Check for patron or item policy blocks and override where possible.
@@ -564,21 +564,19 @@ impl Circulator<'_> {
 
         let mut policy_results = match self.circ_policy_results.take() {
             Some(p) => p,
-            None => Err(format!("Non-success circ policy has no policy data"))?,
+            None => Err("Non-success circ policy has no policy data".to_string())?,
         };
 
         if self.is_noncat || self.precat_requested() {
             // "no_item" failures are OK for non-cat checkouts and
             // when precat is requested.
-            policy_results = policy_results
-                .into_iter()
-                .filter(|r| {
-                    if let Some(fp) = r["fail_part"].as_str() {
-                        return fp != "no_item";
-                    }
-                    true
-                })
-                .collect();
+
+            policy_results.retain(|r| {
+                if let Some(fp) = r["fail_part"].as_str() {
+                    return fp != "no_item";
+                }
+                true
+            });
         }
 
         if self.checkout_is_for_hold.is_some() {
@@ -748,7 +746,7 @@ impl Circulator<'_> {
             // may be null
             circ["grace_period"] = policy.recurring_fine_rule["grace_period"].clone();
         } else {
-            return Err(format!("Cannot build circ without a policy").into());
+            return Err("Cannot build circ without a policy".into());
         }
 
         // We don't create the circ in the DB yet.
@@ -791,7 +789,7 @@ impl Circulator<'_> {
 
         self.circ.as_mut().unwrap()["due_date"] = due_val;
 
-        return Ok(true);
+        Ok(true)
     }
 
     /// Set the initial circ due date based on the circulation policy info.
@@ -802,10 +800,11 @@ impl Circulator<'_> {
             None => return Ok(()),
         };
 
-        let timezone = match self.settings.get_value("lib.timezone")?.as_str() {
-            Some(s) => s,
-            None => "local",
-        };
+        let timezone = self
+            .settings
+            .get_value("lib.timezone")?
+            .as_str()
+            .unwrap_or("local");
 
         let start_date = match self.circ.as_ref().unwrap()["xact_start"].as_str() {
             Some(d) => date::parse_datetime(d)?,
@@ -879,7 +878,7 @@ impl Circulator<'_> {
             None => return Ok(false),
         };
 
-        if !booking_ids.is_array() || booking_ids.len() == 0 {
+        if !booking_ids.is_array() || booking_ids.is_empty() {
             return Ok(false);
         }
 
@@ -1015,7 +1014,7 @@ impl Circulator<'_> {
 
         let parent_circ = self
             .parent_circ
-            .ok_or_else(|| format!("Renewals require a parent circ"))?;
+            .ok_or_else(|| "Renewals require a parent circ".to_string())?;
 
         let prev_circ = match self.editor().retrieve("circ", EgValue::from(parent_circ))? {
             Some(c) => c,
@@ -1203,7 +1202,7 @@ impl Circulator<'_> {
 
         let groups = self.settings.get_value("circ.deposit.exempt_groups")?;
 
-        if !groups.is_array() || groups.len() == 0 {
+        if !groups.is_array() || groups.is_empty() {
             return Ok(false);
         }
 
@@ -1220,7 +1219,7 @@ impl Circulator<'_> {
 
         let groups = self.settings.get_value("circ.rental.exempt_groups")?;
 
-        if !groups.is_array() || groups.len() == 0 {
+        if !groups.is_array() || groups.is_empty() {
             return Ok(false);
         }
 
@@ -1421,7 +1420,7 @@ impl Circulator<'_> {
             Some(false), // already on holds shelf
         )?;
 
-        if hold_data.len() == 0 {
+        if hold_data.is_empty() {
             return Ok(None);
         }
 
@@ -1455,15 +1454,14 @@ impl Circulator<'_> {
         let home_ou = self.patron.as_ref().unwrap()["home_ou"].int()?;
         let copy_ou = self.copy()["circ_lib"].int()?;
 
-        let copy_prox;
         let circ_lib = self.circ_lib;
         let ou_prox = org::proximity(self.editor(), home_ou, circ_lib)?.unwrap_or(-1);
 
-        if copy_ou == circ_lib {
-            copy_prox = ou_prox;
+        let copy_prox = if copy_ou == circ_lib {
+            ou_prox
         } else {
-            copy_prox = org::proximity(self.editor(), copy_ou, circ_lib)?.unwrap_or(-1);
-        }
+            org::proximity(self.editor(), copy_ou, circ_lib)?.unwrap_or(-1)
+        };
 
         let query = eg::hash! {
             "select": {"csp": ["name", "label"]},

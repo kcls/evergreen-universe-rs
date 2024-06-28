@@ -23,7 +23,7 @@ pub fn circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<Vec<EgValue>> {
 
     let mut circ_list = e.json_query(query)?;
 
-    if circ_list.len() == 0 {
+    if circ_list.is_empty() {
         Err("No such circulation: {circ_id}")?;
     }
 

@@ -112,8 +112,8 @@ impl CircPolicy {
             "duration_rule": self.duration_rule.clone(),
             "recurring_fine_rule": self.recurring_fine_rule.clone(),
             "max_fine_rule": self.max_fine_rule.clone(),
-            "hard_due_date": self.hard_due_date.as_ref().map(|v| v.clone()),
-            "limit_groups": self.limit_groups.as_ref().map(|v| v.clone()),
+            "hard_due_date": self.hard_due_date.as_ref().cloned(),
+            "limit_groups": self.limit_groups.as_ref().cloned(),
         }
     }
 }
@@ -229,10 +229,10 @@ impl<'a> Circulator<'a> {
     ///
     pub fn new(editor: &'a mut Editor, options: HashMap<String, EgValue>) -> EgResult<Circulator> {
         if editor.requestor().is_none() {
-            Err(format!("Circulator requires an authenticated requestor"))?;
+            Err("Circulator requires an authenticated requestor".to_string())?;
         }
 
-        let settings = Settings::new(&editor);
+        let settings = Settings::new(editor);
         let circ_lib = editor.requestor_ws_ou().expect("Workstation Required");
 
         Ok(Circulator {
@@ -286,11 +286,11 @@ impl<'a> Circulator<'a> {
         }
 
         if let Some(results) = self.circ_policy_results.as_ref() {
-            let matches: Vec<EgValue> = results.iter().map(|v| v.clone()).collect();
+            let matches: Vec<EgValue> = results.to_vec();
             value["matches"] = matches.into();
         }
 
-        return value;
+        value
     }
 
     /// Panics if we have no editor
@@ -504,7 +504,7 @@ impl<'a> Circulator<'a> {
 
     /// Filter copy alerts by circ action, location, etc.
     fn filter_runtime_copy_alerts(&mut self) -> EgResult<()> {
-        if self.runtime_copy_alerts.len() == 0 {
+        if self.runtime_copy_alerts.is_empty() {
             return Ok(());
         }
 
@@ -618,7 +618,7 @@ impl<'a> Circulator<'a> {
         })?;
 
         let mut copy_state = "NORMAL";
-        if let Some(hash) = list.get(0) {
+        if let Some(hash) = list.first() {
             if let Some(state) = hash["asset.copy_state"].as_str() {
                 copy_state = state;
             }
@@ -694,10 +694,7 @@ impl<'a> Circulator<'a> {
 
         for mut atype in wanted_types {
             if let Some(ns) = atype["next_status"].as_str() {
-                if suppressions
-                    .iter()
-                    .any(|v| &v["alert_type"] == &atype["id"])
-                {
+                if suppressions.iter().any(|v| v["alert_type"] == atype["id"]) {
                     atype["next_status"] = EgValue::new_array();
                 } else {
                     atype["next_status"] = util::pg_unpack_int_array(ns).into();
@@ -741,11 +738,7 @@ impl<'a> Circulator<'a> {
         conditions: HashSet<String>,
     ) -> EgResult<()> {
         for condition in conditions.iter() {
-            let map = match COPY_ALERT_OVERRIDES
-                .iter()
-                .filter(|m| m[0].eq(condition))
-                .next()
-            {
+            let map = match COPY_ALERT_OVERRIDES.iter().find(|m| m[0].eq(condition)) {
                 Some(m) => m,
                 None => continue,
             };
@@ -754,11 +747,9 @@ impl<'a> Circulator<'a> {
             let mut checkin_required = false;
 
             for copy_override in &map[1..] {
-                if let Some(ov_args) = &mut self.override_args {
+                if let Some(Overrides::Events(ev)) = &mut self.override_args {
                     // Only track specific events if we are not overriding "All".
-                    if let Overrides::Events(ev) = ov_args {
-                        ev.push(copy_override.to_string());
-                    }
+                    ev.push(copy_override.to_string());
                 }
 
                 if copy_override.ne(&"CIRCULATION_EXISTS") {
@@ -767,7 +758,7 @@ impl<'a> Circulator<'a> {
 
                 // Special handling for lsot/long-overdue circs
 
-                let setting = match condition.split("\t").next().unwrap() {
+                let setting = match condition.split('\t').next().unwrap() {
                     "LOST" | "LOST_AND_PAID" => "circ.copy_alerts.forgive_fines_on_lost_checkin",
                     "LONGOVERDUE" => "circ.copy_alerts.forgive_fines_on_long_overdue_checkin",
                     _ => continue,
@@ -809,7 +800,7 @@ impl<'a> Circulator<'a> {
             alert_on.push(alert.clone());
         }
 
-        if alert_on.len() > 0 {
+        if !alert_on.is_empty() {
             // We have new-style alerts to reports.
             let mut evt = EgEvent::new("COPY_ALERT_MESSAGE");
             evt.set_payload(alert_on.into());
@@ -939,7 +930,7 @@ impl<'a> Circulator<'a> {
         self.patron_id = patron.id()?;
         self.patron = Some(patron);
 
-        return Ok(true);
+        Ok(true)
     }
 
     /// Returns true if we were able to load the patron by ID.
@@ -1004,7 +995,7 @@ impl<'a> Circulator<'a> {
     pub fn update_copy(&mut self, mut changes: EgValue) -> EgResult<&EgValue> {
         let mut copy = match self.copy.take() {
             Some(c) => c,
-            None => Err(format!("We have no copy to update"))?,
+            None => return Err("We have no copy to update".into()),
         };
 
         copy["editor"] = self.requestor_id()?.into();
@@ -1069,7 +1060,7 @@ impl<'a> Circulator<'a> {
     /// be overridden either becuase we are not actively overriding
     /// or because an override permission check fails.
     pub fn try_override_events(&mut self) -> EgResult<()> {
-        if self.events.len() == 0 {
+        if self.events.is_empty() {
             return Ok(());
         }
 
@@ -1100,7 +1091,7 @@ impl<'a> Circulator<'a> {
 
             // Override permissions are all global
             if !self.editor().allowed(&perm)? {
-                if let Some(e) = self.editor().last_event().map(|e| e.clone()) {
+                if let Some(e) = self.editor().last_event().cloned() {
                     // Track the permission failure as the event to return.
                     self.failed_events.push(e);
                 } else {
@@ -1110,7 +1101,7 @@ impl<'a> Circulator<'a> {
             }
         }
 
-        if self.failed_events.len() > 0 {
+        if !self.failed_events.is_empty() {
             log::info!("Exiting early on failed events: {:?}", self.failed_events);
             Err(EgError::Event(self.failed_events[0].clone()))
         } else {
@@ -1143,7 +1134,7 @@ impl<'a> Circulator<'a> {
             self.is_booking_enabled = Some(false);
         }
 
-        return Ok(());
+        Ok(())
     }
 
     /// True if the caller wants us to treat this as a precat circ/item.
@@ -1171,7 +1162,7 @@ impl<'a> Circulator<'a> {
             Some(list) => list.clone(),
             None => return Ok(()),
         };
-        holds::retarget_holds(&self.editor, hold_ids.as_slice())
+        holds::retarget_holds(self.editor, hold_ids.as_slice())
     }
 
     /// Create A/T events for checkout/checkin/renewal actions.
@@ -1188,7 +1179,7 @@ impl<'a> Circulator<'a> {
         }
 
         trigger::create_events_for_object(
-            &mut self.editor,
+            self.editor,
             action,
             circ,
             self.circ_lib,
@@ -1201,7 +1192,7 @@ impl<'a> Circulator<'a> {
     /// Remove duplicate events and remove any SUCCESS events if other
     /// event types are present.
     pub fn cleanup_events(&mut self) {
-        if self.events.len() == 0 {
+        if self.events.is_empty() {
             return;
         }
 
@@ -1235,7 +1226,7 @@ impl<'a> Circulator<'a> {
 
     /// Clears our list of compiled events and returns them to the caller.
     pub fn take_events(&mut self) -> Vec<EgEvent> {
-        std::mem::replace(&mut self.events, Vec::new())
+        std::mem::take(&mut self.events)
     }
 
     /// Make sure the requested item exists and is not marked deleted.

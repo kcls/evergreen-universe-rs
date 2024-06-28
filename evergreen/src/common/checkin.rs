@@ -9,7 +9,7 @@ use eg::common::transit;
 use eg::constants as C;
 use eg::date;
 use eg::event::EgEvent;
-use eg::result::{EgError, EgResult};
+use eg::result::EgResult;
 use eg::EgValue;
 use std::collections::HashSet;
 
@@ -108,7 +108,7 @@ impl Circulator<'_> {
         }
 
         if self.editor().has_pending_changes() {
-            if self.events.len() == 0 {
+            if self.events.is_empty() {
                 self.add_event(EgEvent::success());
             }
         } else {
@@ -319,7 +319,7 @@ impl Circulator<'_> {
                 continue;
             }
 
-            if parts.len() > 0 {
+            if !parts.is_empty() {
                 // We have parts
                 if hold_type.eq("T") {
                     continue;
@@ -342,7 +342,7 @@ impl Circulator<'_> {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     /// If have both an open circulation and an open transit,
@@ -525,7 +525,7 @@ impl Circulator<'_> {
                 Err(_) => String::from(""),
             };
 
-            if suppress_here == suppress_there && suppress_here != "" {
+            if suppress_here == suppress_there && !suppress_here.is_empty() {
                 log::info!("{self} hold is within transit suppress group: {suppress_here}");
                 self.set_option_true("fake_hold_dest");
                 return Ok(true);
@@ -640,7 +640,7 @@ impl Circulator<'_> {
         circ["checkin_time"] = self
             .options
             .get("backdate")
-            .map(|bd| bd.clone())
+            .cloned()
             .unwrap_or(EgValue::from("now"));
 
         circ["checkin_scan_time"] = EgValue::from("now");
@@ -894,11 +894,11 @@ impl Circulator<'_> {
 
         new_date = new_date
             .with_hour(orig_date.hour())
-            .ok_or_else(|| format!("Could not set backdate hours"))?;
+            .ok_or_else(|| "Could not set backdate hours".to_string())?;
 
         new_date = new_date
             .with_minute(orig_date.minute())
-            .ok_or_else(|| format!("Could not set backdate minutes"))?;
+            .ok_or_else(|| "Could not set backdate minutes".to_string())?;
 
         if new_date > date::now() {
             log::info!("{self} ignoring future backdate: {new_date}");
@@ -906,7 +906,7 @@ impl Circulator<'_> {
         } else {
             self.options.insert(
                 "backdate".to_string(),
-                EgValue::from(date::to_iso(&new_date.into())),
+                EgValue::from(date::to_iso(&new_date)),
             );
         }
 
@@ -966,7 +966,7 @@ impl Circulator<'_> {
 
         let ops = match self.options.get("lost_or_lo_billing_options") {
             Some(o) => o,
-            None => Err(format!("Cannot handle lost/lo billing without options"))?,
+            None => Err("Cannot handle lost/lo billing without options".to_string())?,
         };
 
         // below was previously called checkin_handle_lost_or_lo_now_found()
@@ -1081,7 +1081,7 @@ impl Circulator<'_> {
         let ops = eg::hash! {"order_by": {"mb": "billing_ts desc"}};
         let overdues = self.editor().search_with_ops("mb", query, ops)?;
 
-        if overdues.len() == 0 {
+        if overdues.is_empty() {
             log::info!("{self} no overdues to reinstate on lost/lo checkin");
             return Ok(());
         }
@@ -1100,7 +1100,7 @@ impl Circulator<'_> {
             .editor()
             .search("maa", eg::hash! {"billing": billing_ids})?;
 
-        if voids.len() > 0 {
+        if !voids.is_empty() {
             // Overdues adjusted via account adjustment
             for void in voids.iter() {
                 void_amount += void["amount"].float()?;
@@ -1362,7 +1362,7 @@ impl Circulator<'_> {
         }
 
         if !self.is_booking_enabled() {
-            return Ok(self.attempt_checkin_hold_capture()?);
+            return self.attempt_checkin_hold_capture();
         }
 
         // XXX this would be notably faster if we didn't first check
@@ -1420,7 +1420,7 @@ impl Circulator<'_> {
             }
         }
 
-        if retarget.len() > 0 {
+        if !retarget.is_empty() {
             self.retarget_holds = Some(retarget);
         }
 
@@ -1470,11 +1470,10 @@ impl Circulator<'_> {
             params,
         )?;
 
-        let resp = result
-            .ok_or_else(|| EgError::Debug(format!("Booking capture failed to return event")))?;
+        let resp = result.ok_or_else(|| "Booking capture failed to return event".to_string())?;
 
         let mut evt = EgEvent::parse(&resp)
-            .ok_or_else(|| EgError::Debug(format!("Booking capture failed to return event")))?;
+            .ok_or_else(|| "Booking capture failed to return event".to_string())?;
 
         if evt.textcode() == "RESERVATION_NOT_FOUND" {
             if let Some(cause) = evt.payload()["fail_cause"].as_str() {
@@ -1533,7 +1532,7 @@ impl Circulator<'_> {
             }
         };
 
-        if retarget.len() > 0 {
+        if !retarget.is_empty() {
             self.retarget_holds = Some(retarget);
         }
 
@@ -1565,7 +1564,8 @@ impl Circulator<'_> {
                 return Ok(Some(resp));
             }
         }
-        return Ok(None);
+
+        Ok(None)
     }
 
     /// Determines if our item needs to transit somewhere else and
@@ -1793,7 +1793,7 @@ impl Circulator<'_> {
         }
 
         // Should never happen, but to be safe:
-        if self.events.len() == 0 {
+        if self.events.is_empty() {
             self.events.push(EgEvent::new("NO_CHANGE"));
         }
 
