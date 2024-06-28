@@ -14,6 +14,11 @@ use std::collections::HashSet;
 
 const DAY_OF_SECONDS: i64 = 86400;
 
+pub struct BillingType {
+    pub label: String,
+    pub id: i64,
+}
+
 /// Void a list of billings.
 pub fn void_bills(
     editor: &mut Editor,
@@ -23,7 +28,7 @@ pub fn void_bills(
     let mut bills = editor.search("mb", eg::hash! {"id": billing_ids})?;
     let mut penalty_users: HashSet<(i64, i64)> = HashSet::new();
 
-    if bills.len() == 0 {
+    if bills.is_empty() {
         Err(format!("No such billings: {billing_ids:?}"))?;
     }
 
@@ -126,14 +131,17 @@ pub fn xact_org(editor: &mut Editor, xact_id: i64) -> EgResult<i64> {
 pub fn create_bill(
     editor: &mut Editor,
     amount: f64,
-    btype_id: i64,
-    btype_label: &str,
+    btype: BillingType,
     xact_id: i64,
     maybe_note: Option<&str>,
     period_start: Option<&str>,
     period_end: Option<&str>,
 ) -> EgResult<EgValue> {
-    log::info!("System is charging ${amount} [btype={btype_id}:{btype_label}] on xact {xact_id}");
+    log::info!(
+        "System is charging ${amount} [btype={}:{}] on xact {xact_id}",
+        btype.id,
+        btype.label
+    );
 
     let note = maybe_note.unwrap_or("SYSTEM GENERATED");
 
@@ -142,8 +150,8 @@ pub fn create_bill(
         "amount": amount,
         "period_start": period_start,
         "period_end": period_end,
-        "billing_type": btype_label,
-        "btype": btype_id,
+        "billing_type": btype.label.as_str(),
+        "btype": btype.id,
         "note": note,
     };
 
@@ -162,11 +170,11 @@ pub fn void_or_zero_bills_of_type(
 ) -> EgResult<()> {
     log::info!("Void/Zero Bills for xact={xact_id} and btype={btype_id}");
 
-    let mut settings = Settings::new(&editor);
+    let mut settings = Settings::new(editor);
     let query = eg::hash! {"xact": xact_id, "btype": btype_id};
     let bills = editor.search("mb", query)?;
 
-    if bills.len() == 0 {
+    if bills.is_empty() {
         return Ok(());
     }
 
@@ -209,7 +217,7 @@ pub fn void_or_zero_bills_of_type(
 /// Assumes all bills are linked to the same transaction.
 pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -> EgResult<()> {
     let mut bills = editor.search("mb", eg::hash! {"id": bill_ids})?;
-    if bills.len() == 0 {
+    if bills.is_empty() {
         return Ok(());
     }
 
@@ -240,11 +248,7 @@ pub fn adjust_bills_to_zero(editor: &mut Editor, bill_ids: &[i64], note: &str) -
     };
 
     for bill in bills.iter_mut() {
-        let map = match bill_maps
-            .iter_mut()
-            .filter(|m| m.bill["id"] == bill["id"])
-            .next()
-        {
+        let map = match bill_maps.iter_mut().find(|m| m.bill["id"] == bill["id"]) {
             Some(m) => m,
             None => continue, // should never happen
         };
@@ -330,7 +334,7 @@ pub fn bill_payment_map_for_xact(
 
     let mut maps = Vec::new();
 
-    if bills.len() == 0 {
+    if bills.is_empty() {
         return Ok(maps);
     }
 
@@ -358,7 +362,7 @@ pub fn bill_payment_map_for_xact(
 
     let mut payments = editor.search_with_ops("mp", query, ops)?;
 
-    if payments.len() == 0 {
+    if payments.is_empty() {
         // If we have no payments, return the unmodified maps.
         return Ok(maps);
     }
@@ -388,7 +392,7 @@ pub fn bill_payment_map_for_xact(
             .map(|p| &mut p["account_adjustment"])
             .collect();
 
-        if my_adjustments.len() == 0 {
+        if my_adjustments.is_empty() {
             continue;
         }
 
@@ -428,14 +432,9 @@ pub fn bill_payment_map_for_xact(
     // largest payments.
     let mut used_payments: HashSet<i64> = HashSet::new();
     for payment in payments.iter() {
-        let map = match maps
-            .iter_mut()
-            .filter(|m| {
-                m.bill["amount"] == payment["amount"]
-                    && !used_payments.contains(&payment.id().unwrap())
-            })
-            .next()
-        {
+        let map = match maps.iter_mut().find(|m| {
+            m.bill["amount"] == payment["amount"] && !used_payments.contains(&payment.id().unwrap())
+        }) {
             Some(m) => m,
             None => continue,
         };
@@ -452,36 +451,44 @@ pub fn bill_payment_map_for_xact(
             new_payments.push(pay);
         }
     }
+
     payments = new_payments;
     let mut used_payments = HashSet::new();
 
     // Map remaining bills to payments in whatever order.
-    for map in maps
-        .iter_mut()
-        .filter(|m| m.bill["amount"].float().unwrap() > 0.0)
-    {
+    for map in maps.iter_mut() {
         let bill = &mut map.bill;
+
+        if bill["amount"].float()? <= 0.0 {
+            continue;
+        }
+
         // Loop over remaining unused / unmapped payments.
-        for pay in payments
-            .iter_mut()
-            .filter(|p| !used_payments.contains(&p.id().unwrap()))
-        {
-            loop {
-                let bill_amount = bill["amount"].float()?;
-                if bill_amount > 0.0 {
-                    let new_amount = util::fpdiff(bill_amount, pay["amount"].float()?);
-                    if new_amount < 0.0 {
-                        let mut new_payment = pay.clone();
-                        new_payment["amount"] = EgValue::from(bill_amount);
-                        bill["amount"] = EgValue::from(0.0);
-                        map.payments.push(new_payment);
-                        pay["amount"] = EgValue::from(-new_amount);
-                    } else {
-                        bill["amount"] = EgValue::from(new_amount);
-                        map.payments.push(pay.clone());
-                        used_payments.insert(pay.id()?);
-                    }
-                }
+        for pay in payments.iter_mut() {
+            let pay_id = pay.id()?;
+
+            if used_payments.contains(&pay_id) {
+                continue;
+            }
+
+            let bill_amount = bill["amount"].float()?;
+
+            if bill_amount <= 0.0 {
+                break;
+            }
+
+            let new_amount = util::fpdiff(bill_amount, pay["amount"].float()?);
+
+            if new_amount < 0.0 {
+                let mut new_payment = pay.clone();
+                new_payment["amount"] = EgValue::from(bill_amount);
+                bill["amount"] = EgValue::from(0.0);
+                map.payments.push(new_payment);
+                pay["amount"] = EgValue::from(-new_amount);
+            } else {
+                bill["amount"] = EgValue::from(new_amount);
+                map.payments.push(pay.clone());
+                used_payments.insert(pay_id);
             }
         }
     }
@@ -508,7 +515,7 @@ pub fn xact_has_payment_within(
 
     let last_payment = editor.search_with_ops("mp", query, ops)?;
 
-    if last_payment.len() == 0 {
+    if last_payment.is_empty() {
         return Ok(false);
     }
 
@@ -541,14 +548,16 @@ pub fn generate_fines_for_resv(editor: &mut Editor, resv_id: i64) -> EgResult<()
 
     generate_fines_for_xact(
         editor,
-        resv_id,
         resv["end_time"].as_str().unwrap(),
-        resv["pickup_lib"].int()?,
-        resv["fine_amount"].float()?,
         fine_interval,
-        resv["max_fine"].float()?,
+        FineParams {
+            xact_id: resv_id,
+            circ_lib: resv["pickup_lib"].int()?,
+            recurring_fine: resv["fine_amount"].float()?,
+            max_fine: resv["max_fine"].float()?,
+            xact_type: BillableTransactionType::Reservation,
+        },
         None, // grace period
-        BillableTransactionType::Reservation,
     )
 }
 
@@ -561,29 +570,46 @@ pub fn generate_fines_for_circ(editor: &mut Editor, circ_id: i64) -> EgResult<()
 
     generate_fines_for_xact(
         editor,
-        circ_id,
         circ["due_date"].as_str().unwrap(),
-        circ["circ_lib"].int()?,
-        circ["recurring_fine"].float()?,
         circ["fine_interval"].str()?,
-        circ["max_fine"].float()?,
+        FineParams {
+            xact_id: circ_id,
+            circ_lib: circ["circ_lib"].int()?,
+            recurring_fine: circ["recurring_fine"].float()?,
+            max_fine: circ["max_fine"].float()?,
+            xact_type: BillableTransactionType::Circ,
+        },
         circ["grace_period"].as_str(),
-        BillableTransactionType::Circ,
     )
+}
+
+/// Group some of these params into a struct so we can simplify the API
+/// and make clippy happy.
+///
+/// Just the Copy-able values for now so we're not to_string()'ing
+/// just to store temporary values.
+pub struct FineParams {
+    xact_id: i64,
+    circ_lib: i64,
+    recurring_fine: f64,
+    max_fine: f64,
+    xact_type: BillableTransactionType,
 }
 
 pub fn generate_fines_for_xact(
     editor: &mut Editor,
-    xact_id: i64,
     due_date: &str,
-    circ_lib: i64,
-    mut recurring_fine: f64,
     fine_interval: &str,
-    mut max_fine: f64,
+    fine_params: FineParams,
     grace_period: Option<&str>,
-    xact_type: BillableTransactionType,
 ) -> EgResult<()> {
-    let mut settings = Settings::new(&editor);
+    let mut settings = Settings::new(editor);
+
+    let xact_id = fine_params.xact_id;
+    let circ_lib = fine_params.circ_lib;
+    let mut recurring_fine = fine_params.recurring_fine;
+    let mut max_fine = fine_params.max_fine;
+    let xact_type = fine_params.xact_type;
 
     let fine_interval_secs = date::interval_to_seconds(fine_interval)?;
     let mut grace_period = date::interval_to_seconds(grace_period.unwrap_or("0s"))?;
@@ -641,8 +667,8 @@ pub fn generate_fines_for_xact(
     let due_date_dt = date::parse_datetime(due_date)?;
 
     // First fine in the list (if we have one) will be the most recent.
-    let last_fine_dt = match fines.get(0) {
-        Some(f) => date::parse_datetime(&f["billing_ts"].as_str().unwrap())?,
+    let last_fine_dt = match fines.first() {
+        Some(f) => date::parse_datetime(f["billing_ts"].as_str().unwrap())?,
         None => {
             grace_period = extend_grace_period(
                 editor,
@@ -693,13 +719,10 @@ pub fn generate_fines_for_xact(
         .get_value_at_org("circ.fines.truncate_to_max_fine", circ_lib)?
         .boolish();
 
-    let timezone = match settings
+    let timezone = settings
         .get_value_at_org("lib.timezone", circ_lib)?
         .as_str()
-    {
-        Some(tz) => tz,
-        None => "local",
-    };
+        .unwrap_or("local");
 
     for slot in 0..pending_fine_count {
         if current_fine_total >= max_fine && xact_type == BillableTransactionType::Circ {
@@ -789,7 +812,7 @@ pub fn extend_grace_period(
     let settings = match settings {
         Some(s) => s,
         None => {
-            local_settings = Some(Settings::new(&editor));
+            local_settings = Some(Settings::new(editor));
             local_settings.as_mut().unwrap()
         }
     };
@@ -822,12 +845,11 @@ pub fn extend_grace_period(
         due_date = date::add_interval(due_date, "1 day")?;
     } else {
         // Jump to the end of the grace period.
-        due_date = due_date
-            + Duration::try_seconds(grace_period)
-                .ok_or_else(|| format!("Invalid duration seconds: {grace_period}"))?;
+        due_date += Duration::try_seconds(grace_period)
+            .ok_or_else(|| format!("Invalid duration seconds: {grace_period}"))?;
     }
 
-    let org_open_data = org::next_open_date(editor, context_org, &due_date.into())?;
+    let org_open_data = org::next_open_date(editor, context_org, &due_date)?;
 
     let closed_until = match org_open_data {
         org::OrgOpenState::Never | org::OrgOpenState::Open => {
@@ -880,14 +902,15 @@ pub fn void_or_zero_overdues(
     let circ_lib = circ["circ_lib"].int()?;
     let bills = editor.search("mb", query)?;
 
-    if bills.len() == 0 {
+    if bills.is_empty() {
         // Nothing to void/zero.
         return Ok(());
     }
 
     let bill_ids: Vec<i64> = bills.iter().map(|b| b.id().expect("Has ID")).collect();
 
-    let mut settings = Settings::new(&editor);
+    let mut settings = Settings::new(editor);
+
     let prohibit_neg_balance = settings
         .get_value_at_org("bill.prohibit_negative_balance_on_overdue", circ_lib)?
         .boolish()
@@ -932,7 +955,7 @@ fn calc_min_void_date(
     let due_date = date::parse_datetime(circ["due_date"].str()?)?;
 
     let grace_period = circ["grace_period"].as_str().unwrap_or("0s");
-    let grace_period = date::interval_to_seconds(&grace_period)?;
+    let grace_period = date::interval_to_seconds(grace_period)?;
 
     let grace_period = extend_grace_period(
         editor,
@@ -971,7 +994,7 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
         copy["call_number"]["owning_lib"].int()?
     };
 
-    let mut settings = Settings::new(&editor);
+    let mut settings = Settings::new(editor);
     settings.set_org_id(owner);
 
     settings.fetch_values(&[
@@ -1015,7 +1038,8 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
         &copy["price"]
     };
 
-    if (price.is_null() || (price.float()? == 0.0 && charge_on_zero)) && secondary_field != "" {
+    if (price.is_null() || (price.float()? == 0.0 && charge_on_zero)) && !secondary_field.is_empty()
+    {
         price = &copy[secondary_field];
     }
 

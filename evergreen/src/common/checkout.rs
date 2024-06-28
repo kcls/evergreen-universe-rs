@@ -1179,8 +1179,10 @@ impl Circulator<'_> {
         let bill = billing::create_bill(
             self.editor(),
             deposit_amount,
-            btype,
-            btype_label,
+            billing::BillingType {
+                id: btype,
+                label: btype_label.to_string(),
+            },
             circ_id,
             Some(C::BTYPE_NOTE_SYSTEM),
             None,

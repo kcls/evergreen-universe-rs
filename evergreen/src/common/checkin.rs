@@ -1136,8 +1136,10 @@ impl Circulator<'_> {
         billing::create_bill(
             self.editor(),
             void_amount,
-            C::BTYPE_OVERDUE_MATERIALS,
-            btype_label,
+            billing::BillingType {
+                id: C::BTYPE_OVERDUE_MATERIALS,
+                label: btype_label.to_string(),
+            },
             circ_id,
             Some(&note),
             period_start,
