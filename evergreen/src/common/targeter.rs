@@ -990,12 +990,14 @@ impl<'a> HoldTargeter<'a> {
     ) -> EgResult<bool> {
         let result = holds::test_copy_for_hold(
             self.editor(),
-            context.hold["usr"].int()?,
-            copy_id,
-            context.pickup_lib,
-            context.hold["request_lib"].int()?,
-            context.hold["requestor"].int()?,
-            true, // is_retarget
+            holds::CopyHoldParams {
+                patron_id: context.hold["usr"].int()?,
+                copy_id,
+                pickup_lib: context.pickup_lib,
+                request_lib: context.hold["request_lib"].int()?,
+                requestor: context.hold["requestor"].int()?,
+                is_retarget: true,
+            },
             None, // overrides
             true, // check_only
         )?;

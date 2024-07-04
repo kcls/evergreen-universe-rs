@@ -107,7 +107,7 @@ pub fn calc_hold_shelf_expire_time(
 ) -> EgResult<Option<String>> {
     let pickup_lib = hold["pickup_lib"].int()?;
 
-    let mut settings = Settings::new(&editor);
+    let mut settings = Settings::new(editor);
     let interval =
         settings.get_value_at_org("circ.holds.default_shelf_expire_interval", pickup_lib)?;
 
@@ -117,7 +117,7 @@ pub fn calc_hold_shelf_expire_time(
     };
 
     let start_time = if let Some(st) = start_time {
-        date::parse_datetime(&st)?
+        date::parse_datetime(st)?
     } else {
         date::now_local()
     };
@@ -156,7 +156,6 @@ pub fn find_nearest_permitted_hold(
     check_only: bool,
 ) -> EgResult<Option<(EgValue, Vec<i64>)>> {
     let mut retarget: Vec<i64> = Vec::new();
-    let copy_id = copy_id;
 
     // Fetch the appropriatly fleshed copy.
     let flesh = eg::hash! {
@@ -179,14 +178,14 @@ pub fn find_nearest_permitted_hold(
 
     let mut old_holds = editor.search("ahr", query)?;
 
-    let mut settings = Settings::new(&editor);
+    let mut settings = Settings::new(editor);
     let hold_stall_intvl = settings.get_value("circ.hold_stalling.soft")?;
 
     let params = vec![
         EgValue::from(editor.requestor_ws_ou()),
-        EgValue::from(copy.clone()),
+        copy.clone(),
         EgValue::from(100),
-        EgValue::from(hold_stall_intvl.clone()),
+        hold_stall_intvl.clone(),
     ];
 
     // best_holds is an array of hold IDs.
@@ -212,7 +211,7 @@ pub fn find_nearest_permitted_hold(
         }
     }
 
-    if best_holds.len() == 0 {
+    if best_holds.is_empty() {
         log::info!("Found no suitable holds for item {}", copy["barcode"]);
         return Ok(None);
     }
@@ -235,12 +234,14 @@ pub fn find_nearest_permitted_hold(
 
         let result = test_copy_for_hold(
             editor,
-            hold["usr"].int()?,
-            copy_id,
-            hold["pickup_lib"].int()?,
-            hold["request_lib"].int()?,
-            hold["requestor"].int()?,
-            true, // is_retarget
+            CopyHoldParams {
+                patron_id: hold["usr"].int()?,
+                copy_id,
+                pickup_lib: hold["pickup_lib"].int()?,
+                request_lib: hold["request_lib"].int()?,
+                requestor: hold["requestor"].int()?,
+                is_retarget: true, // is_retarget
+            },
             None, // overrides
             true, // check_only
         )?;
@@ -273,26 +274,24 @@ pub fn find_nearest_permitted_hold(
     targeted_hold["current_copy"] = EgValue::from(copy_id);
     editor.update(targeted_hold.clone())?;
 
-    // len() test required for drain()
-    if old_holds.len() > 0 {
-        // Retarget any other holds that currently target this copy.
-        for mut hold in old_holds.drain(0..) {
-            if hold["id"] == targeted_hold["id"] {
-                continue;
-            }
-            let hold_id = hold.id()?;
-
-            hold["current_copy"].take();
-            hold["prev_check_time"].take();
-
-            editor.update(hold)?;
-            retarget.push(hold_id);
+    // Retarget any other holds that currently target this copy.
+    for mut hold in old_holds.drain(..) {
+        if hold["id"] == targeted_hold["id"] {
+            continue;
         }
+        let hold_id = hold.id()?;
+
+        hold["current_copy"].take();
+        hold["prev_check_time"].take();
+
+        editor.update(hold)?;
+        retarget.push(hold_id);
     }
 
-    return Ok(Some((targeted_hold, retarget)));
+    Ok(Some((targeted_hold, retarget)))
 }
 
+#[derive(Default)]
 pub struct HoldPermitResult {
     matchpoint: Option<i64>,
     fail_part: Option<String>,
@@ -302,12 +301,7 @@ pub struct HoldPermitResult {
 
 impl HoldPermitResult {
     pub fn new() -> HoldPermitResult {
-        HoldPermitResult {
-            matchpoint: None,
-            fail_part: None,
-            mapped_event: None,
-            failed_override: None,
-        }
+        Default::default()
     }
 }
 
@@ -335,21 +329,33 @@ impl TestCopyForHoldResult {
     }
 }
 
+pub struct CopyHoldParams {
+    pub patron_id: i64,
+    pub copy_id: i64,
+    pub pickup_lib: i64,
+    pub request_lib: i64,
+    pub requestor: i64,
+    pub is_retarget: bool,
+}
+
 /// Test if a hold can be used to fill a hold.
 pub fn test_copy_for_hold(
     editor: &mut Editor,
-    patron_id: i64,
-    copy_id: i64,
-    pickup_lib: i64,
-    request_lib: i64,
-    requestor: i64,
-    is_retarget: bool,
+    params: CopyHoldParams,
     overrides: Option<Overrides>,
     // Exit as soon as we know if the permit was allowed or not.
     // If overrides are provided, this flag is ignored, since
     // overrides require the function process all the things.
     check_only: bool,
 ) -> EgResult<TestCopyForHoldResult> {
+
+    let patron_id = params.patron_id;
+    let copy_id =  params.copy_id;
+    let pickup_lib =  params.pickup_lib;
+    let request_lib = params.request_lib;
+    let requestor = params.requestor;
+    let is_retarget =  params.is_retarget;
+
     let mut result = TestCopyForHoldResult {
         success: false,
         permit_results: Vec::new(),
@@ -429,7 +435,7 @@ pub fn test_copy_for_hold(
         pending_results.push(res);
     }
 
-    if pending_results.len() == 0 {
+    if pending_results.is_empty() {
         // This should not happen, but cannot go unchecked.
         return Ok(result);
     }
@@ -753,7 +759,7 @@ pub fn record_hold_counts(
     let result = editor
         .json_query(query)?
         .pop()
-        .ok_or_else(|| format!("record_hold_counts() return no results"))?;
+        .ok_or("record_hold_counts() return no results")?;
 
     result["count"].int()
 }
@@ -769,7 +775,7 @@ pub fn record_has_holdable_copy(editor: &mut Editor, rec_id: i64, is_meta: bool)
     let data = editor
         .json_query(query)?
         .pop()
-        .ok_or_else(|| format!("json_query returned zero results"))?;
+        .ok_or("json_query returned zero results")?;
 
     Ok(data[&func].boolish())
 }

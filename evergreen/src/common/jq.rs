@@ -73,6 +73,13 @@ impl Clone for JsonQueryCompiler {
     }
 }
 
+impl Default for JsonQueryCompiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
 /// Translates JSON-Query into SQL.
 impl JsonQueryCompiler {
     pub fn new() -> Self {
@@ -144,9 +151,9 @@ impl JsonQueryCompiler {
 
                 // Assume most values do not contain embedded single-quotes
                 // and avoid the extra string allocation.
-                if value.contains("'") {
+                if value.contains('\'') {
                     // Escape single quotes
-                    let escaped = value.replace("'", "''");
+                    let escaped = value.replace('\'', "''");
                     sql = sql.replace(&target, &format!("'{escaped}'"));
                 } else {
                     sql = sql.replace(&target, &format!("'{value}'"));
@@ -203,9 +210,9 @@ impl JsonQueryCompiler {
     fn get_base_class(&self) -> EgResult<&Arc<idl::Class>> {
         // The base class is the first source.
         self.sources
-            .get(0)
+            .first()
             .map(|s| s.idl_class())
-            .ok_or_else(|| format!("No bass class has been set").into())
+            .ok_or("No bass class has been set".into())
     }
 
     /// Returns option of IDL field if the field is valid exists on the
@@ -243,7 +250,7 @@ impl JsonQueryCompiler {
     /// the resulting query parameters may be found in self.query_params();
     pub fn compile(&mut self, query: &EgValue) -> EgResult<()> {
         if !query.is_object() {
-            return Err(format!("json_query must be a JSON hash").into());
+            return Err("json_query must be a JSON hash".into());
         }
 
         if query["no_i18n"].boolish() {
@@ -263,7 +270,7 @@ impl JsonQueryCompiler {
         }
 
         if query.has_key("union") || query.has_key("except") || query.has_key("intersect") {
-            let combo_str = self.compile_combo_query(&query)?;
+            let combo_str = self.compile_combo_query(query)?;
             self.query_string = Some(combo_str);
             return Ok(());
         }
@@ -275,11 +282,7 @@ impl JsonQueryCompiler {
         // Compile JOINs first so we can populate our data sources.
         let join_op = self.compile_joins_for_class(cname, &query["from"][cname])?;
 
-        let join_str = if let Some(joins) = join_op {
-            Some(format!(" {joins}"))
-        } else {
-            None
-        };
+        let join_str = join_op.map(|joins| format!(" {joins}"));
 
         let select_str = self.compile_selects(&query["select"])?;
         let from_str = self.class_table_or_source_def(cname)?;
@@ -361,7 +364,7 @@ impl JsonQueryCompiler {
 
             let mut direction = "ASC";
             if let Some(dir) = hash["direction"].as_str() {
-                if dir.starts_with("d") || dir.starts_with("D") {
+                if dir.starts_with('d') || dir.starts_with('D') {
                     direction = "DESC";
                 }
             }
@@ -486,10 +489,7 @@ impl JsonQueryCompiler {
                 // Selecting a single column by name.
 
                 if self.field_may_be_selected(col, classname) {
-                    return Ok(format!(
-                        "{}",
-                        self.select_one_field(class_alias, None, col, None, true)?
-                    ));
+                    return self.select_one_field(class_alias, None, col, None, true);
                 }
             }
         }
@@ -504,7 +504,7 @@ impl JsonQueryCompiler {
                 .map(|f| f.as_str().unwrap())
                 .collect();
 
-            if fields.len() > 0 {
+            if !fields.is_empty() {
                 return self.build_default_select_list(class_alias, Some(fields.as_slice()));
             }
 
@@ -516,7 +516,7 @@ impl JsonQueryCompiler {
         }
 
         if !select_def.is_array() {
-            return Err(format!("SELECT must be string, null, excluder, or array").into());
+            return Err("SELECT must be string, null, excluder, or array".into());
         }
 
         let mut fields = Vec::new();
@@ -747,7 +747,7 @@ impl JsonQueryCompiler {
             }
         }
 
-        if joins.len() == 0 {
+        if joins.is_empty() {
             Ok(None)
         } else {
             Ok(Some(joins.join(" ")))
@@ -776,7 +776,7 @@ impl JsonQueryCompiler {
         // Find the left and right field names from the IDL via links.
 
         if right_join_field.is_some() && left_join_field.is_none() {
-            let rfield_name = right_join_field.as_deref().unwrap(); // verified
+            let rfield_name = right_join_field.unwrap(); // verified
 
             // Find the link definition that points from the target/joined
             // class to the left/source class.
@@ -800,7 +800,7 @@ impl JsonQueryCompiler {
                 .into());
             }
         } else if right_join_field.is_none() && left_join_field.is_some() {
-            let lfield_name = left_join_field.as_deref().unwrap(); // verified above.
+            let lfield_name = left_join_field.unwrap(); // verified above.
 
             let idl_link = left_idl_class
                 .links()
@@ -881,9 +881,9 @@ impl JsonQueryCompiler {
             source_str,
             self.check_identifier(right_alias)?,
             self.check_identifier(right_alias)?,
-            self.check_identifier(right_join_field.as_deref().unwrap())?,
+            self.check_identifier(right_join_field.unwrap())?,
             self.check_identifier(left_alias)?,
-            self.check_identifier(left_join_field.as_deref().unwrap())?,
+            self.check_identifier(left_join_field.unwrap())?,
         );
 
         // ----
@@ -939,7 +939,7 @@ impl JsonQueryCompiler {
     fn class_table_or_source_def(&self, classname: &str) -> EgResult<String> {
         if let Ok(idl_class) = idl::get_class(classname) {
             if let Some(tablename) = idl_class.tablename() {
-                return Ok(self.check_identifier(&tablename)?.to_string());
+                return Ok(self.check_identifier(tablename)?.to_string());
             } else if let Some(source_def) = idl_class.source_definition() {
                 // Wrap the source def in params since it's sub-query.
                 return Ok(format!("({source_def})"));
@@ -960,8 +960,8 @@ impl JsonQueryCompiler {
         let mut sql = String::new();
 
         if where_def.is_array() {
-            if where_def.len() == 0 {
-                return Err(format!("Invalid WHERE clause / empty array").into());
+            if where_def.is_empty() {
+                return Err("Invalid WHERE clause / empty array".into());
             }
 
             for (idx, part) in where_def.members().enumerate() {
@@ -977,7 +977,7 @@ impl JsonQueryCompiler {
             return Ok(sql);
         } else if where_def.is_object() {
             if where_def.is_empty() {
-                return Err(format!("Invalid predicate structure: empty JSON object"))?;
+                return Err("Invalid predicate structure: empty JSON object".into());
             }
 
             for (idx, (key, sub_blob)) in where_def.entries().enumerate() {
@@ -987,7 +987,7 @@ impl JsonQueryCompiler {
                     sql += " ";
                 }
 
-                if key.starts_with("+") && key.len() > 1 {
+                if key.starts_with('+') && key.len() > 1 {
                     // Class alias
                     // E.g. {"+aou": {"shortname": "BR1"}}
 
@@ -1011,7 +1011,7 @@ impl JsonQueryCompiler {
                         let sub_pred = self.compile_where_for_class(sub_blob, alias, join_op)?;
                         sql += &format!("({sub_pred})");
                     }
-                } else if key.starts_with("-") {
+                } else if key.starts_with('-') {
                     if key == "-or" {
                         let sub_pred =
                             self.compile_where_for_class(sub_blob, class_alias, JOIN_WITH_OR)?;
@@ -1368,7 +1368,7 @@ impl JsonQueryCompiler {
             return self.compile_sub_query(value_def);
         }
 
-        if value_def.len() == 0 {
+        if value_def.is_empty() {
             return Err(format!("Empty IN list for field {field_name}"))?;
         }
 
@@ -1455,7 +1455,7 @@ impl JsonQueryCompiler {
             alias: None,
         });
 
-        Ok(self.sources.get(0).unwrap())
+        Ok(self.sources.first().unwrap())
     }
 
     /// Compile a (sub-)query which is simply a function call.
@@ -1478,7 +1478,7 @@ impl JsonQueryCompiler {
     ///
     /// ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]
     fn compile_function_from(&mut self, from_def: &EgValue) -> EgResult<String> {
-        if from_def.len() == 0 || !from_def.is_array() {
+        if from_def.is_empty() || !from_def.is_array() {
             return Err(format!("Invalid FROM function spec: {}", from_def.dump()).into());
         }
 
@@ -1500,7 +1500,7 @@ impl JsonQueryCompiler {
                     let s = if b { "TRUE" } else { "FALSE" };
                     params.push(s.to_string());
                 } else if value.is_string() {
-                    let index = self.add_param(&value)?;
+                    let index = self.add_param(value)?;
                     params.push(format!("${index}"));
                 } else if value.is_number() {
                     params.push(value.to_string().unwrap());

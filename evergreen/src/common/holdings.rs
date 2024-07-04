@@ -23,6 +23,6 @@ pub fn copy_status(
 
         copy["status"].int()
     } else {
-        Err(format!("copy_status() requires a useful parameter").into())
+        Err("copy_status() requires a useful parameter".into())
     }
 }
