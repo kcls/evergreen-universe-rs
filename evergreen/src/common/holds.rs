@@ -348,13 +348,12 @@ pub fn test_copy_for_hold(
     // overrides require the function process all the things.
     check_only: bool,
 ) -> EgResult<TestCopyForHoldResult> {
-
     let patron_id = params.patron_id;
-    let copy_id =  params.copy_id;
-    let pickup_lib =  params.pickup_lib;
+    let copy_id = params.copy_id;
+    let pickup_lib = params.pickup_lib;
     let request_lib = params.request_lib;
     let requestor = params.requestor;
-    let is_retarget =  params.is_retarget;
+    let is_retarget = params.is_retarget;
 
     let mut result = TestCopyForHoldResult {
         success: false,

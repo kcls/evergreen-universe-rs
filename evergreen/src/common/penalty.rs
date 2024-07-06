@@ -32,7 +32,7 @@ pub fn calculate_penalties(
 
     let penalties = trim_to_wanted_penalties(editor, context_org, only_penalties, penalties)?;
 
-    if penalties.len() == 0 {
+    if penalties.is_empty() {
         // Nothing to change.
         return Ok(());
     }
@@ -51,25 +51,18 @@ pub fn calculate_penalties(
         let penalty = number(&pen_hash["standing_penalty"]);
 
         // Do we have this penalty already?
-        let existing = existing_penalties
-            .iter()
-            .filter(|p| {
-                let e_org_unit = number(&p["org_unit"]);
-                let e_penalty = number(&p["standing_penalty"]);
-                org_unit == e_org_unit && penalty == e_penalty
-            })
-            .next();
+        let existing = existing_penalties.iter().find(|p| {
+            let e_org_unit = number(&p["org_unit"]);
+            let e_penalty = number(&p["standing_penalty"]);
+            org_unit == e_org_unit && penalty == e_penalty
+        });
 
         if let Some(epen) = existing {
             // We already have this penalty.  Remove it from the set of
             // existing penalties so it's not deleted in the subsequent loop.
             let id = number(&epen["id"]);
 
-            existing_penalties = existing_penalties
-                .iter()
-                .filter(|p| number(&p["id"]) != id)
-                .map(|p| *p) // &&EgValue
-                .collect();
+            existing_penalties.retain(|p| number(&p["id"]) != id);
         } else {
             // This is a new penalty.  Create it.
             let new_pen = EgValue::create("ausp", pen_hash.clone())?;
@@ -80,7 +73,7 @@ pub fn calculate_penalties(
 
             let csp = editor
                 .retrieve("csp", csp_id)?
-                .ok_or_else(|| format!("DB returned an invalid csp id??"))?;
+                .ok_or_else(|| editor.die_event())?;
 
             let evt_name = format!("penalty.{}", csp["name"]);
             trigger_events.push((evt_name, new_pen, context_org));
@@ -121,7 +114,7 @@ fn trim_to_wanted_penalties(
         None => return Ok(all_penalties),
     };
 
-    if only_penalties.len() == 0 {
+    if only_penalties.is_empty() {
         return Ok(all_penalties);
     }
 
@@ -137,7 +130,7 @@ fn trim_to_wanted_penalties(
         }
     }
 
-    if penalty_name_list.len() > 0 {
+    if penalty_name_list.is_empty() {
         // Get penalty type IDs from their names.
         let query = eg::hash! {"name": {"in": penalty_name_list.clone()}};
         let penalty_types = editor.search("csp", query)?;
@@ -147,7 +140,7 @@ fn trim_to_wanted_penalties(
 
         // See if any of the named penalties have local overrides.
         // If so, process them as well.
-        let mut settings = Settings::new(&editor);
+        let mut settings = Settings::new(editor);
         settings.set_org_id(context_org);
 
         let names: Vec<String> = penalty_name_list
@@ -174,9 +167,7 @@ fn trim_to_wanted_penalties(
     for pen in all_penalties {
         if penalty_id_list
             .iter()
-            .filter(|id| id == &&pen["standing_penalty"])
-            .next()
-            .is_some()
+            .any(|id| id == &pen["standing_penalty"])
         {
             final_penalties.push(pen);
         }

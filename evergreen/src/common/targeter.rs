@@ -176,7 +176,7 @@ impl fmt::Display for HoldTargeter<'_> {
 
 impl<'a> HoldTargeter<'a> {
     pub fn new(editor: &'a mut Editor) -> HoldTargeter {
-        let settings = Settings::new(&editor);
+        let settings = Settings::new(editor);
 
         HoldTargeter {
             editor,
@@ -243,7 +243,7 @@ impl<'a> HoldTargeter<'a> {
                 "enabled": "t"
             };
 
-            if let Some(intvl) = self.editor().search("cgf", query)?.get(0) {
+            if let Some(intvl) = self.editor().search("cgf", query)?.first() {
                 retarget_intvl_bind = intvl["value"].to_string();
                 retarget_intvl_bind.as_ref().unwrap()
             } else {
@@ -276,8 +276,7 @@ impl<'a> HoldTargeter<'a> {
         // retarget_interval.
         let next_check_intvl = self
             .next_check_interval
-            .as_ref()
-            .map(|i| i.as_str())
+            .as_deref()
             .unwrap_or(retarget_intvl);
 
         let next_check_date = date::add_interval(date::now(), next_check_intvl)?;
@@ -476,7 +475,7 @@ impl<'a> HoldTargeter<'a> {
     /// further targeting is needed.
     fn hold_is_expired(&mut self, context: &mut HoldTargetContext) -> EgResult<bool> {
         if let Some(etime) = context.hold["expire_time"].as_str() {
-            let ex_time = date::parse_datetime(&etime)?;
+            let ex_time = date::parse_datetime(etime)?;
 
             if ex_time > date::now() {
                 // Hold has not yet expired.
@@ -656,7 +655,7 @@ impl<'a> HoldTargeter<'a> {
                     "from": ["metabib.compile_composite_attr", formats]
                 })?;
 
-                if let Some(query_int) = query_ints.get(0) {
+                if let Some(query_int) = query_ints.first() {
                     // Only pull potential copies from records that satisfy
                     // the holdable formats query.
                     if let Some(qint) = query_int["metabib.compile_composite_attr"].as_str() {
@@ -748,7 +747,7 @@ impl<'a> HoldTargeter<'a> {
     fn handle_hopeless_date(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         let marked_hopeless = !context.hold["hopeless_date"].is_null();
 
-        if context.copies.len() == 0 && !marked_hopeless {
+        if context.copies.is_empty() && !marked_hopeless {
             log::info!("{self} Marking hold as hopeless");
             return self.update_hold(context, eg::hash! {"hopeless_date": "now"});
         }
@@ -783,7 +782,7 @@ impl<'a> HoldTargeter<'a> {
         if !force {
             // If 'force' is set, the caller is saying that all copies have
             // failed.  Otherwise, see if we have any copies left to inspect.
-            if context.copies.len() > 0 || context.valid_previous_copy.is_some() {
+            if !context.copies.is_empty() || context.valid_previous_copy.is_some() {
                 return Ok(false);
             }
         }
@@ -814,7 +813,7 @@ impl<'a> HoldTargeter<'a> {
     ///
     /// Note that recalling (or not) a circ has no direct impact on the hold.
     fn process_recalls(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
-        if context.recall_copies.len() == 0 {
+        if context.recall_copies.is_empty() {
             return Ok(());
         }
 
@@ -1115,10 +1114,9 @@ impl<'a> HoldTargeter<'a> {
     fn attempt_force_recall_target(&self, context: &mut HoldTargetContext) {
         if let Some(ht) = context.hold["hold_type"].as_str() {
             if ht == "R" || ht == "F" {
-                if let Some(c) = context.copies.get(0) {
+                if let Some(c) = context.copies.first() {
                     context.target = c.id;
                     log::info!("{self} force/recall hold using copy {}", c.id);
-                    return;
                 }
             }
         }
@@ -1171,8 +1169,7 @@ impl<'a> HoldTargeter<'a> {
         // Pick a copy at random from each tier of the proximity map,
         // starting at the lowest proximity and working up, until a
         // copy is found that is suitable for targeting.
-        let mut sorted_proximities: Vec<i64> =
-            context.weighted_prox_map.keys().map(|i| *i).collect();
+        let mut sorted_proximities: Vec<i64> = context.weighted_prox_map.keys().copied().collect();
 
         sorted_proximities.sort();
 
@@ -1184,7 +1181,7 @@ impl<'a> HoldTargeter<'a> {
                 None => continue, // Shouldn't happen
             };
 
-            if copy_ids.len() == 0 {
+            if copy_ids.is_empty() {
                 continue;
             }
 
@@ -1251,7 +1248,7 @@ impl<'a> HoldTargeter<'a> {
 
         // Required, string field
         let req_time = context.hold["request_time"].as_str().unwrap();
-        let req_time = date::parse_datetime(&req_time)?;
+        let req_time = date::parse_datetime(req_time)?;
 
         let hard_stall_time = date::add_interval(req_time, interval)?;
 
@@ -1312,14 +1309,14 @@ impl<'a> HoldTargeter<'a> {
 
             // Ran out of copies to try before exceeding max target loops.
             // Nothing else to do here.
-            if context.copies.len() == 0 {
+            if context.copies.is_empty() {
                 return Ok(None);
             }
 
             let (iter_copies, remaining_copies) =
                 self.get_copies_at_loop_iter(context, &targeted_libs, loop_iter - 1);
 
-            if iter_copies.len() == 0 {
+            if iter_copies.is_empty() {
                 // None at this level.  Bump up a level.
                 context.copies = remaining_copies;
                 continue;
@@ -1456,28 +1453,26 @@ impl<'a> HoldTargeter<'a> {
     fn get_copies_at_loop_iter(
         &self,
         context: &mut HoldTargetContext,
-        targeted_libs: &Vec<EgValue>,
+        targeted_libs: &[EgValue],
         loop_iter: i64,
     ) -> (Vec<PotentialCopy>, Vec<PotentialCopy>) {
         let mut iter_copies = Vec::new();
         let mut remaining_copies = Vec::new();
 
         while let Some(copy) = context.copies.pop() {
-            let match_found;
-
-            if loop_iter == 0 {
+            let match_found = if loop_iter == 0 {
                 // Start with copies at circ libs that have never been targeted.
-                match_found = !targeted_libs
+                !targeted_libs
                     .iter()
-                    .any(|l| l["circ_lib"].int_required() == copy.circ_lib);
+                    .any(|l| l["circ_lib"].int_required() == copy.circ_lib)
             } else {
                 // Find copies at branches whose target count
                 // matches the current (non-zero) loop depth.
-                match_found = targeted_libs.iter().any(|l| {
-                    return l["circ_lib"].int_required() == copy.circ_lib
-                        && l["count"].int_required() == loop_iter;
-                });
-            }
+                targeted_libs.iter().any(|l| {
+                    l["circ_lib"].int_required() == copy.circ_lib
+                        && l["count"].int_required() == loop_iter
+                })
+            };
 
             if match_found {
                 iter_copies.push(copy);

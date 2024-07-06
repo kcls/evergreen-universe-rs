@@ -68,17 +68,17 @@ pub fn noncat_due_date(editor: &mut Editor, noncat: &EgValue) -> EgResult<String
         .as_str()
         .ok_or(format!("Invalid noncat circ_time: {}", noncat["circ_time"]))?;
 
-    let duedate = date::parse_datetime(&checkout_time)?;
+    let duedate = date::parse_datetime(checkout_time)?;
     let duedate = date::set_timezone(duedate, timezone)?;
 
     let seconds = date::interval_to_seconds(&duration)?;
     let mut duedate = duedate + Duration::from_secs(seconds as u64);
 
-    let org_open_data = org::next_open_date(editor, circ_lib, &duedate.into())?;
+    let org_open_data = org::next_open_date(editor, circ_lib, &duedate)?;
 
     if let org::OrgOpenState::OpensOnDate(future_date) = org_open_data {
         duedate = future_date;
     }
 
-    Ok(date::to_iso(&duedate.into()))
+    Ok(date::to_iso(&duedate))
 }

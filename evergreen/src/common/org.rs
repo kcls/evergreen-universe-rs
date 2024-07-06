@@ -86,8 +86,8 @@ pub fn next_open_date(
     org_id: i64,
     date: &date::EgDate,
 ) -> EgResult<OrgOpenState> {
-    let start_date = date.clone();
-    let mut date = date.clone();
+    let start_date = *date; // clone
+    let mut date = *date; // clone
 
     let mut closed_days: Vec<i64> = Vec::new();
     if let Some(h) = editor.retrieve("aouhoo", org_id)? {
@@ -116,7 +116,7 @@ pub fn next_open_date(
         if closed_days.contains(&(weekday as i64)) {
             // Closed for the current day based on hours of operation.
             // Jump ahead one day and start over.
-            date = date + Duration::try_days(1).expect("In Bounds");
+            date += Duration::try_days(1).expect("In Bounds");
             continue;
         }
 
@@ -132,7 +132,7 @@ pub fn next_open_date(
 
         let org_closed = editor.search("aoucd", query)?;
 
-        if org_closed.len() == 0 {
+        if org_closed.is_empty() {
             // No overlapping closings.  We've found our open day.
             if start_date == date {
                 // No changes were made.  We're open on the requested day.
@@ -153,8 +153,8 @@ pub fn next_open_date(
             }
         }
 
-        date = date::parse_datetime(&range_end)?;
-        date = date + Duration::try_days(1).expect("In Bounds");
+        date = date::parse_datetime(range_end)?;
+        date += Duration::try_days(1).expect("In Bounds");
     }
 
     // If we get here it means we never found an open day.

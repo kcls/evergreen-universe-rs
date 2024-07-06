@@ -85,7 +85,7 @@ impl Circulator<'_> {
         let auto_renewal_remaining = circ["auto_renewal_remaining"].int();
 
         let expire_date = patron["expire_date"].as_str().unwrap(); // required
-        let expire_dt = date::parse_datetime(&expire_date)?;
+        let expire_dt = date::parse_datetime(expire_date)?;
 
         let circ_lib = self.set_renewal_circ_lib(orig_circ_lib)?;
 

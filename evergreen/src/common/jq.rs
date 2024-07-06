@@ -79,7 +79,6 @@ impl Default for JsonQueryCompiler {
     }
 }
 
-
 /// Translates JSON-Query into SQL.
 impl JsonQueryCompiler {
     pub fn new() -> Self {

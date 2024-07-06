@@ -37,7 +37,7 @@ impl SettingType {
 }
 
 /// Defines the context under which a setting is retrieved.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct SettingContext {
     org_id: Option<i64>,
     user_id: Option<i64>,
@@ -56,11 +56,7 @@ impl fmt::Display for SettingContext {
 
 impl SettingContext {
     pub fn new() -> SettingContext {
-        SettingContext {
-            org_id: None,
-            user_id: None,
-            workstation_id: None,
-        }
+        Default::default()
     }
     pub fn set_org_id(&mut self, org_id: i64) {
         self.org_id = Some(org_id);
@@ -135,7 +131,7 @@ impl Settings {
             default_context: SettingContext::new(),
         };
 
-        sc.apply_editor(&editor);
+        sc.apply_editor(editor);
 
         sc
     }
@@ -217,7 +213,7 @@ impl Settings {
         // fetch_context_values guarantees a value is applied
         // for this setting in the cache (defaulting to json null).
         self.get_cached_value(context, name)
-            .ok_or_else(|| format!("Setting value missing from cache").into())
+            .ok_or_else(|| "Setting value missing from cache".to_string().into())
     }
 
     pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&EgValue> {
@@ -226,11 +222,7 @@ impl Settings {
             None => return None,
         };
 
-        if hash.get(name).is_none() {
-            return None;
-        }
-
-        Some(hash.get(name).unwrap().value())
+        hash.get(name).map(|v| v.value())
     }
 
     /// Batch setting value fetch.
@@ -250,13 +242,13 @@ impl Settings {
         let names: Vec<&str> = names
             .iter()
             .filter(|n| self.get_cached_value(&ctx, n).is_none())
-            .map(|n| *n)
+            .copied()
             .collect();
 
-        if names.len() > 0 {
-            self.fetch_context_values(&ctx, names.as_slice())
-        } else {
+        if names.is_empty() {
             Ok(())
+        } else {
+            self.fetch_context_values(&ctx, names.as_slice())
         }
     }
 
@@ -271,9 +263,7 @@ impl Settings {
         names: &[&str],
     ) -> EgResult<()> {
         if !context.is_viable() {
-            Err(format!(
-                "Cannot retrieve settings without user_id or org_id"
-            ))?;
+            return Err("Cannot retrieve settings without user_id or org_id".into());
         }
 
         let user_id = context.user_id_value();
@@ -324,7 +314,7 @@ impl Settings {
 
         let name = setting["name"]
             .as_str()
-            .ok_or_else(|| format!("Setting has no name"))?;
+            .ok_or_else(|| "Setting has no name".to_string())?;
 
         let entry = SettingEntry { value };
 
