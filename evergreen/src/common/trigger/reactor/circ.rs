@@ -29,7 +29,7 @@ impl Processor<'_> {
 
         // TODO move to internal_session() / add Trigger worker cache.
         let auth_ses = auth::Session::internal_session_api(self.editor.client_mut(), &auth_args)?
-            .ok_or_else(|| format!("Cannot create internal auth session"))?;
+            .ok_or_else(|| "Cannot create internal auth session".to_string())?;
 
         for event in events {
             self.renew_one_circ(auth_ses.token(), patron_id, event)?;
@@ -51,7 +51,7 @@ impl Processor<'_> {
             EgValue::from(authtoken),
             eg::hash! {
                 "patron_id": patron_id,
-                "copy_id": copy_id.clone(),
+                "copy_id": copy_id,
                 "auto_renewal": true
             },
         ];
@@ -62,7 +62,7 @@ impl Processor<'_> {
             .editor
             .client_mut()
             .send_recv_one("open-ils.circ", "open-ils.circ.renew", params)?
-            .ok_or_else(|| format!("Renewal returned no response"))?;
+            .ok_or_else(|| "Renewal returned no response".to_string())?;
 
         // API may return an EgEvent or a list of them.  We're only
         // interested in the first event.
@@ -138,7 +138,7 @@ impl Processor<'_> {
         // circ, since the renewal may have failed.  Fire and do not
         // forget so we don't flood A/T.
         trigger::create_events_for_object(
-            &mut self.editor,
+            self.editor,
             "autorenewal",
             event.target(),
             circ_lib,

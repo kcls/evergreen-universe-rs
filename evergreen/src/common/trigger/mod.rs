@@ -98,7 +98,7 @@ pub fn create_event_for_object_and_def(
 
     let pkey = target
         .pkey_value()
-        .ok_or_else(|| format!("Pkey value required"))?;
+        .ok_or_else(|| "Pkey value required".to_string())?;
 
     let mut event = eg::hash! {
         "event_def": event_def["id"].clone(),
@@ -157,8 +157,8 @@ fn calc_runtime(event_def: &EgValue, target: &EgValue) -> EgResult<Option<String
         None => return Ok(None), // required field / should not happen.
     };
 
-    let runtime = date::parse_datetime(&delay_start)?;
-    let runtime = date::add_interval(runtime, &delay_intvl)?;
+    let runtime = date::parse_datetime(delay_start)?;
+    let runtime = date::add_interval(runtime, delay_intvl)?;
 
     Ok(Some(date::to_iso(&runtime)))
 }
@@ -189,7 +189,7 @@ fn user_is_opted_in(editor: &mut Editor, event_def: &EgValue, target: &EgValue) 
         "value": "true",
     };
 
-    Ok(editor.search("aus", query)?.len() > 0)
+    Ok(!editor.search("aus", query)?.is_empty())
 }
 
 /// Create events for a passive-hook event definition, returning the
@@ -263,7 +263,7 @@ pub fn create_passive_events_for_def(
 
     let delay_field = event_def["delay_field"]
         .as_str()
-        .ok_or_else(|| format!("Passive event defs require a delay_field"))?;
+        .ok_or_else(|| "Passive event defs require a delay_field".to_string())?;
 
     filters[delay_field] = delay_filter;
 
@@ -331,7 +331,7 @@ pub fn create_passive_events_for_def(
 
     editor.reset_timeout();
 
-    if targets.len() == 0 {
+    if targets.is_empty() {
         log::info!("No targets found for event def {event_def_id}");
         return Ok(None);
     } else {

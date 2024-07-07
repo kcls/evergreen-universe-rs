@@ -18,12 +18,12 @@ impl Processor<'_> {
 
         log::info!("{self} reacting to events [{}]", event_ids.join(","));
 
-        if events.len() == 0 {
+        if events.is_empty() {
             return Ok(());
         }
 
         for event in events.iter_mut() {
-            self.set_event_state(*event, EventState::Reacting)?;
+            self.set_event_state(event, EventState::Reacting)?;
         }
 
         let reactor = self.reactor();
@@ -35,14 +35,14 @@ impl Processor<'_> {
 
         let react_result = match reactor {
             "NOOP_True" => Ok(()),
-            "NOOP_False" => Err(format!("NOOP_False").into()),
+            "NOOP_False" => Err("NOOP_False".to_string().into()),
             "Circ::AutoRenew" => self.autorenew(events),
             _ => Err(format!("No such reactor: {reactor}").into()),
         };
 
         if react_result.is_ok() {
             for event in events.iter_mut() {
-                self.set_event_state(*event, EventState::Reacted)?;
+                self.set_event_state(event, EventState::Reacted)?;
             }
         }
 

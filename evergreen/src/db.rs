@@ -43,6 +43,7 @@ const SUPPORTED_OPERATORS: [&str; 20] = [
 /// 2. Values provided via getopts::Matches struct.
 /// 3. Values pulled from the environment (e.g. PGHOST) where possible.
 /// 4. Default values defined in this module.
+#[derive(Default)]
 pub struct DatabaseConnectionBuilder {
     host: Option<String>,
     port: Option<u16>,
@@ -54,14 +55,7 @@ pub struct DatabaseConnectionBuilder {
 
 impl DatabaseConnectionBuilder {
     pub fn new() -> Self {
-        DatabaseConnectionBuilder {
-            host: None,
-            port: None,
-            user: None,
-            password: None,
-            database: None,
-            application: None,
-        }
+        Default::default()
     }
 
     /// Set connection values via getopts matches.
@@ -124,10 +118,9 @@ impl DatabaseConnectionBuilder {
     }
 
     fn from_env(name: &str) -> Option<String> {
-        match env::vars().filter(|(k, _)| k.eq(name)).next() {
-            Some((_, v)) => Some(v.to_string()),
-            None => None,
-        }
+        env::vars()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.to_string())
     }
 
     /// Create the final database connection object from the collected
@@ -257,7 +250,7 @@ impl DatabaseConnection {
     /// Create a new DB connection from a set of gettops matches.
     pub fn new_from_options(params: &getopts::Matches) -> Self {
         let mut builder = DatabaseConnectionBuilder::new();
-        builder.set_opts(&params);
+        builder.set_opts(params);
         builder.build()
     }
 
@@ -315,14 +308,8 @@ impl DatabaseConnection {
             user: self.user.to_string(),
             database: self.database.to_string(),
             in_transaction: false,
-            password: match &self.password {
-                Some(p) => Some(p.to_string()),
-                None => None,
-            },
-            application: match &self.application {
-                Some(a) => Some(a.to_string()),
-                None => None,
-            },
+            password: self.password.as_ref().map(|p| p.to_string()),
+            application: self.application.as_ref().map(|p| p.to_string()),
         }
     }
 
@@ -350,7 +337,7 @@ impl DatabaseConnection {
 
     pub fn xact_commit(&mut self) -> EgResult<()> {
         if !self.in_transaction {
-            return Err(format!("DatabaseConnection has no transaction to commit"))?;
+            return Err("DatabaseConnection has no transaction to commit".to_string())?;
         }
         self.in_transaction = false;
         match self.client().execute("COMMIT", &[]) {
@@ -387,7 +374,7 @@ pub fn is_identifier(s: &str) -> bool {
             return false;
         }
     }
-    s.len() > 0
+    !s.is_empty()
 }
 
 /// Verify a query operator provided by the caller is allowed.

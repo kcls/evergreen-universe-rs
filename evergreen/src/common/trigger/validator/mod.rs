@@ -72,11 +72,14 @@ impl Processor<'_> {
     fn min_passive_target_age(&mut self, event: &Event) -> EgResult<bool> {
         let min_target_age = self
             .param_value_as_str("min_target_age")
-            .ok_or_else(|| format!("'min_target_age' parameter required for MinPassiveTargetAge"))?
+            .ok_or_else(|| {
+                "'min_target_age' parameter required for MinPassiveTargetAge".to_string()
+            })?
             .to_string();
 
         let age_field = self.param_value_as_str("target_age_field").ok_or_else(|| {
-            format!("'target_age_field' parameter or delay_field required for MinPassiveTargetAge")
+            "'target_age_field' parameter or delay_field required for MinPassiveTargetAge"
+                .to_string()
         })?;
 
         let age_field_val = &event.target()[age_field];
@@ -159,9 +162,9 @@ impl Processor<'_> {
 
         // Verify we have a targted copy and it has the expected status.
         let copy_status = if let Some(copy_id) = hold["current_copy"].as_i64() {
-            holdings::copy_status(&mut self.editor, Some(copy_id), None)?
+            holdings::copy_status(self.editor, Some(copy_id), None)?
         } else if hold["current_copy"].is_object() {
-            holdings::copy_status(&mut self.editor, None, Some(&hold["current_copy"]))?
+            holdings::copy_status(self.editor, None, Some(&hold["current_copy"]))?
         } else {
             -1
         };

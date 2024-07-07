@@ -145,10 +145,12 @@ impl FleshDef {
         }
 
         let depth = if let Some(num) = obj["flesh"].as_i16() {
-            if num > MAX_FLESH_DEPTH || num < 0 {
-                MAX_FLESH_DEPTH
-            } else {
+            // Is the flesh depth reasonable?
+            if (0..=MAX_FLESH_DEPTH).contains(&num) {
                 num
+            } else {
+                // Negative depth means max-flesh
+                MAX_FLESH_DEPTH
             }
         } else {
             0
@@ -268,11 +270,7 @@ impl Translator {
         match list.len() {
             0 => Ok(None),
             1 => Ok(Some(list.pop().unwrap())),
-            _ => {
-                return Err(
-                    format!("Pkey query for {classname} returned {} results", list.len()).into(),
-                )
-            }
+            _ => Err(format!("Pkey query for {classname} returned {} results", list.len()).into()),
         }
     }
 
@@ -324,21 +322,21 @@ impl Translator {
             .get(fieldname)
             .ok_or_else(|| format!("Field {fieldname} on class {classname} cannot be fleshed"))?;
 
-        let search_value;
         let reltype = idl_link.reltype();
 
-        if reltype == idl::RelType::HasMany || reltype == idl::RelType::MightHave {
+        let search_value = if reltype == idl::RelType::HasMany || reltype == idl::RelType::MightHave
+        {
             // When the foreign key relationship points from the
             // fleshed object back to us, the search value will be
             // this object's primary key.
 
-            search_value = object
+            object
                 .pkey_value()
-                .ok_or_else(|| format!("Object has no pkey value: {}", object.dump()))?;
+                .ok_or_else(|| format!("Object has no pkey value: {}", object.dump()))?
         } else {
             //search_value = object[fieldname].clone();
-            search_value = &object[fieldname];
-        }
+            &object[fieldname]
+        };
 
         if !search_value.is_string() && !search_value.is_number() {
             return Err(format!(
@@ -390,7 +388,7 @@ impl Translator {
 
         log::debug!("Fleshed search returned {} results", children.len());
 
-        if children.len() > 0 {
+        if !children.is_empty() {
             // Get the values of the mapped fields on the found children
             if let Some(map_field) = idl_link.map() {
                 let mut mapped_values = Vec::new();
@@ -403,12 +401,15 @@ impl Translator {
 
         // Attach the child data to the fleshed object.
 
-        if children.len() > 0
+        // For HasA / MightHave, the (presumably singl) child is linked
+        // directly to the parent by the field name.
+        if !children.is_empty()
             && (reltype == idl::RelType::HasA || reltype == idl::RelType::MightHave)
         {
             object[fieldname] = children.remove(0); // len() above
         }
 
+        // For HasMany, the children are retained as an array
         if reltype == idl::RelType::HasMany {
             object[fieldname] = EgValue::from(children);
         }
@@ -454,12 +455,12 @@ impl Translator {
     ///
     /// Returns the created rows.
     pub fn idl_class_create(&self, create: &IdlClassCreate) -> EgResult<Vec<EgValue>> {
-        if create.values.len() == 0 {
-            Err(format!("No values to create in idl_class_create()"))?;
+        if !create.values.is_empty() {
+            return Err("No values to create in idl_class_create()".into());
         }
 
         if !self.db.borrow().in_transaction() {
-            Err(format!("idl_class_create() requires a transaction"))?;
+            return Err("idl_class_create() requires a transaction".into());
         }
 
         let classname = &create.classname;
@@ -472,7 +473,7 @@ impl Translator {
 
         let pkey_field = idl_class
             .pkey()
-            .ok_or_else(|| format!("Cannot create rows that have no primary key"))?;
+            .ok_or_else(|| "Cannot create rows that have no primary key".to_string())?;
 
         let mut query = format!("INSERT INTO {tablename} (");
 
@@ -487,8 +488,8 @@ impl Translator {
         let mut strings: Vec<String> = Vec::new();
         for values in &create.values {
             strings.push(self.compile_class_create(
-                &idl_class,
-                &values,
+                idl_class,
+                values,
                 &mut param_index,
                 &mut param_list,
             )?);
@@ -510,7 +511,7 @@ impl Translator {
 
         if let Err(ref e) = query_res {
             log::error!("DB Error: {e} query={query} param={params:?}");
-            Err(format!("DB query failed. See error logs"))?;
+            return Err("DB query failed. See error logs".into());
         }
 
         // Use the primary key values reported by PG to find the
@@ -522,7 +523,7 @@ impl Translator {
 
             match self.get_idl_object_by_pkey(idl_class.classname(), &pkey_value, None)? {
                 Some(pkv) => results.push(pkv),
-                None => Err(format!("Could not recover newly created value from the DB"))?,
+                None => return Err("Could not recover newly created value from the DB".into()),
             };
         }
 
@@ -540,7 +541,7 @@ impl Translator {
 
         let (pkey_field, pkey_value) = obj
             .pkey_info()
-            .ok_or_else(|| format!("Object has no primary key field"))?;
+            .ok_or_else(|| "Object has no primary key field".to_string())?;
 
         let mut filter = EgValue::new_object();
         filter
@@ -556,12 +557,12 @@ impl Translator {
     ///
     /// Returns Result of the number of rows modified.
     pub fn idl_class_update(&self, update: &IdlClassUpdate) -> EgResult<u64> {
-        if update.values.len() == 0 {
-            Err(format!("No values to update in idl_class_update()"))?;
+        if update.values.is_empty() {
+            Err("No values to update in idl_class_update()".to_string())?;
         }
 
         if !self.db.borrow().in_transaction() {
-            Err(format!("idl_class_update() requires a transaction"))?;
+            return Err("idl_class_update() requires a transaction".into());
         }
 
         let classname = &update.classname;
@@ -575,13 +576,13 @@ impl Translator {
         let mut param_list: Vec<String> = Vec::new();
         let mut param_index: usize = 1;
         let updates =
-            self.compile_class_update(&class, &update.values, &mut param_index, &mut param_list)?;
+            self.compile_class_update(class, &update.values, &mut param_index, &mut param_list)?;
 
         let mut query = format!("UPDATE {tablename} {updates}");
 
         if let Some(filter) = update.filter() {
             query +=
-                &self.compile_class_filter(&class, filter, &mut param_index, &mut param_list)?;
+                &self.compile_class_filter(class, filter, &mut param_index, &mut param_list)?;
         }
 
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
@@ -607,7 +608,7 @@ impl Translator {
             }
             Err(e) => {
                 log::error!("DB Error: {e} query={query} param={params:?}");
-                Err(format!("DB query failed. See error logs").into())
+                Err("DB query failed. See error logs".into())
             }
         }
     }
@@ -617,7 +618,7 @@ impl Translator {
     /// Returns a Result of the number of rows affected.
     pub fn delete_idl_object_by_pkey(&self, classname: &str, pkey: &EgValue) -> EgResult<u64> {
         if !self.db.borrow().in_transaction() {
-            Err(format!("delete_idl_object_by_pkey requires a transaction"))?;
+            return Err("delete_idl_object_by_pkey requires a transaction".into());
         }
 
         let class = idl::get_class(classname)?;
@@ -678,7 +679,7 @@ impl Translator {
 
         if let Some(filter) = &search.filter {
             query +=
-                &self.compile_class_filter(&class, filter, &mut param_index, &mut param_list)?;
+                &self.compile_class_filter(class, filter, &mut param_index, &mut param_list)?;
         }
 
         if let Some(order) = &search.order_by {
@@ -700,13 +701,13 @@ impl Translator {
 
         if let Err(ref e) = query_res {
             log::error!("DB Error: {e} query={query} param={params:?}");
-            Err(format!("DB query failed. See error logs"))?;
+            return Err("DB query failed. See error logs".into());
         }
 
         for row in query_res.unwrap() {
-            let mut obj = self.row_to_idl(&class, &row)?;
+            let mut obj = self.row_to_idl(class, &row)?;
             if let Some(flesh_def) = search.flesh.as_ref() {
-                self.flesh_idl_object(&mut obj, &flesh_def)?;
+                self.flesh_idl_object(&mut obj, flesh_def)?;
             }
             results.push(obj);
         }
@@ -871,15 +872,11 @@ impl Translator {
             })?;
 
             let filter = match subq {
-                EgValue::Array(_) => self.compile_class_filter_array(
-                    param_index,
-                    param_list,
-                    idl_field,
-                    &subq,
-                    "IN",
-                )?,
+                EgValue::Array(_) => {
+                    self.compile_class_filter_array(param_index, param_list, idl_field, subq, "IN")?
+                }
                 EgValue::Hash(_) => {
-                    self.compile_class_filter_object(param_index, param_list, idl_field, &subq)?
+                    self.compile_class_filter_object(param_index, param_list, idl_field, subq)?
                 }
                 EgValue::Number(_) | EgValue::String(_) => self.append_json_literal(
                     param_index,
@@ -898,7 +895,7 @@ impl Translator {
                     false,
                 )?,
                 EgValue::Blessed(_) => {
-                    return Err(format!("Cannot create JSON filter from a blessed value").into())
+                    return Err("Cannot create JSON filter from a blessed value".into())
                 }
             };
 
@@ -927,7 +924,7 @@ impl Translator {
         }
 
         if use_default && obj.is_null() {
-            return Ok(format!("DEFAULT"));
+            return Ok("DEFAULT".to_string());
         }
 
         let opstr = match operand {
@@ -1033,11 +1030,8 @@ impl Translator {
         let mut obj = EgValue::new_object();
         obj.bless(class.classname())?;
 
-        let mut index = 0;
-
-        for name in class.real_field_names_sorted() {
+        for (index, name) in class.real_field_names_sorted().into_iter().enumerate() {
             obj[name] = Translator::col_value_to_json_value(row, index)?;
-            index += 1;
         }
 
         Ok(obj)

@@ -33,7 +33,7 @@ pub fn interval_to_seconds(interval: &str) -> EgResult<i64> {
 
     let mut interval = interval.to_lowercase();
     interval = interval.replace("and", ",");
-    interval = interval.replace(",", " ");
+    interval = interval.replace(',', " ");
 
     // Format hh:mm:ss
     let interval = hms_reg.replace(&interval, |caps: &Captures| {
@@ -51,19 +51,19 @@ pub fn interval_to_seconds(interval: &str) -> EgResult<i64> {
             }
         };
 
-        let change = if itype.starts_with("s") {
+        let change = if itype.starts_with('s') {
             count
         } else if itype.starts_with("min") {
             count * 60
-        } else if itype.starts_with("h") {
+        } else if itype.starts_with('h') {
             count * 60 * 60
-        } else if itype.starts_with("d") {
+        } else if itype.starts_with('d') {
             count * 60 * 60 * 24
-        } else if itype.starts_with("w") {
+        } else if itype.starts_with('w') {
             count * 60 * 60 * 24 * 7
         } else if itype.starts_with("mon") {
             (count * 60 * 60 * 24 * 365) / 12
-        } else if itype.starts_with("y") {
+        } else if itype.starts_with('y') {
             count * 60 * 60 * 24 * 365
         } else {
             0
@@ -216,7 +216,7 @@ pub fn set_timezone(dt: EgDate, timezone: &str) -> EgResult<EgDate> {
     // Parse the time zone string.
     let tz: Tz = timezone
         .parse()
-        .or_else(|e| Err(format!("Cannot parse timezone: {timezone} {e}")))?;
+        .map_err(|e| format!("Cannot parse timezone: {timezone} {e}"))?;
 
     let modified = dt.with_timezone(&tz);
 

@@ -74,7 +74,7 @@ impl Clone for Editor {
         let mut e = Editor::new(&self.client);
         e.personality = self.personality().clone();
         e.authtoken = self.authtoken().map(str::to_string);
-        e.requestor = self.requestor().map(|r| r.clone());
+        e.requestor = self.requestor().cloned();
         e
     }
 }
@@ -222,7 +222,7 @@ impl Editor {
         if let Some(req) = self.requestor() {
             req.id()
         } else {
-            Err(format!("Editor has no requestor").into())
+            Err("Editor has no requestor".into())
         }
     }
 
@@ -255,7 +255,7 @@ impl Editor {
         if let Some(r) = self.requestor() {
             r["home_ou"].int()
         } else {
-            Err(format!("Editor has no requestor").into())
+            Err("Editor has no requestor".into())
         }
     }
 
@@ -504,10 +504,8 @@ impl Editor {
                 ))?;
             }
 
-            if params.params().len() == 0 {
-                Err(EgError::Debug(format!(
-                    "Create/update/delete calls require a parameter"
-                )))?;
+            if params.params().is_empty() {
+                return Err("Create/update/delete calls require a parameter".into());
             }
 
             // Write calls also get logged to the activity log
@@ -563,17 +561,15 @@ impl Editor {
 
     /// Execute an atomic json_query call with additional query params.
     pub fn json_query_with_ops(&mut self, query: EgValue, ops: EgValue) -> EgResult<Vec<EgValue>> {
-        let method = self.app_method(&format!("json_query.atomic"));
+        let method = self.app_method("json_query.atomic");
 
         let mut params: ApiParams = query.into();
         if !ops.is_null() {
             params.add(ops);
         }
 
-        if let Some(jvec) = self.request(&method, params)? {
-            if let EgValue::Array(vec) = jvec {
-                return Ok(vec);
-            }
+        if let Some(EgValue::Array(vec)) = self.request(&method, params)? {
+            return Ok(vec);
         }
 
         Err(format!("Unexpected response to method {method}").into())
@@ -609,7 +605,7 @@ impl Editor {
 
         if resp_op.is_none() {
             // not-found is not necessarily an error.
-            let key = fmapper.replace(".", "_").to_uppercase();
+            let key = fmapper.replace('.', "_").to_uppercase();
             self.set_last_event(EgEvent::new(&format!("{key}_NOT_FOUND")));
         }
 
@@ -635,10 +631,8 @@ impl Editor {
             params.add(ops);
         }
 
-        if let Some(jvec) = self.request(&method, params)? {
-            if let EgValue::Array(vec) = jvec {
-                return Ok(vec);
-            }
+        if let Some(EgValue::Array(vec)) = self.request(&method, params)? {
+            return Ok(vec);
         }
 
         Err(format!("Unexpected response to method {method}").into())
@@ -647,7 +641,7 @@ impl Editor {
     /// Update an object.
     pub fn update(&mut self, object: EgValue) -> EgResult<()> {
         if !self.has_xact_id() {
-            Err(format!("Transaction required for UPDATE"))?;
+            return Err("Transaction required for UPDATE".into());
         }
 
         let fmapper = self.get_fieldmapper(&object)?;
@@ -657,7 +651,7 @@ impl Editor {
         // Update calls return the pkey of the object on success,
         // nothing on error.
         if self.request(&method, object)?.is_none() {
-            Err(format!("Update returned no response"))?;
+            return Err("Update returned no response".into());
         }
 
         self.has_pending_changes = true;
@@ -668,7 +662,7 @@ impl Editor {
     /// Returns the newly created object.
     pub fn create(&mut self, object: EgValue) -> EgResult<EgValue> {
         if !self.has_xact_id() {
-            Err(format!("Transaction required for CREATE"))?;
+            return Err("Transaction required for CREATE".into());
         }
 
         let fmapper = self.get_fieldmapper(&object)?;
@@ -687,7 +681,7 @@ impl Editor {
 
             Ok(resp)
         } else {
-            Err(format!("Create returned no response").into())
+            Err("Create returned no response".into())
         }
     }
 
@@ -696,7 +690,7 @@ impl Editor {
     /// Response is the PKEY value as a JsonValue.
     pub fn delete(&mut self, object: EgValue) -> EgResult<EgValue> {
         if !self.has_xact_id() {
-            Err(format!("Transaction required for DELETE"))?;
+            return Err("Transaction required for DELETE".into());
         }
 
         let fmapper = self.get_fieldmapper(&object)?;
@@ -707,7 +701,7 @@ impl Editor {
             self.has_pending_changes = true;
             Ok(resp)
         } else {
-            Err(format!("Create returned no response").into())
+            Err("Create returned no response".into())
         }
     }
 

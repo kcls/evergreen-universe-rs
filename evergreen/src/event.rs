@@ -312,7 +312,7 @@ impl EgEvent {
             }
         }
 
-        if ad_hoc.len() > 0 {
+        if !ad_hoc.is_empty() {
             evt.ad_hoc = Some(ad_hoc);
         }
 

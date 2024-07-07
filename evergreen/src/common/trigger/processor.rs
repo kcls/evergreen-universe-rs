@@ -91,7 +91,7 @@ impl<'a> Processor<'a> {
         let query = eg::hash! {"id": event_ids};
         let mut jevents = editor.search("atev", query)?;
 
-        if jevents.len() == 0 {
+        if jevents.is_empty() {
             return Err(format!("No such events: {event_ids:?}").into());
         }
 
@@ -118,7 +118,7 @@ impl<'a> Processor<'a> {
             }
         }
 
-        if valid_events.len() == 0 {
+        if valid_events.is_empty() {
             // No valid events to react
             return Ok(());
         }
@@ -175,13 +175,13 @@ impl<'a> Processor<'a> {
         let group_field: String;
         if let Some(gfield) = self.group_field() {
             // If there is a group field path, flesh it as well.
-            let mut gfield: Vec<&str> = gfield.split(".").collect();
+            let mut gfield: Vec<&str> = gfield.split('.').collect();
 
             // However, drop the final part which is a field name
             // and does not need to be fleshed.
             gfield.pop();
 
-            if gfield.len() > 0 {
+            if !gfield.is_empty() {
                 group_field = gfield.join(".");
                 paths.push(&group_field);
             }
@@ -249,7 +249,7 @@ impl<'a> Processor<'a> {
         let mut atev = self
             .editor
             .retrieve("atev", event.id())?
-            .ok_or_else(|| format!("Our event disappeared from the DB?"))?;
+            .ok_or_else(|| "Our event disappeared from the DB?".to_string())?;
 
         if let Some(err) = error_text {
             let mut output = eg::hash! {
@@ -327,7 +327,7 @@ impl<'a> Processor<'a> {
 
         let mut obj = event.target();
 
-        for part in gfield_path.split(".") {
+        for part in gfield_path.split('.') {
             obj = &obj[part];
         }
 

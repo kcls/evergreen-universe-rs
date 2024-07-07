@@ -37,7 +37,7 @@ pub fn verify_migrated_password(
 
     let salt_list = e.json_query(query)?;
 
-    if let Some(hash) = salt_list.get(0) {
+    if let Some(hash) = salt_list.first() {
         if let Some(salt) = hash["actor.get_salt"].as_str() {
             let combined = format!("{}{}", salt, pass_hash);
             let digested = format!("{:x}", md5::compute(combined));
@@ -69,10 +69,12 @@ pub fn verify_password(
 
     let verify = e.json_query(query)?;
 
-    if let Some(resp) = verify.get(0) {
+    if let Some(resp) = verify.first() {
         Ok(resp["actor.verify_passwd"].boolish())
     } else {
-        Err(format!("actor.verify_passwd failed to return a response").into())
+        Err("actor.verify_passwd failed to return a response"
+            .to_string()
+            .into())
     }
 }
 

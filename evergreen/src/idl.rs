@@ -91,10 +91,10 @@ pub enum DataType {
 
 impl DataType {
     pub fn is_numeric(&self) -> bool {
-        match *self {
-            Self::Id | Self::Int | Self::Float | Self::Money | Self::OrgUnit => true,
-            _ => false,
-        }
+        matches!(
+            *self,
+            Self::Id | Self::Int | Self::Float | Self::Money | Self::OrgUnit
+        )
     }
 }
 
@@ -241,7 +241,7 @@ impl Link {
     }
     pub fn map(&self) -> Option<&str> {
         if let Some(map) = self.map.as_ref() {
-            if map == "" || map == " " {
+            if map.is_empty() || map == " " {
                 None
             } else {
                 self.map.as_deref()
@@ -283,7 +283,7 @@ impl Class {
     }
     pub fn pkey_field(&self) -> Option<&Field> {
         if let Some(pk) = self.pkey() {
-            self.fields().values().filter(|f| f.name().eq(pk)).next()
+            self.fields().values().find(|f| f.name().eq(pk))
         } else {
             None
         }
@@ -330,7 +330,7 @@ impl Class {
     /// Vec of non-virutal fields.
     pub fn real_fields(&self) -> Vec<&Field> {
         let mut fields: Vec<&Field> = Vec::new();
-        for (_, field) in self.fields().into_iter() {
+        for (_, field) in self.fields().iter() {
             if !field.is_virtual() {
                 fields.push(field);
             }
@@ -360,9 +360,7 @@ impl Class {
     pub fn has_real_field(&self, field: &str) -> bool {
         self.fields()
             .values()
-            .filter(|f| f.name().eq(field) && !f.is_virtual())
-            .next()
-            .is_some()
+            .any(|f| f.name().eq(field) && !f.is_virtual())
     }
 
     pub fn has_field(&self, field: &str) -> bool {
@@ -372,8 +370,7 @@ impl Class {
     pub fn get_real_field(&self, field: &str) -> Option<&Field> {
         self.fields()
             .values()
-            .filter(|f| f.name().eq(field) && !f.is_virtual())
-            .next()
+            .find(|f| f.name().eq(field) && !f.is_virtual())
     }
 }
 
@@ -421,7 +418,7 @@ impl Parser {
         let p = Parser::parse_string(&xml)?;
 
         if GLOBAL_IDL.set(p).is_err() {
-            return Err(format!("Cannot initialize IDL more than once").into());
+            return Err("Cannot initialize IDL more than once".into());
         }
 
         Ok(())
@@ -461,15 +458,13 @@ impl Parser {
             None => name.to_string(),
         };
 
-        let tablename = match node.attribute((OILS_NS_PERSIST, "tablename")) {
-            Some(v) => Some(v.to_string()),
-            None => None,
-        };
-
-        let fieldmapper = match node.attribute((OILS_NS_OBJ, "fieldmapper")) {
-            Some(v) => Some(v.to_string()),
-            None => None,
-        };
+        let tablename = node
+            .attribute((OILS_NS_PERSIST, "tablename"))
+            .map(|v| v.to_string());
+        let fieldmapper = node
+            .attribute((OILS_NS_OBJ, "fieldmapper"))
+            .map(|v| v.to_string());
+        let controller = node.attribute("controller").map(|v| v.to_string());
 
         let field_safe = match node.attribute((OILS_NS_PERSIST, "field_safe")) {
             Some(v) => v.to_lowercase().eq("true"),
@@ -479,11 +474,6 @@ impl Parser {
         let read_only = match node.attribute((OILS_NS_PERSIST, "readonly")) {
             Some(v) => v.to_lowercase().eq("true"),
             None => false,
-        };
-
-        let controller = match node.attribute("controller") {
-            Some(v) => Some(v.to_string()),
-            None => None,
         };
 
         let is_virtual: bool = match node.attribute((OILS_NS_PERSIST, "virtual")) {
@@ -514,10 +504,9 @@ impl Parser {
             .filter(|n| n.node_type() == roxmltree::NodeType::Element)
         {
             if child.tag_name().name() == "fields" {
-                class.pkey = match child.attribute((OILS_NS_PERSIST, "primary")) {
-                    Some(v) => Some(v.to_string()),
-                    None => None,
-                };
+                class.pkey = child
+                    .attribute((OILS_NS_PERSIST, "primary"))
+                    .map(|v| v.to_string());
 
                 for field_node in child
                     .children()
@@ -615,10 +604,7 @@ impl Parser {
             None => RelType::Unset,
         };
 
-        let map = match node.attribute("map") {
-            Some(s) => Some(s.to_string()),
-            None => None,
-        };
+        let map = node.attribute("map").map(|v| v.to_string());
 
         let field = match node.attribute("field") {
             Some(v) => v.to_string(),
@@ -678,7 +664,7 @@ impl Parser {
         for path in paths {
             let mut idl_class = base_idl_class;
 
-            for (idx, fieldname) in path.split(".").enumerate() {
+            for (idx, fieldname) in path.split('.').enumerate() {
                 let cname = idl_class.classname();
 
                 let link_field = idl_class
