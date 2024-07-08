@@ -54,8 +54,8 @@ pub struct SampleData {
     pub last_xact_id: Option<i64>,
 }
 
-impl SampleData {
-    pub fn new() -> SampleData {
+impl Default for SampleData {
+    fn default() -> Self {
         SampleData {
             acn_creator: ACN_CREATOR,
             acn_record: ACN_RECORD,
@@ -69,6 +69,12 @@ impl SampleData {
             au_ident_type: AU_IDENT_TYPE,
             last_xact_id: None,
         }
+    }
+}
+
+impl SampleData {
+    pub fn new() -> SampleData {
+        Default::default()
     }
 
     pub fn create_default_acn(&self, e: &mut Editor) -> EgResult<EgValue> {
@@ -122,7 +128,7 @@ impl SampleData {
             eg::hash! {barcode: self.acp_barcode.to_string(), deleted: "f"},
         )?
         .pop()
-        .ok_or_else(|| format!("Cannot find default copy").into())
+        .ok_or_else(|| "Cannot find default copy".into())
     }
 
     pub fn delete_default_acp(&self, e: &mut Editor) -> EgResult<()> {
@@ -259,7 +265,7 @@ impl SampleData {
     pub fn delete_default_au(&self, e: &mut Editor) -> EgResult<()> {
         let cards = e.search("ac", eg::hash! {barcode: self.au_barcode.to_string()})?;
 
-        if let Some(ac) = cards.get(0) {
+        if let Some(ac) = cards.first() {
             // Purge the user, attached card, and any other data
             // linked to the user.
             let query = eg::hash! {

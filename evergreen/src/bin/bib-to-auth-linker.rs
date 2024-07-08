@@ -383,7 +383,7 @@ impl BibLinker {
 
     fn find_potential_auth_matches(
         &mut self,
-        controlled_fields: &Vec<ControlledField>,
+        controlled_fields: &[ControlledField],
         bib_field: &marc::Field,
     ) -> Result<Vec<i64>, String> {
         let bib_tag = bib_field.tag();
@@ -391,7 +391,7 @@ impl BibLinker {
 
         let controlled: Vec<&ControlledField> = controlled_fields
             .iter()
-            .filter(|cf| &cf.bib_tag == bib_tag)
+            .filter(|cf| cf.bib_tag == bib_tag)
             .collect();
 
         if controlled.is_empty() {
@@ -405,7 +405,7 @@ impl BibLinker {
         let mut searches: Vec<(&str, &str)> = Vec::new();
 
         for bib_sf in bib_field.subfields() {
-            if controlled.iter().any(|cf| &cf.subfield == bib_sf.code()) {
+            if controlled.iter().any(|cf| cf.subfield == bib_sf.code()) {
                 searches.push((bib_sf.code(), bib_sf.content()));
             }
         }
@@ -527,7 +527,7 @@ impl BibLinker {
         &mut self,
         rec_id: i64,
         bre: EgValue,
-        control_fields: &Vec<ControlledField>,
+        control_fields: &[ControlledField],
         record: &mut marc::Record,
     ) -> Result<(), String> {
         log::info!("Processing record {rec_id}");

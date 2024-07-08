@@ -546,11 +546,11 @@ fn add_items(
     con: &mut DatabaseConnection,
     ops: &ExportOptions,
     record: &mut Record,
-    items_query: &String,
+    items_query: &str,
 ) -> Result<(), String> {
     record.remove_fields(HOLDINGS_SUBFIELD);
 
-    for row in con.client().query(&items_query[..], &[&record_id]).unwrap() {
+    for row in con.client().query(items_query, &[&record_id]).unwrap() {
         let mut field = marc::Field::new(HOLDINGS_SUBFIELD)?;
         field.set_ind1("4")?;
 

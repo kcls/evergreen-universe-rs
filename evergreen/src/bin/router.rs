@@ -430,9 +430,8 @@ impl Router {
         // When removing the last service from a remote domain, remove
         // the domain entry as a whole.
         let mut rem_pos_op: Option<usize> = None;
-        let mut idx = 0;
 
-        for r_domain in &mut self.remote_domains {
+        for (idx, r_domain) in self.remote_domains.iter_mut().enumerate() {
             if r_domain.domain().eq(domain) {
                 r_domain.remove_service(service, address);
                 if r_domain.services.is_empty() {
@@ -442,7 +441,6 @@ impl Router {
                 }
                 break;
             }
-            idx += 1;
         }
 
         if let Some(pos) = rem_pos_op {

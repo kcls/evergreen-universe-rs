@@ -470,7 +470,7 @@ impl Worker {
 
         // Clone the method since we have mutable borrows below.  Note
         // this is the method definition, not the param-laden request.
-        let mut method_def = self.methods.get(&api_name).map(|m| m.clone());
+        let mut method_def = self.methods.get(&api_name).cloned();
 
         if method_def.is_none() {
             // Atomic methods are not registered/published in advance
@@ -502,7 +502,7 @@ impl Worker {
 
         // Make sure the number of params sent by the caller matches the
         // parameter count for the method.
-        if !ParamCount::matches(&pcount, param_count as u8) {
+        if !ParamCount::matches(pcount, param_count as u8) {
             return self.reply_bad_request(&format!(
                 "Invalid param count sent: method={} sent={} needed={}",
                 api_name, param_count, &pcount,

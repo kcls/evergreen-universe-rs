@@ -102,12 +102,11 @@ fn create_sql(options: &IngestOptions) -> String {
         filter += &format!(" AND id < {}", options.max_id);
     }
 
-    let order_by;
-    if options.newest_first {
-        order_by = "ORDER BY create_date DESC, id DESC";
+    let order_by = if options.newest_first {
+        "ORDER BY create_date DESC, id DESC"
     } else {
-        order_by = "ORDER BY id";
-    }
+        "ORDER BY id"
+    };
 
     format!("{select} {filter} {order_by}")
 }
@@ -231,21 +230,18 @@ fn process_batch(options: IngestOptions, mut connection: DatabaseConnection, ids
 fn run_serialized_updates(
     options: &IngestOptions,
     connection: &mut DatabaseConnection,
-    ids: &Vec<i64>,
+    ids: &[i64],
     sql: &str,
 ) {
     // We can't create the statement until we are connected.
     let mut stmt: Option<pg::Statement> = None;
 
-    let mut counter: usize = 0;
-    for id in ids {
+    for (counter, id) in ids.iter().enumerate() {
         if counter % options.batch_size == 0 {
             connection.reconnect().unwrap();
             stmt = Some(connection.client().prepare(sql).unwrap());
             log::info!("Browse has processed {counter} records");
         }
-
-        counter += 1;
 
         if let Err(e) = connection.client().query(stmt.as_ref().unwrap(), &[id]) {
             log::error!("Error with browse index for record {id}: {e}");
@@ -256,7 +252,7 @@ fn run_serialized_updates(
 /// Reingest browse data for the full record data set.
 ///
 /// This occurs in the main thread without any parallelification.
-fn reingest_browse(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &Vec<i64>) {
+fn reingest_browse(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &[i64]) {
     log::debug!("Starting reingest_browse()");
 
     let sql = r#"
@@ -272,7 +268,7 @@ fn reingest_browse(options: &IngestOptions, connection: &mut DatabaseConnection,
     run_serialized_updates(options, connection, ids, sql);
 }
 
-fn do_search(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &Vec<i64>) {
+fn do_search(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &[i64]) {
     log::debug!("Starting do_search()");
 
     let sql = r#"
@@ -291,7 +287,7 @@ fn do_search(options: &IngestOptions, connection: &mut DatabaseConnection, ids: 
 /// Reingest browse data for the full record data set.
 ///
 /// This occurs in the main thread without any parallelification.
-fn rebuild_rmsr(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &Vec<i64>) {
+fn rebuild_rmsr(options: &IngestOptions, connection: &mut DatabaseConnection, ids: &[i64]) {
     log::debug!("Starting rebuild_rmsr()");
 
     let sql = r#"SELECT reporter.simple_rec_update($1)"#;

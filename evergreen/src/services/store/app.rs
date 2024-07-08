@@ -62,8 +62,7 @@ impl RsStoreApplication {
         for fieldmapper in classes
             .filter(|c| !c.is_virtual())
             .filter(cfilter)
-            .filter(|c| c.fieldmapper().is_some())
-            .map(|c| c.fieldmapper().unwrap())
+            .filter_map(|c| c.fieldmapper())
             .map(|fm| fm.replace("::", "."))
         {
             for mtype in DIRECT_METHODS {

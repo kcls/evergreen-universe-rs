@@ -428,16 +428,15 @@ impl GatewayHandler {
                     let jval = json::parse(&v)
                         .map_err(|e| format!("Cannot parse parameter: {e} : {v}"))?;
 
-                    let val;
-                    if format.is_hash() {
+                    let val = if format.is_hash() {
                         // Caller is sending flat-hash parameters.
                         // Translate them into Fieldmapper parameters
                         // before relaying them to opensrf.
-                        val = EgValue::from_classed_json_hash(jval)?;
+                        EgValue::from_classed_json_hash(jval)?
                     } else {
                         // Caller is sending array-based Fieldmapper IDL value.
-                        val = EgValue::from_json_value(jval)?;
-                    }
+                        EgValue::from_json_value(jval)?
+                    };
 
                     params.push(val);
                 }

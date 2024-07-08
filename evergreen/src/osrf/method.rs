@@ -156,7 +156,7 @@ pub struct StaticMethodDef {
 
 impl StaticMethodDef {
     pub fn name(&self) -> &str {
-        &self.name
+        self.name
     }
     pub fn param_count(&self) -> &ParamCount {
         &self.param_count
@@ -185,15 +185,15 @@ impl StaticMethodDef {
 
         let mut m = MethodDef::new(
             &format!("{}.{}", api_prefix, self.name()),
-            self.param_count().clone(),
+            *self.param_count(),
             self.handler,
         );
 
-        if params.len() > 0 {
+        if !params.is_empty() {
             m.params = Some(params);
         }
 
-        if self.desc.len() > 0 {
+        if !self.desc.is_empty() {
             m.desc = Some(self.desc.to_string());
         }
 
@@ -282,7 +282,7 @@ impl MethodDef {
 
     /// Produces e.g. "foo.bar.baz('param1', 'param2')"
     pub fn to_summary_string(&self) -> String {
-        let mut s = format!("{}", self.name());
+        let mut s = self.name().to_string();
 
         match self.param_count {
             ParamCount::Zero => {}
@@ -305,9 +305,8 @@ impl MethodDef {
             s += "..";
         }
 
-        match self.param_count {
-            ParamCount::AtLeast(_) => s += ",..",
-            _ => {}
+        if let ParamCount::AtLeast(_) = self.param_count {
+            s += ",..";
         }
 
         match self.param_count {

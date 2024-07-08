@@ -21,6 +21,11 @@ impl PaymentResult {
     }
 }
 
+struct PaymentParams {
+    pay_type: PayType,
+    payments: Vec<(i64, f64)>,
+}
+
 impl Session {
     pub fn handle_payment(&mut self, msg: sip2::Message) -> EgResult<sip2::Message> {
         let patron_barcode = match msg.get_field_value("AA") {
@@ -99,11 +104,10 @@ impl Session {
         self.apply_payments(
             &user,
             &mut result,
-            pay_type,
+            PaymentParams { pay_type, payments },
             terminal_xact_op,
             check_number_op,
             register_login_op,
-            payments,
         )?;
 
         Ok(self.compile_payment_response(&result))
@@ -231,12 +235,14 @@ impl Session {
         &mut self,
         user: &EgValue,
         result: &mut PaymentResult,
-        pay_type: PayType,
+        params: PaymentParams,
         terminal_xact_op: Option<&str>,
         check_number_op: Option<&str>,
         register_login_op: Option<&str>,
-        payments: Vec<(i64, f64)>,
     ) -> EgResult<()> {
+        let pay_type = params.pay_type;
+        let payments = &params.payments;
+
         log::info!("{self} applying payments: {payments:?}");
 
         // Add the register login to the payment note if present.

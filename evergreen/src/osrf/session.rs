@@ -377,7 +377,7 @@ impl ClientSessionInternal {
                 // Compile the collected JSON chunks into a single value,
                 // which is the final response value.
                 let jval = json::parse(&buf)
-                    .or_else(|e| Err(format!("Error reconstituting partial message: {e}")))?;
+                    .map_err(|e| format!("Error reconstituting partial message: {e}"))?;
 
                 // Avoid exiting with an error on receipt of invalid data
                 // from the network.  See also Bus::recv().
@@ -402,11 +402,10 @@ impl ClientSessionInternal {
         let trace = msg.thread_trace();
 
         if let Payload::Status(stat) = msg.payload() {
-            self.unpack_status_message(trace, timer, &stat)
-                .map_err(|e| {
-                    self.reset();
-                    e
-                })
+            self.unpack_status_message(trace, timer, stat).map_err(|e| {
+                self.reset();
+                e
+            })
         } else {
             self.reset();
             Err(format!("{self} unexpected response for request {trace}: {msg:?}").into())
@@ -441,7 +440,7 @@ impl ClientSessionInternal {
             }
             _ => {
                 self.reset();
-                return Err(format!("{self} request {trace} failed: {}", statmsg).into());
+                Err(format!("{self} request {trace} failed: {}", statmsg).into())
             }
         }
     }
@@ -493,7 +492,7 @@ impl ClientSessionInternal {
                 .send(tmsg)?;
         } else {
             self.reset();
-            return Err(format!("We are connected, but have no worker_addr()").into());
+            return Err("We are connected, but have no worker_addr()".into());
         }
 
         Ok(trace)
@@ -535,7 +534,7 @@ impl ClientSessionInternal {
             Ok(())
         } else {
             self.reset();
-            Err(format!("CONNECT timed out").into())
+            Err("CONNECT timed out".into())
         }
     }
 
@@ -690,7 +689,7 @@ impl MultiSession {
     /// May mark additional requests as complete as a side effect.
     pub fn complete(&mut self) -> bool {
         self.remove_completed();
-        self.requests.len() == 0
+        self.requests.is_empty()
     }
 
     /// Wait up to `timeout` seconds for a response to arrive for any
@@ -721,12 +720,7 @@ impl MultiSession {
         // drained.
         let test = |r: &Request| r.exhausted();
 
-        loop {
-            let pos = match self.requests.iter().position(test) {
-                Some(p) => p,
-                None => break,
-            };
-
+        while let Some(pos) = self.requests.iter().position(test) {
             self.requests.remove(pos);
         }
     }

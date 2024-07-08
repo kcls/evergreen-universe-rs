@@ -82,7 +82,7 @@ pub fn dispatch_sip_request(
                 return session.respond_complete(value);
             }
 
-            return Err(format!("SIP Session not found: {seskey}"))?;
+            return Err(format!("SIP Session not found: {seskey}").into());
         }
     };
 

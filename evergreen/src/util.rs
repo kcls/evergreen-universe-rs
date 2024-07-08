@@ -32,7 +32,7 @@ pub fn thread_id() -> u64 {
         }
     }
 
-    return 0;
+    0
 }
 
 /// Returns a string of random numbers of the requested length
@@ -155,7 +155,7 @@ impl Timer {
 /// let s = util::stringify_params(method, &params, &log_protect);
 /// assert_eq!(s.as_str(), util::REDACTED_PARAMS_STR);
 /// ```
-pub fn stringify_params(method: &str, params: &Vec<EgValue>, log_protect: &Vec<String>) -> String {
+pub fn stringify_params(method: &str, params: &[EgValue], log_protect: &[String]) -> String {
     // Check if the method should be protected
     let is_protected = log_protect.iter().any(|m| method.starts_with(m));
 
@@ -181,9 +181,8 @@ pub fn stringify_params(method: &str, params: &Vec<EgValue>, log_protect: &Vec<S
 ///
 pub fn pg_unpack_int_array(array: &str) -> Vec<i64> {
     array
-        .replace("{", "")
-        .replace("}", "")
-        .split(",")
+        .replace(['{', '}'], "")
+        .split(',')
         .filter_map(|s| {
             // We only care about int-ish things.
             match s.parse::<i64>() {
@@ -193,7 +192,7 @@ pub fn pg_unpack_int_array(array: &str) -> Vec<i64> {
         })
         .collect::<HashSet<i64>>() // uniquify
         .iter()
-        .map(|v| *v) // &i64
+        .copied()
         .collect::<Vec<i64>>()
 }
 
@@ -235,8 +234,8 @@ pub fn fpsum(a: f64, b: f64) -> f64 {
 pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
     match action {
         "check" => match Path::new(path).try_exists() {
-            Ok(b) => return Ok(b),
-            Err(e) => return Err(e.to_string().into()),
+            Ok(b) => Ok(b),
+            Err(e) => Err(e.to_string().into()),
         },
         "create" => {
             // create() truncates.  create_new() is still experimental.
@@ -247,15 +246,15 @@ pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
             }
 
             match fs::File::create(path) {
-                Ok(_) => return Ok(true),
-                Err(e) => return Err(e.to_string().into()),
+                Ok(_) => Ok(true),
+                Err(e) => Err(e.to_string().into()),
             }
         }
         "delete" => match fs::remove_file(path) {
-            Ok(_) => return Ok(true),
-            Err(e) => return Err(e.to_string().into()),
+            Ok(_) => Ok(true),
+            Err(e) => Err(e.to_string().into()),
         },
-        _ => return Err(format!("Invalid lockfile action: {action}").into()),
+        _ => Err(format!("Invalid lockfile action: {action}").into()),
     }
 }
 
@@ -301,25 +300,25 @@ pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<Tcp
     let bind = format!("{address}:{port}");
 
     let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
-        .or_else(|e| Err(format!("Socket::new() failed with {e}")))?;
+        .map_err(|e| format!("Socket::new() failed with {e}"))?;
 
     // When we stop/start the service, the address may briefly linger
     // from open (idle) client connections.
     socket
         .set_reuse_address(true)
-        .or_else(|e| Err(format!("Error setting reuse address: {e}")))?;
+        .map_err(|e| format!("Error setting reuse address: {e}"))?;
 
     let address: SocketAddr = bind
         .parse()
-        .or_else(|e| Err(format!("Error parsing listen address: {bind}: {e}")))?;
+        .map_err(|e| format!("Error parsing listen address: {bind}: {e}"))?;
 
     socket
         .bind(&address.into())
-        .or_else(|e| Err(format!("Error binding to address: {bind}: {e}")))?;
+        .map_err(|e| format!("Error binding to address: {bind}: {e}"))?;
 
     socket
         .listen(CONNECT_TCP_BACKLOG)
-        .or_else(|e| Err(format!("Error listending on socket {bind}: {e}")))?;
+        .map_err(|e| format!("Error listending on socket {bind}: {e}"))?;
 
     // We need a read timeout so we can wake periodically to check
     // for shutdown signals.
@@ -327,7 +326,7 @@ pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<Tcp
 
     socket
         .set_read_timeout(Some(polltime))
-        .or_else(|e| Err(format!("Error setting socket read_timeout: {e}")))?;
+        .map_err(|e| format!("Error setting socket read_timeout: {e}"))?;
 
     Ok(socket.into())
 }

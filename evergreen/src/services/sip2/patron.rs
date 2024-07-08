@@ -829,7 +829,7 @@ impl Session {
         Ok(())
     }
 
-    fn penalties_contain(&self, penalty_id: i64, penalties: &Vec<EgValue>) -> EgResult<bool> {
+    fn penalties_contain(&self, penalty_id: i64, penalties: &[EgValue]) -> EgResult<bool> {
         for pen in penalties.iter() {
             let pen_id = pen.id()?;
             if pen_id == penalty_id {

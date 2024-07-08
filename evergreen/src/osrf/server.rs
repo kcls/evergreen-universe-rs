@@ -110,16 +110,12 @@ impl Server {
         server.listen()
     }
 
-    fn app(&self) -> &Box<dyn app::Application> {
-        &self.application
-    }
-
     fn app_mut(&mut self) -> &mut Box<dyn app::Application> {
         &mut self.application
     }
 
     fn service(&self) -> &str {
-        self.app().name()
+        self.application.name()
     }
 
     fn next_worker_id(&mut self) -> u64 {
@@ -141,7 +137,7 @@ impl Server {
         let methods = self.methods.as_ref().unwrap().clone();
         let to_parent_tx = self.to_parent_tx.clone();
         let service = self.service().to_string();
-        let factory = self.app().worker_factory();
+        let factory = self.application.worker_factory();
         let sig_tracker = self.sig_tracker.clone();
 
         log::trace!("server: spawning a new worker {worker_id}");
@@ -419,7 +415,7 @@ impl Server {
         let timer = util::Timer::new(SHUTDOWN_MAX_WAIT);
         let duration = Duration::from_secs(1);
 
-        while !timer.done() && self.workers.len() > 0 {
+        while !timer.done() && !self.workers.is_empty() {
             let info = format!(
                 "{} shutdown: {} threads; {} active; time remaining {}",
                 self.application.name(),
@@ -573,7 +569,7 @@ fn system_method_introspect(
     session: &mut session::ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let prefix = match method.params().get(0) {
+    let prefix = match method.params().first() {
         Some(p) => p.as_str(),
         None => None,
     };

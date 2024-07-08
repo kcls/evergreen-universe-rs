@@ -15,7 +15,7 @@ impl ApiParams {
     /// Consumes the stored parameters
     pub fn serialize(mut self) -> Vec<JsonValue> {
         let mut arr: Vec<JsonValue> = Vec::new();
-        while self.params.len() > 0 {
+        while !self.params.is_empty() {
             arr.push(self.params.remove(0).into_json_value());
         }
 
@@ -23,7 +23,7 @@ impl ApiParams {
     }
 
     pub fn take_params(&mut self) -> Vec<EgValue> {
-        std::mem::replace(&mut self.params, Vec::new())
+        std::mem::take(&mut self.params)
     }
 
     pub fn params(&self) -> &Vec<EgValue> {

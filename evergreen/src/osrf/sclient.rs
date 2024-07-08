@@ -37,12 +37,12 @@ impl HostSettings {
         if let Some(s) = req.recv_with_timeout(SETTINGS_TIMEOUT)? {
             let sets = HostSettings { settings: s };
             if OSRF_HOST_CONFIG.set(sets).is_err() {
-                return Err(format!("Cannot apply host settings more than once").into());
+                return Err("Cannot apply host settings more than once".into());
             }
 
             Ok(())
         } else {
-            Err(format!("Settings server returned no response!").into())
+            Err("Settings server returned no response!".into())
         }
     }
 
@@ -59,10 +59,10 @@ impl HostSettings {
     pub fn get(slashpath: &str) -> EgResult<&EgValue> {
         let hsets = OSRF_HOST_CONFIG
             .get()
-            .ok_or_else(|| format!("Host settings have not been retrieved"))?;
+            .ok_or_else(|| "Host settings have not been retrieved".to_string())?;
 
         let mut value = hsets.settings();
-        for part in slashpath.split("/") {
+        for part in slashpath.split('/') {
             value = &value[part]; // -> JsonValue::Null if key is not found.
         }
 

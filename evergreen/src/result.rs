@@ -62,9 +62,7 @@ pub enum EgError {
 
 impl std::error::Error for EgError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            _ => None,
-        }
+        None
     }
 }
 

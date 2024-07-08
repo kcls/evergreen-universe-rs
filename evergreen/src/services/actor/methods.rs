@@ -508,11 +508,8 @@ pub fn update_penalties(
     }
 
     let only_penalties = match method.params().get(2) {
-        Some(op) => match op {
-            EgValue::Array(arr) => Some(arr),
-            _ => None,
-        },
-        None => None,
+        Some(EgValue::Array(arr)) => Some(arr),
+        _ => None,
     };
 
     editor.xact_begin()?;
