@@ -10,6 +10,7 @@ use std::env;
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 const DEFAULT_IDL_PATH: &str = "/openils/conf/fm_IDL.xml";
 
+#[derive(Default)]
 pub struct InitOptions {
     /// Skip logging initialization.
     /// Useful if changes to the logging config first.
@@ -24,11 +25,7 @@ pub struct InitOptions {
 
 impl InitOptions {
     pub fn new() -> InitOptions {
-        InitOptions {
-            skip_logging: false,
-            skip_host_settings: false,
-            appname: None,
-        }
+        Default::default()
     }
 }
 
@@ -50,7 +47,7 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
 
     let mut config = builder.build()?;
 
-    if let Ok(_) = env::var("OSRF_LOCALHOST") {
+    if env::var("OSRF_LOCALHOST").is_ok() {
         config.set_hostname("localhost");
     } else if let Ok(v) = env::var("OSRF_HOSTNAME") {
         config.set_hostname(&v);
@@ -113,13 +110,13 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
         }
         logger
             .init()
-            .or_else(|e| Err(format!("Error initializing logger: {e}")))?;
+            .map_err(|e| format!("Error initializing logger: {e}"))?;
     }
 
     // Save the config as the one-true-global-osrf-config
     config.store()?;
 
-    let client = Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}")))?;
+    let client = Client::connect()?;
 
     // We try to get the IDL path from opensrf.settings, but that will
     // fail if we are not connected to a domain running opensrf.settings
@@ -133,7 +130,7 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
 }
 
 pub fn with_options(options: &InitOptions) -> EgResult<Client> {
-    let client = osrf_init(&options)?;
+    let client = osrf_init(options)?;
 
     load_idl()?;
 
@@ -153,13 +150,4 @@ pub fn load_idl() -> EgResult<()> {
     }
 
     idl::Parser::load_file(DEFAULT_IDL_PATH)
-}
-
-/// Create a new connection using pre-compiled context components.  Useful
-/// for spawned threads so they can avoid repetitive processing at
-/// connect time.
-///
-/// The only part that must happen in its own thread is the opensrf connect.
-pub fn init_from_parts() -> EgResult<Client> {
-    Client::connect().or_else(|e| Err(format!("Cannot connect to OpenSRF: {e}").into()))
 }

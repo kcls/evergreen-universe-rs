@@ -587,7 +587,7 @@ impl Router {
             self.primary_domain.domain()
         );
 
-        let addr = BusAddress::from_str(to)?;
+        let addr = BusAddress::parse_str(to)?;
 
         if addr.is_service() {
             self.route_api_request(&addr, tm)
@@ -616,7 +616,7 @@ impl Router {
             return self.handle_router_api_request(tm);
         }
 
-        let client_addr = BusAddress::from_str(tm.from())?;
+        let client_addr = BusAddress::parse_str(tm.from())?;
         let client_domain = client_addr.domain();
 
         let trusted = self
@@ -784,7 +784,7 @@ impl Router {
 
         let from = tm.from();
 
-        let from_addr = BusAddress::from_str(from)?;
+        let from_addr = BusAddress::parse_str(from)?;
 
         log::debug!(
             "Router command received command={} from={}",

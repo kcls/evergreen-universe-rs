@@ -31,11 +31,11 @@ impl Bus {
         log::trace!("Bus::new() connecting to {:?}", info);
 
         let client = redis::Client::open(info)
-            .or_else(|e| Err(format!("Error opening Redis connection: {e}")))?;
+            .map_err(|e| format!("Error opening Redis connection: {e}"))?;
 
         let connection = client
             .get_connection()
-            .or_else(|e| Err(format!("Bus connect error: {e}")))?;
+            .map_err(|e| format!("Bus connect error: {e}"))?;
 
         let username = config.username();
         let domain = config.domain().name();
@@ -149,7 +149,7 @@ impl Bus {
             let mut resp: Vec<String> = self
                 .connection()
                 .blpop(&recipient, timeout as usize)
-                .or_else(|e| Err(format!("Redis blpop error recipient={recipient} : {e}")))?;
+                .map_err(|e| format!("Redis blpop error recipient={recipient}: {e}"))?;
 
             if resp.len() > 1 {
                 // BLPOP returns the name of the popped list and the value.
@@ -204,27 +204,29 @@ impl Bus {
     ) -> EgResult<Option<json::JsonValue>> {
         let mut option: Option<json::JsonValue>;
 
-        if timeout == 0 {
+        match timeout {
             // See if any data is ready now
-            return self.recv_one_value(timeout, recipient);
-        } else if timeout < 0 {
+            0 => return self.recv_one_value(timeout, recipient),
+
             // Keep trying until we have a result.
-            loop {
+            n if n < 0 => loop {
                 option = self.recv_one_value(timeout, recipient)?;
-                if let Some(_) = option {
+                if option.is_some() {
                     return Ok(option);
                 }
-            }
-        }
+            },
 
-        // Keep trying until we have a result or exhaust the timeout.
-        let timer = util::Timer::new(timeout);
+            // Keep trying until we have a result or exhaust the timeout.
+            _ => {
+                let timer = util::Timer::new(timeout);
 
-        while !timer.done() {
-            option = self.recv_one_value(timer.remaining(), recipient)?;
+                while !timer.done() {
+                    option = self.recv_one_value(timer.remaining(), recipient)?;
 
-            if option.is_some() {
-                return Ok(option);
+                    if option.is_some() {
+                        return Ok(option);
+                    }
+                }
             }
         }
 
@@ -269,12 +271,12 @@ impl Bus {
 
         if let Some(jv) = json_op {
             match TransportMessage::from_json_value(jv, self.raw_data_mode) {
-                Ok(v) => return Ok(Some(v)),
+                Ok(v) => Ok(Some(v)),
                 Err(e) => {
                     log::error!("Error translating JSON value into EgValue: {e}");
-                    return Ok(None);
+                    Ok(None)
                 }
-            };
+            }
         } else {
             Ok(None)
         }

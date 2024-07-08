@@ -202,7 +202,7 @@ pub struct ConfigBuilder {
 impl ConfigBuilder {
     pub fn build(self) -> Result<Config, String> {
         if self.client.is_none() {
-            return Err(format!("Config has no client settings"));
+            return Err("Config has no client settings".to_string());
         }
 
         Ok(Config {
@@ -229,17 +229,11 @@ impl ConfigBuilder {
     }
 
     pub fn from_xml_string(xml: &str) -> Result<Self, String> {
-        let doc =
-            roxmltree::Document::parse(xml).or_else(|e| Err(format!("Error parsing XML: {e}")))?;
+        let doc = roxmltree::Document::parse(xml).map_err(|e| format!("Error parsing XML: {e}"))?;
 
-        let conf_node = match doc
-            .root()
-            .children()
-            .filter(|n| n.has_tag_name("config"))
-            .next()
-        {
+        let conf_node = match doc.root().children().find(|n| n.has_tag_name("config")) {
             Some(n) => n,
-            None => Err(format!("Missing 'config' element"))?,
+            None => Err("Missing 'config' element".to_string())?,
         };
 
         let mut builder = ConfigBuilder {
@@ -270,11 +264,7 @@ impl ConfigBuilder {
     }
 
     fn unpack_shared(&mut self, node: &roxmltree::Node) -> Result<(), String> {
-        if let Some(lp) = node
-            .children()
-            .filter(|c| c.has_tag_name("log_protect"))
-            .next()
-        {
+        if let Some(lp) = node.children().find(|c| c.has_tag_name("log_protect")) {
             for ms in lp.children().filter(|c| c.has_tag_name("match_string")) {
                 if let Some(t) = ms.text() {
                     self.log_protect.push(t.to_string());
@@ -288,13 +278,9 @@ impl ConfigBuilder {
     fn unpack_routers(&mut self, node: &roxmltree::Node) -> Result<(), String> {
         for rnode in node.children().filter(|n| n.has_tag_name("router")) {
             // Router client configs are (mostly) nested in a <transport> element.
-            let tnode = match rnode
-                .children()
-                .filter(|c| c.has_tag_name("transport"))
-                .next()
-            {
+            let tnode = match rnode.children().find(|c| c.has_tag_name("transport")) {
                 Some(tn) => tn,
-                None => Err(format!("Routers require a transport config"))?,
+                None => Err("Routers require a transport config".to_string())?,
             };
 
             let mut client = self.unpack_client_node(&tnode)?;
@@ -332,7 +318,7 @@ impl ConfigBuilder {
     }
 
     fn child_node_text(&self, node: &roxmltree::Node, name: &str) -> Option<String> {
-        if let Some(tnode) = node.children().filter(|n| n.has_tag_name(name)).next() {
+        if let Some(tnode) = node.children().find(|n| n.has_tag_name(name)) {
             if let Some(text) = tnode.text() {
                 return Some(text.to_string());
             }
@@ -343,7 +329,7 @@ impl ConfigBuilder {
     fn unpack_opensrf_node(&mut self, node: &roxmltree::Node) -> Result<(), String> {
         let mut client = self.unpack_client_node(node)?;
 
-        if let Some(routers) = node.children().filter(|c| c.has_tag_name("routers")).next() {
+        if let Some(routers) = node.children().find(|c| c.has_tag_name("routers")) {
             for rnode in routers.children().filter(|r| r.has_tag_name("router")) {
                 self.unpack_client_router_node(&mut client, &rnode)?;
             }
@@ -375,11 +361,7 @@ impl ConfigBuilder {
             services: None,
         };
 
-        if let Some(services) = rnode
-            .children()
-            .filter(|n| n.has_tag_name("services"))
-            .next()
-        {
+        if let Some(services) = rnode.children().find(|n| n.has_tag_name("services")) {
             let mut svclist = Vec::new();
 
             for snode in services.children().filter(|n| n.has_tag_name("service")) {
@@ -443,22 +425,22 @@ impl ConfigBuilder {
     }
 
     fn unpack_domain_node(&mut self, node: &roxmltree::Node) -> Result<BusDomain, String> {
-        let domain_name = match node.children().filter(|c| c.has_tag_name("domain")).next() {
+        let domain_name = match node.children().find(|c| c.has_tag_name("domain")) {
             Some(n) => match n.text() {
                 Some(t) => t,
-                None => Err(format!("'domain' node is empty"))?,
+                None => return Err("'domain' node is empty".to_string()),
             },
-            None => match node.children().filter(|c| c.has_tag_name("server")).next() {
+            None => match node.children().find(|c| c.has_tag_name("server")) {
                 Some(n) => match n.text() {
                     Some(t) => t,
-                    None => Err(format!("'server' node is empty"))?,
+                    None => return Err("'server' node is empty".to_string()),
                 },
-                None => Err(format!("Node has no domain or server"))?,
+                None => return Err("Node has no domain or server".to_string()),
             },
         };
 
         let mut port = DEFAULT_BUS_PORT;
-        if let Some(pnode) = node.children().filter(|c| c.has_tag_name("port")).next() {
+        if let Some(pnode) = node.children().find(|c| c.has_tag_name("port")) {
             if let Some(ptext) = pnode.text() {
                 if let Ok(p) = ptext.parse::<u16>() {
                     port = p;
@@ -533,7 +515,7 @@ impl Config {
     /// Returns Err if the Config has already been stored.
     pub fn store(self) -> Result<(), String> {
         if GLOBAL_OSRF_CONFIG.set(self).is_err() {
-            Err(format!("Cannot initialize OpenSRF Config more than once").into())
+            Err("Cannot initialize OpenSRF Config more than once".to_string())
         } else {
             Ok(())
         }
@@ -570,8 +552,7 @@ impl Config {
     pub fn get_router_conf(&self, domain: &str) -> Option<&Router> {
         self.routers
             .iter()
-            .filter(|r| r.client().domain().name().eq(domain))
-            .next()
+            .find(|r| r.client().domain().name().eq(domain))
     }
 
     /// Manually override the OS hostname, e.g. with "localhost"

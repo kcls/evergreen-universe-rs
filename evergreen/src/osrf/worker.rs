@@ -367,7 +367,7 @@ impl Worker {
                 &self.service,
                 tmsg.thread(),
                 0, // thread trace -- updated later as needed
-                BusAddress::from_str(tmsg.from())?,
+                BusAddress::parse_str(tmsg.from())?,
             ));
         }
 

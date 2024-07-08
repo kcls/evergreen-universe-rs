@@ -317,7 +317,7 @@ impl ClientSessionInternal {
             };
 
             // Look Who's Talking (Too?).
-            self.worker_addr = Some(BusAddress::from_str(tmsg.from())?);
+            self.worker_addr = Some(BusAddress::parse_str(tmsg.from())?);
 
             // Toss the messages onto our backlog as we receive them.
             for msg in tmsg.body_mut().drain(..) {

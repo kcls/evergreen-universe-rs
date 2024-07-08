@@ -11,6 +11,7 @@ const REGEX_PUNCTUATION_PATTERN: &str =
     r#"[\p{Pc}\p{Pd}\p{Pe}\p{Pf}\p{Pi}\p{Po}\p{Ps}\p{Sk}\p{Sm}\p{So}\p{Zl}\p{Zp}\p{Zs}]"#;
 
 /// As is, this struct is no longer necessary but retained for backwards compat.
+#[derive(Default)]
 pub struct Normalizer {}
 
 impl Normalizer {
@@ -30,7 +31,7 @@ impl Normalizer {
 
     pub fn new() -> Normalizer {
         Normalizer::init();
-        Normalizer {}
+        Default::default()
     }
 
     pub fn naco_normalize_once(value: &str) -> String {
@@ -65,21 +66,19 @@ impl Normalizer {
         let value = value
             .to_uppercase()
             // Start/End of string characters
-            .replace("\u{0098}", "")
-            .replace("\u{009C}", "")
+            .replace(['\u{0098}', '\u{009C}'], "")
             // Single-quote-like characters
-            .replace("\u{2018}", "'")
-            .replace("\u{2019}", "'")
-            .replace("\u{201B}", "'")
-            .replace("\u{FF07}", "'")
-            .replace("\u{201A}", "'")
+            .replace(
+                ['\u{2018}', '\u{2019}', '\u{201B}', '\u{FF07}', '\u{201A}'],
+                "'",
+            )
             // Double-quote-like characters
-            .replace("\u{201C}", "\"")
-            .replace("\u{201D}", "\"")
-            .replace("\u{201F}", "\"")
-            .replace("\u{FF0C}", "\"")
-            .replace("\u{201E}", "\"")
-            .replace("\u{2E42}", "\"");
+            .replace(
+                [
+                    '\u{201C}', '\u{201D}', '\u{201F}', '\u{FF0C}', '\u{201E}', '\u{2E42}',
+                ],
+                "\"",
+            );
 
         // TODO
         // https://docs.rs/icu_normalizer/1.0.0/icu_normalizer/
@@ -87,34 +86,31 @@ impl Normalizer {
 
         // Additional substitutions
         value
-            .replace("\u{00C6}", "AE")
-            .replace("\u{00DE}", "TH")
-            .replace("\u{0152}", "OE")
-            .replace("\u{0110}", "D")
-            .replace("\u{00D0}", "D")
-            .replace("\u{00D8}", "O")
-            .replace("\u{0141}", "L")
-            .replace("\u{0142}", "l")
-            .replace("\u{2113}", "")
-            .replace("\u{02BB}", "")
-            .replace("\u{02BC}", "")
+            .replace('\u{00C6}', "AE")
+            .replace('\u{00DE}', "TH")
+            .replace('\u{0152}', "OE")
+            .replace(['\u{0110}', '\u{00D0}'], "D")
+            .replace('\u{00D8}', "O")
+            .replace('\u{0141}', "L")
+            .replace('\u{0142}', "l")
+            .replace(['\u{2113}', '\u{02BB}', '\u{02BC}'], "")
     }
 
     fn normalize_codes(&self, value: &str) -> String {
         let mut value = if let Some(reg) = REGEX_CONTROL_CODES.get() {
-            reg.replace_all(&value, "").into_owned()
+            reg.replace_all(value, "").into_owned()
         } else {
             unreachable!();
         };
 
         // Set aside some chars for safe keeping.
         value = value
-            .replace("+", "\u{01}")
-            .replace("&", "\u{02}")
-            .replace("@", "\u{03}")
-            .replace("\u{266D}", "\u{04}")
-            .replace("\u{266F}", "\u{05}")
-            .replace("#", "\u{06}");
+            .replace('+', "\u{01}")
+            .replace('&', "\u{02}")
+            .replace('@', "\u{03}")
+            .replace('\u{266D}', "\u{04}")
+            .replace('\u{266F}', "\u{05}")
+            .replace('#', "\u{06}");
 
         if let Some(reg) = REGEX_PUNCTUATION.get() {
             value = reg.replace_all(&value, " ").into_owned();
@@ -122,12 +118,12 @@ impl Normalizer {
 
         // Now put them back
         value = value
-            .replace("\u{01}", "+")
-            .replace("\u{02}", "&")
-            .replace("\u{03}", "@")
-            .replace("\u{04}", "\u{266D}")
-            .replace("\u{05}", "\u{266F}")
-            .replace("\u{06}", "#");
+            .replace('\u{01}', "+")
+            .replace('\u{02}', "&")
+            .replace('\u{03}', "@")
+            .replace('\u{04}', "\u{266D}")
+            .replace('\u{05}', "\u{266F}")
+            .replace('\u{06}', "#");
 
         // TODO decimal digits
 

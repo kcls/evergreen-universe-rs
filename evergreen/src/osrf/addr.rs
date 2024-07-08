@@ -48,14 +48,14 @@ impl BusAddress {
     /// use evergreen::osrf::addr::BusAddress;
     ///
     /// let addr =
-    ///   BusAddress::from_str("opensrf:client:foobar:localhost:12345")
+    ///   BusAddress::parse_str("opensrf:client:foobar:localhost:12345")
     ///   .expect("Error creating address from string");
     ///
     /// assert!(addr.is_client());
     /// assert_eq!(addr.username(), "foobar");
     /// assert_eq!(addr.domain(), "localhost");
     /// ```
-    pub fn from_str(full: &str) -> Result<Self, String> {
+    pub fn parse_str(full: &str) -> Result<Self, String> {
         let parts: Vec<&str> = full.split(':').collect();
 
         // Every address has 4 well-known parts, so we need that many at minimum.

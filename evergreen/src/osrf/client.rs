@@ -305,18 +305,6 @@ impl Client {
         &self.singleton
     }
 
-    /// Clone an existing Client.
-    ///
-    /// Clones live atop a shared Bus connection and do not need
-    /// to be re-connected.
-    pub fn clone(&self) -> Self {
-        Client {
-            address: self.address().clone(),
-            domain: self.domain().to_string(),
-            singleton: self.singleton().clone(),
-        }
-    }
-
     pub fn address(&self) -> &BusAddress {
         &self.address
     }

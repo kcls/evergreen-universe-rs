@@ -111,14 +111,13 @@ impl From<&str> for MessageType {
 /// let s: &str = evergreen::osrf::message::MessageType::Request.into();
 /// assert_eq!(s, "REQUEST");
 /// ```
-#[rustfmt::skip]
-impl Into<&'static str> for MessageType {
-    fn into(self) -> &'static str {
-        match self {
-            MessageType::Connect    => "CONNECT",
-            MessageType::Request    => "REQUEST",
-            MessageType::Result     => "RESULT",
-            MessageType::Status     => "STATUS",
+impl From<MessageType> for &'static str {
+    fn from(mt: MessageType) -> &'static str {
+        match mt {
+            MessageType::Connect => "CONNECT",
+            MessageType::Request => "REQUEST",
+            MessageType::Result => "RESULT",
+            MessageType::Status => "STATUS",
             MessageType::Disconnect => "DISCONNECT",
             _ => "UNKNOWN",
         }
@@ -199,9 +198,9 @@ impl From<isize> for MessageStatus {
 /// assert_eq!(s, "Continue");
 /// ```
 #[rustfmt::skip]
-impl Into<&'static str> for MessageStatus {
-    fn into(self) -> &'static str {
-        match self {
+impl From<MessageStatus> for &'static str {
+    fn from(ms: MessageStatus) -> &'static str {
+        match ms {
             MessageStatus::Ok                  => "OK",
             MessageStatus::Continue            => "Continue",
             MessageStatus::Complete            => "Request Complete",
@@ -225,7 +224,7 @@ impl fmt::Display for MessageStatus {
 impl MessageStatus {
     pub fn is_4xx(&self) -> bool {
         let num = *self as isize;
-        num >= 400 && num < 500
+        (400..500).contains(&num)
     }
     pub fn is_5xx(&self) -> bool {
         let num = *self as isize;
@@ -322,7 +321,7 @@ impl TransportMessage {
     }
 
     pub fn take_body(&mut self) -> Vec<Message> {
-        std::mem::replace(&mut self.body, Vec::new())
+        std::mem::take(&mut self.body)
     }
 
     pub fn osrf_xid(&self) -> &str {
@@ -361,7 +360,7 @@ impl TransportMessage {
     ///
     /// Returns None if the JSON value cannot be coerced into a TransportMessage.
     pub fn from_json_value(mut json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
-        let err = || format!("Invalid TransportMessage");
+        let err = || "Invalid TransportMessage".to_string();
 
         let to = json_obj["to"].as_str().ok_or_else(err)?;
         let from = json_obj["from"].as_str().ok_or_else(err)?;
@@ -405,7 +404,7 @@ impl TransportMessage {
     pub fn into_json_value(mut self) -> JsonValue {
         let mut body: Vec<JsonValue> = Vec::new();
 
-        while self.body.len() > 0 {
+        while !self.body.is_empty() {
             body.push(self.body.remove(0).into_json_value());
         }
 
@@ -503,7 +502,7 @@ impl Message {
     ///
     /// Returns Err if the JSON value cannot be coerced into a Message.
     pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
-        let err = || format!("Invalid JSON Message");
+        let err = || "Invalid JSON Message".to_string();
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
@@ -655,7 +654,7 @@ impl Result {
     }
 
     pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
-        let err = || format!("Invalid Result message");
+        let err = || "Invalid Result message".to_string();
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
@@ -711,7 +710,7 @@ impl Status {
     }
 
     pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
-        let err = || format!("Invalid Status message");
+        let err = || "Invalid Status message".to_string();
 
         let (msg_class, msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
@@ -764,7 +763,7 @@ impl MethodCall {
 
     /// Create a Method from a JsonValue.
     pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
-        let err = || format!("Invalid MethodCall message");
+        let err = || "Invalid MethodCall message".to_string();
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
 
@@ -772,7 +771,7 @@ impl MethodCall {
 
         let mut params = Vec::new();
         if let JsonValue::Array(mut vec) = msg_hash["params"].take() {
-            while vec.len() > 0 {
+            while !vec.is_empty() {
                 if raw_data_mode {
                     params.push(EgValue::from_json_value_plain(vec.remove(0)));
                 } else {
@@ -801,7 +800,7 @@ impl MethodCall {
     }
 
     pub fn take_params(&mut self) -> Vec<EgValue> {
-        std::mem::replace(&mut self.params, Vec::new())
+        std::mem::take(&mut self.params)
     }
 
     pub fn set_params(&mut self, params: Vec<EgValue>) {
@@ -818,7 +817,7 @@ impl MethodCall {
     pub fn into_json_value(mut self) -> JsonValue {
         let mut params: Vec<JsonValue> = Vec::new();
 
-        while self.params.len() > 0 {
+        while !self.params.is_empty() {
             params.push(self.params.remove(0).into_json_value());
         }
 

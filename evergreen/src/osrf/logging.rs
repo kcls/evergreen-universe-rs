@@ -35,7 +35,7 @@ impl Logger {
     pub fn new(options: &conf::LogOptions) -> Result<Self, String> {
         let file = match options.log_file() {
             Some(f) => f,
-            None => return Err(format!("log_file option required")),
+            None => return Err("log_file option required".to_string()),
         };
 
         let level = match options.log_level() {
@@ -54,9 +54,9 @@ impl Logger {
 
         Ok(Logger {
             logfile: file.clone(),
-            loglevel: level.clone(),
-            facility: facility.clone(),
-            activity_facility: act_facility.clone(),
+            loglevel: *level,
+            facility,
+            activity_facility: act_facility,
             writer: None,
             application: Logger::find_app_name(),
         })
@@ -72,7 +72,7 @@ impl Logger {
         }
 
         eprintln!("Cannot determine executable name.  See set_application()");
-        return "opensrf".to_string();
+        "opensrf".to_string()
     }
 
     pub fn set_application(&mut self, app: &str) {
@@ -129,7 +129,7 @@ impl Logger {
     ///
     /// Essentially copied from the syslog crate.
     fn encode_priority(&self, severity: syslog::Severity) -> syslog::Priority {
-        return self.facility as u8 | severity as u8;
+        self.facility as u8 | severity as u8
     }
 
     pub fn writer() -> Result<UnixDatagram, String> {
@@ -176,7 +176,7 @@ impl Logger {
 
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        &metadata.level().to_level_filter() <= &self.loglevel
+        metadata.level().to_level_filter() <= self.loglevel
     }
 
     fn log(&self, record: &log::Record) {

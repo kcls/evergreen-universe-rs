@@ -80,11 +80,8 @@ impl CacheConnection {
         };
 
         if let Some(value) = result {
-            let obj = json::parse(&value).or_else(|e| {
-                Err(format!(
-                    "Cached JSON parse failure on key {key}: {e} [{value}]"
-                ))
-            })?;
+            let obj = json::parse(&value)
+                .map_err(|e| format!("Cached JSON parse failure on key {key}: {e} [{value}]"))?;
 
             let v = EgValue::try_from(obj)?;
 
