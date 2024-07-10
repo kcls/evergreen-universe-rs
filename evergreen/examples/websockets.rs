@@ -82,6 +82,11 @@ fn run_thread() {
     while counter < REQS_PER_THREAD {
         send_one_request(&mut client, counter);
         counter += 1;
+
+        // Depending on how the const is set above, this comparison
+        // is always true/false.
+        #[allow(clippy::absurd_extreme_comparisons)]
+
         if REQ_PAUSE > 0 {
             thread::sleep(Duration::from_millis(REQ_PAUSE));
         }

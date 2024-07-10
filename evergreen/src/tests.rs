@@ -1,7 +1,6 @@
 use crate::osrf::message::Message;
 use crate::osrf::message::Payload;
 use crate::osrf::message::TransportMessage;
-use json;
 
 const TRANSPORT_MSG_JSON: &str = r#"{
     "to":"my-to",
