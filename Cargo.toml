@@ -8,10 +8,6 @@ members = [
   "sip2-mediator",
   "kcls",
 ]
-exclude = [
-  # Keeping for reference
-  "sip2-server",
-]
 default-members = [
   "mptc",
   "marc",
