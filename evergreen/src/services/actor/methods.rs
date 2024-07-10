@@ -231,7 +231,7 @@ pub fn get_barcodes(
 
     // "actor" barcodes require additional perm checks.
     for user_row in result {
-        let user_id = user_row.id()?;
+        let user_id = user_row.id();
 
         if user_id == requestor_id {
             // We're allowed to know about ourselves.

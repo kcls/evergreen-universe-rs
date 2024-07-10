@@ -15,7 +15,7 @@ impl Session {
     ) -> EgResult<(Option<String>, Option<String>)> {
         let mut resp = (None, None);
 
-        if copy["call_number"].id()? == -1 {
+        if copy["call_number"].id() == -1 {
             if let Some(title) = copy["dummy_title"].as_str() {
                 resp.0 = Some(title.to_string());
             }
@@ -96,7 +96,7 @@ impl Session {
         let mut orgs = self.editor().search("aou", eg::hash! {"shortname": sn})?;
 
         if let Some(org) = orgs.pop() {
-            let id = org.id()?;
+            let id = org.id();
             self.org_cache_mut().insert(id, org);
             return Ok(self.org_cache().get(&id));
         }

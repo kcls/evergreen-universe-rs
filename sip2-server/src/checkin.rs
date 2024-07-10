@@ -550,7 +550,7 @@ impl Session {
         // hold pickup lib may or may not be fleshed here.
         if pickup_lib.is_object() {
             result.destination_loc = Some(pickup_lib["shortname"].as_str().unwrap().to_string());
-            pickup_lib_id = pickup_lib.id()?;
+            pickup_lib_id = pickup_lib.id();
         } else {
             pickup_lib_id = pickup_lib.int()?;
             if let Some(org) = self.org_from_id(pickup_lib_id)? {

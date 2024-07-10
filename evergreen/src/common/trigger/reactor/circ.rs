@@ -10,10 +10,10 @@ impl Processor<'_> {
     pub fn autorenew(&mut self, events: &mut [&mut Event]) -> EgResult<()> {
         let usr = &events[0].target()["usr"];
         // "usr" is either the id itself or a user object with an ID.
-        let patron_id = usr.as_int().unwrap_or(usr.id()?);
+        let patron_id = usr.as_int().unwrap_or(usr.id());
 
         let home_ou = if usr.is_object() {
-            usr["home_ou"].as_int().unwrap_or(usr["home_ou"].id()?)
+            usr["home_ou"].as_int().unwrap_or(usr["home_ou"].id())
         } else {
             // Fetch the patron so we can determine the home or unit
             let patron = self
@@ -40,7 +40,7 @@ impl Processor<'_> {
 
     fn renew_one_circ(&mut self, authtoken: &str, patron_id: i64, event: &Event) -> EgResult<()> {
         let tc = &event.target()["target_copy"];
-        let copy_id = tc.as_int().unwrap_or(tc.id()?);
+        let copy_id = tc.as_int().unwrap_or(tc.id());
 
         log::info!(
             "Auto-Renewing Circ id={} copy={copy_id}",
@@ -132,7 +132,7 @@ impl Processor<'_> {
         };
 
         let target = &event.target()["circ_lib"];
-        let circ_lib = target.as_int().unwrap_or(target.id()?);
+        let circ_lib = target.as_int().unwrap_or(target.id());
 
         // Create the event from the source circ instead of the new
         // circ, since the renewal may have failed.  Fire and do not

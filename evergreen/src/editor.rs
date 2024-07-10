@@ -220,7 +220,7 @@ impl Editor {
     /// ID of the requestor.
     pub fn requestor_id(&self) -> EgResult<i64> {
         if let Some(req) = self.requestor() {
-            req.id()
+            Ok(req.id())
         } else {
             Err("Editor has no requestor".into())
         }
@@ -447,10 +447,7 @@ impl Editor {
     }
 
     fn logtag(&self) -> String {
-        let requestor = match self.requestor() {
-            Some(req) => req.id().unwrap_or(0),
-            _ => 0,
-        };
+        let requestor = self.requestor().map(|r| r.id()).unwrap_or(0);
 
         format!(
             "editor[{}|{}]",

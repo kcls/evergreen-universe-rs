@@ -58,9 +58,9 @@ impl Circulator<'_> {
             .pop()
             .ok_or_else(|| self.editor().die_event())?;
 
-        let circ_id = circ.id()?;
+        let circ_id = circ.id();
         let patron = circ["usr"].take(); // fleshed
-        self.patron_id = patron.id()?;
+        self.patron_id = patron.id();
         self.patron = Some(patron);
 
         // Replace the usr value which was null-ified above w/ take()

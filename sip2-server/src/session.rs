@@ -177,7 +177,7 @@ impl Session {
         let users = self.editor_mut().search("au", search)?;
 
         let user_id = match users.len() > 0 {
-            true => users[0].id()?,
+            true => users[0].id(),
             false => Err(format!("No such user: {ils_username}"))?,
         };
 

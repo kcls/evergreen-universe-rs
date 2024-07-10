@@ -163,7 +163,7 @@ impl Session {
 
         let mut patron = Patron::new(barcode, self.format_user_name(&user));
 
-        patron.id = user.id()?;
+        patron.id = user.id();
         patron.password_verified = self.check_password(patron.id, password_op)?;
 
         if let Some(summary) = self.editor_mut().retrieve("mous", patron.id)? {
@@ -297,7 +297,7 @@ impl Session {
         let is_circ = xact["xact_type"].as_str().unwrap().eq("circulation");
         let last_btype = xact["last_billing_type"].as_str().unwrap(); // required
 
-        let xact_id = xact.id()?;
+        let xact_id = xact.id();
         let balance_owed = xact["balance_owed"].float()?;
 
         let mut title: Option<String> = None;
@@ -499,7 +499,7 @@ impl Session {
     }
 
     fn find_title_for_hold(&mut self, hold: &EgValue) -> EgResult<Option<String>> {
-        let hold_id = hold.id()?;
+        let hold_id = hold.id();
         let bib_link = match self.editor_mut().retrieve("rhrr", hold_id)? {
             Some(l) => l,
             None => return Ok(None), // shouldn't be happen-able
@@ -681,7 +681,7 @@ impl Session {
         let id_hash_list = self.editor_mut().json_query(query)?;
 
         for hash in id_hash_list {
-            let hold_id = hash.id()?;
+            let hold_id = hash.id();
             if unavail {
                 patron.unavail_hold_ids.push(hold_id);
             } else {
@@ -760,7 +760,7 @@ impl Session {
 
     fn penalties_contain(&self, penalty_id: i64, penalties: &Vec<EgValue>) -> EgResult<bool> {
         for pen in penalties.iter() {
-            let pen_id = pen.id()?;
+            let pen_id = pen.id();
             if pen_id == penalty_id {
                 return Ok(true);
             }

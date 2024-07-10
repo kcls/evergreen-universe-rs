@@ -319,5 +319,5 @@ pub fn prev_renewal_chain_summary(
         return Ok(());
     }
 
-    session.respond(circ::summarize_circ_chain(&mut editor, prev_circ[0].id()?)?)
+    session.respond(circ::summarize_circ_chain(&mut editor, prev_circ[0].id())?)
 }

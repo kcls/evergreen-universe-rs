@@ -214,7 +214,7 @@ impl Circulator<'_> {
 
         let copy = self.editor().create(copy)?;
 
-        self.copy_id = copy.id()?;
+        self.copy_id = copy.id();
 
         // Reload a fleshed version of the copy we just created.
         self.load_copy()?;
@@ -283,7 +283,7 @@ impl Circulator<'_> {
     }
 
     fn check_captured_hold(&mut self) -> EgResult<()> {
-        if self.copy()["status"].id()? != C::COPY_STATUS_ON_HOLDS_SHELF {
+        if self.copy()["status"].id() != C::COPY_STATUS_ON_HOLDS_SHELF {
             return Ok(());
         }
 
@@ -305,7 +305,7 @@ impl Circulator<'_> {
             None => return Ok(()),
         };
 
-        if hold["usr"].id()? == self.patron_id {
+        if hold["usr"].id() == self.patron_id {
             self.checkout_is_for_hold = Some(hold);
             return Ok(());
         }
@@ -1173,7 +1173,7 @@ impl Circulator<'_> {
             btype_label = C::BTYPE_LABEL_RENTAL;
         }
 
-        let circ_id = self.circ.as_ref().expect("Circ is Set").id()?;
+        let circ_id = self.circ.as_ref().expect("Circ is Set").id();
 
         let bill = billing::create_bill(
             self.editor(),
@@ -1198,7 +1198,7 @@ impl Circulator<'_> {
     }
 
     fn is_deposit_exempt(&mut self) -> EgResult<bool> {
-        let profile = self.patron.as_ref().unwrap()["profile"].id()?;
+        let profile = self.patron.as_ref().unwrap()["profile"].id();
 
         let groups = self.settings.get_value("circ.deposit.exempt_groups")?;
 
@@ -1208,14 +1208,14 @@ impl Circulator<'_> {
 
         let mut parent_ids = Vec::new();
         for grp in groups.members() {
-            parent_ids.push(grp.id()?);
+            parent_ids.push(grp.id());
         }
 
         self.is_group_descendant(profile, parent_ids.as_slice())
     }
 
     fn is_rental_exempt(&mut self) -> EgResult<bool> {
-        let profile = self.patron.as_ref().unwrap()["profile"].id()?;
+        let profile = self.patron.as_ref().unwrap()["profile"].id();
 
         let groups = self.settings.get_value("circ.rental.exempt_groups")?;
 
@@ -1225,7 +1225,7 @@ impl Circulator<'_> {
 
         let mut parent_ids = Vec::new();
         for grp in groups.members() {
-            parent_ids.push(grp.id()?);
+            parent_ids.push(grp.id());
         }
 
         self.is_group_descendant(profile, parent_ids.as_slice())
@@ -1238,7 +1238,7 @@ impl Circulator<'_> {
         let ancestors = self.editor().json_query(query)?;
         for parent_id in parent_ids {
             for grp in &ancestors {
-                if grp.id()? == *parent_id {
+                if grp.id() == *parent_id {
                     return Ok(true);
                 }
             }
@@ -1273,7 +1273,7 @@ impl Circulator<'_> {
 
         self.check_hold_fulfill_blocks()?;
 
-        let hold_id = hold.id()?;
+        let hold_id = hold.id();
 
         log::info!("{self} fulfilling hold {hold_id}");
 
@@ -1429,7 +1429,7 @@ impl Circulator<'_> {
         // volumes or records.  Apply some additional filtering.
 
         let record_id = self.copy()["call_number"]["record"].int()?;
-        let volume_id = self.copy()["call_number"].id()?;
+        let volume_id = self.copy()["call_number"].id();
 
         for hold in hold_data.iter() {
             let target = hold.target();

@@ -150,7 +150,7 @@ impl Session {
             }
         };
 
-        if sum["usr"].int()? != user.id()? {
+        if sum["usr"].int()? != user.id() {
             log::warn!("{self} Payment transaction {xact_id} does not link to provided user");
             return Ok(Vec::new());
         }
@@ -173,7 +173,7 @@ impl Session {
         let mut payments: Vec<(i64, f64)> = Vec::new();
         let mut patron = Patron::new(&result.patron_barcode, self.format_user_name(user));
 
-        patron.id = user.id()?;
+        patron.id = user.id();
 
         let xacts = self.get_patron_xacts(&patron, None)?; // see patron mod
 
@@ -184,7 +184,7 @@ impl Session {
 
         let mut amount_remaining = pay_amount;
         for xact in xacts {
-            let xact_id = xact.id()?;
+            let xact_id = xact.id();
             let balance_owed = xact["balance_owed"].float()?;
 
             if balance_owed < 0.0 {
@@ -270,7 +270,7 @@ impl Session {
             pay_array.push(sub_array).ok();
         }
 
-        let mut args = eg::hash! {"userid": user.id()?, "payments": pay_array};
+        let mut args = eg::hash! {"userid": user.id(), "payments": pay_array};
 
         match pay_type {
             PayType::Visa | PayType::CreditCard => {

@@ -145,7 +145,7 @@ impl EgValue {
     /// ```
     /// use evergreen::EgValue;
     /// let v = EgValue::parse("{\"id\":123}").expect("Parse OK");
-    /// assert!(v.id().is_ok());
+    /// let _ = v.id(); // panics if bad
     /// if let EgValue::Hash(h) = v {
     ///     assert!(h.get("id").is_some());
     ///     assert!(h.get("id").unwrap().is_number());
@@ -976,20 +976,15 @@ impl EgValue {
 
     /// Returns the numeric ID of this EgValue.
     ///
-    /// Must be a Hash or Blessed with an "id" field and a numeric value.
-    pub fn id(&self) -> EgResult<i64> {
-        // If it's Blessed, verify "id" is a valid field so
-        // the index lookup doesn't panic.
-        if let EgValue::Blessed(ref o) = self {
-            if o.idl_class().has_field("id") {
-                self["id"]
-                    .as_i64()
-                    .ok_or_else(|| format!("{self} has no valid ID"))?;
-            }
-        }
-        self["id"]
-            .as_i64()
-            .ok_or_else(|| format!("{self} has no valid ID").into())
+    /// Must be a Hash or Blessed with an "id" field containing a
+    /// numeric value.
+    ///
+    /// # Panics
+    ///
+    /// If the value in question has no field which may reasonably
+    /// by coerced into a numeric ID value.
+    pub fn id(&self) -> i64 {
+        self["id"].as_i64().unwrap()
     }
 
     /// Returns the idl::Field for the primary key if present.

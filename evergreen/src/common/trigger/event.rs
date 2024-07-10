@@ -84,7 +84,7 @@ impl Event {
         // required field w/ limited set of values
         let state: EventState = source["state"].as_str().unwrap().try_into()?;
 
-        let id = source.id()?;
+        let id = source.id();
         let event_def = source["event_def"].int()?;
 
         let user_data = if let Some(data) = source["user_data"].as_str() {

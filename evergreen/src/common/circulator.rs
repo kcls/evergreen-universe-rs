@@ -352,9 +352,7 @@ impl<'a> Circulator<'a> {
             .as_ref()
             .expect("{self} copy required for copy_status()");
 
-        copy["status"]
-            .id()
-            .expect("Circulator invalid fleshed copy status value")
+        copy["status"].id()
     }
 
     /// Returns the copy circ lib ID.
@@ -466,7 +464,7 @@ impl<'a> Circulator<'a> {
         }
 
         if let Some(c) = self.copy.as_ref() {
-            self.copy_id = c.id()?;
+            self.copy_id = c.id();
             if self.copy_barcode.is_none() {
                 self.copy_barcode = Some(c["barcode"].string()?);
             }
@@ -897,7 +895,7 @@ impl<'a> Circulator<'a> {
 
         circ["usr"] = patron["id"].clone();
 
-        self.patron_id = patron.id()?;
+        self.patron_id = patron.id();
         self.patron = Some(patron);
         self.circ = Some(circ);
 
@@ -927,7 +925,7 @@ impl<'a> Circulator<'a> {
         card["usr"] = patron["id"].clone(); // de-flesh card->user
         patron["card"] = card; // flesh user->card
 
-        self.patron_id = patron.id()?;
+        self.patron_id = patron.id();
         self.patron = Some(patron);
 
         Ok(true)
@@ -947,7 +945,7 @@ impl<'a> Circulator<'a> {
             .retrieve_with_ops("au", patron_id, flesh)?
             .ok_or_else(|| self.editor().die_event())?;
 
-        self.patron_id = patron.id()?;
+        self.patron_id = patron.id();
         self.patron = Some(patron);
 
         Ok(true)

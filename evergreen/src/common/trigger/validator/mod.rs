@@ -154,7 +154,7 @@ impl Processor<'_> {
 
         let pickup_lib = hold["pickup_lib"]
             .as_int()
-            .unwrap_or(hold["pickup_lib"].id()?);
+            .unwrap_or(hold["pickup_lib"].id());
 
         if shelf_lib != pickup_lib {
             return Ok(false);

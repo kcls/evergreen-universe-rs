@@ -44,9 +44,9 @@ pub fn void_bills(
             None => Err(editor.die_event())?,
         };
 
-        let xact_org = xact_org(editor, xact.id()?)?;
+        let xact_org = xact_org(editor, xact.id())?;
         let xact_user = xact["usr"].int()?;
-        let xact_id = xact.id()?;
+        let xact_id = xact.id();
 
         penalty_users.insert((xact_user, xact_org));
 
@@ -178,10 +178,7 @@ pub fn void_or_zero_bills_of_type(
         return Ok(());
     }
 
-    let bill_ids: Vec<i64> = bills
-        .iter()
-        .map(|b| b.id().expect("Billing has ID"))
-        .collect();
+    let bill_ids: Vec<i64> = bills.iter().map(|b| b.id()).collect();
 
     // "lost" settings are checked first for backwards compat /
     // consistency with Perl.
@@ -387,7 +384,7 @@ pub fn bill_payment_map_for_xact(
         let mut my_adjustments: Vec<&mut EgValue> = payments
             .iter_mut()
             .filter(|p| p["payment_type"].as_str().unwrap() == "account_adjustment")
-            .filter(|p| used_adjustments.contains(&p["account_adjustment"].id().unwrap()))
+            .filter(|p| used_adjustments.contains(&p["account_adjustment"].id()))
             .filter(|p| p["account_adjustment"]["billing"] == bill["id"])
             .map(|p| &mut p["account_adjustment"])
             .collect();
@@ -433,7 +430,7 @@ pub fn bill_payment_map_for_xact(
     let mut used_payments: HashSet<i64> = HashSet::new();
     for payment in payments.iter() {
         let map = match maps.iter_mut().find(|m| {
-            m.bill["amount"] == payment["amount"] && !used_payments.contains(&payment.id().unwrap())
+            m.bill["amount"] == payment["amount"] && !used_payments.contains(&payment.id())
         }) {
             Some(m) => m,
             None => continue,
@@ -441,13 +438,13 @@ pub fn bill_payment_map_for_xact(
 
         map.bill["amount"] = EgValue::from(0.0);
         map.payments.push(payment.clone());
-        used_payments.insert(payment.id()?);
+        used_payments.insert(payment.id());
     }
 
     // Remove the used payments from our working list.
     let mut new_payments = Vec::new();
     for pay in payments.drain(0..) {
-        if !used_payments.contains(&pay.id()?) {
+        if !used_payments.contains(&pay.id()) {
             new_payments.push(pay);
         }
     }
@@ -465,7 +462,7 @@ pub fn bill_payment_map_for_xact(
 
         // Loop over remaining unused / unmapped payments.
         for pay in payments.iter_mut() {
-            let pay_id = pay.id()?;
+            let pay_id = pay.id();
 
             if used_payments.contains(&pay_id) {
                 continue;
@@ -907,7 +904,7 @@ pub fn void_or_zero_overdues(
         return Ok(());
     }
 
-    let bill_ids: Vec<i64> = bills.iter().map(|b| b.id().expect("Has ID")).collect();
+    let bill_ids: Vec<i64> = bills.iter().map(|b| b.id()).collect();
 
     let mut settings = Settings::new(editor);
 
@@ -988,7 +985,7 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
         .retrieve_with_ops("acp", copy_id, flesh)?
         .ok_or_else(|| editor.die_event())?;
 
-    let owner = if copy["call_number"].id()? == C::PRECAT_CALL_NUMBER {
+    let owner = if copy["call_number"].id() == C::PRECAT_CALL_NUMBER {
         copy["circ_lib"].int()?
     } else {
         copy["call_number"]["owning_lib"].int()?

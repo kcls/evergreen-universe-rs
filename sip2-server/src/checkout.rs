@@ -218,7 +218,7 @@ impl Session {
             let circ = &evt.payload()["circ"];
 
             if circ.is_object() {
-                result.circ_id = Some(circ.id()?);
+                result.circ_id = Some(circ.id());
                 result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required
@@ -323,7 +323,7 @@ impl Session {
             let circ = &evt.payload()["circ"];
 
             if circ.is_object() {
-                result.circ_id = Some(circ.id()?);
+                result.circ_id = Some(circ.id());
                 result.renewal_remaining = circ["renewal_remaining"].int()?;
 
                 let iso_date = circ["due_date"].as_str().unwrap(); // required

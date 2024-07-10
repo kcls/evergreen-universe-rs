@@ -260,7 +260,7 @@ impl Server {
         let mut map = HashMap::new();
 
         for org in orgs.drain(..) {
-            map.insert(org.id()?, org);
+            map.insert(org.id(), org);
         }
 
         self.org_cache = Some(map);

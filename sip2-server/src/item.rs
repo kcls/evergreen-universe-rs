@@ -72,7 +72,7 @@ impl Session {
             }
         }
 
-        let circ_lib_id = copy["circ_lib"].id()?;
+        let circ_lib_id = copy["circ_lib"].id();
         let circ_lib = copy["circ_lib"]["shortname"].as_str().unwrap(); // required
         let owning_lib = copy["call_number"]["owning_lib"]["shortname"]
             .as_str()
@@ -213,7 +213,7 @@ impl Session {
             }
         }
 
-        let copy_id = copy.id()?;
+        let copy_id = copy.id();
 
         let search = eg::hash! {
             current_copy: copy_id,
@@ -239,7 +239,7 @@ impl Session {
             return Ok(None);
         }
 
-        let copy_id = copy.id()?;
+        let copy_id = copy.id();
 
         let search = eg::hash! {
             target_copy: copy_id,
@@ -304,7 +304,7 @@ impl Session {
             return Ok(None);
         }
 
-        let copy_id = copy.id()?;
+        let copy_id = copy.id();
 
         let search = eg::hash! {
             target_copy: copy_id,

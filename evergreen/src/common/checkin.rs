@@ -280,14 +280,11 @@ impl Circulator<'_> {
 
         let query = eg::hash! {target_copy: EgValue::from(self.copy_id)};
         let parts = self.editor().search("acpm", query)?;
-        let parts = parts
-            .into_iter()
-            .map(|p| p.id().expect("ID Required"))
-            .collect::<HashSet<_>>();
+        let parts = parts.into_iter().map(|p| p.id()).collect::<HashSet<_>>();
 
         let copy_id = self.copy_id;
         let circ_lib = self.circ_lib;
-        let vol_id = self.copy()["call_number"].id()?;
+        let vol_id = self.copy()["call_number"].id();
 
         let hold_data = holds::related_to_copy(
             self.editor(),
@@ -353,7 +350,7 @@ impl Circulator<'_> {
         }
 
         if let Some(transit) = self.transit.as_ref() {
-            let transit_id = transit.id()?;
+            let transit_id = transit.id();
             log::info!(
                 "{self} copy is both checked out and in transit.  Canceling transit {transit_id}"
             );
@@ -601,7 +598,7 @@ impl Circulator<'_> {
         if void {
             // Caller suggests we void.  Verify settings allow it.
             if self.settings.get_value("circ.void_item_deposit")?.boolish() {
-                let bill_id = deposit.id()?;
+                let bill_id = deposit.id();
                 billing::void_bills(self.editor(), &[bill_id], Some("DEPOSIT ITEM RETURNED"))?;
             }
         } else {
@@ -635,7 +632,7 @@ impl Circulator<'_> {
         let req_ws_id = self.editor().requestor_ws_id();
 
         let circ = self.circ.as_mut().unwrap();
-        let circ_id = circ.id()?;
+        let circ_id = circ.id();
 
         circ["checkin_time"] = self
             .options
@@ -936,10 +933,10 @@ impl Circulator<'_> {
         let xact_id = match self.circ.as_ref() {
             Some(c) => {
                 is_circ = true;
-                c.id()?
+                c.id()
             }
             None => match self.reservation.as_ref() {
-                Some(r) => r.id()?,
+                Some(r) => r.id(),
                 None => Err(format!(
                     "{self} we have no transaction to generate fines for"
                 ))?,
@@ -1074,7 +1071,7 @@ impl Circulator<'_> {
         is_longoverdue: bool,
     ) -> EgResult<()> {
         let circ = self.circ.as_ref().unwrap();
-        let circ_id = circ.id()?;
+        let circ_id = circ.id();
         let void_max = circ["max_fine"].float()?;
 
         let query = eg::hash! {xact: circ_id, btype: C::BTYPE_OVERDUE_MATERIALS};
@@ -1156,7 +1153,7 @@ impl Circulator<'_> {
         log::info!("{self} attempting to receive transit");
 
         let transit = self.transit.as_ref().unwrap();
-        let transit_id = transit.id()?;
+        let transit_id = transit.id();
         let transit_dest = transit["dest"].int()?;
         let transit_copy_status = transit["copy_status"].int()?;
 
@@ -1273,7 +1270,7 @@ impl Circulator<'_> {
             self.set_option_true("noop");
 
             let mut hold = self.hold.take().unwrap();
-            let hold_id = hold.id()?;
+            let hold_id = hold.id();
             hold["fulfillment_time"] = EgValue::from("now");
             self.editor().update(hold)?;
 
@@ -1340,7 +1337,7 @@ impl Circulator<'_> {
     /// Set hold shelf values and update the hold.
     fn put_hold_on_shelf(&mut self) -> EgResult<()> {
         let mut hold = self.hold.take().unwrap();
-        let hold_id = hold.id()?;
+        let hold_id = hold.id();
 
         hold["shelf_time"] = EgValue::from("now");
         hold["current_shelf_lib"] = EgValue::from(self.circ_lib);
@@ -1445,7 +1442,7 @@ impl Circulator<'_> {
             // This updates and refreshes the hold.
             self.put_hold_on_shelf()?;
         } else {
-            let hold_id = hold.id()?;
+            let hold_id = hold.id();
             self.editor().update(hold)?;
             self.hold = self.editor().retrieve("ahr", hold_id)?;
         }
@@ -1679,7 +1676,7 @@ impl Circulator<'_> {
         };
 
         let circ_id = match self.circ.as_ref() {
-            Some(c) => c.id()?,
+            Some(c) => c.id(),
             None => return Ok(()),
         };
 
