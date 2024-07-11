@@ -4,7 +4,6 @@ use eg::osrf::bus::Bus;
 use eg::osrf::conf;
 use eg::osrf::logging::Logger;
 use eg::osrf::message;
-use eg::Client;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
@@ -199,6 +198,7 @@ impl SessionOutbound {
     fn shutdown(&mut self) {
         log::debug!("{self} shutting down");
         self.shutdown_session.store(true, Ordering::Relaxed);
+        self.osrf_receiver.clear_bus().ok();
     }
 }
 
@@ -365,6 +365,8 @@ impl Session {
         } else {
             log::debug!("{self} Outbound thread exited gracefully");
         }
+
+        self.osrf_sender.clear_bus().ok();
     }
 
     /// Returns true if we should exit our main listen loop.
@@ -824,7 +826,6 @@ impl mptc::RequestHandler for WebsocketHandler {
 
 struct WebsocketStream {
     listener: TcpListener,
-    client: Client,
 
     /// Maximum number of active/parallel websocket requests to
     /// relay to OpenSRF at a time.  Once exceeded, new messages
@@ -838,7 +839,7 @@ struct WebsocketStream {
 }
 
 impl WebsocketStream {
-    fn new(client: Client, address: &str, port: u16, max_parallel: usize) -> Result<Self, String> {
+    fn new(address: &str, port: u16, max_parallel: usize) -> Result<Self, String> {
         log::info!("EG Websocket listening at {address}:{port}");
 
         let listener = eg::util::tcp_listener(address, port, SIG_POLL_INTERVAL)
@@ -846,7 +847,6 @@ impl WebsocketStream {
 
         let stream = WebsocketStream {
             listener,
-            client,
             max_parallel,
             shutdown: Arc::new(AtomicBool::new(false)),
         };
@@ -897,7 +897,6 @@ impl mptc::RequestStream for WebsocketStream {
         eprintln!("Server received mptc shutdown request");
 
         self.shutdown.store(true, Ordering::Relaxed);
-        self.client.clear().ok();
     }
 }
 
@@ -910,16 +909,18 @@ fn main() {
         // Skip logging so we can use the logging config in
         // the gateway() config instead.
         skip_logging: true,
-        appname: Some(String::from("http-gateway")),
+        appname: Some(String::from("eg-websockets")),
     };
 
-    // Connect to OpenSRF, parse the IDL
-    // NOTE: Since we are not fetching host settings, we use
-    // the default IDL path unless it's overridden with the
-    // EG_IDL_FILE environment variable.
+    // Connect so we can load the configs and parse the IDL.
+    // Since we are not fetching host settings, we use the default IDL
+    // path unless it's overridden with the EG_IDL_FILE environment
+    // variable.
     let client = eg::init::with_options(&init_ops).expect("Evergreen init");
 
-    // Setup logging with the gateway config
+    // Clear the bus and force a disconnect.
+    drop(client);
+
     let gateway_conf = conf::config().gateway().expect("Gateway config required");
 
     eg::osrf::logging::Logger::new(gateway_conf.logging())
@@ -939,7 +940,7 @@ fn main() {
 
     let address = env::var("EG_WEBSOCKETS_ADDRESS").unwrap_or(DEFAULT_LISTEN_ADDRESS.to_string());
 
-    let stream = WebsocketStream::new(client, &address, port, max_parallel).expect("Build stream");
+    let stream = WebsocketStream::new(&address, port, max_parallel).expect("Build stream");
 
     let mut server = mptc::Server::new(Box::new(stream));
 
