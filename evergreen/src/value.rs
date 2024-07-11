@@ -822,10 +822,18 @@ impl EgValue {
     }
 
     /// Same as JsonValue::is_empty()
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use evergreen::value::EgValue;
+    /// assert!(EgValue::from("").is_empty());
+    /// assert!(!EgValue::from(" ").is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         match self {
-            Self::Number(n) => *n != 0,
-            Self::String(ref s) => !s.eq(""),
+            Self::Number(n) => *n == 0,
+            Self::String(ref s) => s.is_empty(),
             Self::Boolean(b) => !b,
             Self::Null => true,
             Self::Array(ref l) => l.is_empty(),
@@ -855,6 +863,14 @@ impl EgValue {
     /// Translates String and Number values into allocated strings.
     ///
     /// None if the value is neither a Number or String.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use evergreen::value::EgValue;
+    /// assert_eq!(EgValue::from("abc").to_string().as_deref(), Some("abc"));
+    /// assert_eq!(EgValue::from(true).to_string(), None);
+    /// ```
     pub fn to_string(&self) -> Option<String> {
         match self {
             EgValue::String(s) => Some(s.to_string()),
