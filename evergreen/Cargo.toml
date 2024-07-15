@@ -81,11 +81,6 @@ path = "src/bin/bib-to-auth-linker.rs"
 name = "eg-parallel-ingest"
 path = "src/bin/parallel-ingest.rs"
 
-[[bin]]
-name = "eg-buswatch"
-path = "src/bin/buswatch.rs"
-
-
 # --- Services
 # Service names are prefixed with rs- to prevent
 # clobberation with existing service names.

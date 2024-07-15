@@ -1,8 +1,0 @@
-[Unit]
-Description=Evergreeen Bus Watch Service
-
-[Service]
-Type=simple
-User=opensrf
-Group=opensrf
-ExecStart=/usr/local/bin/eg-buswatch
