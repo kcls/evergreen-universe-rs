@@ -38,9 +38,9 @@ impl Config {
             Err(e) => return Err(format!("Error reading SIP config: {e}").into()),
         };
 
-        let root = match yaml_docs.get(0) {
+        let root = match yaml_docs.first() {
             Some(v) => &v["sip2-mediator"],
-            None => return Err(format!("Invalid SIP config").into()),
+            None => return Err("Invalid SIP config".into()),
         };
 
         if let Some(v) = root["sip-address"].as_str() {

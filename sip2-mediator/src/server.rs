@@ -3,7 +3,6 @@ use super::session::Session;
 use eg::osrf;
 use eg::Client;
 use evergreen as eg;
-use mptc;
 use std::any::Any;
 use std::net::TcpListener;
 use std::net::TcpStream;

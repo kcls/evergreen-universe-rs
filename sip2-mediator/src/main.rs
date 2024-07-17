@@ -1,6 +1,5 @@
 use eg::EgResult;
 use evergreen as eg;
-use mptc;
 use std::env;
 use std::path::Path;
 
@@ -15,7 +14,7 @@ const DEFAULT_CONFIG_4: &str = "./sip2-mediator/conf/eg-sip2-mediator.example.ym
 
 fn load_config() -> EgResult<conf::Config> {
     if let Ok(ref file) = env::var("EG_SIP2_MEDIATOR_CONFIG") {
-        conf::Config::from_yaml(&file)
+        conf::Config::from_yaml(file)
     } else if Path::new(DEFAULT_CONFIG_1).exists() {
         conf::Config::from_yaml(DEFAULT_CONFIG_1)
     } else if Path::new(DEFAULT_CONFIG_2).exists() {
@@ -25,7 +24,7 @@ fn load_config() -> EgResult<conf::Config> {
     } else if Path::new(DEFAULT_CONFIG_4).exists() {
         conf::Config::from_yaml(DEFAULT_CONFIG_4)
     } else {
-        Err(format!("sip2-mediator requires a configuration file").into())
+        Err("sip2-mediator requires a configuration file".into())
     }
 }
 

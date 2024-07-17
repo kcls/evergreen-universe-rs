@@ -44,10 +44,7 @@ impl mptc::RequestHandler for TcpEchoHandler {
         let request = TcpEchoRequest::downcast(&mut request);
 
         let mut buffer = [0u8; 1024];
-        let count = request
-            .stream
-            .read(&mut buffer)
-            .expect("Stream.read()");
+        let count = request.stream.read(&mut buffer).expect("Stream.read()");
 
         request
             .stream

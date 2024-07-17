@@ -3,8 +3,6 @@ use eg::samples::SampleData;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
-use getopts;
-use sip2;
 use std::time::SystemTime;
 
 fn is_zero(n: &str) -> bool {
@@ -209,14 +207,14 @@ fn delete_test_assets(tester: &mut Tester) -> Result<(), String> {
 
 fn test_invalid_login(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_LOGIN.code,
+        sip2::spec::M_LOGIN.code,
         &[
             "0", // UID algo
             "0", // PW algo
         ],
         &[
-            ("CN", &format!("+23423+")), // SIP login username
-            ("CO", &format!("+29872+")), // SIP login password
+            ("CN", "+23423+"), // SIP login username
+            ("CO", "+29872+"), // SIP login password
         ],
     )
     .unwrap();
@@ -225,7 +223,7 @@ fn test_invalid_login(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_invalid_login");
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
@@ -237,7 +235,7 @@ fn test_invalid_login(tester: &mut Tester) -> Result<(), String> {
 
 fn test_valid_login(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_LOGIN.code,
+        sip2::spec::M_LOGIN.code,
         &[
             "0", // UID algo
             "0", // PW algo
@@ -253,7 +251,7 @@ fn test_valid_login(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_valid_login");
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
@@ -265,7 +263,7 @@ fn test_valid_login(tester: &mut Tester) -> Result<(), String> {
 
 fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_ff_values(
-        &sip2::spec::M_SC_STATUS.code,
+        sip2::spec::M_SC_STATUS.code,
         &[
             "0",   // status code
             "999", // max print width
@@ -278,17 +276,17 @@ fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_sc_status");
 
-    assert!(resp.fixed_fields().len() > 0);
+    assert!(!resp.fixed_fields().is_empty());
     assert_eq!(resp.fixed_fields()[0].value(), "Y");
 
     Ok(())
 }
 
 fn test_bill_pay(tester: &mut Tester) -> EgResult<()> {
-    let eg_xact_id = format!("{}", tester.samples.last_xact_id.unwrap());
+    let eg_xact_id = tester.samples.last_xact_id.unwrap().to_string();
 
     let req = sip2::Message::from_values(
         "37",
@@ -311,7 +309,7 @@ fn test_bill_pay(tester: &mut Tester) -> EgResult<()> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
 
     t.done("test_bill_pay");
 
@@ -324,7 +322,7 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
     let dummy = "I-AM-BAD-BARCODE";
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_ITEM_INFO.code,
+        sip2::spec::M_ITEM_INFO.code,
         &[&sip2::util::sip_date_now()],
         &[("AB", dummy), ("AO", &tester.institution)],
     )
@@ -334,7 +332,7 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_invalid_item_info");
 
     let circ_status = resp.fixed_fields()[0].value();
@@ -354,7 +352,7 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
 
 fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_ITEM_INFO.code,
+        sip2::spec::M_ITEM_INFO.code,
         &[&sip2::util::sip_date_now()],
         &[
             ("AB", &tester.samples.acp_barcode),
@@ -367,7 +365,7 @@ fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_item_info");
 
     let circ_status = resp.fixed_fields()[0].value();
@@ -412,7 +410,7 @@ fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
 
 fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_PATRON_STATUS.code,
+        sip2::spec::M_PATRON_STATUS.code,
         &["000", &sip2::util::sip_date_now()],
         &[
             ("AA", &tester.samples.au_barcode),
@@ -426,7 +424,7 @@ fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_patron_status");
 
     assert_eq!(
@@ -445,7 +443,7 @@ fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
 
     // Legacy EG sip server will set a Y on the 'recall denied' field,
     // regardless of patron, because it does not support recalls.
-    if status.contains("Y") {
+    if status.contains('Y') {
         assert_eq!(&status[2..3], "Y");
     }
 
@@ -456,7 +454,7 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let summary = "          ";
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_PATRON_INFO.code,
+        sip2::spec::M_PATRON_INFO.code,
         &["000", &sip2::util::sip_date_now(), summary],
         &[
             ("AA", &tester.samples.au_barcode),
@@ -470,7 +468,7 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_patron_info");
 
     assert_eq!(
@@ -494,7 +492,7 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
 
     // Legacy EG sip server will set a Y on the 'recall denied' field,
     // regardless of patron, because it does not support recalls.
-    if status.contains("Y") {
+    if status.contains('Y') {
         assert_eq!(&status[2..3], "Y");
     }
 
@@ -515,7 +513,7 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
 
 fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKOUT.code,
+        sip2::spec::M_CHECKOUT.code,
         &[
             "Y", // renewal allowed if needed
             "N", // previously checked out offline / no block
@@ -534,7 +532,7 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_checkout");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkout ok.
@@ -562,7 +560,7 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
 
 fn test_checkin(tester: &mut Tester) -> Result<(), String> {
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKIN.code,
+        sip2::spec::M_CHECKIN.code,
         &[
             "N", // renewal policy
             &sip2::util::sip_date_now(),
@@ -581,7 +579,7 @@ fn test_checkin(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_checkin");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
@@ -618,7 +616,7 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     tester.editor.commit()?;
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKIN.code,
+        sip2::spec::M_CHECKIN.code,
         &[
             "N", // renewal policy
             &sip2::util::sip_date_now(),
@@ -637,7 +635,7 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_checkin_with_transit");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
@@ -666,7 +664,7 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     // complete the transit.
 
     let req = sip2::Message::from_values(
-        &sip2::spec::M_CHECKIN.code,
+        sip2::spec::M_CHECKIN.code,
         &[
             "N", // renewal policy
             &sip2::util::sip_date_now(),
@@ -685,7 +683,7 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .or_else(|e| Err(format!("SIP sendrecv error: {e}")))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
     t.done("test_checkin_with_transit");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.

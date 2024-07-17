@@ -22,7 +22,7 @@ const TARGET_RECORDS_SQL: &str = r#"
         AND mife.field = 25
     )
     LEFT JOIN metabib.record_attr_flat mraf ON (
-        mraf.id = bre.id 
+        mraf.id = bre.id
         AND mraf.attr = 'audience'
     )
     WHERE
@@ -34,8 +34,8 @@ const TARGET_RECORDS_SQL: &str = r#"
 "#;
 
 const UPDATE_BIB_SQL: &str = r#"
-    UPDATE biblio.record_entry 
-    SET marc = $1, editor = $2, edit_date = NOW() 
+    UPDATE biblio.record_entry
+    SET marc = $1, editor = $2, edit_date = NOW()
     WHERE id = $3
 "#;
 
@@ -152,7 +152,7 @@ fn process_one_batch(db: &mut DatabaseConnection, map: &AudienceMap, ops: &getop
         let id: i64 = rec.get("id");
         let xml: &str = rec.get("marc");
 
-        process_one_record(db, map, id, &xml, ops);
+        process_one_record(db, map, id, xml, ops);
     }
 }
 
@@ -167,7 +167,7 @@ fn process_one_record(
         println!("{xml}");
     }
 
-    let mut record = match Record::from_xml(&xml).next() {
+    let mut record = match Record::from_xml(xml).next() {
         Some(result) => match result {
             Ok(rec) => rec,
             Err(err) => {
@@ -185,8 +185,7 @@ fn process_one_record(
     let cf008 = match record
         .control_fields_mut()
         .iter_mut()
-        .filter(|cf| cf.tag() == "008")
-        .next()
+        .find(|cf| cf.tag() == "008")
     {
         Some(cf) => cf,
         None => {

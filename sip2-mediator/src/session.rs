@@ -4,7 +4,6 @@ use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
-use sip2;
 use std::fmt;
 use std::net;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -159,7 +158,7 @@ impl Session {
 
         let msg_spec = sip2::spec::Message::from_code("XS").unwrap();
 
-        let msg = sip2::Message::new(&msg_spec, vec![], vec![]);
+        let msg = sip2::Message::new(msg_spec, vec![], vec![]);
 
         self.osrf_round_trip(msg).map(|_| ())
     }
