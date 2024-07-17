@@ -44,18 +44,16 @@ impl mptc::RequestHandler for TcpEchoHandler {
         let request = TcpEchoRequest::downcast(&mut request);
 
         let mut buffer = [0u8; 1024];
-        request
+        let count = request
             .stream
-            .read_exact(&mut buffer)
+            .read(&mut buffer)
             .expect("Stream.read()");
 
-        // Trim the null bytes from our read buffer.
-        let buffer: Vec<u8> = buffer.iter().copied().filter(|c| c != &0u8).collect();
-
         request
             .stream
-            .write_all(buffer.as_slice())
+            .write_all(&buffer[..count])
             .expect("Stream.write()");
+
         request
             .stream
             .shutdown(std::net::Shutdown::Both)
