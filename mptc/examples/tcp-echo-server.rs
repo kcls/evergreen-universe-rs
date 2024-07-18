@@ -48,6 +48,11 @@ impl mptc::RequestHandler for TcpEchoHandler {
 
         request
             .stream
+            .write_all(format!("Replying from {:?}: ", std::thread::current().id()).as_bytes())
+            .expect("Stream.write()");
+
+        request
+            .stream
             .write_all(&buffer[..count])
             .expect("Stream.write()");
 
@@ -95,5 +100,9 @@ fn main() {
         listener: TcpListener::bind("127.0.0.1:7878").unwrap(),
     };
     let mut s = mptc::Server::new(Box::new(stream));
+
+    println!("\nThis sample code is not setup to wake and check for signals.");
+    println!("To exit, control-c, then send one final request or kill -9\n");
+
     s.run();
 }
