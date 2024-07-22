@@ -110,6 +110,10 @@ impl Server {
         server.listen()
     }
 
+    fn methods(&self) -> &Arc<HashMap<String, method::MethodDef>> {
+        self.methods.as_ref().unwrap()
+    }
+
     fn app_mut(&mut self) -> &mut Box<dyn app::Application> {
         &mut self.application
     }
@@ -284,6 +288,7 @@ impl Server {
         method.set_desc("Respond with system time in epoch seconds");
         hash.insert(name.to_string(), method);
 
+        /*  TODO methods oncelock
         let name = "opensrf.system.method.all";
         let mut method = method::MethodDef::new(
             name,
@@ -315,6 +320,7 @@ impl Server {
         });
 
         hash.insert(name.to_string(), method);
+        */
     }
 
     pub fn listen(&mut self) -> EgResult<()> {
@@ -564,6 +570,7 @@ fn system_method_time(
     }
 }
 
+/* TODO OnceLock on methods
 fn system_method_introspect(
     worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
@@ -578,19 +585,19 @@ fn system_method_introspect(
     let mut names: Vec<&str> = match prefix {
         // If a prefix string is provided, only return methods whose
         // name starts with the provided prefix.
-        Some(pfx) => worker
+        Some(pfx) => self
             .methods()
             .keys()
             .filter(|n| n.starts_with(pfx))
             .map(|n| n.as_str())
             .collect(),
-        None => worker.methods().keys().map(|n| n.as_str()).collect(),
+        None => self.methods().keys().map(|n| n.as_str()).collect(),
     };
 
     names.sort();
 
     for name in names {
-        if let Some(meth) = worker.methods().get(name) {
+        if let Some(meth) = self.methods().get(name) {
             if method.method().contains("summary") {
                 session.respond(meth.to_summary_string())?;
             } else {
@@ -601,3 +608,4 @@ fn system_method_introspect(
 
     Ok(())
 }
+*/

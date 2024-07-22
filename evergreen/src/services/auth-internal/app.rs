@@ -61,7 +61,6 @@ impl Application for RsAuthInternalApplication {
 /// Per-thread worker instance.
 pub struct RsAuthInternalWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
 impl Default for RsAuthInternalWorker {
@@ -74,7 +73,6 @@ impl RsAuthInternalWorker {
     pub fn new() -> Self {
         RsAuthInternalWorker {
             client: None,
-            methods: None,
         }
     }
 
@@ -105,18 +103,13 @@ impl ApplicationWorker for RsAuthInternalWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
 
     fn worker_start(
         &mut self,
         client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
     ) -> EgResult<()> {
         Cache::init_cache("global")?;
         self.client = Some(client);
-        self.methods = Some(methods);
         Ok(())
     }
 

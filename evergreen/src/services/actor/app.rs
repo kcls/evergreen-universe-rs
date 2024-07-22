@@ -60,7 +60,6 @@ impl Application for RsActorApplication {
 /// Per-thread worker instance.
 pub struct RsActorWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
 impl Default for RsActorWorker {
@@ -73,7 +72,6 @@ impl RsActorWorker {
     pub fn new() -> Self {
         RsActorWorker {
             client: None,
-            methods: None,
         }
     }
 
@@ -104,17 +102,11 @@ impl ApplicationWorker for RsActorWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
     fn worker_start(
         &mut self,
         client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
     ) -> EgResult<()> {
         self.client = Some(client);
-        self.methods = Some(methods);
         Ok(())
     }
 

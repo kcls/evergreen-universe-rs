@@ -1,68 +1,49 @@
-use crate::osrf::addr::BusAddress;
-use crate::osrf::app;
-use crate::osrf::client::{Client, ClientSingleton};
+/*
+use crate::osrf::sclient::HostSettings;
+use std::sync::Arc;
+*/
+
+use crate::init;
+use crate::util;
 use crate::osrf::conf;
-use crate::osrf::logging::Logger;
+use crate::osrf::app;
 use crate::osrf::message;
+use crate::osrf::method;
+use crate::osrf::logging::Logger;
+use crate::osrf::addr::BusAddress;
+use crate::osrf::method::ParamCount;
 use crate::osrf::message::Message;
 use crate::osrf::message::MessageStatus;
 use crate::osrf::message::MessageType;
 use crate::osrf::message::Payload;
 use crate::osrf::message::TransportMessage;
-use crate::osrf::method;
-use crate::osrf::method::ParamCount;
-use crate::osrf::sclient::HostSettings;
+use crate::osrf::client::{Client, ClientSingleton};
 use crate::osrf::session::ServerSession;
-use crate::util;
 use crate::EgResult;
 use mptc::signals::SignalTracker;
-use std::cell::RefMut;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use std::fmt;
-use std::sync::mpsc;
-use std::sync::Arc;
+use std::cell::RefMut;
+use std::sync::OnceLock;
 use std::thread;
-use std::time;
 
 // How often each worker wakes to check for shutdown signals, etc.
 const IDLE_WAKE_TIME: i32 = 5;
 
-/// Each worker thread is in one of these states.
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum WorkerState {
-    Idle,
-    Active,
-    Exiting,
-}
+pub struct Microservice {
+    application: Box<dyn app::Application>,
 
-#[derive(Debug)]
-pub struct WorkerStateEvent {
-    pub worker_id: u64,
-    pub state: WorkerState,
-}
-
-impl WorkerStateEvent {
-    pub fn worker_id(&self) -> u64 {
-        self.worker_id
-    }
-    pub fn state(&self) -> WorkerState {
-        self.state
-    }
-}
-
-/// A Worker runs in its own thread and responds to API requests.
-pub struct Worker {
-    service: String,
+    methods: HashMap<String, method::MethodDef>,
 
     /// Watches for signals
     sig_tracker: SignalTracker,
 
+    /// OpenSRF bus connection
     client: Client,
 
     /// True if the caller has requested a stateful conversation.
     connected: bool,
-
-    methods: Arc<HashMap<String, method::MethodDef>>,
 
     /// Currently active session.
     /// A worker can only have one active session at a time.
@@ -71,39 +52,53 @@ pub struct Worker {
     /// results in an error.
     session: Option<ServerSession>,
 
-    /// Unique ID for tracking/logging each working.
-    worker_id: u64,
-
-    /// Channel for sending worker state info to our parent.
-    to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
 }
 
-impl fmt::Display for Worker {
+impl fmt::Display for Microservice {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Worker ({})", self.worker_id)
+        write!(f, "Micro")
     }
 }
 
-impl Worker {
-    pub fn new(
-        service: String,
-        worker_id: u64,
-        sig_tracker: SignalTracker,
-        methods: Arc<HashMap<String, method::MethodDef>>,
-        to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
-    ) -> EgResult<Worker> {
-        let client = Client::connect()?;
 
-        Ok(Worker {
-            sig_tracker,
-            service,
-            worker_id,
-            methods,
+impl Microservice {
+
+    pub fn start(application: Box<dyn app::Application>) -> EgResult<()> {
+
+        let mut options = init::InitOptions::new();
+        options.appname = Some(application.name().to_string());
+
+        let client = init::osrf_init(&options)?;
+
+        let mut tracker = SignalTracker::new();
+
+        tracker.track_graceful_shutdown();
+        tracker.track_fast_shutdown();
+        tracker.track_reload();
+
+
+        let mut service = Microservice {
+            application,
             client,
-            to_parent_tx,
-            session: None,
+            methods: HashMap::new(),
+            sig_tracker: tracker,
             connected: false,
-        })
+            session: None,
+        };
+
+        let client = service.client.clone();
+
+        service.application.init(client)?;
+
+        service.register_methods()?;
+
+        service.register_routers()?;
+
+        service.listen();
+
+        service.unregister_routers()?;
+
+        Ok(())
     }
 
     /// Mutable Ref to our under-the-covers client singleton.
@@ -122,21 +117,18 @@ impl Worker {
         self.session.as_mut().unwrap()
     }
 
-    pub fn worker_id(&self) -> u64 {
-        self.worker_id
-    }
 
     /// Wait for and process inbound API calls.
-    pub fn listen(&mut self, factory: app::ApplicationWorkerFactory) {
-        let selfstr = format!("{self}");
-
+    fn listen(&mut self) {
+        let factory = self.application.worker_factory();
         let mut app_worker = (factory)();
 
         if let Err(e) = app_worker.worker_start(self.client.clone()) {
-            log::error!("{selfstr} worker_start failed {e}.  Exiting");
+            log::error!("worker_start failed {e}.  Exiting");
             return;
         }
 
+        /* TODO environment variables
         let max_requests: usize =
             HostSettings::get(&format!("apps/{}/unix_config/max_requests", self.service))
                 .expect("Host Settings Not Retrieved")
@@ -149,6 +141,11 @@ impl Worker {
                 .as_usize()
                 .unwrap_or(5);
 
+        */
+
+        let max_requests: usize = 5000;
+        let keepalive: usize = 5;
+
         let mut requests: usize = 0;
 
         // We listen for API calls at an addressed scoped to our
@@ -156,7 +153,7 @@ impl Worker {
         let username = self.client.address().username();
         let domain = self.client.address().domain();
 
-        let service_addr = BusAddress::for_service(username, domain, &self.service);
+        let service_addr = BusAddress::for_service(username, domain, self.application.name());
         let service_addr = service_addr.as_str().to_string();
 
         let my_addr = self.client.address().as_str().to_string();
@@ -177,7 +174,7 @@ impl Worker {
                 // our bus data and message backlogs since any remaining
                 // data is no longer relevant.
                 if let Err(e) = self.reset() {
-                    log::error!("{selfstr} could not reset {e}.  Exiting");
+                    log::error!("could not reset {e}.  Exiting");
                     break;
                 }
 
@@ -214,10 +211,6 @@ impl Worker {
                     break;
                 }
 
-                if self.set_idle().is_err() {
-                    break;
-                }
-
                 if msg_handled {
                     // Increment our message handled count.
                     // Each connected session counts as 1 "request".
@@ -242,7 +235,7 @@ impl Worker {
             // "end_session()" so we don't interrupt a conversation to
             // shutdown.
             if self.sig_tracker.any_shutdown_requested() {
-                log::info!("{selfstr} received a stop signal");
+                log::info!("received a stop signal");
                 break;
             }
         }
@@ -250,10 +243,8 @@ impl Worker {
         log::debug!("{self} exiting listen loop and cleaning up");
 
         if let Err(e) = app_worker.worker_end() {
-            log::error!("{selfstr} worker_end failed {e}");
+            log::error!("worker_end failed {e}");
         }
-
-        self.notify_state(WorkerState::Exiting).ok(); // ignore errors
 
         // Clear our worker-specific bus address of any lingering data.
         self.reset().ok();
@@ -282,7 +273,7 @@ impl Worker {
                 // thread/system is unusable, so let the worker exit.
                 //
                 // Avoid a tight thread respawn loop with a short pause.
-                thread::sleep(time::Duration::from_secs(1));
+                thread::sleep(Duration::from_secs(1));
                 Err(e)?
             }
         };
@@ -302,13 +293,9 @@ impl Worker {
                     Err(format!("server: could not reply with Timeout message: {e}"))?;
                 }
 
-                self.set_active()?;
-
                 return Ok((true, false)); // work occurred
             }
         };
-
-        self.set_active()?;
 
         if !self.connected {
             // Any message received in a non-connected state represents
@@ -329,28 +316,6 @@ impl Worker {
         Ok((true, true)) // work occurred, message handled
     }
 
-    /// Tell our parent we're about to perform some work.
-    fn set_active(&mut self) -> EgResult<()> {
-        if let Err(e) = self.notify_state(WorkerState::Active) {
-            Err(format!(
-                "{self} failed to notify parent of Active state. Exiting. {e}"
-            ))?;
-        }
-
-        Ok(())
-    }
-
-    /// Tell our parent we're available to perform work.
-    fn set_idle(&mut self) -> EgResult<()> {
-        if let Err(e) = self.notify_state(WorkerState::Idle) {
-            Err(format!(
-                "{self} failed to notify parent of Idle state. Exiting. {e}"
-            ))?;
-        }
-
-        Ok(())
-    }
-
     fn handle_transport_message(
         &mut self,
         mut tmsg: message::TransportMessage,
@@ -364,7 +329,7 @@ impl Worker {
 
             self.session = Some(ServerSession::new(
                 self.client.clone(),
-                &self.service,
+                self.application.name(),
                 tmsg.thread(),
                 0, // thread trace -- updated later as needed
                 BusAddress::parse_str(tmsg.from())?,
@@ -376,13 +341,6 @@ impl Worker {
         }
 
         Ok(())
-    }
-
-    // Clear our local message bus and reset state maintenance values.
-    fn reset(&mut self) -> EgResult<()> {
-        self.connected = false;
-        self.session = None;
-        self.client.clear()
     }
 
     fn handle_message(
@@ -601,15 +559,186 @@ impl Worker {
             .send(tmsg)
     }
 
-    /// Notify the parent process of this worker's active state.
-    fn notify_state(&self, state: WorkerState) -> EgResult<()> {
-        log::trace!("{self} notifying parent of state change => {state:?}");
+    fn register_methods(&mut self) -> EgResult<()> {
+        let client = self.client.clone();
+        let list = self.application.register_methods(client)?;
+        for m in list {
+            self.methods.insert(m.name().to_string(), m);
+        }
+        self.add_system_methods();
+        Ok(())
+    }
 
-        self.to_parent_tx
-            .send(WorkerStateEvent {
-                state,
-                worker_id: self.worker_id(),
-            })
-            .map_err(|e| format!("mpsc::SendError: {e}").into())
+
+    fn add_system_methods(&mut self) {
+        let name = "opensrf.system.echo";
+        let mut method = method::MethodDef::new(name, method::ParamCount::Any, system_method_echo);
+        method.set_desc("Echo back any values sent");
+        self.methods.insert(name.to_string(), method);
+
+        let name = "opensrf.system.time";
+        let mut method = method::MethodDef::new(name, method::ParamCount::Zero, system_method_time);
+        method.set_desc("Respond with system time in epoch seconds");
+        self.methods.insert(name.to_string(), method);
+
+        /* TODO
+        let name = "opensrf.system.method.all";
+        let mut method = method::MethodDef::new(
+            name,
+            method::ParamCount::Range(0, 1),
+            system_method_introspect,
+        );
+        method.set_desc("List published API definitions");
+
+        method.add_param(method::Param {
+            name: String::from("prefix"),
+            datatype: method::ParamDataType::String,
+            desc: Some(String::from("API name prefix filter")),
+        });
+
+        self.methods.insert(name.to_string(), method);
+
+        let name = "opensrf.system.method.all.summary";
+        let mut method = method::MethodDef::new(
+            name,
+            method::ParamCount::Range(0, 1),
+            system_method_introspect,
+        );
+        method.set_desc("Summary list published API definitions");
+
+        method.add_param(method::Param {
+            name: String::from("prefix"),
+            datatype: method::ParamDataType::String,
+            desc: Some(String::from("API name prefix filter")),
+        });
+
+        self.methods.insert(name.to_string(), method);
+        */
+    }
+
+    /// List of domains where our service is allowed to run and
+    /// therefore whose routers with whom our presence should be registered.
+    fn hosting_domains(&self) -> Vec<(String, String)> {
+        let mut domains: Vec<(String, String)> = Vec::new();
+        for router in conf::config().client().routers() {
+            match router.services() {
+                Some(services) => {
+                    if services.iter().any(|s| s.eq(self.application.name())) {
+                        domains.push((router.username().to_string(), router.domain().to_string()));
+                    }
+                }
+                None => {
+                    // A domain with no specific set of hosted services
+                    // hosts all services
+                    domains.push((router.username().to_string(), router.domain().to_string()));
+                }
+            }
+        }
+
+        domains
+    }
+
+
+    fn register_routers(&mut self) -> EgResult<()> {
+        for (username, domain) in self.hosting_domains().iter() {
+            log::info!("server: registering with router at {domain}");
+
+            self.client
+                .send_router_command(username, domain, "register", Some(self.application.name()))?;
+        }
+
+        Ok(())
+    }
+
+    fn unregister_routers(&mut self) -> EgResult<()> {
+        for (username, domain) in self.hosting_domains().iter() {
+            log::info!("server: un-registering with router at {domain}");
+
+            self.client.send_router_command(
+                username,
+                domain,
+                "unregister",
+                Some(self.application.name()),
+            )?;
+        }
+        Ok(())
+    }
+
+    // Clear our local message bus and reset state maintenance values.
+    fn reset(&mut self) -> EgResult<()> {
+        self.connected = false;
+        self.session = None;
+        self.client.clear()
     }
 }
+
+// Toss our system method handlers down here.
+fn system_method_echo(
+    _worker: &mut Box<dyn app::ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
+) -> EgResult<()> {
+    let count = method.params().len();
+    for (idx, val) in method.params().iter().enumerate() {
+        if idx == count - 1 {
+            // Package the final response and the COMPLETE message
+            // into the same transport message for consistency
+            // with the Perl code for load testing, etc. comparisons.
+            session.respond_complete(val.clone())?;
+        } else {
+            session.respond(val.clone())?;
+        }
+    }
+    Ok(())
+}
+
+fn system_method_time(
+    _worker: &mut Box<dyn app::ApplicationWorker>,
+    session: &mut ServerSession,
+    _method: message::MethodCall,
+) -> EgResult<()> {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(t) => session.respond_complete(t.as_secs()),
+        Err(e) => Err(format!("System time error: {e}").into()),
+    }
+}
+
+/* TODO
+fn system_method_introspect(
+    worker: &mut Box<dyn app::ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
+) -> EgResult<()> {
+    let prefix = match method.params().first() {
+        Some(p) => p.as_str(),
+        None => None,
+    };
+
+    // Collect the names first so we can sort them
+    let mut names: Vec<&str> = match prefix {
+        // If a prefix string is provided, only return methods whose
+        // name starts with the provided prefix.
+        Some(pfx) => self
+            .methods()
+            .keys()
+            .filter(|n| n.starts_with(pfx))
+            .map(|n| n.as_str())
+            .collect(),
+        None => self.methods().keys().map(|n| n.as_str()).collect(),
+    };
+
+    names.sort();
+
+    for name in names {
+        if let Some(meth) = self.methods().get(name) {
+            if method.method().contains("summary") {
+                session.respond(meth.to_summary_string())?;
+            } else {
+                session.respond(meth.to_eg_value())?;
+            }
+        }
+    }
+
+    Ok(())
+}
+*/

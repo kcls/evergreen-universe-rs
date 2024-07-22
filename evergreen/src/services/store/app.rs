@@ -144,7 +144,6 @@ impl Application for RsStoreApplication {
 /// Per-thread worker instance.
 pub struct RsStoreWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
     database: Option<Rc<RefCell<DatabaseConnection>>>,
     last_work_timer: Option<eg::util::Timer>,
 }
@@ -164,7 +163,6 @@ impl RsStoreWorker {
 
         RsStoreWorker {
             client: None,
-            methods: None,
             database: None,
             last_work_timer: timer,
         }
@@ -245,17 +243,11 @@ impl ApplicationWorker for RsStoreWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
     fn worker_start(
         &mut self,
         client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
     ) -> EgResult<()> {
         self.client = Some(client);
-        self.methods = Some(methods);
         self.setup_database()
     }
 

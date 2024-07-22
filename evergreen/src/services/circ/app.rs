@@ -59,7 +59,6 @@ impl Application for RsCircApplication {
 /// Per-thread worker instance.
 pub struct RsCircWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
 impl Default for RsCircWorker {
@@ -72,7 +71,6 @@ impl RsCircWorker {
     pub fn new() -> Self {
         RsCircWorker {
             client: None,
-            methods: None,
         }
     }
 
@@ -98,18 +96,12 @@ impl ApplicationWorker for RsCircWorker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
     /// Absorb our global dataset.
     fn worker_start(
         &mut self,
         client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
     ) -> EgResult<()> {
         self.client = Some(client);
-        self.methods = Some(methods);
         Ok(())
     }
 
