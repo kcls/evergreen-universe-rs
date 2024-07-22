@@ -6,8 +6,6 @@ use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -71,9 +69,7 @@ impl Default for RsAuthInternalWorker {
 
 impl RsAuthInternalWorker {
     pub fn new() -> Self {
-        RsAuthInternalWorker {
-            client: None,
-        }
+        RsAuthInternalWorker { client: None }
     }
 
     /// Cast a generic ApplicationWorker into our RsAuthInternalWorker.
@@ -103,11 +99,7 @@ impl ApplicationWorker for RsAuthInternalWorker {
         self
     }
 
-
-    fn worker_start(
-        &mut self,
-        client: Client,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         Cache::init_cache("global")?;
         self.client = Some(client);
         Ok(())

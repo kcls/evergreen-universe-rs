@@ -10,7 +10,6 @@ use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -243,10 +242,7 @@ impl ApplicationWorker for RsStoreWorker {
         self
     }
 
-    fn worker_start(
-        &mut self,
-        client: Client,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
         self.setup_database()
     }

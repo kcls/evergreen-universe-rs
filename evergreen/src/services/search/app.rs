@@ -5,8 +5,6 @@ use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -70,9 +68,7 @@ impl Default for RsSearchWorker {
 
 impl RsSearchWorker {
     pub fn new() -> Self {
-        RsSearchWorker {
-            client: None,
-        }
+        RsSearchWorker { client: None }
     }
 
     /// Cast a generic ApplicationWorker into our RsSearchWorker.
@@ -102,10 +98,7 @@ impl ApplicationWorker for RsSearchWorker {
         self
     }
 
-    fn worker_start(
-        &mut self,
-        client: Client,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
         Ok(())
     }

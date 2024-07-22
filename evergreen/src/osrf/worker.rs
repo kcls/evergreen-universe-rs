@@ -9,18 +9,16 @@ use crate::osrf::message::MessageStatus;
 use crate::osrf::message::MessageType;
 use crate::osrf::message::Payload;
 use crate::osrf::message::TransportMessage;
-use crate::osrf::method;
 use crate::osrf::method::ParamCount;
 use crate::osrf::sclient::HostSettings;
+use crate::osrf::server::Server;
 use crate::osrf::session::ServerSession;
 use crate::util;
 use crate::EgResult;
 use mptc::signals::SignalTracker;
 use std::cell::RefMut;
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::thread;
 use std::time;
 
@@ -62,8 +60,6 @@ pub struct Worker {
     /// True if the caller has requested a stateful conversation.
     connected: bool,
 
-    methods: Arc<HashMap<String, method::MethodDef>>,
-
     /// Currently active session.
     /// A worker can only have one active session at a time.
     /// For stateless requests, each new thread results in a new session.
@@ -89,7 +85,6 @@ impl Worker {
         service: String,
         worker_id: u64,
         sig_tracker: SignalTracker,
-        methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> EgResult<Worker> {
         let client = Client::connect()?;
@@ -98,7 +93,6 @@ impl Worker {
             sig_tracker,
             service,
             worker_id,
-            methods,
             client,
             to_parent_tx,
             session: None,
@@ -470,7 +464,7 @@ impl Worker {
 
         // Clone the method since we have mutable borrows below.  Note
         // this is the method definition, not the param-laden request.
-        let mut method_def = self.methods.get(&api_name).cloned();
+        let mut method_def = Server::methods().get(&api_name).cloned();
 
         if method_def.is_none() {
             // Atomic methods are not registered/published in advance
@@ -478,7 +472,7 @@ impl Worker {
             // Find the root method and use it.
             if api_name.ends_with(".atomic") {
                 let meth = api_name.replace(".atomic", "");
-                if let Some(m) = self.methods.get(&meth) {
+                if let Some(m) = Server::methods().get(&meth) {
                     method_def = Some(m.clone());
 
                     // Creating a new queue tells our session to treat

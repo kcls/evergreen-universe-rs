@@ -4,8 +4,6 @@ use eg::Client;
 use eg::{EgError, EgResult};
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -69,9 +67,7 @@ impl Default for RsCircWorker {
 
 impl RsCircWorker {
     pub fn new() -> Self {
-        RsCircWorker {
-            client: None,
-        }
+        RsCircWorker { client: None }
     }
 
     /// Ref to our OpenSRF client.
@@ -97,10 +93,7 @@ impl ApplicationWorker for RsCircWorker {
     }
 
     /// Absorb our global dataset.
-    fn worker_start(
-        &mut self,
-        client: Client,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
         Ok(())
     }

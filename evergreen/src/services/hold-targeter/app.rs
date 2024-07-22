@@ -5,8 +5,6 @@ use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -70,9 +68,7 @@ impl Default for HoldTargeterWorker {
 
 impl HoldTargeterWorker {
     pub fn new() -> Self {
-        HoldTargeterWorker {
-            client: None,
-        }
+        HoldTargeterWorker { client: None }
     }
 
     /// Ref to our OpenSRF client.
@@ -97,10 +93,7 @@ impl ApplicationWorker for HoldTargeterWorker {
         self
     }
 
-    fn worker_start(
-        &mut self,
-        client: Client,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
         Ok(())
     }

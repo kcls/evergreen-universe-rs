@@ -1,40 +1,35 @@
-/*
-use crate::osrf::sclient::HostSettings;
-use std::sync::Arc;
-*/
-
 use crate::init;
-use crate::util;
-use crate::osrf::conf;
-use crate::osrf::app;
-use crate::osrf::message;
-use crate::osrf::method;
-use crate::osrf::logging::Logger;
 use crate::osrf::addr::BusAddress;
-use crate::osrf::method::ParamCount;
+use crate::osrf::app;
+use crate::osrf::client::{Client, ClientSingleton};
+use crate::osrf::conf;
+use crate::osrf::logging::Logger;
+use crate::osrf::message;
 use crate::osrf::message::Message;
 use crate::osrf::message::MessageStatus;
 use crate::osrf::message::MessageType;
 use crate::osrf::message::Payload;
 use crate::osrf::message::TransportMessage;
-use crate::osrf::client::{Client, ClientSingleton};
+use crate::osrf::method;
+use crate::osrf::method::ParamCount;
 use crate::osrf::session::ServerSession;
+use crate::util;
 use crate::EgResult;
 use mptc::signals::SignalTracker;
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
-use std::fmt;
 use std::cell::RefMut;
+use std::collections::HashMap;
+use std::fmt;
 use std::sync::OnceLock;
 use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+static REGISTERED_METHODS: OnceLock<HashMap<String, method::MethodDef>> = OnceLock::new();
 
 // How often each worker wakes to check for shutdown signals, etc.
 const IDLE_WAKE_TIME: i32 = 5;
 
 pub struct Microservice {
     application: Box<dyn app::Application>,
-
-    methods: HashMap<String, method::MethodDef>,
 
     /// Watches for signals
     sig_tracker: SignalTracker,
@@ -51,7 +46,6 @@ pub struct Microservice {
     /// Starting a new thread/session in a stateful conversation
     /// results in an error.
     session: Option<ServerSession>,
-
 }
 
 impl fmt::Display for Microservice {
@@ -60,11 +54,8 @@ impl fmt::Display for Microservice {
     }
 }
 
-
 impl Microservice {
-
     pub fn start(application: Box<dyn app::Application>) -> EgResult<()> {
-
         let mut options = init::InitOptions::new();
         options.appname = Some(application.name().to_string());
 
@@ -76,11 +67,9 @@ impl Microservice {
         tracker.track_fast_shutdown();
         tracker.track_reload();
 
-
         let mut service = Microservice {
             application,
             client,
-            methods: HashMap::new(),
             sig_tracker: tracker,
             connected: false,
             session: None,
@@ -101,6 +90,15 @@ impl Microservice {
         Ok(())
     }
 
+    fn methods() -> &'static HashMap<String, method::MethodDef> {
+        if let Some(h) = REGISTERED_METHODS.get() {
+            h
+        } else {
+            log::error!("Cannot call methods() prior to registration");
+            panic!("Cannot call methods() prior to registration");
+        }
+    }
+
     /// Mutable Ref to our under-the-covers client singleton.
     fn client_internal_mut(&self) -> RefMut<ClientSingleton> {
         self.client.singleton().borrow_mut()
@@ -116,7 +114,6 @@ impl Microservice {
     fn session_mut(&mut self) -> &mut ServerSession {
         self.session.as_mut().unwrap()
     }
-
 
     /// Wait for and process inbound API calls.
     fn listen(&mut self) {
@@ -428,7 +425,7 @@ impl Microservice {
 
         // Clone the method since we have mutable borrows below.  Note
         // this is the method definition, not the param-laden request.
-        let mut method_def = self.methods.get(&api_name).cloned();
+        let mut method_def = Microservice::methods().get(&api_name).cloned();
 
         if method_def.is_none() {
             // Atomic methods are not registered/published in advance
@@ -436,7 +433,7 @@ impl Microservice {
             // Find the root method and use it.
             if api_name.ends_with(".atomic") {
                 let meth = api_name.replace(".atomic", "");
-                if let Some(m) = self.methods.get(&meth) {
+                if let Some(m) = Microservice::methods().get(&meth) {
                     method_def = Some(m.clone());
 
                     // Creating a new queue tells our session to treat
@@ -562,26 +559,30 @@ impl Microservice {
     fn register_methods(&mut self) -> EgResult<()> {
         let client = self.client.clone();
         let list = self.application.register_methods(client)?;
+        let mut hash = HashMap::new();
         for m in list {
-            self.methods.insert(m.name().to_string(), m);
+            hash.insert(m.name().to_string(), m);
         }
-        self.add_system_methods();
+        self.add_system_methods(&mut hash);
+
+        if REGISTERED_METHODS.set(hash).is_err() {
+            return Err("Cannot call register_methods() more than once".into());
+        }
+
         Ok(())
     }
 
-
-    fn add_system_methods(&mut self) {
+    fn add_system_methods(&mut self, hash: &mut HashMap<String, method::MethodDef>) {
         let name = "opensrf.system.echo";
         let mut method = method::MethodDef::new(name, method::ParamCount::Any, system_method_echo);
         method.set_desc("Echo back any values sent");
-        self.methods.insert(name.to_string(), method);
+        hash.insert(name.to_string(), method);
 
         let name = "opensrf.system.time";
         let mut method = method::MethodDef::new(name, method::ParamCount::Zero, system_method_time);
         method.set_desc("Respond with system time in epoch seconds");
-        self.methods.insert(name.to_string(), method);
+        hash.insert(name.to_string(), method);
 
-        /* TODO
         let name = "opensrf.system.method.all";
         let mut method = method::MethodDef::new(
             name,
@@ -596,7 +597,7 @@ impl Microservice {
             desc: Some(String::from("API name prefix filter")),
         });
 
-        self.methods.insert(name.to_string(), method);
+        hash.insert(name.to_string(), method);
 
         let name = "opensrf.system.method.all.summary";
         let mut method = method::MethodDef::new(
@@ -612,8 +613,7 @@ impl Microservice {
             desc: Some(String::from("API name prefix filter")),
         });
 
-        self.methods.insert(name.to_string(), method);
-        */
+        hash.insert(name.to_string(), method);
     }
 
     /// List of domains where our service is allowed to run and
@@ -638,13 +638,16 @@ impl Microservice {
         domains
     }
 
-
     fn register_routers(&mut self) -> EgResult<()> {
         for (username, domain) in self.hosting_domains().iter() {
             log::info!("server: registering with router at {domain}");
 
-            self.client
-                .send_router_command(username, domain, "register", Some(self.application.name()))?;
+            self.client.send_router_command(
+                username,
+                domain,
+                "register",
+                Some(self.application.name()),
+            )?;
         }
 
         Ok(())
@@ -703,9 +706,8 @@ fn system_method_time(
     }
 }
 
-/* TODO
 fn system_method_introspect(
-    worker: &mut Box<dyn app::ApplicationWorker>,
+    _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
@@ -718,19 +720,18 @@ fn system_method_introspect(
     let mut names: Vec<&str> = match prefix {
         // If a prefix string is provided, only return methods whose
         // name starts with the provided prefix.
-        Some(pfx) => self
-            .methods()
+        Some(pfx) => Microservice::methods()
             .keys()
             .filter(|n| n.starts_with(pfx))
             .map(|n| n.as_str())
             .collect(),
-        None => self.methods().keys().map(|n| n.as_str()).collect(),
+        None => Microservice::methods().keys().map(|n| n.as_str()).collect(),
     };
 
     names.sort();
 
     for name in names {
-        if let Some(meth) = self.methods().get(name) {
+        if let Some(meth) = Microservice::methods().get(name) {
             if method.method().contains("summary") {
                 session.respond(meth.to_summary_string())?;
             } else {
@@ -741,4 +742,3 @@ fn system_method_introspect(
 
     Ok(())
 }
-*/
