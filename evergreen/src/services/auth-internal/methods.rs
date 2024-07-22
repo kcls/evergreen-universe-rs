@@ -43,7 +43,7 @@ pub fn create_auth_session(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsAuthInternalWorker::downcast(worker)?;
+    let worker = app::AuthInternalWorker::downcast(worker)?;
     let options = method.param(0);
 
     let user_id = options["user_id"].int()?;
@@ -68,7 +68,7 @@ pub fn validate_user(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsAuthInternalWorker::downcast(worker)?;
+    let worker = app::AuthInternalWorker::downcast(worker)?;
     let options = method.param(0);
 
     let user_id = options["user_id"].int()?;

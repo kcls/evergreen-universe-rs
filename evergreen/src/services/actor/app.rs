@@ -5,8 +5,6 @@ use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -14,21 +12,21 @@ use crate::methods;
 const APPNAME: &str = "open-ils.rs-actor";
 
 /// Our main application class.
-pub struct RsActorApplication {}
+pub struct ActorApplication {}
 
-impl Default for RsActorApplication {
+impl Default for ActorApplication {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsActorApplication {
+impl ActorApplication {
     pub fn new() -> Self {
-        RsActorApplication {}
+        ActorApplication {}
     }
 }
 
-impl Application for RsActorApplication {
+impl Application for ActorApplication {
     fn name(&self) -> &str {
         APPNAME
     }
@@ -53,36 +51,32 @@ impl Application for RsActorApplication {
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || Box::new(RsActorWorker::new())
+        || Box::new(ActorWorker::new())
     }
 }
 
 /// Per-thread worker instance.
-pub struct RsActorWorker {
+pub struct ActorWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
-impl Default for RsActorWorker {
+impl Default for ActorWorker {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsActorWorker {
+impl ActorWorker {
     pub fn new() -> Self {
-        RsActorWorker {
-            client: None,
-            methods: None,
-        }
+        ActorWorker { client: None }
     }
 
-    /// Cast a generic ApplicationWorker into our RsActorWorker.
+    /// Cast a generic ApplicationWorker into our ActorWorker.
     ///
-    /// This is necessary to access methods/fields on our RsActorWorker that
+    /// This is necessary to access methods/fields on our ActorWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsActorWorker> {
-        match w.as_any_mut().downcast_mut::<RsActorWorker>() {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut ActorWorker> {
+        match w.as_any_mut().downcast_mut::<ActorWorker>() {
             Some(eref) => Ok(eref),
             None => Err("Cannot downcast".to_string().into()),
         }
@@ -99,22 +93,13 @@ impl RsActorWorker {
     }
 }
 
-impl ApplicationWorker for RsActorWorker {
+impl ApplicationWorker for ActorWorker {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
-    fn worker_start(
-        &mut self,
-        client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
-        self.methods = Some(methods);
         Ok(())
     }
 

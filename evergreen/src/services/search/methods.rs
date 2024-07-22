@@ -65,7 +65,7 @@ pub fn catalog_record_summary(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsSearchWorker::downcast(worker)?;
+    let worker = app::SearchWorker::downcast(worker)?;
 
     let org_id = method.param(0).int()?;
     let _options = method.params().get(2); // optional

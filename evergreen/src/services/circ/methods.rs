@@ -186,7 +186,7 @@ pub fn checkout_renew_checkin(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsCircWorker::downcast(worker)?;
+    let worker = app::CircWorker::downcast(worker)?;
     let authtoken = method.param(0).str()?;
 
     // Translate the object into a hashmap our circulator can use.
@@ -251,7 +251,7 @@ pub fn renewal_chain_summary(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsCircWorker::downcast(worker)?;
+    let worker = app::CircWorker::downcast(worker)?;
     let authtoken = method.param(0).str()?;
     let circ_id = method.param(1).int()?;
 
@@ -275,7 +275,7 @@ pub fn prev_renewal_chain_summary(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsCircWorker::downcast(worker)?;
+    let worker = app::CircWorker::downcast(worker)?;
     let authtoken = method.param(0).str()?;
     let circ_id = method.param(1).int()?;
 

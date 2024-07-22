@@ -10,7 +10,6 @@ use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -32,17 +31,17 @@ const IDLE_DISCONNECT_TIME: i32 = 0;
 const DIRECT_METHODS: &[&str] = &["create", "retrieve", "search", "update", "delete"];
 
 /// Our main application class.
-pub struct RsStoreApplication {}
+pub struct StoreApplication {}
 
-impl Default for RsStoreApplication {
+impl Default for StoreApplication {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsStoreApplication {
+impl StoreApplication {
     pub fn new() -> Self {
-        RsStoreApplication {}
+        StoreApplication {}
     }
 
     /// Register CRUD (and search) methods for classes we control.
@@ -106,7 +105,7 @@ impl RsStoreApplication {
     }
 }
 
-impl Application for RsStoreApplication {
+impl Application for StoreApplication {
     fn name(&self) -> &str {
         APPNAME
     }
@@ -137,45 +136,43 @@ impl Application for RsStoreApplication {
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || Box::new(RsStoreWorker::new())
+        || Box::new(StoreWorker::new())
     }
 }
 
 /// Per-thread worker instance.
-pub struct RsStoreWorker {
+pub struct StoreWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
     database: Option<Rc<RefCell<DatabaseConnection>>>,
     last_work_timer: Option<eg::util::Timer>,
 }
 
-impl Default for RsStoreWorker {
+impl Default for StoreWorker {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsStoreWorker {
+impl StoreWorker {
     pub fn new() -> Self {
         let mut timer = None;
         if IDLE_DISCONNECT_TIME > 0 {
             timer = Some(eg::util::Timer::new(IDLE_DISCONNECT_TIME));
         }
 
-        RsStoreWorker {
+        StoreWorker {
             client: None,
-            methods: None,
             database: None,
             last_work_timer: timer,
         }
     }
 
-    /// Cast a generic ApplicationWorker into our RsStoreWorker.
+    /// Cast a generic ApplicationWorker into our StoreWorker.
     ///
-    /// This is necessary to access methods/fields on our RsStoreWorker that
+    /// This is necessary to access methods/fields on our StoreWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsStoreWorker> {
-        match w.as_any_mut().downcast_mut::<RsStoreWorker>() {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut StoreWorker> {
+        match w.as_any_mut().downcast_mut::<StoreWorker>() {
             Some(eref) => Ok(eref),
             None => Err("Cannot downcast".to_string().into()),
         }
@@ -240,22 +237,13 @@ impl RsStoreWorker {
     }
 }
 
-impl ApplicationWorker for RsStoreWorker {
+impl ApplicationWorker for StoreWorker {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
-    fn worker_start(
-        &mut self,
-        client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
-        self.methods = Some(methods);
         self.setup_database()
     }
 

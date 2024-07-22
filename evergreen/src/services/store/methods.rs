@@ -159,7 +159,7 @@ pub fn retrieve(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsStoreWorker::downcast(worker)?;
+    let worker = app::StoreWorker::downcast(worker)?;
     let classname = get_idl_class(method.method())?;
 
     let pkey = method.param(0); // at least 1 param is guaranteed
@@ -185,7 +185,7 @@ pub fn search(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsStoreWorker::downcast(worker)?;
+    let worker = app::StoreWorker::downcast(worker)?;
     let classname = get_idl_class(method.method())?;
 
     let db = worker.database().clone();
@@ -212,7 +212,7 @@ pub fn delete(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsStoreWorker::downcast(worker)?;
+    let worker = app::StoreWorker::downcast(worker)?;
     let classname = get_idl_class(method.method())?;
 
     let pkey = method.param(0);
@@ -232,7 +232,7 @@ pub fn create(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsStoreWorker::downcast(worker)?;
+    let worker = app::StoreWorker::downcast(worker)?;
     let obj = method.param(0);
 
     let db = worker.database().clone();
@@ -250,7 +250,7 @@ pub fn update(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsStoreWorker::downcast(worker)?;
+    let worker = app::StoreWorker::downcast(worker)?;
     let obj = method.param(0);
 
     let db = worker.database().clone();
@@ -272,7 +272,7 @@ pub fn manage_xact(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsStoreWorker::downcast(worker)?;
+    let worker = app::StoreWorker::downcast(worker)?;
     let db = worker.database();
     let api = method.method();
 
@@ -298,7 +298,7 @@ pub fn json_query(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsStoreWorker::downcast(worker)?;
+    let worker = app::StoreWorker::downcast(worker)?;
     let query = method.param(0);
 
     let db = worker.database().clone();

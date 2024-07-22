@@ -189,7 +189,7 @@ pub fn get_barcodes(
     method: message::MethodCall,
 ) -> EgResult<()> {
     // Cast our worker instance into something we know how to use.
-    let worker = app::RsActorWorker::downcast(worker)?;
+    let worker = app::ActorWorker::downcast(worker)?;
 
     // Extract the method call parameters.
     // Incorrectly shaped parameters will result in an error
@@ -262,7 +262,7 @@ pub fn user_has_work_perm_at_batch(
     method: message::MethodCall,
 ) -> EgResult<()> {
     // Cast our worker instance into something we know how to use.
-    let worker = app::RsActorWorker::downcast(worker)?;
+    let worker = app::ActorWorker::downcast(worker)?;
 
     let authtoken = method.param(0).str()?;
 
@@ -305,7 +305,7 @@ pub fn retrieve_cascade_settigs(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsActorWorker::downcast(worker)?;
+    let worker = app::ActorWorker::downcast(worker)?;
 
     let setting_names: Vec<&str> = method
         .param(0)
@@ -355,7 +355,7 @@ pub fn ou_setting_ancestor_default_batch(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsActorWorker::downcast(worker)?;
+    let worker = app::ActorWorker::downcast(worker)?;
     let org_id = method.param(0).int()?;
 
     let setting_names: Vec<&str> = method
@@ -404,7 +404,7 @@ pub fn user_opac_vital_stats(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsActorWorker::downcast(worker)?;
+    let worker = app::ActorWorker::downcast(worker)?;
     let authtoken = method.param(0).str()?;
 
     let mut editor = Editor::with_auth(worker.client(), authtoken);
@@ -480,7 +480,7 @@ pub fn update_penalties(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::RsActorWorker::downcast(worker)?;
+    let worker = app::ActorWorker::downcast(worker)?;
     let authtoken = method.param(0).str()?;
     let user_id = method.param(1).int()?;
 

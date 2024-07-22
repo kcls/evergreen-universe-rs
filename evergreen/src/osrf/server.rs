@@ -12,10 +12,12 @@ use crate::EgResult;
 use mptc::signals::SignalTracker;
 use std::collections::HashMap;
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static REGISTERED_METHODS: OnceLock<HashMap<String, method::MethodDef>> = OnceLock::new();
 
 /// Warn when there are fewer than this many idle threads
 const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
@@ -38,7 +40,6 @@ pub struct WorkerThread {
 
 pub struct Server {
     application: Box<dyn app::Application>,
-    methods: Option<Arc<HashMap<String, method::MethodDef>>>,
     client: Client,
     // Worker threads are tracked via their bus address.
     workers: HashMap<u64, WorkerThread>,
@@ -99,7 +100,6 @@ impl Server {
             min_workers,
             max_workers,
             min_idle_workers,
-            methods: None,
             worker_id_gen: 0,
             to_parent_tx: tx,
             to_parent_rx: rx,
@@ -134,7 +134,6 @@ impl Server {
 
     fn spawn_one_thread(&mut self) {
         let worker_id = self.next_worker_id();
-        let methods = self.methods.as_ref().unwrap().clone();
         let to_parent_tx = self.to_parent_tx.clone();
         let service = self.service().to_string();
         let factory = self.application.worker_factory();
@@ -143,14 +142,7 @@ impl Server {
         log::trace!("server: spawning a new worker {worker_id}");
 
         let handle = thread::spawn(move || {
-            Server::start_worker_thread(
-                sig_tracker,
-                factory,
-                service,
-                worker_id,
-                methods,
-                to_parent_tx,
-            );
+            Server::start_worker_thread(sig_tracker, factory, service, worker_id, to_parent_tx);
         });
 
         self.workers.insert(
@@ -167,12 +159,11 @@ impl Server {
         factory: app::ApplicationWorkerFactory,
         service: String,
         worker_id: u64,
-        methods: Arc<HashMap<String, method::MethodDef>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) {
         log::trace!("Creating new worker {worker_id}");
 
-        let mut worker = match Worker::new(service, worker_id, sig_tracker, methods, to_parent_tx) {
+        let mut worker = match Worker::new(service, worker_id, sig_tracker, to_parent_tx) {
             Ok(w) => w,
             Err(e) => {
                 log::error!("Cannot create worker: {e}. Exiting.");
@@ -242,6 +233,15 @@ impl Server {
         self.app_mut().init(client)
     }
 
+    pub fn methods() -> &'static HashMap<String, method::MethodDef> {
+        if let Some(h) = REGISTERED_METHODS.get() {
+            h
+        } else {
+            log::error!("Cannot call methods() prior to registration");
+            panic!("Cannot call methods() prior to registration");
+        }
+    }
+
     fn register_methods(&mut self) -> EgResult<()> {
         let client = self.client.clone();
         let list = self.app_mut().register_methods(client)?;
@@ -250,28 +250,13 @@ impl Server {
             hash.insert(m.name().to_string(), m);
         }
         self.add_system_methods(&mut hash);
-        //self.add_atomic_methods(&mut hash);
-        self.methods = Some(Arc::new(hash));
-        Ok(())
-    }
 
-    // currently unused
-    /*
-    fn add_atomic_methods(&self, hash: &mut HashMap<String, method::MethodDef>) {
-        let mut atomic_hash: HashMap<String, method::MethodDef> = HashMap::new();
-
-        for method in hash.values() {
-            let mut atomic_method = method.clone();
-            let name = method.name();
-            let atomic_name = format!("{name}.atomic");
-            atomic_method.set_atomic(true);
-            atomic_method.set_name(&atomic_name);
-            atomic_hash.insert(atomic_name, atomic_method);
+        if REGISTERED_METHODS.set(hash).is_err() {
+            return Err("Cannot call register_methods() more than once".into());
         }
 
-        hash.extend(atomic_hash);
+        Ok(())
     }
-    */
 
     fn add_system_methods(&self, hash: &mut HashMap<String, method::MethodDef>) {
         let name = "opensrf.system.echo";
@@ -565,7 +550,7 @@ fn system_method_time(
 }
 
 fn system_method_introspect(
-    worker: &mut Box<dyn app::ApplicationWorker>,
+    _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
@@ -578,19 +563,18 @@ fn system_method_introspect(
     let mut names: Vec<&str> = match prefix {
         // If a prefix string is provided, only return methods whose
         // name starts with the provided prefix.
-        Some(pfx) => worker
-            .methods()
+        Some(pfx) => Server::methods()
             .keys()
             .filter(|n| n.starts_with(pfx))
             .map(|n| n.as_str())
             .collect(),
-        None => worker.methods().keys().map(|n| n.as_str()).collect(),
+        None => Server::methods().keys().map(|n| n.as_str()).collect(),
     };
 
     names.sort();
 
     for name in names {
-        if let Some(meth) = worker.methods().get(name) {
+        if let Some(meth) = Server::methods().get(name) {
             if method.method().contains("summary") {
                 session.respond(meth.to_summary_string())?;
             } else {

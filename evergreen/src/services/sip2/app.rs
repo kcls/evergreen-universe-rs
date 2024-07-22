@@ -6,8 +6,6 @@ use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -59,7 +57,6 @@ impl Application for Sip2Application {
 /// Per-thread worker instance.
 pub struct Sip2Worker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
 impl Default for Sip2Worker {
@@ -70,10 +67,7 @@ impl Default for Sip2Worker {
 
 impl Sip2Worker {
     pub fn new() -> Self {
-        Sip2Worker {
-            client: None,
-            methods: None,
-        }
+        Sip2Worker { client: None }
     }
 
     /// Casts a generic ApplicationWorker into our Sip2Worker.
@@ -100,18 +94,9 @@ impl ApplicationWorker for Sip2Worker {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
-    fn worker_start(
-        &mut self,
-        client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         Cache::init_cache("global")?;
         self.client = Some(client);
-        self.methods = Some(methods);
         Ok(())
     }
 

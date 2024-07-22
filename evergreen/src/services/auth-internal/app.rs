@@ -6,8 +6,6 @@ use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -15,21 +13,21 @@ use crate::methods;
 const APPNAME: &str = "open-ils.rs-auth-internal";
 
 /// Our main application class.
-pub struct RsAuthInternalApplication {}
+pub struct AuthInternalApplication {}
 
-impl Default for RsAuthInternalApplication {
+impl Default for AuthInternalApplication {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsAuthInternalApplication {
+impl AuthInternalApplication {
     pub fn new() -> Self {
-        RsAuthInternalApplication {}
+        AuthInternalApplication {}
     }
 }
 
-impl Application for RsAuthInternalApplication {
+impl Application for AuthInternalApplication {
     fn name(&self) -> &str {
         APPNAME
     }
@@ -54,36 +52,32 @@ impl Application for RsAuthInternalApplication {
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || Box::new(RsAuthInternalWorker::new())
+        || Box::new(AuthInternalWorker::new())
     }
 }
 
 /// Per-thread worker instance.
-pub struct RsAuthInternalWorker {
+pub struct AuthInternalWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
-impl Default for RsAuthInternalWorker {
+impl Default for AuthInternalWorker {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsAuthInternalWorker {
+impl AuthInternalWorker {
     pub fn new() -> Self {
-        RsAuthInternalWorker {
-            client: None,
-            methods: None,
-        }
+        AuthInternalWorker { client: None }
     }
 
-    /// Cast a generic ApplicationWorker into our RsAuthInternalWorker.
+    /// Cast a generic ApplicationWorker into our AuthInternalWorker.
     ///
-    /// This is necessary to access methods/fields on our RsAuthInternalWorker that
+    /// This is necessary to access methods/fields on our AuthInternalWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsAuthInternalWorker> {
-        match w.as_any_mut().downcast_mut::<RsAuthInternalWorker>() {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut AuthInternalWorker> {
+        match w.as_any_mut().downcast_mut::<AuthInternalWorker>() {
             Some(eref) => Ok(eref),
             None => Err("Cannot downcast".to_string().into()),
         }
@@ -100,23 +94,14 @@ impl RsAuthInternalWorker {
     }
 }
 
-impl ApplicationWorker for RsAuthInternalWorker {
+impl ApplicationWorker for AuthInternalWorker {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
-    fn worker_start(
-        &mut self,
-        client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         Cache::init_cache("global")?;
         self.client = Some(client);
-        self.methods = Some(methods);
         Ok(())
     }
 

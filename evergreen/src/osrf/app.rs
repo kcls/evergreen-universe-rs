@@ -3,8 +3,6 @@ use crate::osrf::method;
 use crate::EgError;
 use crate::EgResult;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 /// * Server spawns a worker thread
 /// * Worker thread calls an ApplicationWorkerFactory function to
@@ -33,15 +31,8 @@ pub trait ApplicationWorker: Any {
     /// Required for downcasting into the local ApplicationWorker implementation type.
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
-    /// All of our registered method definitions, keyed on API name.
-    fn methods(&self) -> &Arc<HashMap<String, method::MethodDef>>;
-
     /// Called just after a new worker is spawned.
-    fn worker_start(
-        &mut self,
-        client: client::Client,
-        methods: Arc<HashMap<String, method::MethodDef>>,
-    ) -> EgResult<()>;
+    fn worker_start(&mut self, client: client::Client) -> EgResult<()>;
 
     /// Called for stateful sessions on CONNECT and for each request
     /// in a stateless session.

@@ -5,8 +5,6 @@ use eg::EgError;
 use eg::EgResult;
 use evergreen as eg;
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 // Import our local methods module.
 use crate::methods;
@@ -14,21 +12,21 @@ use crate::methods;
 const APPNAME: &str = "open-ils.rs-search";
 
 /// Our main application class.
-pub struct RsSearchApplication {}
+pub struct SearchApplication {}
 
-impl Default for RsSearchApplication {
+impl Default for SearchApplication {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsSearchApplication {
+impl SearchApplication {
     pub fn new() -> Self {
-        RsSearchApplication {}
+        SearchApplication {}
     }
 }
 
-impl Application for RsSearchApplication {
+impl Application for SearchApplication {
     fn name(&self) -> &str {
         APPNAME
     }
@@ -53,36 +51,32 @@ impl Application for RsSearchApplication {
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || Box::new(RsSearchWorker::new())
+        || Box::new(SearchWorker::new())
     }
 }
 
 /// Per-thread worker instance.
-pub struct RsSearchWorker {
+pub struct SearchWorker {
     client: Option<Client>,
-    methods: Option<Arc<HashMap<String, MethodDef>>>,
 }
 
-impl Default for RsSearchWorker {
+impl Default for SearchWorker {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl RsSearchWorker {
+impl SearchWorker {
     pub fn new() -> Self {
-        RsSearchWorker {
-            client: None,
-            methods: None,
-        }
+        SearchWorker { client: None }
     }
 
-    /// Cast a generic ApplicationWorker into our RsSearchWorker.
+    /// Cast a generic ApplicationWorker into our SearchWorker.
     ///
-    /// This is necessary to access methods/fields on our RsSearchWorker that
+    /// This is necessary to access methods/fields on our SearchWorker that
     /// are not part of the ApplicationWorker trait.
-    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut RsSearchWorker> {
-        match w.as_any_mut().downcast_mut::<RsSearchWorker>() {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> EgResult<&mut SearchWorker> {
+        match w.as_any_mut().downcast_mut::<SearchWorker>() {
             Some(eref) => Ok(eref),
             None => Err("Cannot downcast".to_string().into()),
         }
@@ -99,22 +93,13 @@ impl RsSearchWorker {
     }
 }
 
-impl ApplicationWorker for RsSearchWorker {
+impl ApplicationWorker for SearchWorker {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn methods(&self) -> &Arc<HashMap<String, MethodDef>> {
-        self.methods.as_ref().unwrap()
-    }
-
-    fn worker_start(
-        &mut self,
-        client: Client,
-        methods: Arc<HashMap<String, MethodDef>>,
-    ) -> EgResult<()> {
+    fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
-        self.methods = Some(methods);
         Ok(())
     }
 

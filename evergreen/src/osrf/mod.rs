@@ -8,6 +8,7 @@ pub mod conf;
 pub mod logging;
 pub mod message;
 pub mod method;
+pub mod microsvc;
 pub mod params;
 pub mod sclient;
 pub mod server;
