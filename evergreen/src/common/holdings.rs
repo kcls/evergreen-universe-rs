@@ -11,8 +11,7 @@ pub fn copy_status(
     copy: Option<&EgValue>,
 ) -> EgResult<i64> {
     if let Some(copy) = copy {
-        if let Some(id) = copy["status"]["id"].as_int() {
-            // fleshed
+        if let Ok(id) = copy["status"].id() {
             Ok(id)
         } else {
             copy["status"].int()

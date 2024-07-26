@@ -201,7 +201,7 @@ impl Session {
 
         let mut patron = Patron::new(barcode, self.format_user_name(&user));
 
-        patron.id = user.id();
+        patron.id = user.id()?;
         // Patron password is an optional field.  Is an undefined password
         // valid?  This code says no. EG SIPServer says yes.
         patron.password_verified = self.check_password(patron.id, password_op)?;
@@ -341,7 +341,7 @@ impl Session {
         let is_circ = xact["xact_type"].as_str() == Some("circulation");
         let last_billing_type = xact["last_billing_type"].str()?;
 
-        let xact_id = xact.id();
+        let xact_id = xact.id()?;
         let balance_owed = xact["balance_owed"].float()?;
 
         let mut title: Option<String> = None;
@@ -566,7 +566,7 @@ impl Session {
     }
 
     fn find_title_for_hold(&mut self, hold: &EgValue) -> EgResult<Option<String>> {
-        let hold_id = hold.id();
+        let hold_id = hold.id()?;
         let bib_link = match self.editor().retrieve("rhrr", hold_id)? {
             Some(l) => l,
             None => return Ok(None), // shouldn't be happen-able
@@ -748,7 +748,7 @@ impl Session {
         let id_hash_list = self.editor().json_query(query)?;
 
         for hash in id_hash_list {
-            let hold_id = hash.id();
+            let hold_id = hash.id()?;
             if unavail {
                 patron.unavail_hold_ids.push(hold_id);
             } else {
@@ -831,7 +831,7 @@ impl Session {
 
     fn penalties_contain(&self, penalty_id: i64, penalties: &[EgValue]) -> EgResult<bool> {
         for pen in penalties.iter() {
-            let pen_id = pen.id();
+            let pen_id = pen.id()?;
             if pen_id == penalty_id {
                 return Ok(true);
             }

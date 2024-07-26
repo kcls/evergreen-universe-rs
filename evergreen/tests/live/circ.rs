@@ -36,7 +36,7 @@ fn create_test_assets(tester: &mut util::Tester) -> EgResult<()> {
     e.xact_begin()?;
 
     let acn = tester.samples.create_default_acn(e)?;
-    tester.samples.create_default_acp(e, acn.id())?;
+    tester.samples.create_default_acp(e, acn.id()?)?;
     tester.samples.create_default_au(e)?;
 
     e.commit()

@@ -34,7 +34,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     //println!("Created: {}", cbt.dump());
 
-    assert!(cbt["id"].int().is_ok());
+    assert!(cbt.id().is_ok());
     tester.timer.log("Billing Type Created");
 
     // Fetch the new billing type
@@ -46,7 +46,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     //println!("Retrieve found: {}", cbt.dump());
 
-    assert!(cbt["id"].int().is_ok());
+    assert!(cbt.id().is_ok());
     tester.timer.log("Retrieved Billing Type");
 
     // Search for the new billing type by name
@@ -56,7 +56,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
 
     //println!("Search found: {}", cbt.dump());
 
-    assert!(cbt["id"].int().is_ok());
+    assert!(cbt.id().is_ok());
     assert!(cbt["name"].str().is_ok());
     assert_eq!(cbt["name"].str()?, CBT_NAME);
     tester.timer.log("Search Found Billing Type");

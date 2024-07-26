@@ -192,11 +192,11 @@ impl SampleData {
 
         let xact = e.create(xact)?;
 
-        self.last_xact_id = Some(xact.id());
+        self.last_xact_id = Some(xact.id()?);
 
         let billing = eg::blessed! {
             "_classname": "mb",
-            "xact": xact.id(),
+            "xact": xact.id()?,
             "btype": btype,
             "billing_type": "Testing",
             "amount": amount,
@@ -215,7 +215,7 @@ impl SampleData {
         };
 
         if let Some(user) = e.search("ac", query)?.pop() {
-            Ok(Some(user.id()))
+            Ok(Some(user.id()?))
         } else {
             Ok(None)
         }

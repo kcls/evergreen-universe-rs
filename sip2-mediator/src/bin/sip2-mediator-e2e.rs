@@ -180,7 +180,7 @@ fn create_test_assets(tester: &mut Tester) -> Result<(), String> {
     e.xact_begin()?;
 
     let acn = tester.samples.create_default_acn(e)?;
-    tester.samples.create_default_acp(e, acn.id())?;
+    tester.samples.create_default_acp(e, acn.id()?)?;
     tester.samples.create_default_au(e)?;
 
     let _ = tester

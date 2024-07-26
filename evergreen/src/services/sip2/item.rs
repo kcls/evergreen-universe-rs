@@ -85,7 +85,7 @@ impl Session {
             }
         }
 
-        let circ_lib_id = copy["circ_lib"].id();
+        let circ_lib_id = copy["circ_lib"].id()?;
         let circ_lib = copy["circ_lib"]["shortname"].string()?;
         let owning_lib = copy["call_number"]["owning_lib"]["shortname"].str()?;
 
@@ -151,7 +151,7 @@ impl Session {
         let collection_code = collection_code["name"].take_string().unwrap();
 
         Ok(Some(Item {
-            id: copy.id(),
+            id: copy.id()?,
             barcode: barcode.to_string(),
             due_date,
             title,
@@ -173,7 +173,7 @@ impl Session {
             hold_patron_barcode: hold_patron_barcode_op,
             circ_patron_id,
             record_id: copy["call_number"]["record"].int()?,
-            call_number_id: copy["call_number"].id(),
+            call_number_id: copy["call_number"].id()?,
         }))
     }
 
@@ -198,7 +198,7 @@ impl Session {
             }
         }
 
-        let copy_id = copy.id();
+        let copy_id = copy.id()?;
 
         let search = eg::hash! {
             "current_copy": copy_id,
@@ -224,7 +224,7 @@ impl Session {
             return Ok(None);
         }
 
-        let copy_id = copy.id();
+        let copy_id = copy.id()?;
 
         let search = eg::hash! {
             "target_copy": copy_id,
@@ -264,7 +264,7 @@ impl Session {
             return Ok(None);
         }
 
-        let copy_id = copy.id();
+        let copy_id = copy.id()?;
 
         let search = eg::hash! {
             "target_copy": copy_id,

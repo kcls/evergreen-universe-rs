@@ -145,8 +145,9 @@ impl Settings {
     pub fn apply_editor(&mut self, e: &Editor) {
         // See if we can pull context data from our editor.
         if let Some(reqr) = e.requestor() {
-            self.default_context.user_id = Some(reqr.id());
-
+            if let Ok(id) = reqr.id() {
+                self.default_context.user_id = Some(id);
+            }
             if let Some(id) = reqr["wsid"].as_int() {
                 self.default_context.workstation_id = Some(id);
             }

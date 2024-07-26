@@ -47,7 +47,7 @@ impl Session {
             None => return Ok(response),
         };
 
-        if !self.cancel_hold(hold.id())? {
+        if !self.cancel_hold(hold.id()?)? {
             return Ok(response);
         }
 

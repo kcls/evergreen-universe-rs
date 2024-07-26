@@ -205,7 +205,7 @@ pub fn find_nearest_permitted_hold(
 
     // Holds that already target this copy are still in the game.
     for old_hold in old_holds.iter() {
-        let old_id = old_hold.id();
+        let old_id = old_hold.id()?;
         if !best_holds.contains(&old_id) {
             best_holds.push(old_id);
         }
@@ -279,7 +279,7 @@ pub fn find_nearest_permitted_hold(
         if hold["id"] == targeted_hold["id"] {
             continue;
         }
-        let hold_id = hold.id();
+        let hold_id = hold.id()?;
 
         hold["current_copy"].take();
         hold["prev_check_time"].take();
@@ -551,7 +551,7 @@ pub fn reset_hold(editor: &mut Editor, hold_id: i64) -> EgResult<targeter::HoldT
             };
 
             if let Some(ht) = editor.search("ahtc", query)?.pop() {
-                transit::cancel_transit(editor, ht.id(), true)?;
+                transit::cancel_transit(editor, ht.id()?, true)?;
             }
         }
     }
@@ -694,7 +694,7 @@ pub fn related_to_copy(
         let hold_type = HoldType::try_from(val["hold_type"].as_str().unwrap()).unwrap();
 
         let h = MinimalHold {
-            id: val.id(),
+            id: val.id()?,
             target: val["target"].int()?,
             pickup_lib: val["pickup_lib"].int()?,
             hold_type,
