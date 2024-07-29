@@ -43,7 +43,7 @@ impl Application for ActorApplication {
 
         // Create Method objects from our static method definitions.
         for def in methods::METHODS.iter() {
-            log::info!("Registering method: {}", def.name());
+            log::debug!("Registering method: {}", def.name());
             methods.push(def.into_method(APPNAME));
         }
 
@@ -110,7 +110,6 @@ impl ApplicationWorker for ActorWorker {
     /// Called after all requests are handled and the worker is
     /// shutting down.
     fn worker_end(&mut self) -> EgResult<()> {
-        log::debug!("Thread ending");
         Ok(())
     }
 

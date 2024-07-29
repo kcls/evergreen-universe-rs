@@ -25,6 +25,7 @@ const DEFAULT_BUS_PORT: u16 = 6379;
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogFile {
     Syslog,
+    Stdout,
     Filename(String),
 }
 
@@ -54,6 +55,9 @@ impl LogOptions {
     }
     pub fn log_file(&self) -> &Option<LogFile> {
         &self.log_file
+    }
+    pub fn set_log_file(&mut self, file: LogFile) {
+        self.log_file = Some(file);
     }
     pub fn log_level(&self) -> &Option<log::LevelFilter> {
         &self.log_level
@@ -468,6 +472,8 @@ impl ConfigBuilder {
                     if let Some(filename) = child.text() {
                         if filename.eq("syslog") {
                             ops.log_file = Some(LogFile::Syslog);
+                        } else if filename.eq("stdout") {
+                            ops.log_file = Some(LogFile::Stdout);
                         } else {
                             ops.log_file = Some(LogFile::Filename(filename.to_string()))
                         }

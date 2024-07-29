@@ -164,11 +164,13 @@ pub fn to_iso(dt: &EgDate) -> String {
     dt.format("%FT%T%z").to_string()
 }
 
+
 /// Same as to_iso but includes milliseconds
 /// e.g. 2023-09-08T10:59:01.687-0400
 pub fn to_iso_millis(dt: &EgDate) -> String {
     dt.format("%FT%T%.3f%z").to_string()
 }
+
 
 /// Translate a DateTime into the Local timezone while leaving the
 /// DateTime as a FixedOffset DateTime.

@@ -1,6 +1,7 @@
 //! Connect to OpenSRF/Redis, load host settings, and load the IDL.
 use crate::idl;
 use crate::osrf::conf;
+use crate::osrf::conf::LogFile;
 use crate::osrf::logging;
 use crate::osrf::sclient::HostSettings;
 use crate::Client;
@@ -51,6 +52,13 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
         config.set_hostname("localhost");
     } else if let Ok(v) = env::var("OSRF_HOSTNAME") {
         config.set_hostname(&v);
+    }
+
+    if env::var("OSRF_LOG_STDOUT").is_ok() {
+        config
+            .client_mut()
+            .logging_mut()
+            .set_log_file(LogFile::Stdout);
     }
 
     // When custom client connection/logging values are provided via

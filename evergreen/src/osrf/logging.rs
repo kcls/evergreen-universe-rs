@@ -113,6 +113,7 @@ impl Logger {
                     return Err(err);
                 }
             }
+            conf::LogFile::Stdout => {}
         }
 
         log::set_max_level(self.loglevel);
@@ -224,7 +225,7 @@ impl log::Log for Logger {
             "{}{} [{}:{}:{}:{}",
             match self.writer.is_some() {
                 true => format!("<{}>", severity),
-                _ => format!("{} ", date::epoch_secs()),
+                _ => date::now().format("%F %T%.3f").to_string() + " ",
             },
             &self.application,
             levelname,
@@ -260,6 +261,7 @@ impl log::Log for Logger {
         }
 
         // If all else fails, print the log message.
+        // We also end up here if our log file is "stdout"
         println!("{message}");
     }
 
