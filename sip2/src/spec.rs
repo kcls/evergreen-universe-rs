@@ -2,7 +2,7 @@
 use std::fmt;
 
 pub const SIP_PROTOCOL_VERSION: &str = "2.00";
-pub const LINE_TERMINATOR: &str = "\r";
+pub const LINE_TERMINATOR: char = '\r';
 pub const SIP_DATE_FORMAT: &str = "%Y%m%d    %H%M%S";
 
 /// Fee Paid Payment Types

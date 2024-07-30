@@ -70,7 +70,7 @@ impl Connection {
 
     /// Send a SIP message
     pub fn send(&mut self, msg: &Message) -> Result<(), Error> {
-        let mut msg_sip = msg.to_sip() + spec::LINE_TERMINATOR;
+        let mut msg_sip = msg.to_sip();
 
         if self.ascii {
             // https://crates.io/crates/deunicode
@@ -80,6 +80,8 @@ impl Connection {
 
         // No need to redact here since SIP replies do not include passwords.
         log::info!("OUTBOUND: {}", msg_sip);
+
+        msg_sip.push(spec::LINE_TERMINATOR);
 
         match self.tcp_stream.write(msg_sip.as_bytes()) {
             Ok(_) => Ok(()),
@@ -146,9 +148,10 @@ impl Connection {
                 }
             };
 
-            text.push_str(chunk);
+            text += chunk;
 
-            if num_bytes < READ_BUFSIZE {
+            if text.contains(spec::LINE_TERMINATOR) {
+                // We've read a whole message.
                 break;
             }
         }
@@ -160,7 +163,8 @@ impl Connection {
             return Err(Error::NoResponseError);
         }
 
-        // Discard the line terminator and any junk after it.
+        // SIP requests should always arrive one at a time.  Discard the
+        // line/message terminator and any data that exists beyond it.
         let mut parts = text.split(spec::LINE_TERMINATOR);
 
         match parts.next() {
