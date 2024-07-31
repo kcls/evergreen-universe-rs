@@ -593,9 +593,7 @@ impl Router {
                 log::error!("Error routing message: {}", s);
             }
 
-            if self.log_metrics {
-                self.log_metrics();
-            }
+            self.log_metrics();
         }
     }
 
@@ -608,6 +606,10 @@ impl Router {
     /// Updates the prev_route_count on each service that had any routed
     /// requests.
     fn log_metrics(&mut self) {
+        if !self.log_metrics {
+            return;
+        }
+
         let prev_log_dur = (Instant::now() - self.last_metrics_log_time).as_secs();
 
         if prev_log_dur < METRICS_LOG_INTERVAL {
