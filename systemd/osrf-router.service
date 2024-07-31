@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenSRF Router
+
+[Service]
+Type=simple
+User=opensrf
+Group=opensrf
+
+# Optional.
+# Environment="OSRF_ROUTER_LOG_METRICS=1"
+
+ExecStart=/usr/local/bin/osrf-router

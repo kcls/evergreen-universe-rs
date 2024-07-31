@@ -54,7 +54,7 @@ socket2 = "0.5"
 url = "2.3"
 
 [[bin]]
-name = "eg-router"
+name = "osrf-router"
 path = "src/bin/router.rs"
 
 [[bin]]

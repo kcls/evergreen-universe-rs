@@ -5,7 +5,10 @@ Description=Evergreen SIP2 Mediator
 Type=simple
 User=opensrf
 Group=opensrf
+
+# Optional.
 Environment="OSRF_LOG_FACILITY=LOCAL4"
+
 ExecStart=/usr/local/bin/eg-sip2-mediator
 ExecReload=/bin/kill -HUP $MAINPID
 

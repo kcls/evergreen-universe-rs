@@ -26,10 +26,14 @@ use std::env;
 use std::fmt;
 use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 
 /// How often do we wake from listening for messages and give shutdown
 /// signals a chance to propagate.
 const POLL_TIMEOUT: i32 = 5;
+
+/// How often we log service metrics
+const METRICS_LOG_INTERVAL: u64 = 10;
 
 /// A service instance.
 ///
@@ -95,6 +99,14 @@ struct ServiceEntry {
 
     /// How many API requests have been routed to this service.
     route_count: usize,
+
+    /// How many API requets were routed to this service the last
+    /// time we logged metrics.
+    prev_route_count: usize,
+
+    /// True if a non-zero route count was logged for this service
+    /// with the most recent metrics logging.
+    had_recent_activity: bool,
 }
 
 impl ServiceEntry {
@@ -317,6 +329,10 @@ struct Router {
 
     /// Which domains can send requests our way.
     trusted_client_domains: Vec<String>,
+
+    log_metrics: bool,
+
+    last_metrics_log_time: Instant,
 }
 
 impl fmt::Display for Router {
@@ -353,6 +369,8 @@ impl Router {
             trusted_client_domains: tcd,
             listen_address: addr,
             remote_domains: Vec::new(),
+            log_metrics: false,
+            last_metrics_log_time: Instant::now(),
         }
     }
 
@@ -521,6 +539,8 @@ impl Router {
         r_domain.services.push(ServiceEntry {
             name: service.to_string(),
             route_count: 0,
+            prev_route_count: 0,
+            had_recent_activity: false,
             instance_index: 0,
             instances: vec![ServiceInstance {
                 address,
@@ -572,7 +592,69 @@ impl Router {
             if let Err(s) = self.route_message(tm) {
                 log::error!("Error routing message: {}", s);
             }
+
+            if self.log_metrics {
+                self.log_metrics();
+            }
         }
+    }
+
+    /// Log the number of requests routed to each ServiceEntry over the last
+    /// METRICS_LOG_INTERVAL seconds.
+    ///
+    /// If no requests were routed since the last time metrics were logged
+    /// for a service, nothing is logged for the service for this iteration.
+    ///
+    /// Updates the prev_route_count on each service that had any routed
+    /// requests.
+    fn log_metrics(&mut self) {
+        let prev_log_dur = (Instant::now() - self.last_metrics_log_time).as_secs();
+
+        if prev_log_dur < METRICS_LOG_INTERVAL {
+            return;
+        }
+
+        let log_one = |service: &mut ServiceEntry| {
+            let count = service.route_count - service.prev_route_count;
+
+            // Only log metrics for a service if it had activity within
+            // the curren or previous metrics window.  The latter is
+            // so we have a log of the service calming back down to an
+            // idle state.
+            if count == 0 {
+                if service.had_recent_activity {
+                    service.had_recent_activity = false;
+                } else {
+                    // No new information to log.
+                    return;
+                }
+            } else {
+                service.had_recent_activity = true;
+            }
+
+            log::info!(
+                "service={} domain={} instance-count={} route-count={} since-last-log={}",
+                service.name,
+                self.primary_domain.domain,
+                service.instances.len(),
+                count,
+                prev_log_dur,
+            );
+
+            service.prev_route_count = service.route_count;
+        };
+
+        for service in self.primary_domain.services.iter_mut() {
+            log_one(service);
+        }
+
+        for domain in self.remote_domains.iter_mut() {
+            for service in domain.services.iter_mut() {
+                log_one(service);
+            }
+        }
+
+        self.last_metrics_log_time = Instant::now();
     }
 
     /// Route the provided transport message to the destination service
@@ -808,17 +890,20 @@ impl Router {
     /// domain, breaking periodically to check for shutdown, etc.
     /// signals.
     fn recv_one(&mut self) -> EgResult<TransportMessage> {
-        let bus = self
-            .primary_domain
-            .bus_mut()
-            .expect("We always maintain a connection on the primary domain");
-
         loop {
-            // Break periodically
-            let tm_op = bus.recv(POLL_TIMEOUT, Some(self.listen_address.as_str()))?;
+            let tm_op = self
+                .primary_domain
+                .bus_mut()
+                .expect("We always maintain a connection on the primary domain")
+                .recv(POLL_TIMEOUT, Some(self.listen_address.as_str()))?;
 
             if let Some(tm) = tm_op {
+                // Metrics will be logged by the calling function.
                 return Ok(tm);
+            } else {
+                // Be sure we log metrics during periods of inactivity
+                // as well for consistency.
+                self.log_metrics();
             }
         }
     }
@@ -890,6 +975,8 @@ fn start_one_domain(domain: String) -> thread::JoinHandle<()> {
             // preventing a flood of repeating error logs.
 
             let mut router = Router::new(&domain);
+
+            router.log_metrics = env::var("OSRF_ROUTER_LOG_METRICS").is_ok();
 
             // If init() fails, we're done for.  Let it panic.
             router.init().unwrap();

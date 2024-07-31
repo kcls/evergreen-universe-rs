@@ -12,6 +12,7 @@ use crate::osrf::message::Payload;
 use crate::osrf::message::TransportMessage;
 use crate::osrf::method;
 use crate::osrf::method::ParamCount;
+use crate::osrf::sclient::HostSettings;
 use crate::osrf::session::ServerSession;
 use crate::util;
 use crate::EgResult;
@@ -125,23 +126,21 @@ impl Microservice {
             return;
         }
 
-        /* TODO environment variables
-        let max_requests: usize =
-            HostSettings::get(&format!("apps/{}/unix_config/max_requests", self.service))
-                .expect("Host Settings Not Retrieved")
-                .as_usize()
-                .unwrap_or(5000);
+        let max_requests: usize = HostSettings::get(&format!(
+            "apps/{}/unix_config/max_requests",
+            self.application.name()
+        ))
+        .expect("Host Settings Not Retrieved")
+        .as_usize()
+        .unwrap_or(5000);
 
-        let keepalive: usize =
-            HostSettings::get(&format!("apps/{}/unix_config/keepalive", self.service))
-                .expect("Host Settings Not Retrieved")
-                .as_usize()
-                .unwrap_or(5);
-
-        */
-
-        let max_requests: usize = 5000;
-        let keepalive: usize = 5;
+        let keepalive: usize = HostSettings::get(&format!(
+            "apps/{}/unix_config/keepalive",
+            self.application.name()
+        ))
+        .expect("Host Settings Not Retrieved")
+        .as_usize()
+        .unwrap_or(5);
 
         let mut requests: usize = 0;
 
