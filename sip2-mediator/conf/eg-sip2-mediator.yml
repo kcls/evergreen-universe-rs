@@ -12,7 +12,7 @@ sip2-mediator:
 
     # Maximum number of allowed SIP client connections.  Once reached,
     # new connection attempts are rejected.
-    max-clients: 128
+    max-workers: 128
 
     # Mumber of worker threads to launch at start and the minimum
     # number to maintain throughout.

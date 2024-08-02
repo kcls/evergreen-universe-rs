@@ -8,7 +8,7 @@ use yaml_rust::YamlLoader;
 pub struct Config {
     pub sip_address: String,
     pub sip_port: u16,
-    pub max_clients: usize,
+    pub max_workers: usize,
     pub min_workers: usize,
     pub ascii: bool,
 }
@@ -18,7 +18,7 @@ impl Config {
         Config {
             sip_address: String::from("localhost"),
             sip_port: 6001,
-            max_clients: 64,
+            max_workers: 64,
             min_workers: 1,
             ascii: true,
         }
@@ -51,8 +51,8 @@ impl Config {
             conf.sip_port = v as u16;
         }
 
-        if let Some(v) = root["max-clients"].as_i64() {
-            conf.max_clients = v as usize;
+        if let Some(v) = root["max-workerss"].as_i64() {
+            conf.max_workers = v as usize;
         }
 
         if let Some(v) = root["min-workers"].as_i64() {

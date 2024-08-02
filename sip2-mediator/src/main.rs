@@ -9,8 +9,6 @@ mod session;
 
 const DEFAULT_CONFIG_1: &str = "/usr/local/etc/eg-sip2-mediator.yml";
 const DEFAULT_CONFIG_2: &str = "./sip2-mediator/conf/eg-sip2-mediator.yml";
-const DEFAULT_CONFIG_3: &str = "/usr/local/etc/eg-sip2-mediator.example.yml";
-const DEFAULT_CONFIG_4: &str = "./sip2-mediator/conf/eg-sip2-mediator.example.yml";
 
 fn load_config() -> EgResult<conf::Config> {
     if let Ok(ref file) = env::var("EG_SIP2_MEDIATOR_CONFIG") {
@@ -19,10 +17,6 @@ fn load_config() -> EgResult<conf::Config> {
         conf::Config::from_yaml(DEFAULT_CONFIG_1)
     } else if Path::new(DEFAULT_CONFIG_2).exists() {
         conf::Config::from_yaml(DEFAULT_CONFIG_2)
-    } else if Path::new(DEFAULT_CONFIG_3).exists() {
-        conf::Config::from_yaml(DEFAULT_CONFIG_3)
-    } else if Path::new(DEFAULT_CONFIG_4).exists() {
-        conf::Config::from_yaml(DEFAULT_CONFIG_4)
     } else {
         Err("sip2-mediator requires a configuration file".into())
     }
@@ -30,7 +24,7 @@ fn load_config() -> EgResult<conf::Config> {
 
 fn main() -> EgResult<()> {
     let conf = load_config()?;
-    let max_workers = conf.max_clients;
+    let max_workers = conf.max_workers;
     let min_workers = conf.min_workers;
 
     let options = eg::init::InitOptions {
