@@ -91,6 +91,20 @@ impl Microservice {
         Ok(())
     }
 
+    /// Mark ourselves as currently idle.
+    ///
+    /// This is a NO-OP for now, but may be useful in the future.
+    fn set_idle(&mut self) -> EgResult<()> {
+        Ok(())
+    }
+
+    /// Mark ourselves as currently active.
+    ///
+    /// This is a NO-OP for now, but may be useful in the future.
+    fn set_active(&mut self) -> EgResult<()> {
+        Ok(())
+    }
+
     fn methods() -> &'static HashMap<String, method::MethodDef> {
         if let Some(h) = REGISTERED_METHODS.get() {
             h
@@ -207,6 +221,10 @@ impl Microservice {
                     break;
                 }
 
+                if self.set_idle().is_err() {
+                    break;
+                }
+
                 if msg_handled {
                     // Increment our message handled count.
                     // Each connected session counts as 1 "request".
@@ -282,6 +300,8 @@ impl Microservice {
                     return Ok((false, false));
                 }
 
+                self.set_active()?;
+
                 // Caller failed to send a message within the keepliave interval.
                 log::warn!("{selfstr} timeout waiting on request while connected");
 
@@ -292,6 +312,8 @@ impl Microservice {
                 return Ok((true, false)); // work occurred
             }
         };
+
+        self.set_active()?;
 
         if !self.connected {
             // Any message received in a non-connected state represents
