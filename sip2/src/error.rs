@@ -8,7 +8,7 @@ pub enum Error {
     FixedFieldLengthError,
     MessageFormatError,
     UnknownMessageError,
-    NetworkError,
+    NetworkError(String),
     NoResponseError,
     MissingParamsError,
 }
@@ -26,7 +26,7 @@ impl fmt::Display for Error {
         match *self {
             DateFormatError => write!(f, "date format error"),
             FixedFieldLengthError => write!(f, "fixed field length error"),
-            NetworkError => write!(f, "network error"),
+            NetworkError(ref s) => write!(f, "network error: {s}"),
             MessageFormatError => write!(f, "sip message format error"),
             UnknownMessageError => write!(f, "unknown sip message type"),
             NoResponseError => write!(f, "no message was received"),

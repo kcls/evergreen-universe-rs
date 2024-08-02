@@ -38,8 +38,8 @@ impl Connection {
                 ascii: false,
             }),
             Err(s) => {
-                log::error!("Connection::new() failed: {}", s);
-                Err(Error::NetworkError)
+                log::error!("Connection::new() failed: {s}");
+                Err(Error::NetworkError(s.to_string()))
             }
         }
     }
@@ -62,8 +62,8 @@ impl Connection {
         match self.tcp_stream.shutdown(Shutdown::Both) {
             Ok(_) => Ok(()),
             Err(s) => {
-                log::error!("disconnect() failed: {}", s);
-                Err(Error::NetworkError)
+                log::error!("disconnect() failed: {s}");
+                Err(Error::NetworkError(s.to_string()))
             }
         }
     }
@@ -87,7 +87,7 @@ impl Connection {
             Ok(_) => Ok(()),
             Err(s) => {
                 log::error!("send() failed: {}", s);
-                Err(Error::NetworkError)
+                Err(Error::NetworkError(s.to_string()))
             }
         }
     }
@@ -99,7 +99,7 @@ impl Connection {
         match self.recv_internal(None) {
             Ok(op) => match op {
                 Some(m) => Ok(m),
-                None => Err(Error::NetworkError),
+                None => unreachable!("Cannot return None w/o timeout"),
             },
             Err(e) => Err(e),
         }
@@ -114,7 +114,7 @@ impl Connection {
 
         if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
             log::error!("Invalid timeout: {timeout:?} {e}");
-            return Err(Error::NetworkError);
+            return Err(Error::NetworkError(e.to_string()));
         }
 
         let mut text = String::from("");
@@ -131,7 +131,7 @@ impl Connection {
                     }
                     _ => {
                         log::error!("recv() failed: {e}");
-                        return Err(Error::NetworkError);
+                        return Err(Error::NetworkError(e.to_string()));
                     }
                 },
             };
