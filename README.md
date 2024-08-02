@@ -61,7 +61,7 @@ a Docker container.
 #### Setup Rust
 
 ```sh
-sudo apt install rust-all 
+sudo apt install git build-essential pkg-config libssl-dev rust-all 
 git clone github.com:kcls/evergreen-universe-rs                                
 ```
 
