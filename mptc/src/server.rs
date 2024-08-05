@@ -8,7 +8,10 @@ use std::time::Duration;
 use std::time::Instant;
 
 /// How often do we log our idle/active thread counts.
-const LOG_THREAD_STATS_FREQUENCY: i32 = 10;
+const LOG_THREAD_STATS_FREQUENCY: i32 = 5;
+
+/// Only log thread stats if at least this many threads are active.
+const LOG_THREAD_MIN_ACTIVE: usize = 5;
 
 type RequestSendChannel = mpsc::Sender<Box<dyn Request>>;
 type RequestReceiveChannel = mpsc::Receiver<Box<dyn Request>>;
@@ -26,6 +29,7 @@ pub struct Server {
     min_workers: usize,
     max_workers: usize,
     max_worker_reqs: usize,
+    min_idle_workers: usize,
 
     sig_tracker: SignalTracker,
 
@@ -45,6 +49,7 @@ impl Server {
             to_parent_tx: tx,
             to_parent_rx: rx,
             min_workers: super::DEFAULT_MIN_WORKERS,
+            min_idle_workers: super::DEFAULT_MIN_IDLE_WORKERS,
             max_workers: super::DEFAULT_MAX_WORKERS,
             max_worker_reqs: super::DEFAULT_MAX_WORKER_REQS,
         }
@@ -52,6 +57,9 @@ impl Server {
 
     pub fn set_min_workers(&mut self, v: usize) {
         self.min_workers = v;
+    }
+    pub fn set_min_idle_workers(&mut self, v: usize) {
+        self.min_idle_workers = v;
     }
     pub fn set_max_workers(&mut self, v: usize) {
         self.max_workers = v;
@@ -108,6 +116,21 @@ impl Server {
         self.workers.insert(worker_id, instance);
 
         worker_id
+    }
+
+    /// Add additional idle workers if needed.
+    ///
+    /// Spawn at most one worker per maintenance cycle.
+    fn perform_idle_worker_maint(&mut self) {
+        let idle_workers = self.idle_worker_count();
+
+        if self.min_idle_workers > 0
+            && self.workers.len() < self.max_workers
+            && idle_workers < self.min_idle_workers
+        {
+            self.start_one_worker();
+            log::debug!("Sawned idle worker; idle={idle_workers}");
+        }
     }
 
     fn active_worker_count(&self) -> usize {
@@ -233,6 +256,8 @@ impl Server {
             // could send a state event.
             self.check_failed_threads();
 
+            self.perform_idle_worker_maint();
+
             if !block || self.idle_worker_count() > 0 {
                 return false;
             }
@@ -286,7 +311,7 @@ impl Server {
 
         let active_count = self.active_worker_count();
 
-        if active_count == 0 {
+        if active_count < LOG_THREAD_MIN_ACTIVE {
             return;
         }
 

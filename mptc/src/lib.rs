@@ -14,6 +14,9 @@ pub const DEFAULT_MIN_WORKERS: usize = 5;
 /// Default maximum number of worker threads.
 pub const DEFAULT_MAX_WORKERS: usize = 256;
 
+/// Default minimum number of idle workers to maintain.
+const DEFAULT_MIN_IDLE_WORKERS: usize = 1;
+
 /// By default, a worker will exit once it has handled this many requests.
 ///
 /// A value of 0 means there is no max.

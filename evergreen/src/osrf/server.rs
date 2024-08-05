@@ -29,8 +29,12 @@ const SHUTDOWN_MAX_WAIT: i32 = 30;
 const DEFAULT_MIN_WORKERS: usize = 3;
 const DEFAULT_MAX_WORKERS: usize = 30;
 const DEFAULT_MIN_IDLE_WORKERS: usize = 1;
+
 /// How often do we log our idle/active thread counts.
-const LOG_THREAD_STATS_FREQUENCY: i32 = 10;
+const LOG_THREAD_STATS_FREQUENCY: i32 = 3;
+
+/// Only log thread stats if at least this many threads are active.
+const LOG_THREAD_MIN_ACTIVE: usize = 5;
 
 #[derive(Debug)]
 pub struct WorkerThread {
@@ -366,7 +370,7 @@ impl Server {
 
         let active_count = self.active_thread_count();
 
-        if active_count == 0 {
+        if active_count < LOG_THREAD_MIN_ACTIVE {
             return;
         }
 
