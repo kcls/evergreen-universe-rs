@@ -196,12 +196,12 @@ impl Settings {
     }
 
     /// Returns a setting value for the provided context.
-    #[allow(clippy::unnecessary_get_then_check)] pub fn get_context_value(
+    pub fn get_context_value(
         &mut self,
         context: &SettingContext,
         name: &str,
     ) -> EgResult<&EgValue> {
-        if self.cache.get(context).is_none() {
+        if !self.cache.contains_key(context) {
             self.cache.insert(context.clone(), HashMap::new());
         }
 

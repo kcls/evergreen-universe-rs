@@ -69,7 +69,7 @@ impl Connection {
     }
 
     /// Send a SIP message
-    #[allow(clippy::unused_io_amount)] pub fn send(&mut self, msg: &Message) -> Result<(), Error> {
+    pub fn send(&mut self, msg: &Message) -> Result<(), Error> {
         let mut msg_sip = msg.to_sip();
 
         if self.ascii {
@@ -83,7 +83,7 @@ impl Connection {
 
         msg_sip.push(spec::LINE_TERMINATOR);
 
-        match self.tcp_stream.write(msg_sip.as_bytes()) {
+        match self.tcp_stream.write_all(msg_sip.as_bytes()) {
             Ok(_) => Ok(()),
             Err(s) => {
                 log::error!("send() failed: {}", s);

@@ -1375,7 +1375,7 @@ impl<'a> HoldTargeter<'a> {
     /// The copy hash arrays are weighted consistent with the org unit hold
     /// target weight, meaning that a given copy may appear more than once
     /// in its proximity list.
-    #[allow(clippy::unnecessary_get_then_check)] fn compile_weighted_proximity_map(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
+    fn compile_weighted_proximity_map(&mut self, context: &mut HoldTargetContext) -> EgResult<()> {
         // Collect copy proximity info (generated via DB trigger)
         // from our newly create copy maps.
 
@@ -1407,9 +1407,7 @@ impl<'a> HoldTargeter<'a> {
 
             copy.proximity = prox;
 
-            if weighted.get(&prox).is_none() {
-                weighted.insert(prox, Vec::new());
-            }
+            weighted.entry(prox).or_default();
 
             let weight = self
                 .settings

@@ -61,13 +61,21 @@ pub struct JsonQueryCompiler {
     select_index: usize,
 }
 
+/// # Examples
+///
+/// ```
+/// use evergreen::common::jq::JsonQueryCompiler;
+/// let compiler = JsonQueryCompiler::new();
+/// let cloned_compiler = compiler.clone();
+/// assert_eq!(compiler.query_params(), cloned_compiler.query_params());
+/// ```
 impl Clone for JsonQueryCompiler {
-    #[allow(clippy::assigning_clones)] fn clone(self: &JsonQueryCompiler) -> JsonQueryCompiler {
+    fn clone(self: &JsonQueryCompiler) -> JsonQueryCompiler {
         let mut new = JsonQueryCompiler::new();
 
-        new.locale = self.locale.clone();
+        new.locale.clone_from(&self.locale);
         new.disable_i18n = self.disable_i18n;
-        new.controllername = self.controllername.clone();
+        new.controllername.clone_from(&self.controllername);
 
         new
     }
