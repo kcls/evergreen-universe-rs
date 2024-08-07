@@ -83,7 +83,7 @@ impl Connection {
 
         msg_sip.push(spec::LINE_TERMINATOR);
 
-        match self.tcp_stream.write(msg_sip.as_bytes()) {
+        match self.tcp_stream.write_all(msg_sip.as_bytes()) {
             Ok(_) => Ok(()),
             Err(s) => {
                 log::error!("send() failed: {}", s);

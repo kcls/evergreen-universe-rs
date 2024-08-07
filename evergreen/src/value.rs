@@ -1682,7 +1682,7 @@ impl IndexMut<&str> for EgValue {
             }
 
             if let Self::Blessed(ref mut o) = self {
-                if o.values.get(key).is_none() {
+                if !o.values.contains_key(key) {
                     o.values.insert(key.to_string(), eg::NULL);
                 }
 

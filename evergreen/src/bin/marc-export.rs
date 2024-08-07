@@ -603,7 +603,7 @@ fn add_items(
 }
 
 fn write(writer: &mut Box<dyn Write>, bytes: &[u8]) -> Result<(), String> {
-    match writer.write(bytes) {
+    match writer.write_all(bytes) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Error writing bytes: {e}")),
     }

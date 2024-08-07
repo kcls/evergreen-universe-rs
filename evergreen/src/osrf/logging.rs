@@ -104,7 +104,7 @@ impl Logger {
             conf::LogFile::Filename(ref name) => {
                 if let Err(e) = fs::File::options()
                     .create(true)
-                    .write(true)
+                    
                     .append(true)
                     .open(name)
                 {
@@ -231,10 +231,7 @@ impl log::Log for Logger {
             levelname,
             process::id(),
             target,
-            match record.line() {
-                Some(l) => l,
-                _ => 0,
-            }
+            record.line().unwrap_or_default()
         );
 
         // Add the thread-local log trace
@@ -249,7 +246,7 @@ impl log::Log for Logger {
         } else if let conf::LogFile::Filename(ref name) = self.logfile {
             if let Ok(mut file) = fs::File::options()
                 .create(true)
-                .write(true)
+                
                 .append(true)
                 .open(name)
             {

@@ -224,10 +224,7 @@ impl GatewayHandler {
                     continue;
                 } else if result.status() == &eg::osrf::message::MessageStatus::PartialComplete {
                     // Take + clear the partial buffer.
-                    let mut buf = match self.partial_buffer.take() {
-                        Some(b) => b,
-                        None => String::new(),
-                    };
+                    let mut buf = self.partial_buffer.take().unwrap_or_default();
 
                     // Append any trailing content if available.
                     if let Some(chunk) = content.as_str() {

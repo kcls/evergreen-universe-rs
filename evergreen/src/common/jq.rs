@@ -61,13 +61,21 @@ pub struct JsonQueryCompiler {
     select_index: usize,
 }
 
+/// # Examples
+///
+/// ```
+/// use evergreen::common::jq::JsonQueryCompiler;
+/// let compiler = JsonQueryCompiler::new();
+/// let cloned_compiler = compiler.clone();
+/// assert_eq!(compiler.query_params(), cloned_compiler.query_params());
+/// ```
 impl Clone for JsonQueryCompiler {
     fn clone(self: &JsonQueryCompiler) -> JsonQueryCompiler {
         let mut new = JsonQueryCompiler::new();
 
-        new.locale = self.locale.clone();
+        new.locale.clone_from(&self.locale);
         new.disable_i18n = self.disable_i18n;
-        new.controllername = self.controllername.clone();
+        new.controllername.clone_from(&self.controllername);
 
         new
     }
@@ -202,7 +210,7 @@ impl JsonQueryCompiler {
     ///
     /// If you don't need an owned value, idl::get_class() will sufffice.
     fn get_idl_class(&self, classname: &str) -> EgResult<Arc<idl::Class>> {
-        idl::get_class(classname).map(|a| a.clone())
+        idl::get_class(classname).cloned()
     }
 
     /// Returns the base IDL class, i.e. the root class of the FROM clause.
@@ -605,7 +613,7 @@ impl JsonQueryCompiler {
             if let Some(xform) = fdef["transform"].as_str() {
                 let mut sql = String::new();
 
-                sql += &self.check_identifier(xform)?;
+                sql += self.check_identifier(xform)?;
                 sql += "(";
 
                 if fdef["distinct"].boolish() {

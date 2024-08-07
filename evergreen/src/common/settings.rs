@@ -201,7 +201,7 @@ impl Settings {
         context: &SettingContext,
         name: &str,
     ) -> EgResult<&EgValue> {
-        if self.cache.get(context).is_none() {
+        if !self.cache.contains_key(context) {
             self.cache.insert(context.clone(), HashMap::new());
         }
 

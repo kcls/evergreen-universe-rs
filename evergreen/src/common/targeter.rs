@@ -1407,9 +1407,7 @@ impl<'a> HoldTargeter<'a> {
 
             copy.proximity = prox;
 
-            if weighted.get(&prox).is_none() {
-                weighted.insert(prox, Vec::new());
-            }
+            weighted.entry(prox).or_default();
 
             let weight = self
                 .settings

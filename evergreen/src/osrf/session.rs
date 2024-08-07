@@ -364,10 +364,7 @@ impl ClientSessionInternal {
                 }));
             } else if resp.status() == &MessageStatus::PartialComplete {
                 // Take + clear the partial buffer.
-                let mut buf = match self.partial_buffer.take() {
-                    Some(b) => b,
-                    None => String::new(),
-                };
+                let mut buf = self.partial_buffer.take().unwrap_or_default();
 
                 // Append any trailing content if available.
                 if let Some(chunk) = value.as_str() {

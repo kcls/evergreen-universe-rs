@@ -267,7 +267,7 @@ fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
         &[
             "0",   // status code
             "999", // max print width
-            &sip2::spec::SIP_PROTOCOL_VERSION,
+            sip2::spec::SIP_PROTOCOL_VERSION,
         ],
     )
     .unwrap();
