@@ -4,21 +4,23 @@ use crate::EgError;
 use crate::EgResult;
 use std::any::Any;
 
-/// * Server spawns a worker thread
-/// * Worker thread calls an ApplicationWorkerFactory function to
-///   generate an ApplicationWorker.
-/// * app_worker.worker_start() is called allowing the worker to
-///   perform any other startup routines.
-/// * Worker waits for inbound method calls.
-/// * Inbound method call arrives
-/// * app_worker.start_session() is called on CONNECT or any stateless request.
-/// * Called method is looked up in the app_worker's methods().
-/// * method handler function is called to handle the request.
-/// * If a DISCONNECT is received OR its a stateless API call,
-///   worker.end_session() is called after the API call completes.
-/// * Once all requests are complete in the current session,
-///   the Worker goes back to sleep to wait for more requests.
-/// * Just before the thread ends/joins, app_worker.worker_end() is called.
+/*
+ * Server spawns a worker thread
+ * Worker thread calls an ApplicationWorkerFactory function to
+   generate an ApplicationWorker.
+ * app_worker.worker_start() is called allowing the worker to
+   perform any other startup routines.
+ * Worker waits for inbound method calls.
+ * Inbound method call arrives
+ * app_worker.start_session() is called on CONNECT or any stateless request.
+ * Called method is looked up in the app_worker's methods().
+ * method handler function is called to handle the request.
+ * If a DISCONNECT is received OR its a stateless API call,
+   worker.end_session() is called after the API call completes.
+ * Once all requests are complete in the current session,
+   the Worker goes back to sleep to wait for more requests.
+ * Just before the thread ends/joins, app_worker.worker_end() is called.
+ */
 
 /// Function that generates ApplicationWorker implementers.
 ///

@@ -217,7 +217,7 @@ impl Server {
     /// Returns true if the it's time to shut down.
     ///
     /// * `block` - Continue performing housekeeping until an idle worker
-    /// becomes available.
+    ///   becomes available.
     fn housekeeping(&mut self, block: bool) -> bool {
         loop {
             if self.sig_tracker.reload_requested() {

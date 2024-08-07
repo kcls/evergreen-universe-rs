@@ -13,6 +13,7 @@ const SETTING_NAME_REGEX: &str = "[^a-zA-Z0-9_\\.]";
 
 /// SettingType may come in handy later when we need to know
 /// more about the types.
+/*
 #[derive(Debug, Clone, PartialEq)]
 pub struct SettingType {
     name: String,
@@ -35,6 +36,7 @@ impl SettingType {
         self.has_workstation_setting
     }
 }
+*/
 
 /// Defines the context under which a setting is retrieved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]

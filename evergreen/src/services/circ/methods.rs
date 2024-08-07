@@ -222,7 +222,7 @@ pub fn checkout_renew_checkin(
     if let Err(err) = result {
         circulator.rollback()?;
         // Return the error event to the caller.
-        session.respond(&err.event_or_default())?;
+        session.respond(err.event_or_default())?;
         return Ok(());
     }
 
