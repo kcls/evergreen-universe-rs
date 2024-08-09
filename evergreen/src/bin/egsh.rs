@@ -316,6 +316,11 @@ impl Shell {
     fn read_one_line(&mut self, readline: &mut rustyline::Editor<()>) -> Result<(), String> {
         let user_input = match readline.readline(PROMPT) {
             Ok(line) => line,
+            // If the user has pressed Ctrl+D
+            Err(rustyline::error::ReadlineError::Eof) => {
+                self.exit();
+                return Ok(());
+            }
             Err(_) => return Ok(()),
         };
 
