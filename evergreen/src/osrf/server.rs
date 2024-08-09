@@ -17,6 +17,14 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// Reminder to self: this code does not leverage MPTC, because MPTC is
+// operates as a top-down request/connection handler.  OpenSRF workers,
+// however, operate autonomously and report their availabilty in a way
+// MPTC is not designed to handle.  In other words, using MPTC, an
+// OpenSRF worker would appear to be busy from the moment the worker
+// was spawned until it exited, as opposed to being busy only when it's
+// handling a request.
+
 static REGISTERED_METHODS: OnceLock<HashMap<String, method::MethodDef>> = OnceLock::new();
 
 /// Warn when there are fewer than this many idle threads
