@@ -92,14 +92,18 @@ impl Processor<'_> {
             total_remaining = new_circ["renewal_remaining"].int()?;
 
             // nullable / maybe a string
-            auto_remaining = new_circ["auto_renewal_remaining"].as_int().unwrap_or_default();
+            auto_remaining = new_circ["auto_renewal_remaining"]
+                .as_int()
+                .unwrap_or_default();
         } else {
             old_due_date = source_circ["due_date"].as_str().unwrap(); // required
             total_remaining = source_circ["renewal_remaining"].int()?;
             fail_reason = eg_evt.desc().unwrap_or("");
 
             // nullable / maybe a string
-            auto_remaining = source_circ["auto_renewal_remaining"].as_int().unwrap_or_default();
+            auto_remaining = source_circ["auto_renewal_remaining"]
+                .as_int()
+                .unwrap_or_default();
         }
 
         if total_remaining < 0 {

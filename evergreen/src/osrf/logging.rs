@@ -102,12 +102,7 @@ impl Logger {
                 }
             }
             conf::LogFile::Filename(ref name) => {
-                if let Err(e) = fs::File::options()
-                    .create(true)
-                    
-                    .append(true)
-                    .open(name)
-                {
+                if let Err(e) = fs::File::options().create(true).append(true).open(name) {
                     let err = format!("Cannot open file for writing: {name} {e}");
                     eprintln!("{err}");
                     return Err(err);
@@ -244,12 +239,7 @@ impl log::Log for Logger {
                 return;
             }
         } else if let conf::LogFile::Filename(ref name) = self.logfile {
-            if let Ok(mut file) = fs::File::options()
-                .create(true)
-                
-                .append(true)
-                .open(name)
-            {
+            if let Ok(mut file) = fs::File::options().create(true).append(true).open(name) {
                 message += "\n";
                 if file.write_all(message.as_bytes()).is_ok() {
                     return;
