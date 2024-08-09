@@ -6,7 +6,9 @@ use crate::osrf::logging;
 use crate::osrf::sclient::HostSettings;
 use crate::Client;
 use crate::EgResult;
+use daemonize;
 use std::env;
+use std::fs::File;
 
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 const DEFAULT_IDL_PATH: &str = "/openils/conf/fm_IDL.xml";
@@ -37,9 +39,44 @@ pub fn init() -> EgResult<Client> {
     with_options(&InitOptions::new())
 }
 
+/// If a pid file is provided, daemonize this process and write
+/// the PID file.
+fn maybe_daemonize() -> EgResult<()> {
+    // If a pid file is provided, we're running in daemonized mode.
+    let pid_file = match env::var("OSRF_PID_FILE") {
+        Ok(f) => f,
+        Err(_) => return Ok(()),
+    };
+
+    let out_file = match env::var("OSRF_STDERR_FILE") {
+        Ok(f) => f.to_string(),
+        Err(_) => format!("{pid_file}.stderr"),
+    };
+
+    // For now, stdout and stderr are routed to the same file.
+    let stdout_file =
+        File::create(&out_file).map_err(|e| format!("Cannot create stderr file: {e}"))?;
+
+    let stderr_file =
+        File::create(out_file).map_err(|e| format!("Cannot create stderr file: {e}"))?;
+
+    let daemon = daemonize::Daemonize::new()
+        .pid_file(pid_file)
+        .chown_pid_file(true) // is optional, see `Daemonize` documentation
+        .working_directory("/tmp") // for default behaviour.
+        .stdout(stdout_file)
+        .stderr(stderr_file);
+
+    daemon
+        .start()
+        .map_err(|e| format!("Cannot daemonize:, {e}").into())
+}
+
 /// Parse the OpenSRF config file, connect to the message bus, and
 /// optionally fetch the host settings and initialize logging.
 pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
+    maybe_daemonize()?;
+
     let builder = if let Ok(fname) = env::var("OSRF_CONFIG") {
         conf::ConfigBuilder::from_file(&fname)?
     } else {
