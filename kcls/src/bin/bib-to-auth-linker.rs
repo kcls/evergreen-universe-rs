@@ -6,6 +6,7 @@
 use eg::db::DatabaseConnection;
 use eg::init;
 use eg::norm::Normalizer;
+use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
 use std::cell::RefCell;
@@ -60,7 +61,7 @@ struct BibLinker {
 }
 
 impl BibLinker {
-    fn new(opts: &mut getopts::Options) -> Result<Self, String> {
+    fn new(opts: &mut getopts::Options) -> EgResult<Self> {
         let client = init::init()?;
         let editor = eg::Editor::new(&client);
 
@@ -77,24 +78,22 @@ impl BibLinker {
 
         let sa = DEFAULT_STAFF_ACCOUNT.to_string();
         let staff_account = params.opt_get_default("staff-account", sa).unwrap();
-        let staff_account = match staff_account.parse::<u32>() {
-            Ok(id) => id,
-            Err(e) => Err(format!("Error parsing staff-account value: {e}"))?,
-        };
+        let staff_account = staff_account
+            .parse::<u32>()
+            .map_err(|e| format!("Error parsing staff-account value: {e}"))?;
 
         let start_id = match params.opt_str("start-id") {
-            Some(id) => match id.parse::<i64>() {
-                Ok(i) => i,
-                Err(e) => Err(format!("Error parsing --start-id: {e}"))?,
-            },
+            Some(id) => id
+                .parse::<i64>()
+                .map_err(|e| format!("Error parsing --start-id: {e}"))?,
             None => 1,
         };
 
         let end_id = match params.opt_str("end-id") {
-            Some(id) => match id.parse::<i64>() {
-                Ok(i) => Some(i),
-                Err(e) => Err(format!("Error parsing --end-id: {e}"))?,
-            },
+            Some(id) => Some(
+                id.parse::<i64>()
+                    .map_err(|e| format!("Error parsing --end-id: {e}"))?,
+            ),
             None => None,
         };
 
@@ -116,7 +115,7 @@ impl BibLinker {
     }
 
     /// Returns the list of bib record IDs we plan to process.
-    fn get_bib_ids(&self) -> Result<Vec<i64>, String> {
+    fn get_bib_ids(&self) -> EgResult<Vec<i64>> {
         let select = "SELECT id";
         let from = "FROM biblio.record_entry";
 
@@ -131,10 +130,7 @@ impl BibLinker {
 
         let query_res = self.db().borrow_mut().client().query(&sql[..], &[]);
 
-        let rows = match query_res {
-            Ok(rows) => rows,
-            Err(e) => Err(format!("Failed getting bib IDs: {e}"))?,
-        };
+        let rows = query_res.map_err(|e| format!("Failed getting bib IDs: {e}"))?;
 
         let mut list: Vec<i64> = Vec::new();
         for row in rows {
@@ -146,13 +142,13 @@ impl BibLinker {
     }
 
     /// Collect the list of controlled fields from the database.
-    fn get_controlled_fields(&mut self) -> Result<Vec<ControlledField>, String> {
+    fn get_controlled_fields(&mut self) -> EgResult<Vec<ControlledField>> {
         let search = eg::hash! {"id": {"<>": EgValue::Null}};
 
         let flesh = eg::hash! {
-            flesh: 1,
-            flesh_fields: eg::hash!{
-                acsbf: vec!["authority_field"]
+            "flesh": 1,
+            "flesh_fields": eg::hash!{
+                "acsbf": vec!["authority_field"]
             }
         };
 
@@ -170,7 +166,7 @@ impl BibLinker {
         let mut controlled_fields: Vec<ControlledField> = Vec::new();
 
         for bib_field in bib_fields {
-            let bib_tag = bib_field["tag"].as_str().unwrap();
+            let bib_tag = bib_field["tag"].str()?;
 
             if !linkable_tag_prefixes.contains(&&bib_tag[..1]) {
                 continue;
@@ -178,14 +174,14 @@ impl BibLinker {
 
             let authority_field = &bib_field["authority_field"];
 
-            let auth_tag = authority_field["tag"].as_str().unwrap();
+            let auth_tag = authority_field["tag"].str()?;
 
             // Ignore authority 18X fields
             if auth_tag[..2].eq("18") {
                 continue;
             }
 
-            let sf_string = authority_field["sf_list"].as_str().unwrap();
+            let sf_string = authority_field["sf_list"].str()?;
             let mut subfields: Vec<String> = Vec::new();
 
             for sf in sf_string.split("") {
@@ -219,7 +215,7 @@ impl BibLinker {
         &mut self,
         bib_tag: &str,
         auth_ids: Vec<i64>,
-    ) -> Result<Vec<AuthLeader>, String> {
+    ) -> EgResult<Vec<AuthLeader>> {
         let mut leaders: Vec<AuthLeader> = Vec::new();
 
         let params = eg::hash! {tag: "008", record: auth_ids.clone()};
@@ -230,10 +226,10 @@ impl BibLinker {
         // matchy-ness
         for auth_id in auth_ids {
             for leader in maybe_leaders.iter() {
-                if leader["record"].as_i64().unwrap() == auth_id {
+                if leader["record"].int()? == auth_id {
                     leaders.push(AuthLeader {
-                        auth_id: leader["record"].as_i64().unwrap(),
-                        value: leader["value"].as_str().unwrap().to_string(),
+                        auth_id: leader["record"].int()?,
+                        value: leader["value"].string()?,
                     });
                     break;
                 }
@@ -270,7 +266,7 @@ impl BibLinker {
         &self,
         bib_field: &marc::Field,
         auth_leaders: &Vec<AuthLeader>,
-    ) -> Result<Option<i64>, String> {
+    ) -> EgResult<Option<i64>> {
         let mut bib_ind2 = bib_field.ind2();
         let mut is_local = false;
 
@@ -359,11 +355,11 @@ impl BibLinker {
         false
     }
 
-    fn update_bib_record(&mut self, mut bre: EgValue, record: &marc::Record) -> Result<(), String> {
+    fn update_bib_record(&mut self, mut bre: EgValue, record: &marc::Record) -> EgResult<()> {
         let xml = record.to_xml()?;
-        let bre_id = bre["id"].as_i64().unwrap();
+        let bre_id = bre["id"].int()?;
 
-        if bre["marc"].as_str().unwrap() == xml {
+        if bre["marc"].str()? == xml {
             log::debug!("Skipping update of record {bre_id} -- no changes made");
             return Ok(());
         }
@@ -385,7 +381,7 @@ impl BibLinker {
         &mut self,
         controlled_fields: &[ControlledField],
         bib_field: &marc::Field,
-    ) -> Result<Vec<i64>, String> {
+    ) -> EgResult<Vec<i64>> {
         let bib_tag = bib_field.tag();
         let auth_ids: Vec<i64> = Vec::new();
 
@@ -428,7 +424,7 @@ impl BibLinker {
         &mut self,
         auth_tag: &str,
         searches: &mut Vec<(&str, &str)>,
-    ) -> Result<Vec<i64>, String> {
+    ) -> EgResult<Vec<i64>> {
         let mut auth_ids: Vec<i64> = Vec::new();
 
         loop {
@@ -457,7 +453,7 @@ impl BibLinker {
             };
 
             for rec in recs {
-                auth_ids.push(rec["id"].as_i64().unwrap());
+                auth_ids.push(rec["id"].int()?);
             }
 
             if searches.pop().is_none() {
@@ -468,7 +464,7 @@ impl BibLinker {
         Ok(auth_ids)
     }
 
-    fn link_bibs(&mut self) -> Result<(), String> {
+    fn link_bibs(&mut self) -> EgResult<()> {
         self.editor.connect()?;
 
         let control_fields = self.get_controlled_fields()?;
@@ -498,11 +494,11 @@ impl BibLinker {
                 }
             };
 
-            if bre["deleted"].as_str().unwrap() == "t" {
+            if bre["deleted"].str()? == "t" {
                 continue;
             }
 
-            let xml = bre["marc"].as_str().unwrap();
+            let xml = bre["marc"].str()?;
 
             let mut record = match marc::Record::from_xml(xml).next() {
                 Some(r) => r?,
@@ -529,7 +525,7 @@ impl BibLinker {
         bre: EgValue,
         control_fields: &[ControlledField],
         record: &mut marc::Record,
-    ) -> Result<(), String> {
+    ) -> EgResult<()> {
         log::info!("Processing record {rec_id}");
 
         let mut bib_modified = false;
@@ -650,7 +646,7 @@ impl BibLinker {
     }
 }
 
-fn main() -> Result<(), String> {
+fn main() -> EgResult<()> {
     let mut opts = getopts::Options::new();
 
     opts.optopt("", "staff-account", "Staff Account ID", "STAFF_ACCOUNT_ID");
