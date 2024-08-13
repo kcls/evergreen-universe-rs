@@ -108,7 +108,9 @@ install-kcls-release: install-kcls-bin-release
 
 install-kcls-bin:
 	cp ./target/debug/kcls-on-order-audience-repairs ${TARGET}/bin
+	cp ./target/debug/kcls-bib-to-auth-linker ${TARGET}/bin
 
 install-kcls-bin-release:
 	cp ./target/release/kcls-on-order-audience-repairs ${TARGET}/bin
+	cp ./target/release/kcls-bib-to-auth-linker ${TARGET}/bin
 

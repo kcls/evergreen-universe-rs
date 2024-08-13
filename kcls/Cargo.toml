@@ -14,3 +14,8 @@ getopts = "0.2"
 [[bin]]
 name = "kcls-on-order-audience-repairs"
 path = "src/bin/on-order-audience-repairs.rs"
+
+[[bin]]
+name = "kcls-bib-to-auth-linker"
+path = "src/bin/bib-to-auth-linker.rs"
+

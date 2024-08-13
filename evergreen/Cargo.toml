@@ -75,10 +75,6 @@ name = "eg-marc-export"
 path = "src/bin/marc-export.rs"
 
 [[bin]]
-name = "eg-bib-to-auth-linker"
-path = "src/bin/bib-to-auth-linker.rs"
-
-[[bin]]
 name = "eg-parallel-ingest"
 path = "src/bin/parallel-ingest.rs"
 
