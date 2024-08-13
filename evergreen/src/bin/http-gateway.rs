@@ -291,13 +291,7 @@ impl GatewayHandler {
 
             log::trace!("Read {num_bytes} from the TCP stream");
 
-            for c in buffer.iter() {
-                if *c == 0 {
-                    // Drop any trailing '\0' chars.
-                    break;
-                }
-                chars.push(*c);
-            }
+            chars.extend_from_slice(&buffer[..num_bytes]);
 
             if parsed_req.is_none() {
                 // Parse the headers and extract the values we care about.
