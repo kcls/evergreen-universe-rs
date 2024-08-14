@@ -395,11 +395,28 @@ impl BibLinker {
         false
     }
 
-    fn update_bib_record(&mut self, mut bre: EgValue, record: &marc::Record) -> EgResult<()> {
-        let xml = record.to_xml()?;
+    fn update_bib_record(
+        &mut self,
+        mut bre: EgValue,
+        orig_record: &marc::Record,
+        record: &marc::Record,
+    ) -> EgResult<()> {
+        let ops = marc::xml::XmlOptions {
+            formatted: false,
+            with_xml_declaration: false,
+        };
+
+        // We compare locally re-generated XML instead of comparing
+        // to bre["marc"], because bre["marc"] is always generated
+        // by the EG Perl code, which has minor spacing/sorting
+        // differences in the generated XML.
+        let orig_xml = orig_record.to_xml_ops(&ops)?;
+
+        let xml = record.to_xml_ops(&ops)?;
+
         let bre_id = bre["id"].int()?;
 
-        if bre["marc"].str()? == xml {
+        if orig_xml == xml {
             log::debug!("Skipping update of record {bre_id} -- no changes made");
             return Ok(());
         }
@@ -540,7 +557,7 @@ impl BibLinker {
 
             let xml = bre["marc"].str()?;
 
-            let mut record = match marc::Record::from_xml(xml).next() {
+            let orig_record = match marc::Record::from_xml(xml).next() {
                 Some(r) => r?,
                 None => {
                     log::error!("MARC parsing returned no usable record for {rec_id}");
@@ -548,7 +565,11 @@ impl BibLinker {
                 }
             };
 
-            if let Err(e) = self.link_one_bib(rec_id, bre, &control_fields, &mut record) {
+            let mut record = orig_record.clone();
+
+            if let Err(e) =
+                self.link_one_bib(rec_id, bre, &control_fields, &orig_record, &mut record)
+            {
                 log::error!("Error processing bib record {rec_id}: {e}");
                 eprintln!("Error processing bib record {rec_id}: {e}");
                 self.editor.disconnect()?;
@@ -564,6 +585,7 @@ impl BibLinker {
         rec_id: i64,
         bre: EgValue,
         control_fields: &[ControlledField],
+        orig_record: &marc::Record,
         record: &mut marc::Record,
     ) -> EgResult<()> {
         log::info!("Processing record {rec_id}");
@@ -687,7 +709,7 @@ impl BibLinker {
         } // Each controlled bib tag
 
         if bib_modified {
-            self.update_bib_record(bre, record)
+            self.update_bib_record(bre, orig_record, record)
         } else {
             Ok(())
         }
