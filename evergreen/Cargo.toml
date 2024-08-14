@@ -24,6 +24,7 @@ getopts = "0.2"
 md5 = "0.7"
 memcache = "0.17.2"
 daemonize = "0.5.0"
+icu_normalizer = "1.5.0"
 
 # Needed for extracting numeric PG types
 pg_interval = "0.4"

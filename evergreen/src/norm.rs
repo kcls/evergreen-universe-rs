@@ -1,3 +1,4 @@
+use icu_normalizer::DecomposingNormalizer;
 use regex::Regex;
 use std::sync::OnceLock;
 
@@ -57,9 +58,12 @@ impl Normalizer {
     /// );
     /// assert_eq!(normalizer.naco_normalize("‘Hello’"), normalizer.naco_normalize("Hello"));
     /// assert_eq!(normalizer.naco_normalize("Ægis"), normalizer.naco_normalize("aegis"));
+    /// assert_eq!(normalizer.naco_normalize("Ryan, Pam Muñoz"), "ryan pam munoz");
     /// ```
     pub fn naco_normalize(&self, value: &str) -> String {
-        self.normalize_codes(&self.normalize_substitutions(value))
+        let mut value = self.normalize_substitutions(value);
+        value = value.replace('\'', "");
+        self.normalize_codes(value)
     }
 
     fn normalize_substitutions(&self, value: &str) -> String {
@@ -80,9 +84,8 @@ impl Normalizer {
                 "\"",
             );
 
-        // TODO
-        // https://docs.rs/icu_normalizer/1.0.0/icu_normalizer/
-        // $str = NFKD($str);
+        let normalizer: DecomposingNormalizer = DecomposingNormalizer::new_nfkd();
+        let value = normalizer.normalize(&value);
 
         // Additional substitutions
         value
@@ -96,11 +99,11 @@ impl Normalizer {
             .replace(['\u{2113}', '\u{02BB}', '\u{02BC}'], "")
     }
 
-    fn normalize_codes(&self, value: &str) -> String {
+    fn normalize_codes(&self, value: String) -> String {
         let mut value = if let Some(reg) = REGEX_CONTROL_CODES.get() {
-            reg.replace_all(value, "").into_owned()
+            reg.replace_all(&value, "").into_owned()
         } else {
-            unreachable!();
+            value
         };
 
         // Set aside some chars for safe keeping.
