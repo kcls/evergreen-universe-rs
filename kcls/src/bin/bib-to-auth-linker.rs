@@ -562,10 +562,19 @@ impl BibLinker {
                         continue;
                     }
 
+                    log::info!("Removing $0 {sfcode} for rec={rec_id} and tag={bib_tag}");
+
                     // Remove any existing subfield 0 values -- should
                     // only be one of these at the most.
                     bib_field.remove_subfields("0");
                     bib_modified = true;
+
+                    if is_fast_heading {
+                        // We don't control fast headings, so there's nothing
+                        // else to do.  Move on to the next field...
+                        log::debug!("No linking performed on FAST heading field on rec={rec_id} and tag={bib_tag}");
+                        continue;
+                    }
                 }
 
                 let mut auth_matches =
