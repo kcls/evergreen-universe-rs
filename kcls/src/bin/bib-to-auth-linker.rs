@@ -585,20 +585,23 @@ impl BibLinker {
                 let is_fast_heading = self.is_fast_heading(bib_field);
 
                 if let Some(sf0) = bib_field.get_subfields("0").first() {
-                    let sfcode = sf0.code();
+                    let sf0_val = sf0.content();
 
-                    if sfcode.contains(")fst") && is_fast_heading {
+                    if sf0_val.contains(")fst") && is_fast_heading {
                         log::debug!(
                             "Ignoring FAST heading on rec={} and tag={} $0={}",
                             rec_id,
                             bib_tag,
-                            sfcode
+                            sf0_val
                         );
 
                         continue;
                     }
 
-                    log::info!("Removing $0 {sfcode} for rec={rec_id} and tag={bib_tag}");
+                    log::info!(
+                        "Removing $0 {sf0_val} rec={rec_id} and field={}",
+                        bib_field.to_breaker()
+                    );
 
                     // Remove any existing subfield 0 values -- should
                     // only be one of these at the most.
