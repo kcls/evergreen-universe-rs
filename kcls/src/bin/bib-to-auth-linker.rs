@@ -13,9 +13,29 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-// TODO These come from KCLS; make them EG-generic with overrides.
 const DEFAULT_STAFF_ACCOUNT: u32 = 4953211; // utiladmin
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
+
+const HELP_TEXT: &str = "
+Link bib records to authority records by applying $0 values to controlled fields.
+
+    --record-id
+        Update links for a specific bib record.
+
+    --min-id
+        Minimum bib record ID to process.
+
+    --max-id
+        Maximum bib record ID to process.
+
+    --staff-account
+        ID of the actor.usr account which should be used as the
+        editor value on modified bib records.
+
+    -h, --help
+        Display this help
+
+";
 
 // mapping of authority leader/11 "Subject heading system/thesaurus"
 // to the matching bib record indicator
@@ -54,14 +74,17 @@ struct BibLinker {
     db: Rc<RefCell<DatabaseConnection>>,
     editor: eg::Editor,
     staff_account: u32,
-    start_id: i64,
-    end_id: Option<i64>,
+    min_id: i64,
+    max_id: Option<i64>,
+    record_id: Option<i64>,
     normalizer: Normalizer,
-    verbose: bool,
 }
 
 impl BibLinker {
-    fn new(opts: &mut getopts::Options) -> EgResult<Self> {
+    /// Create a new linker.
+    ///
+    /// Exits early with None if the --help option is provided.
+    fn new(opts: &mut getopts::Options) -> EgResult<Option<Self>> {
         let client = init::init()?;
         let editor = eg::Editor::new(&client);
 
@@ -70,6 +93,11 @@ impl BibLinker {
             Ok(p) => p,
             Err(e) => panic!("Error parsing options: {}", e),
         };
+
+        if params.opt_present("help") {
+            println!("{HELP_TEXT}");
+            return Ok(None);
+        }
 
         let mut db = DatabaseConnection::new_from_options(&params);
         db.connect()?;
@@ -82,32 +110,38 @@ impl BibLinker {
             .parse::<u32>()
             .map_err(|e| format!("Error parsing staff-account value: {e}"))?;
 
-        let start_id = match params.opt_str("start-id") {
+        let min_id = match params.opt_str("min-id") {
             Some(id) => id
                 .parse::<i64>()
-                .map_err(|e| format!("Error parsing --start-id: {e}"))?,
+                .map_err(|e| format!("Error parsing --min-id: {e}"))?,
             None => 1,
         };
 
-        let end_id = match params.opt_str("end-id") {
+        let max_id = match params.opt_str("max-id") {
             Some(id) => Some(
                 id.parse::<i64>()
-                    .map_err(|e| format!("Error parsing --end-id: {e}"))?,
+                    .map_err(|e| format!("Error parsing --max-id: {e}"))?,
             ),
             None => None,
         };
 
-        let verbose = params.opt_present("verbose");
+        let record_id = match params.opt_str("record-id") {
+            Some(id) => Some(
+                id.parse::<i64>()
+                    .map_err(|e| format!("Error parsing --record-id: {e}"))?,
+            ),
+            None => None,
+        };
 
-        Ok(BibLinker {
+        Ok(Some(BibLinker {
             db,
             editor,
             staff_account,
-            start_id,
-            end_id,
-            verbose,
+            min_id,
+            max_id,
+            record_id,
             normalizer: Normalizer::new(),
-        })
+        }))
     }
 
     fn db(&self) -> &Rc<RefCell<DatabaseConnection>> {
@@ -116,17 +150,23 @@ impl BibLinker {
 
     /// Returns the list of bib record IDs we plan to process.
     fn get_bib_ids(&self) -> EgResult<Vec<i64>> {
+        if let Some(id) = self.record_id {
+            return Ok(vec![id]);
+        }
+
         let select = "SELECT id";
         let from = "FROM biblio.record_entry";
 
-        let mut where_ = format!("WHERE NOT deleted AND id >= {}", self.start_id);
-        if let Some(end) = self.end_id {
-            where_ += &format!(" AND id < {end}");
+        let mut where_ = format!("WHERE NOT deleted AND id >= {}", self.min_id);
+        if let Some(end) = self.max_id {
+            where_ += &format!(" AND id <= {end}");
         }
 
         let order = "ORDER BY id";
 
         let sql = format!("{select} {from} {where_} {order}");
+
+        log::debug!("Searching for bib records to link: {sql}");
 
         let query_res = self.db().borrow_mut().client().query(&sql[..], &[]);
 
@@ -530,10 +570,6 @@ impl BibLinker {
 
         let mut bib_modified = false;
 
-        if self.verbose {
-            println!("Processing bib record {rec_id}");
-        }
-
         let mut seen_bib_tags: HashMap<&str, bool> = HashMap::new();
 
         for cfield in control_fields.iter() {
@@ -570,9 +606,12 @@ impl BibLinker {
                     bib_modified = true;
 
                     if is_fast_heading {
-                        // We don't control fast headings, so there's nothing
-                        // else to do.  Move on to the next field...
-                        log::debug!("No linking performed on FAST heading field on rec={rec_id} and tag={bib_tag}");
+                        // We don't control fast headings. Move to the next field.
+                        log::debug!(
+                            "No linking performed on FAST heading field on rec={} and tag={}",
+                            rec_id,
+                            bib_tag
+                        );
                         continue;
                     }
                 }
@@ -591,14 +630,12 @@ impl BibLinker {
                     continue;
                 }
 
-                if self.verbose {
-                    println!(
-                        "Found {} potential authority matches for bib {} tag={}",
-                        auth_matches.len(),
-                        rec_id,
-                        bib_tag
-                    );
-                }
+                log::debug!(
+                    "Found {} potential authority matches for bib {} tag={}",
+                    auth_matches.len(),
+                    rec_id,
+                    bib_tag
+                );
 
                 let mut auth_leaders: Vec<AuthLeader> = Vec::new();
 
@@ -613,9 +650,7 @@ impl BibLinker {
 
                     auth_matches = auth_leaders.iter().map(|l| l.auth_id).collect::<Vec<i64>>();
 
-                    if self.verbose {
-                        println!("Auth matches trimmed to {auth_matches:?}");
-                    }
+                    log::debug!("Auth matches trimmed to {auth_matches:?}");
                 }
 
                 let mut auth_id = auth_matches.first().copied();
@@ -637,6 +672,7 @@ impl BibLinker {
                     let content = format!("({}){}", DEFAULT_CONTROL_NUMBER_IDENTIFIER, id);
                     bib_field.add_subfield("0", &content)?;
                     bib_modified = true;
+
                     log::info!(
                         "Found a match on bib={} tag={} auth={}",
                         rec_id,
@@ -658,14 +694,19 @@ impl BibLinker {
 fn main() -> EgResult<()> {
     let mut opts = getopts::Options::new();
 
-    opts.optopt("", "staff-account", "Staff Account ID", "STAFF_ACCOUNT_ID");
-    opts.optopt("", "start-id", "Start ID", "START_ID");
-    opts.optopt("", "end-id", "End ID", "END_ID");
-    opts.optflag("", "verbose", "Verbose");
+    opts.optflag("h", "help", "");
+    opts.optopt("", "staff-account", "", "");
+    opts.optopt("", "min-id", "", "");
+    opts.optopt("", "max-id", "", "");
+    opts.optopt("", "record-id", "", "");
 
     DatabaseConnection::append_options(&mut opts);
 
-    let mut linker = BibLinker::new(&mut opts)?;
+    let mut linker = match BibLinker::new(&mut opts)? {
+        Some(l) => l,
+        None => return Ok(()),
+    };
+
     linker.link_bibs()?;
 
     Ok(())
