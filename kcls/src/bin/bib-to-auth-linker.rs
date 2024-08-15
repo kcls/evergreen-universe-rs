@@ -513,7 +513,9 @@ impl BibLinker {
                 auth_ids.push(rec["id"].int()?);
             }
 
-            if searches.pop().is_none() {
+            searches.pop();
+
+            if searches.is_empty() {
                 break;
             }
         }
@@ -639,6 +641,11 @@ impl BibLinker {
                         );
                         continue;
                     }
+
+                } else if is_fast_heading {
+
+                    log::debug!("Skipping FAST heading on bib field {}", bib_field.to_breaker());
+                    continue;
                 }
 
                 let mut auth_matches =
