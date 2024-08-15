@@ -224,12 +224,12 @@ impl BibLinker {
             let sf_string = authority_field["sf_list"].str()?;
             let mut subfields: Vec<String> = Vec::new();
 
-            for sf in sf_string.split("") {
+            for sf in sf_string.split("").filter(|s| !s.is_empty()) {
                 if bib_tag[..1].ne("6") && scrub_subfields1.contains(&sf) {
                     continue;
                 }
 
-                if scrub_tags2.contains(&bib_tag) && scrub_subfields2.contains(&sf) {
+                if !scrub_tags2.contains(&bib_tag) && scrub_subfields2.contains(&sf) {
                     continue;
                 }
 
@@ -641,10 +641,11 @@ impl BibLinker {
                         );
                         continue;
                     }
-
                 } else if is_fast_heading {
-
-                    log::debug!("Skipping FAST heading on bib field {}", bib_field.to_breaker());
+                    log::debug!(
+                        "Skipping FAST heading on bib field {}",
+                        bib_field.to_breaker()
+                    );
                     continue;
                 }
 
