@@ -92,9 +92,12 @@ fn trim_labels(editor: &mut Editor, ids: &[i64], dry_run: bool) -> EgResult<()> 
 }
 
 fn trim_one_label(editor: &mut Editor, mut vol: EgValue, dry_run: bool) -> EgResult<()> {
-    println!("Processing call number id={} [label={}]", vol.id()?, vol["label"].str()?);
-
+    let vol_id = vol.id()?;
+    let bib_id = vol["record"].int()?;
     let label = vol["label"].str()?;
+
+    println!("Processing call number rec={bib_id} id={vol_id} [label={label}]");
+
     let trimmed = label.trim();
 
     if label == trimmed {
@@ -103,8 +106,9 @@ fn trim_one_label(editor: &mut Editor, mut vol: EgValue, dry_run: bool) -> EgRes
     }
 
     vol["label"] = trimmed.into();
+    vol["ischanged"] = true.into(); // required by API
 
-    println!("Will update to id={} [label={}]", vol.id()?, vol["label"].str()?);
+    println!("Will update to id={vol_id} [label={}]", vol["label"].str()?);
 
     if dry_run {
         return Ok(());
@@ -113,7 +117,7 @@ fn trim_one_label(editor: &mut Editor, mut vol: EgValue, dry_run: bool) -> EgRes
     let params: Vec<EgValue> = vec![
         editor.authtoken().unwrap().into(),
         EgValue::from(vec![vol]),
-        EgValue::from(0), // false
+        EgValue::Null,
         eg::hash! {"auto_merge_vols": 1}
     ];
 
@@ -123,7 +127,11 @@ fn trim_one_label(editor: &mut Editor, mut vol: EgValue, dry_run: bool) -> EgRes
         params
     )?.ok_or_else(|| "No response received when updating call number")?;
 
-    println!("Update responded with:\n{}", response.dump());
+    if response.as_int() == Some(1) {
+        println!("Successfully updated call number {vol_id}");
+    } else {
+        println!("Update failed for {vol_id} :\n{}", response.dump());
+    }
 
     Ok(())
 }
