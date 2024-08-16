@@ -526,11 +526,13 @@ impl Editor {
     }
 
     /// Returns our mutable session, creating a new one if needed.
+    ///
+    /// New sessions are created for all outbound requests unless
+    /// we're in the middle of a transaction.
     fn session(&mut self) -> &mut ClientSession {
-        if self.session.is_none() {
+        if !self.in_transaction() {
             self.session = Some(self.client.session(self.personality().into()));
         }
-
         self.session.as_mut().unwrap()
     }
 
