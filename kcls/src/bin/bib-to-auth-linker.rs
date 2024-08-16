@@ -560,7 +560,13 @@ impl BibLinker {
             let xml = bre["marc"].str()?;
 
             let orig_record = match marc::Record::from_xml(xml).next() {
-                Some(r) => r?,
+                Some(result) => match result {
+                    Ok(rec) => rec,
+                    Err(e) => {
+                        log::error!("Error parsing XML for record {rec_id}: {e}");
+                        continue;
+                    }
+                }
                 None => {
                     log::error!("MARC parsing returned no usable record for {rec_id}");
                     continue;
@@ -651,13 +657,6 @@ impl BibLinker {
 
                 let mut auth_matches =
                     self.find_potential_auth_matches(control_fields, bib_field)?;
-
-                log::info!(
-                    "Found {} potential authority matches for bib {} tag={}",
-                    auth_matches.len(),
-                    rec_id,
-                    bib_tag
-                );
 
                 if auth_matches.is_empty() {
                     continue;
