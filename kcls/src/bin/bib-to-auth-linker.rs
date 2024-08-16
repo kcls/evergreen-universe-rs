@@ -429,7 +429,7 @@ impl BibLinker {
 
         self.editor.xact_begin()?;
         self.editor.update(bre)?;
-        self.editor.xact_commit()?;
+        self.editor.commit()?;
 
         Ok(())
     }
@@ -524,8 +524,6 @@ impl BibLinker {
     }
 
     fn link_bibs(&mut self) -> EgResult<()> {
-        self.editor.connect()?;
-
         let control_fields = self.get_controlled_fields()?;
 
         let mut counter = 0;
@@ -536,14 +534,6 @@ impl BibLinker {
             counter += 1;
 
             log::info!("Processing record [{}/{}] {rec_id}", counter, bib_count);
-
-            if counter % 100 == 0 {
-                // Periodically reconnect so we don't keep a single
-                // cstore backend pinned for the duration.  Allows for
-                // drones to cycle, reclaim memory, etc.
-                self.editor.disconnect()?;
-                self.editor.connect()?;
-            }
 
             let bre = match self.editor.retrieve("bre", rec_id)? {
                 Some(r) => r,
@@ -566,7 +556,7 @@ impl BibLinker {
                         log::error!("Error parsing XML for record {rec_id}: {e}");
                         continue;
                     }
-                }
+                },
                 None => {
                     log::error!("MARC parsing returned no usable record for {rec_id}");
                     continue;
@@ -580,8 +570,7 @@ impl BibLinker {
             {
                 log::error!("Error processing bib record {rec_id}: {e}");
                 eprintln!("Error processing bib record {rec_id}: {e}");
-                self.editor.disconnect()?;
-                self.editor.connect()?;
+                self.editor.rollback()?;
             }
         }
 
