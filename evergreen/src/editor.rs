@@ -528,11 +528,18 @@ impl Editor {
     /// Returns our mutable session, creating a new one if needed.
     ///
     /// New sessions are created for all outbound requests unless
-    /// we're in the middle of a transaction.
+    /// we're in a connected session.
+    ///
+    /// NOTE: Maintaining the same session thread for for connected
+    /// communication is only strictly necessary when connecting to
+    /// start a cstore, etc. transaction.
     fn session(&mut self) -> &mut ClientSession {
-        if !self.in_transaction() {
-            self.session = Some(self.client.session(self.personality().into()));
+        if let Some(ref ses) = self.session {
+            if ses.connected() {
+                return self.session.as_mut().unwrap();
+            }
         }
+        self.session = Some(self.client.session(self.personality().into()));
         self.session.as_mut().unwrap()
     }
 
