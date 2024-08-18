@@ -30,7 +30,7 @@ use std::time::Instant;
 
 /// How often do we wake from listening for messages and give shutdown
 /// signals a chance to propagate.
-const POLL_TIMEOUT: i32 = 5;
+const POLL_TIMEOUT: u64 = 5;
 
 /// How often we log service metrics
 const METRICS_LOG_INTERVAL: u64 = 10;

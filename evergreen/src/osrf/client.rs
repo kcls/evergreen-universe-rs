@@ -154,7 +154,7 @@ impl ClientSingleton {
     /// This is useful for checking network activity
     /// across multiple active sessions in lieu of polling each
     /// session for responses.
-    pub fn wait(&mut self, timeout: i32) -> EgResult<bool> {
+    pub fn wait(&mut self, timeout: u64) -> EgResult<bool> {
         if !self.backlog.is_empty() {
             return Ok(true);
         }
@@ -354,7 +354,7 @@ impl Client {
     }
 
     /// Wrapper for ClientSingleton::wait()
-    pub fn wait(&self, timeout: i32) -> EgResult<bool> {
+    pub fn wait(&self, timeout: u64) -> EgResult<bool> {
         self.singleton().borrow_mut().wait(timeout)
     }
 

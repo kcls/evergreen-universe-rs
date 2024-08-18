@@ -9,7 +9,7 @@ use eg::{Client, Editor, EgError, EgEvent, EgResult, EgValue};
 use md5;
 use std::fmt;
 
-const LOGIN_TIMEOUT: i32 = 30;
+const LOGIN_TIMEOUT: u64 = 30;
 
 // Default time for extending a persistent session: ten minutes
 const DEFAULT_RESET_INTERVAL: i32 = 10 * 60;

@@ -913,6 +913,15 @@ impl EgValue {
         }
     }
 
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            EgValue::Number(n) => (*n).try_into().ok(),
+            // It's not uncommon to receive numeric strings over the wire.
+            EgValue::String(ref s) => s.parse::<u64>().ok(),
+            _ => None,
+        }
+    }
+
     pub fn as_usize(&self) -> Option<usize> {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),

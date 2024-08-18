@@ -27,7 +27,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 static REGISTERED_METHODS: OnceLock<HashMap<String, method::MethodDef>> = OnceLock::new();
 
 // How often each worker wakes to check for shutdown signals, etc.
-const IDLE_WAKE_TIME: i32 = 5;
+const IDLE_WAKE_TIME: u64 = 5;
 
 pub struct Microservice {
     application: Box<dyn app::Application>,
@@ -148,12 +148,12 @@ impl Microservice {
         .as_usize()
         .unwrap_or(5000);
 
-        let keepalive: usize = HostSettings::get(&format!(
+        let keepalive = HostSettings::get(&format!(
             "apps/{}/unix_config/keepalive",
             self.application.name()
         ))
         .expect("Host Settings Not Retrieved")
-        .as_usize()
+        .as_u64()
         .unwrap_or(5);
 
         let mut requests: usize = 0;
@@ -169,7 +169,7 @@ impl Microservice {
         let my_addr = self.client.address().as_str().to_string();
 
         while requests < max_requests {
-            let timeout: i32;
+            let timeout: u64;
             let sent_to: &str;
 
             if self.connected {
@@ -178,7 +178,7 @@ impl Microservice {
                 // address and only wait up to keeplive seconds for
                 // subsequent messages.
                 sent_to = &my_addr;
-                timeout = keepalive as i32;
+                timeout = keepalive;
             } else {
                 // If we are not within a stateful conversation, clear
                 // our bus data and message backlogs since any remaining
@@ -270,7 +270,7 @@ impl Microservice {
     fn handle_recv(
         &mut self,
         app_worker: &mut Box<dyn app::ApplicationWorker>,
-        timeout: i32,
+        timeout: u64,
         sent_to: &str,
     ) -> EgResult<(bool, bool)> {
         let selfstr = format!("{self}");

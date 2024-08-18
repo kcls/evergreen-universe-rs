@@ -115,14 +115,14 @@ pub struct Timer {
     /// Duration of this timer in seconds.
     /// Timer is "done" once this many seconds have passed
     /// since start_time.
-    duration: i32,
+    duration: u64,
 
     /// Moment this timer starts.
     start_time: Instant,
 }
 
 impl Timer {
-    pub fn new(duration: i32) -> Timer {
+    pub fn new(duration: u64) -> Timer {
         Timer {
             duration,
             start_time: Instant::now(),
@@ -131,14 +131,19 @@ impl Timer {
     pub fn reset(&mut self) {
         self.start_time = Instant::now();
     }
-    pub fn remaining(&self) -> i32 {
-        self.duration - self.start_time.elapsed().as_secs() as i32
+    pub fn remaining(&self) -> u64 {
+        let elapsed = self.start_time.elapsed().as_secs();
+        if elapsed > self.duration {
+            0
+        } else {
+            self.duration - elapsed
+        }
     }
-    pub fn duration(&self) -> i32 {
+    pub fn duration(&self) -> u64 {
         self.duration
     }
     pub fn done(&self) -> bool {
-        self.remaining() <= 0
+        self.remaining() == 0
     }
 }
 

@@ -26,7 +26,7 @@ const APPNAME: &str = "open-ils.rs-store";
 /// maybe wholly unnecessary.
 ///
 /// TODO make this configurable.
-const IDLE_DISCONNECT_TIME: i32 = 0;
+const IDLE_DISCONNECT_TIME: u64 = 0;
 
 const DIRECT_METHODS: &[&str] = &["create", "retrieve", "search", "update", "delete"];
 
@@ -156,6 +156,10 @@ impl Default for StoreWorker {
 impl StoreWorker {
     pub fn new() -> Self {
         let mut timer = None;
+
+        // This is experiemental and setting the value to zero
+        // is how we disable it.
+        #[allow(clippy::absurd_extreme_comparisons)]
         if IDLE_DISCONNECT_TIME > 0 {
             timer = Some(eg::util::Timer::new(IDLE_DISCONNECT_TIME));
         }

@@ -114,7 +114,7 @@ impl Bus {
     /// The string will be whole, unparsed JSON string.
     fn recv_one_chunk(
         &mut self,
-        mut timeout: i32,
+        timeout: u64,
         recipient: Option<&str>,
     ) -> EgResult<Option<String>> {
         let recipient = match recipient {
@@ -139,13 +139,6 @@ impl Bus {
                 },
             };
         } else {
-            // Blocking
-
-            if timeout < 0 {
-                // Timeout 0 means block indefinitely in Redis.
-                timeout = 0;
-            }
-
             let mut resp: Vec<String> = self
                 .connection()
                 .blpop(&recipient, timeout as usize)
@@ -170,7 +163,7 @@ impl Bus {
     /// the list pop times out or the pop is interrupted by a signal.
     fn recv_one_value(
         &mut self,
-        timeout: i32,
+        timeout: u64,
         recipient: Option<&str>,
     ) -> EgResult<Option<json::JsonValue>> {
         let json_string = match self.recv_one_chunk(timeout, recipient)? {
@@ -195,11 +188,10 @@ impl Bus {
     /// # Arguments
     ///
     /// * `timeout` - Time in seconds to wait for a value.
-    ///     A negative value means to block indefinitely.
     ///     0 means do not block.
     pub fn recv_json_value(
         &mut self,
-        timeout: i32,
+        timeout: u64,
         recipient: Option<&str>,
     ) -> EgResult<Option<json::JsonValue>> {
         let mut option: Option<json::JsonValue>;
@@ -207,14 +199,6 @@ impl Bus {
         match timeout {
             // See if any data is ready now
             0 => return self.recv_one_value(timeout, recipient),
-
-            // Keep trying until we have a result.
-            n if n < 0 => loop {
-                option = self.recv_one_value(timeout, recipient)?;
-                if option.is_some() {
-                    return Ok(option);
-                }
-            },
 
             // Keep trying until we have a result or exhaust the timeout.
             _ => {
@@ -257,14 +241,13 @@ impl Bus {
     /// # Arguments
     ///
     /// * `timeout` - Time in seconds to wait for a response.
-    ///     A negative value means to block indefinitely.
     ///     0 means do not block.
     /// * `recipient` - Optionally specify the name of the destination
     ///     queue/stream.  This overrides using the bus-specific
     ///     bus address as the recipient.
     pub fn recv(
         &mut self,
-        timeout: i32,
+        timeout: u64,
         recipient: Option<&str>,
     ) -> EgResult<Option<TransportMessage>> {
         let json_op = self.recv_json_value(timeout, recipient)?;

@@ -173,7 +173,7 @@ impl SessionOutbound {
                 break;
             }
 
-            let msg = match self.osrf_receiver.recv(SIG_POLL_INTERVAL as i32, None) {
+            let msg = match self.osrf_receiver.recv(SIG_POLL_INTERVAL, None) {
                 Ok(op) => match op {
                     Some(tm) => {
                         log::debug!("{self} received message from: {}", tm.from());

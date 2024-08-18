@@ -21,7 +21,7 @@ const HTTP_CONTENT_TYPE: &str = "Content-Type: text/json";
 /// Max time we'll wait for a reply from an OpenSRF request.
 /// Keep this value large and assume the proxy (eg. nginx) we sit
 /// behind had sane read/write timeouts
-const OSRF_RELAY_TIMEOUT: i32 = 300;
+const OSRF_RELAY_TIMEOUT: u64 = 300;
 const GATEWAY_POLL_TIMEOUT: u64 = 5;
 
 struct GatewayRequest {

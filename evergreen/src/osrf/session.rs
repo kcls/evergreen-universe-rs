@@ -18,8 +18,8 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
 
-const CONNECT_TIMEOUT: i32 = 10;
-pub const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
+const CONNECT_TIMEOUT: u64 = 10;
+pub const DEFAULT_REQUEST_TIMEOUT: u64 = 60;
 
 /// Response data propagated from a session to the calling Request.
 #[derive(Debug)]
@@ -101,7 +101,7 @@ impl Request {
     /// This still waits for all responses to arrive so the request can
     /// be marked as complete and no responses are left lingering on the
     /// message bus.
-    pub fn first_with_timeout(&mut self, timeout: i32) -> EgResult<Option<EgValue>> {
+    pub fn first_with_timeout(&mut self, timeout: u64) -> EgResult<Option<EgValue>> {
         let mut resp: Option<EgValue> = None;
         while !self.complete {
             if let Some(r) = self.recv_with_timeout(timeout)? {
@@ -120,7 +120,7 @@ impl Request {
     ///     <0 == wait indefinitely
     ///      0 == do not wait/block
     ///     >0 == wait up to this many seconds for a reply.
-    pub fn recv_with_timeout(&mut self, mut timeout: i32) -> EgResult<Option<EgValue>> {
+    pub fn recv_with_timeout(&mut self, mut timeout: u64) -> EgResult<Option<EgValue>> {
         if self.complete {
             // If we are marked complete, we've pulled all of our
             // resposnes from the bus.  However, we could still have
@@ -284,7 +284,7 @@ impl ClientSessionInternal {
         }
     }
 
-    fn recv(&mut self, thread_trace: usize, timeout: i32) -> EgResult<Option<Response>> {
+    fn recv(&mut self, thread_trace: usize, timeout: u64) -> EgResult<Option<Response>> {
         let mut timer = util::Timer::new(timeout);
 
         let mut first_loop = true;
@@ -693,7 +693,7 @@ impl MultiSession {
     /// of our outstanding requests.
     ///
     /// Returns (Thread, Response) if found
-    pub fn recv(&mut self, timeout: i32) -> EgResult<Option<(String, EgValue)>> {
+    pub fn recv(&mut self, timeout: u64) -> EgResult<Option<(String, EgValue)>> {
         // Wait for replies to any sessions on this client to appear
         // then see if we can find one related specfically to the
         // requests we are managing.

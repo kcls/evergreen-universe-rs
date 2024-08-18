@@ -5,7 +5,7 @@ use crate::EgResult;
 use crate::EgValue;
 use std::sync::OnceLock;
 
-const SETTINGS_TIMEOUT: i32 = 10;
+const SETTINGS_TIMEOUT: u64 = 10;
 
 /// If we fetch host settings, they will live here.
 /// They may be fetched and stored at most one time.

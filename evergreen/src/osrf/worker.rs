@@ -23,7 +23,7 @@ use std::thread;
 use std::time;
 
 // How often each worker wakes to check for shutdown signals, etc.
-const IDLE_WAKE_TIME: i32 = 5;
+const IDLE_WAKE_TIME: u64 = 5;
 
 /// Each worker thread is in one of these states.
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -156,7 +156,7 @@ impl Worker {
         let my_addr = self.client.address().as_str().to_string();
 
         while requests < max_requests {
-            let timeout: i32;
+            let timeout: u64;
             let sent_to: &str;
 
             if self.connected {
@@ -165,7 +165,7 @@ impl Worker {
                 // address and only wait up to keeplive seconds for
                 // subsequent messages.
                 sent_to = &my_addr;
-                timeout = keepalive as i32;
+                timeout = keepalive as u64;
             } else {
                 // If we are not within a stateful conversation, clear
                 // our bus data and message backlogs since any remaining
@@ -259,7 +259,7 @@ impl Worker {
     fn handle_recv(
         &mut self,
         app_worker: &mut Box<dyn app::ApplicationWorker>,
-        timeout: i32,
+        timeout: u64,
         sent_to: &str,
     ) -> EgResult<(bool, bool)> {
         let selfstr = format!("{self}");

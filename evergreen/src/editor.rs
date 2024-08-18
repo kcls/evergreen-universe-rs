@@ -8,7 +8,7 @@ use eg::Client;
 use eg::ClientSession;
 use eg::EgValue;
 
-const DEFAULT_TIMEOUT: i32 = 60;
+const DEFAULT_TIMEOUT: u64 = 60;
 
 /// Specifies Which service are we communicating with.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +54,7 @@ pub struct Editor {
     authtoken: Option<String>,
     authtime: Option<usize>,
     requestor: Option<EgValue>,
-    timeout: i32,
+    timeout: u64,
 
     /// True if the caller wants us to perform actions within
     /// a transaction.  Write actions require this.
@@ -98,7 +98,7 @@ impl Editor {
     }
 
     /// Apply a new request timeout value in seconds.
-    pub fn set_timeout(&mut self, timeout: i32) {
+    pub fn set_timeout(&mut self, timeout: u64) {
         self.timeout = timeout;
     }
 
