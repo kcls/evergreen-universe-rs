@@ -3,17 +3,13 @@
  * script.  It varies from stock Evergreen.  It should be possible to
  * sync with stock Evergreen with additional command line options.
  */
-use eg::db::DatabaseConnection;
-use eg::init;
 use eg::norm::Normalizer;
+use eg::script::ScriptUtil;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
-const DEFAULT_STAFF_ACCOUNT: u32 = 4953211; // utiladmin
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
 
 const HELP_TEXT: &str = "
@@ -71,9 +67,7 @@ struct AuthLeader {
 }
 
 struct BibLinker {
-    db: Rc<RefCell<DatabaseConnection>>,
-    editor: eg::Editor,
-    staff_account: u32,
+    scripter: ScriptUtil,
     min_id: i64,
     max_id: Option<i64>,
     record_id: Option<i64>,
@@ -84,40 +78,15 @@ impl BibLinker {
     /// Create a new linker.
     ///
     /// Exits early with None if the --help option is provided.
-    fn new(opts: &mut getopts::Options) -> EgResult<Option<Self>> {
-        let client = init::init()?;
-        let editor = eg::Editor::new(&client);
-
-        let args: Vec<String> = std::env::args().collect();
-        let params = match opts.parse(&args[1..]) {
-            Ok(p) => p,
-            Err(e) => panic!("Error parsing options: {}", e),
-        };
-
-        if params.opt_present("help") {
-            println!("{HELP_TEXT}");
-            return Ok(None);
-        }
-
-        let mut db = DatabaseConnection::new_from_options(&params);
-        db.connect()?;
-
-        let db = db.into_shared();
-
-        let sa = DEFAULT_STAFF_ACCOUNT.to_string();
-        let staff_account = params.opt_get_default("staff-account", sa).unwrap();
-        let staff_account = staff_account
-            .parse::<u32>()
-            .map_err(|e| format!("Error parsing staff-account value: {e}"))?;
-
-        let min_id = match params.opt_str("min-id") {
+    fn new(scripter: ScriptUtil) -> EgResult<Self> {
+        let min_id = match scripter.params().opt_str("min-id") {
             Some(id) => id
                 .parse::<i64>()
                 .map_err(|e| format!("Error parsing --min-id: {e}"))?,
             None => 1,
         };
 
-        let max_id = match params.opt_str("max-id") {
+        let max_id = match scripter.params().opt_str("max-id") {
             Some(id) => Some(
                 id.parse::<i64>()
                     .map_err(|e| format!("Error parsing --max-id: {e}"))?,
@@ -125,7 +94,7 @@ impl BibLinker {
             None => None,
         };
 
-        let record_id = match params.opt_str("record-id") {
+        let record_id = match scripter.params().opt_str("record-id") {
             Some(id) => Some(
                 id.parse::<i64>()
                     .map_err(|e| format!("Error parsing --record-id: {e}"))?,
@@ -133,23 +102,17 @@ impl BibLinker {
             None => None,
         };
 
-        Ok(Some(BibLinker {
-            db,
-            editor,
-            staff_account,
+        Ok(BibLinker {
             min_id,
             max_id,
             record_id,
+            scripter,
             normalizer: Normalizer::new(),
-        }))
-    }
-
-    fn db(&self) -> &Rc<RefCell<DatabaseConnection>> {
-        &self.db
+        })
     }
 
     /// Returns the list of bib record IDs we plan to process.
-    fn get_bib_ids(&self) -> EgResult<Vec<i64>> {
+    fn get_bib_ids(&mut self) -> EgResult<Vec<i64>> {
         if let Some(id) = self.record_id {
             return Ok(vec![id]);
         }
@@ -168,7 +131,7 @@ impl BibLinker {
 
         log::debug!("Searching for bib records to link: {sql}");
 
-        let query_res = self.db().borrow_mut().client().query(&sql[..], &[]);
+        let query_res = self.scripter.db().client().query(&sql[..], &[]);
 
         let rows = query_res.map_err(|e| format!("Failed getting bib IDs: {e}"))?;
 
@@ -192,7 +155,10 @@ impl BibLinker {
             }
         };
 
-        let bib_fields = self.editor.search_with_ops("acsbf", search, flesh)?;
+        let bib_fields = self
+            .scripter
+            .editor_mut()
+            .search_with_ops("acsbf", search, flesh)?;
 
         let linkable_tag_prefixes = ["1", "6", "7", "8"];
 
@@ -259,7 +225,7 @@ impl BibLinker {
         let mut leaders: Vec<AuthLeader> = Vec::new();
 
         let params = eg::hash! {tag: "008", record: auth_ids.clone()};
-        let maybe_leaders = self.editor.search("afr", params)?;
+        let maybe_leaders = self.scripter.editor_mut().search("afr", params)?;
 
         // Sort the auth_leaders list to match the order of the original
         // list of auth_ids, since they are prioritized by heading
@@ -425,11 +391,11 @@ impl BibLinker {
 
         bre["marc"] = EgValue::from(xml);
         bre["edit_date"] = EgValue::from("now");
-        bre["editor"] = EgValue::from(self.staff_account);
+        bre["editor"] = EgValue::from(self.scripter.staff_account());
 
-        self.editor.xact_begin()?;
-        self.editor.update(bre)?;
-        self.editor.commit()?;
+        self.scripter.editor_mut().xact_begin()?;
+        self.scripter.editor_mut().update(bre)?;
+        self.scripter.editor_mut().commit()?;
 
         Ok(())
     }
@@ -500,7 +466,7 @@ impl BibLinker {
             };
 
             // TODO idlist searches
-            let recs = match self.editor.search("are", search) {
+            let recs = match self.scripter.editor_mut().search("are", search) {
                 Ok(r) => r,
                 Err(e) => {
                     // Don't let a cstore query failure kill the whole batch.
@@ -535,7 +501,7 @@ impl BibLinker {
 
             log::info!("Processing record [{}/{}] {rec_id}", counter, bib_count);
 
-            let bre = match self.editor.retrieve("bre", rec_id)? {
+            let bre = match self.scripter.editor_mut().retrieve("bre", rec_id)? {
                 Some(r) => r,
                 None => {
                     log::warn!("No such bib record: {rec_id}");
@@ -570,7 +536,7 @@ impl BibLinker {
             {
                 log::error!("Error processing bib record {rec_id}: {e}");
                 eprintln!("Error processing bib record {rec_id}: {e}");
-                self.editor.rollback()?;
+                self.scripter.editor_mut().rollback()?;
             }
         }
 
@@ -713,20 +679,18 @@ impl BibLinker {
 }
 
 fn main() -> EgResult<()> {
-    let mut opts = getopts::Options::new();
+    let mut ops = getopts::Options::new();
 
-    opts.optflag("h", "help", "");
-    opts.optopt("", "staff-account", "", "");
-    opts.optopt("", "min-id", "", "");
-    opts.optopt("", "max-id", "", "");
-    opts.optopt("", "record-id", "", "");
+    ops.optopt("", "min-id", "", "");
+    ops.optopt("", "max-id", "", "");
+    ops.optopt("", "record-id", "", "");
 
-    DatabaseConnection::append_options(&mut opts);
-
-    let mut linker = match BibLinker::new(&mut opts)? {
-        Some(l) => l,
-        None => return Ok(()),
+    let scripter = match ScriptUtil::init(&mut ops, true, Some(HELP_TEXT))? {
+        Some(s) => s,
+        None => return Ok(()), // e.g. --help
     };
+
+    let mut linker = BibLinker::new(scripter)?;
 
     linker.link_bibs()?;
 

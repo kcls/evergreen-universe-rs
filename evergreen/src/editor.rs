@@ -765,4 +765,16 @@ impl Editor {
 
         Ok(has_perm)
     }
+
+    /// Shortcut for eg::osrf::client::Client::send_recv_one()
+    ///
+    /// Slighly simpler than calling editor.client_mut().send_recv_one().
+    pub fn send_recv_one(
+        &mut self,
+        service: &str,
+        method: &str,
+        params: impl Into<ApiParams>,
+    ) -> EgResult<Option<EgValue>> {
+        self.client_mut().send_recv_one(service, method, params)
+    }
 }

@@ -25,6 +25,7 @@ pub mod norm;
 pub mod osrf;
 pub mod result;
 pub mod samples;
+pub mod script;
 pub mod util;
 pub mod value;
 

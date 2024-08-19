@@ -1,58 +1,36 @@
-use eg::common::auth;
-use eg::init;
-use eg::Editor;
+use eg::script::ScriptUtil;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
 use std::fs;
 
-const DEFAULT_STAFF_ACCOUNT: i64 = 4953211; // utiladmin
+// const DEFAULT_STAFF_ACCOUNT: i64 = 4953211; // utiladmin
 
 fn main() -> EgResult<()> {
-    let client = init::init()?;
-    let mut editor = eg::Editor::new(&client);
+    let mut ops = getopts::Options::new();
 
-    let mut opts = getopts::Options::new();
-    opts.optopt("", "ids-file", "", "");
-    opts.optopt("", "staff-account", "", "");
-    opts.optflag("", "trim-labels", "");
-    opts.optflag("", "dry-run", "");
+    ops.optopt("", "ids-file", "", "");
+    ops.optflag("", "trim-labels", "");
+    ops.optflag("", "dry-run", "");
 
-    let args: Vec<String> = std::env::args().collect();
-    let params = opts
-        .parse(&args[1..])
-        .map_err(|e| format!("Error parsing options: {}", e))?;
+    let mut scripter = match ScriptUtil::init(&mut ops, false, None)? {
+        Some(s) => s,
+        None => return Ok(()), // e.g. --help
+    };
 
-    let sa = DEFAULT_STAFF_ACCOUNT.to_string();
-    let staff_account = params.opt_get_default("staff-account", sa).unwrap();
-    let staff_account = staff_account
-        .parse::<i64>()
-        .map_err(|e| format!("Error parsing staff-account value: {e}"))?;
-
-    let ses = auth::Session::internal_session_api(
-        editor.client_mut(),
-        &auth::InternalLoginArgs::new(staff_account, auth::LoginType::Staff),
-    )?;
-
-    if let Some(s) = ses {
-        editor.apply_authtoken(s.token())?;
-    } else {
-        return Err("Could not retrieve auth session".into());
-    }
-
-    let dry_run = params.opt_present("dry-run");
+    let dry_run = scripter.params().opt_present("dry-run");
 
     let mut ids: Vec<i64> = Vec::new();
 
-    if let Some(file_name) = params.opt_str("ids-file") {
+    if let Some(file_name) = scripter.params().opt_str("ids-file") {
         read_ids(&file_name, &mut ids)?;
     }
 
-    if params.opt_present("trim-labels") {
-        trim_labels(&mut editor, &ids, dry_run)?;
+    if scripter.params().opt_present("trim-labels") {
+        trim_labels(&mut scripter, &ids, dry_run)?;
     }
 
-    client.clear().ok();
+    scripter.editor_mut().client_mut().clear().ok();
 
     Ok(())
 }
@@ -80,21 +58,20 @@ fn read_ids(file_name: &str, id_list: &mut Vec<i64>) -> EgResult<()> {
 /// Fetch the requested call numbers, trim the labels (preceding and
 /// trailing spaces) where necessary, then update the call numbers in
 /// the database, with auto-merge enabled.
-fn trim_labels(editor: &mut Editor, ids: &[i64], dry_run: bool) -> EgResult<()> {
-    //println!("Trimming {} call numbers", ids.len());
-
+fn trim_labels(scripter: &mut ScriptUtil, ids: &[i64], dry_run: bool) -> EgResult<()> {
     for id in ids {
-        let vol = editor
+        let vol = scripter
+            .editor_mut()
             .retrieve("acn", *id)?
             .ok_or_else(|| format!("No such call number: {id}"))?;
 
-        trim_one_label(editor, vol, dry_run)?;
+        trim_one_label(scripter, vol, dry_run)?;
     }
 
     Ok(())
 }
 
-fn trim_one_label(editor: &mut Editor, mut vol: EgValue, dry_run: bool) -> EgResult<()> {
+fn trim_one_label(scripter: &mut ScriptUtil, mut vol: EgValue, dry_run: bool) -> EgResult<()> {
     let vol_id = vol.id()?;
     let bib_id = vol["record"].int()?;
     let label = vol["label"].str()?;
@@ -118,14 +95,14 @@ fn trim_one_label(editor: &mut Editor, mut vol: EgValue, dry_run: bool) -> EgRes
     }
 
     let params: Vec<EgValue> = vec![
-        editor.authtoken().unwrap().into(),
+        scripter.authtoken().into(),
         EgValue::from(vec![vol]),
         EgValue::Null,
         eg::hash! {"auto_merge_vols": 1},
     ];
 
-    let response = editor
-        .client_mut()
+    let response = scripter
+        .editor_mut()
         .send_recv_one(
             "open-ils.cat",
             "open-ils.cat.asset.volume.fleshed.batch.update",
