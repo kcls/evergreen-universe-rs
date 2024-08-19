@@ -1,6 +1,4 @@
-/*
- * Script utilities.
- */
+//! Script utilities.
 use crate as eg;
 use eg::common::auth;
 use eg::db::DatabaseConnection;
@@ -8,17 +6,50 @@ use eg::init;
 use eg::Editor;
 use eg::EgResult;
 
+const HELP_TEXT: &str = "
+ScriptUtil Additions:
+
+    --help
+        Show help text
+
+    --staff-account
+        ID of the account to use where a staff account would typically
+        be used, e.g. setting the last editor on a bib record.
+
+    --staff-workstation
+        Name of the staff login workstation.  See --staff-acount. Optional.
+
+Database Connector Additions:
+
+    Parameters supported when ScriptUtil is started with a database connection.
+
+    --db-host
+    --db-port
+    --db-user
+    --db-name
+";
+
 /// Account ID for updates, e.g. applying an 'editor' value to a bib record update.
 const DEFAULT_STAFF_ACCOUNT: i64 = 1;
 
 pub struct ScriptUtil {
     staff_account: i64,
+    staff_workstation: Option<String>,
     editor: Editor,
     params: getopts::Matches,
     db: Option<DatabaseConnection>,
 }
 
 impl ScriptUtil {
+    /// Parse the command line parameters, connect to Evergreen, and
+    /// optionally create a direct database connection.
+    ///
+    /// Return None if a command line option results in early exit, e.g. --help.
+    ///
+    /// * `ops` - getopts in progress
+    /// * `with_database` - if true, connect to the database.
+    /// * `help_text` - Optional script-specific help text.  This text will
+    ///    be augmented with ScriptUtil help text.
     pub fn init(
         ops: &mut getopts::Options,
         with_database: bool,
@@ -26,8 +57,10 @@ impl ScriptUtil {
     ) -> EgResult<Option<ScriptUtil>> {
         ops.optflag("h", "help", "");
         ops.optopt("", "staff-account", "", "");
+        ops.optopt("", "staff-workstation", "", "");
 
         if with_database {
+            // Append the datbase-specifc command line options.
             DatabaseConnection::append_options(ops);
         }
 
@@ -38,7 +71,11 @@ impl ScriptUtil {
             .map_err(|e| format!("Error parsing options: {e}"))?;
 
         if params.opt_present("help") {
-            println!("{}", help_text.unwrap_or("No Help Text Provided"));
+            println!(
+                "{}\n{}",
+                help_text.unwrap_or("No Application Help Text Provided"),
+                HELP_TEXT
+            );
             return Ok(None);
         }
 
@@ -47,6 +84,8 @@ impl ScriptUtil {
         let staff_account = staff_account
             .parse::<i64>()
             .map_err(|e| format!("Error parsing staff-account value: {e}"))?;
+
+        let staff_workstation = params.opt_str("staff-workstation").map(|v| v.to_string());
 
         let client = init::init()?;
         let editor = eg::Editor::new(&client);
@@ -64,6 +103,7 @@ impl ScriptUtil {
             editor,
             params,
             staff_account,
+            staff_workstation,
         }))
     }
 
@@ -102,10 +142,13 @@ impl ScriptUtil {
     ///
     /// Returns the auth token.
     pub fn login_staff(&mut self) -> EgResult<String> {
-        let ses = auth::Session::internal_session_api(
-            self.editor.client_mut(),
-            &auth::InternalLoginArgs::new(self.staff_account, auth::LoginType::Staff),
-        )?;
+        let mut args = auth::InternalLoginArgs::new(self.staff_account, auth::LoginType::Staff);
+
+        if let Some(ws) = self.staff_workstation.as_ref() {
+            args.set_workstation(ws);
+        }
+
+        let ses = auth::Session::internal_session_api(self.editor.client_mut(), &args)?;
 
         if let Some(s) = ses {
             self.editor.apply_authtoken(s.token())?;
