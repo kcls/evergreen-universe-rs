@@ -3,6 +3,7 @@
  * script.  It varies from stock Evergreen.  It should be possible to
  * sync with stock Evergreen with additional command line options.
  */
+use eg::date;
 use eg::norm::Normalizer;
 use eg::script::ScriptUtil;
 use eg::EgResult;
@@ -15,18 +16,24 @@ const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
 const HELP_TEXT: &str = "
 Link bib records to authority records by applying $0 values to controlled fields.
 
-    --record-id
+By default, all non-deleted bib records are processed.  
+
+    --record-id <id>
         Update links for a specific bib record.
 
-    --min-id
+    --min-id <id>
         Minimum bib record ID to process.
 
-    --max-id
+    --max-id <id>
         Maximum bib record ID to process.
 
-    --staff-account
-        ID of the actor.usr account which should be used as the
-        editor value on modified bib records.
+    --bibs-modified-since <ISO date>
+        Limit to bib records whose edit date is >= the provided date.
+
+    --auths-modified-since <ISO date>
+        Limit to bib records that share a browse entry with an authority
+        record whose edit date is >= the provided date and is not
+        already linked to the authority record.
 
     -h, --help
         Display this help
@@ -70,6 +77,8 @@ struct BibLinker {
     scripter: ScriptUtil,
     min_id: i64,
     max_id: Option<i64>,
+    bibs_mod_since: Option<date::EgDate>,
+    auths_mod_since: Option<date::EgDate>,
     record_id: Option<i64>,
     normalizer: Normalizer,
 }
@@ -94,6 +103,18 @@ impl BibLinker {
             None => None,
         };
 
+        let bibs_mod_since = match scripter.params().opt_str("bibs-modified-since") {
+            // verify the date string before we send it to the database.
+            Some(ref date_str) => Some(date::parse_datetime(date_str)?),
+            None => None,
+        };
+
+        let auths_mod_since = match scripter.params().opt_str("auths-modified-since") {
+            // verify the date string before we send it to the database.
+            Some(ref date_str) => Some(date::parse_datetime(date_str)?),
+            None => None,
+        };
+
         let record_id = match scripter.params().opt_str("record-id") {
             Some(id) => Some(
                 id.parse::<i64>()
@@ -106,6 +127,8 @@ impl BibLinker {
             min_id,
             max_id,
             record_id,
+            bibs_mod_since,
+            auths_mod_since,
             scripter,
             normalizer: Normalizer::new(),
         })
@@ -117,19 +140,52 @@ impl BibLinker {
             return Ok(vec![id]);
         }
 
-        let select = "SELECT id";
-        let from = "FROM biblio.record_entry";
+        let select = "SELECT bre.id";
+        let from = "FROM biblio.record_entry bre";
 
-        let mut where_ = format!("WHERE NOT deleted AND id >= {}", self.min_id);
+        let mut where_ = format!("WHERE NOT bre.deleted AND bre.id >= {}", self.min_id);
+
         if let Some(end) = self.max_id {
-            where_ += &format!(" AND id <= {end}");
+            where_ += &format!(" AND bre.id <= {end}");
+        }
+
+        if let Some(dt) = self.bibs_mod_since.as_ref() {
+            where_ += &format!(" AND bre.edit_date >= '{}'", date::to_iso(dt));
+        }
+
+        if let Some(dt) = self.auths_mod_since.as_ref() {
+            // Bib records that share a browse entry with an authority
+            // record which has been modified since the provided date
+            // and is not already linked to the authority record.
+
+            where_ += &format!(
+                "
+                AND bre.id IN (
+                    SELECT def.source
+                    FROM metabib.browse_entry entry
+                    JOIN metabib.browse_entry_simple_heading_map map ON map.entry = entry.id
+                    JOIN authority.simple_heading ash ON (ash.id = map.simple_heading)
+                    JOIN authority.record_entry are ON (are.id = ash.record)
+                    JOIN metabib.browse_entry_def_map def ON (def.entry = entry.id)
+                    JOIN biblio.record_entry bre ON bre.id = def.source
+                    LEFT JOIN authority.bib_linking link ON (
+                        link.bib = def.source AND link.authority = ash.record)
+                    WHERE
+                        NOT bre.deleted
+                        AND link.authority IS NULL -- unlinked records
+                        AND are.edit_date >= '{}'
+                )",
+                date::to_iso(dt)
+            );
         }
 
         let order = "ORDER BY id";
 
         let sql = format!("{select} {from} {where_} {order}");
 
-        log::debug!("Searching for bib records to link: {sql}");
+        log::info!("Searching for bib records to link: {sql}");
+
+        // println!("{sql}");
 
         let query_res = self.scripter.db().client().query(&sql[..], &[]);
 
@@ -684,6 +740,8 @@ fn main() -> EgResult<()> {
     ops.optopt("", "min-id", "", "");
     ops.optopt("", "max-id", "", "");
     ops.optopt("", "record-id", "", "");
+    ops.optopt("", "bibs-modified-since", "", "");
+    ops.optopt("", "auths-modified-since", "", "");
 
     let scripter = match ScriptUtil::init(&mut ops, true, Some(HELP_TEXT))? {
         Some(s) => s,
