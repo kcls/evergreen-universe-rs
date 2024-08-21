@@ -379,10 +379,19 @@ impl Record {
         &self.leader
     }
 
-    /// Apply a leader value from a str
+    /// Apply a leader value.
     ///
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Record;
+    /// let mut record = Record::default();
+    /// assert!(record.set_leader("too short").is_err());
+    /// assert!(record.set_leader("just right              ").is_ok());
+    /// ```
     pub fn set_leader(&mut self, leader: impl Into<String>) -> Result<(), String> {
         let leader = leader.into();
         check_byte_count(&leader, LEADER_SIZE)?;
@@ -394,6 +403,15 @@ impl Record {
     ///
     /// Returns Err if the value is not composed of the correct number
     /// of bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Record;
+    /// let mut record = Record::default();
+    /// assert!(record.set_leader_bytes("too short".as_bytes()).is_err());
+    /// assert!(record.set_leader_bytes("just right              ".as_bytes()).is_ok());
+    /// ```
     pub fn set_leader_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
         let s = std::str::from_utf8(bytes)
             .map_err(|e| format!("Leader is not a valid UTF-8 string: {e} bytes={bytes:?}"))?;
@@ -435,9 +453,25 @@ impl Record {
         self.fields.iter_mut().filter(|f| f.tag() == tag).collect()
     }
 
-    /// Add a control field with data.
+    /// Add a new control field with the provided tag and content and
+    /// insert it in tag order.
     ///
     /// Controlfields are those with tag 001 .. 009
+    ///
+    /// Err if the tag is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Record;
+    /// let mut record = Record::default();
+    /// assert!(record.add_control_field("011", "foo").is_err());
+    /// assert!(record.add_control_field("002", "bar").is_ok());
+    /// assert!(record.add_control_field("001", "bar").is_ok());
+    ///
+    /// // should be sorted by tag.
+    /// assert_eq!(record.control_fields()[0].tag(), "001");
+    /// ```
     pub fn add_control_field(&mut self, tag: &str, content: &str) -> Result<(), String> {
         if tag >= "010" || tag <= "000" {
             return Err(format!("Invalid control field tag: '{tag}'"));
@@ -446,7 +480,6 @@ impl Record {
         Ok(())
     }
 
-    /// Insert a control field in tag order
     pub fn insert_control_field(&mut self, field: Controlfield) {
         match self
             .control_fields()
@@ -473,14 +506,43 @@ impl Record {
     }
 
     /// Create a new Field with the provided tag, insert it into the
-    /// record, then return a mut ref so the field may be additionally
-    /// modified.
+    /// record in tag order, then return a mut ref to the new field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Record;
+    /// let mut record = Record::default();
+    /// assert!(record.add_data_field("245").is_ok());
+    /// assert!(record.add_data_field("240").is_ok());
+    /// assert!(record.add_data_field("1234").is_err());
+    ///
+    /// assert_eq!(record.fields()[0].tag(), "240");
+    /// ```
     pub fn add_data_field(&mut self, tag: impl Into<String>) -> Result<&mut Field, String> {
         let pos = self.insert_field(Field::new(tag)?);
         Ok(self.fields_mut().get_mut(pos).unwrap())
     }
 
     /// Returns a list of values for the specified tag and subfield.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Record;
+    /// let mut record = Record::default();
+    /// let field = record.add_data_field("650").expect("added field");
+    /// field.add_subfield("a", "foo");
+    /// field.add_subfield("a", "bar");
+    ///
+    /// let field = record.add_data_field("650").expect("added field");
+    /// field.add_subfield("a", "baz");
+    ///
+    /// let values = record.get_values("650", "a");
+    ///
+    /// assert_eq!(values.len(), 3);
+    /// assert_eq!(values[1], "bar");
+    /// ```
     pub fn get_values(&self, tag: &str, sfcode: &str) -> Vec<&str> {
         let mut vec = Vec::new();
         for field in self.get_fields(tag) {
