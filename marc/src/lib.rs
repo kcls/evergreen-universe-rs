@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 pub use self::record::Controlfield;
 pub use self::record::Field;
 pub use self::record::Record;

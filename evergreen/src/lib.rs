@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 pub use editor::Editor;
 pub use event::EgEvent;
 pub use init::init;

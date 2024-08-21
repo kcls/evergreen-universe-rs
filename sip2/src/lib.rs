@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 pub use self::connection::Connection;
 pub use self::error::Error;
 pub use self::message::Field;

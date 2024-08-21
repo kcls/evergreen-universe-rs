@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use eg::EgResult;
 use evergreen as eg;
 use std::env;
