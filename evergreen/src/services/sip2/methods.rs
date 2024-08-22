@@ -54,6 +54,29 @@ pub static METHODS: &[StaticMethodDef] = &[
             },
         ],
     },
+    StaticMethodDef {
+        name: "setting_group.delete",
+        desc: "Create, Update, Delete SIP accounts",
+        param_count: ParamCount::Range(2, 3),
+        handler: delete_setting_group,
+        params: &[
+            StaticParam {
+                name: "Auth Token",
+                datatype: ParamDataType::String,
+                desc: "Authentiation Token",
+            },
+            StaticParam {
+                name: "Delete Group ID",
+                datatype: ParamDataType::Number,
+                desc: "ID of group to delete",
+            },
+            StaticParam {
+                name: "Transfer Group ID",
+                datatype: ParamDataType::Number,
+                desc: "Orphaned accounts will be transferred to this group",
+            },
+        ],
+    },
 ];
 
 pub fn dispatch_sip_request(
@@ -414,4 +437,54 @@ pub fn account_cud(
     editor.commit()?;
 
     session.respond_complete(account)
+}
+
+pub fn delete_setting_group(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
+) -> EgResult<()> {
+    message::set_thread_ingress("sip2");
+
+    let worker = app::Sip2Worker::downcast(worker)?;
+
+    let authtoken = method.param(0).str()?;
+    let delete_id = method.param(1).int()?;
+
+    let mut editor = Editor::with_auth(worker.client(), authtoken);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    if !editor.allowed("SIP_ADMIN")? {
+        return session.respond(editor.event());
+    }
+
+    editor.xact_begin()?;
+
+    let grp = editor
+        .retrieve("sipsetg", delete_id)?
+        .ok_or_else(|| editor.die_event())?;
+
+    let mut accounts = editor.search("sipacc", eg::hash! {"setting_group": delete_id})?;
+
+    for mut account in accounts.drain(..) {
+        // We have at least one account to transfer.
+        // Make sure we have a target.
+        let transfer_id = if let Some(id_val) = method.params().get(2) {
+            id_val.int()?
+        } else {
+            return Err("Cannot transfer accounts without a target group".into());
+        };
+
+        account["setting_group"] = transfer_id.into();
+        editor.update(account)?;
+    }
+
+    editor.delete(grp)?;
+
+    editor.commit()?;
+
+    session.respond_complete(1)
 }
