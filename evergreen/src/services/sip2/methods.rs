@@ -15,24 +15,46 @@ use crate::session::Config;
 use crate::session::Session;
 
 /// List of method definitions we know at compile time.
-pub static METHODS: &[StaticMethodDef] = &[StaticMethodDef {
-    name: "request",
-    desc: "Dispatch a SIP Request",
-    param_count: ParamCount::Exactly(2),
-    handler: dispatch_sip_request,
-    params: &[
-        StaticParam {
-            name: "Session Key",
-            datatype: ParamDataType::String,
-            desc: "SIP2 Client Session Key",
-        },
-        StaticParam {
-            name: "sip2::Message",
-            datatype: ParamDataType::Object,
-            desc: "SIP2 sip2::Message JSON Value",
-        },
-    ],
-}];
+pub static METHODS: &[StaticMethodDef] = &[
+    StaticMethodDef {
+        name: "request",
+        desc: "Dispatch a SIP Request",
+        param_count: ParamCount::Exactly(2),
+        handler: dispatch_sip_request,
+        params: &[
+            StaticParam {
+                name: "Session Key",
+                datatype: ParamDataType::String,
+                desc: "SIP2 Client Session Key",
+            },
+            StaticParam {
+                name: "sip2::Message",
+                datatype: ParamDataType::Object,
+                desc: "SIP2 sip2::Message JSON Value",
+            },
+        ],
+    },
+    StaticMethodDef {
+        name: "account.cud",
+        desc: "Create, Update, Delete SIP accounts",
+        param_count: ParamCount::Exactly(2),
+        handler: account_cud,
+        params: &[
+            StaticParam {
+                name: "Auth Token",
+                datatype: ParamDataType::String,
+                desc: "Authentiation Token",
+            },
+            StaticParam {
+                name: "account",
+                datatype: ParamDataType::Object,
+                desc: "SIP account object.  If a value is stored in the virtual
+                sip_password field on the account, the value will be used
+                as the new password for the account",
+            },
+        ],
+    },
+];
 
 pub fn dispatch_sip_request(
     worker: &mut Box<dyn ApplicationWorker>,
@@ -335,4 +357,61 @@ fn handle_block_patron(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResul
 
 fn handle_hold(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
     sip_ses.handle_hold(sip_msg)
+}
+
+pub fn account_cud(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    mut method: message::MethodCall,
+) -> EgResult<()> {
+    message::set_thread_ingress("sip2");
+
+    let worker = app::Sip2Worker::downcast(worker)?;
+
+    let mut params = method.take_params();
+
+    // These 2 params are guaranteed to exist
+    let authtoken = params.remove(0);
+    let mut account = params.remove(0);
+
+    let mut editor = Editor::with_auth(worker.client(), authtoken.str()?);
+
+    if !editor.checkauth()? {
+        return session.respond(editor.event());
+    }
+
+    if !editor.allowed("SIP_ADMIN")? {
+        return session.respond(editor.event());
+    }
+
+    editor.xact_begin()?;
+
+    if let Some(pass) = account["sip_password"].as_str() {
+        let query = eg::hash! {
+            "from": [
+                "actor.change_password",
+                account["usr"].clone(),
+                pass,
+                "sip2"
+            ]
+        };
+
+        editor.json_query(query)?;
+    }
+
+    if account["isnew"].boolish() {
+        account = editor.create(account.clone())?;
+    } else if account["ischanged"].boolish() {
+        editor.update(account.clone())?;
+    } else if account["isdeleted"].boolish() {
+        editor.delete(account.clone())?;
+    }
+
+    let account = editor
+        .retrieve("sipacc", account.id()?)?
+        .ok_or_else(|| editor.die_event())?;
+
+    editor.commit()?;
+
+    session.respond_complete(account)
 }
