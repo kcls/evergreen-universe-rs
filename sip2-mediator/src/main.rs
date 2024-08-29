@@ -35,9 +35,13 @@ fn main() -> EgResult<()> {
         appname: Some("sip2-mediator".to_string()),
     };
 
-    let ctx = eg::init::with_options(&options)?;
+    let client = eg::init::with_options(&options)?;
 
-    let stream = server::Server::setup(conf, ctx)?;
+    // The main server thread doesn't need a bus connection, but we
+    // do want the other init() pieces.
+    drop(client); // force a cleanup and disconnect
+
+    let stream = server::Server::setup(conf)?;
 
     let mut s = mptc::Server::new(Box::new(stream));
 
