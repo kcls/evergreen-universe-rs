@@ -62,7 +62,7 @@ a Docker container.
 
 ```sh
 sudo apt install git build-essential pkg-config libssl-dev rust-all 
-git clone github.com:kcls/evergreen-universe-rs                                
+git clone https://github.com/kcls/evergreen-universe-rs                              
 ```
 
 ### Build Everything and Run Tests
