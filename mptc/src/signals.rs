@@ -24,11 +24,15 @@ pub struct SignalTracker {
     fast_shutdown: Arc<AtomicBool>,
     reload: Arc<AtomicBool>,
     reload_request_time: Arc<AtomicU64>,
+    usr1_is_set: Arc<AtomicBool>,
+    usr2_is_set: Arc<AtomicBool>,
 
     /// Avoid duplicate signal handlers
     graceful_shutdown_tracked: bool,
     fast_shutdown_tracked: bool,
     reload_tracked: bool,
+    usr1_tracked: bool,
+    usr2_tracked: bool,
 }
 
 impl Default for SignalTracker {
@@ -47,6 +51,10 @@ impl SignalTracker {
             graceful_shutdown_tracked: false,
             fast_shutdown_tracked: false,
             reload_tracked: false,
+            usr1_is_set: Arc::new(AtomicBool::new(false)),
+            usr2_is_set: Arc::new(AtomicBool::new(false)),
+            usr1_tracked: false,
+            usr2_tracked: false,
         }
     }
 
@@ -68,6 +76,52 @@ impl SignalTracker {
     /// True if any shutdown signals have been received.
     pub fn any_shutdown_requested(&self) -> bool {
         self.graceful_shutdown_requested() || self.fast_shutdown_requested()
+    }
+
+    pub fn track_usr1(&mut self) {
+        if self.usr1_tracked {
+            log::warn!("Already tracking SIGUSR1");
+            return;
+        }
+
+        let result = sigs::flag::register(sigs::consts::SIGUSR1, self.usr1_is_set.clone());
+
+        if let Err(e) = result {
+            panic!("Cannot register graceful usr1 handler: {}", e);
+        }
+
+        self.usr1_tracked = true;
+    }
+
+    pub fn usr1_is_set(&self) -> bool {
+        self.usr1_is_set.load(Ordering::Relaxed)
+    }
+
+    pub fn clear_usr1(&mut self) {
+        self.usr1_is_set.store(false, Ordering::Relaxed);
+    }
+
+    pub fn track_usr2(&mut self) {
+        if self.usr2_tracked {
+            log::warn!("Already tracking SIGUSR2");
+            return;
+        }
+
+        let result = sigs::flag::register(sigs::consts::SIGUSR2, self.usr2_is_set.clone());
+
+        if let Err(e) = result {
+            panic!("Cannot register graceful usr2 handler: {}", e);
+        }
+
+        self.usr2_tracked = true;
+    }
+
+    pub fn usr2_is_set(&self) -> bool {
+        self.usr2_is_set.load(Ordering::Relaxed)
+    }
+
+    pub fn clear_usr2(&mut self) {
+        self.usr2_is_set.store(false, Ordering::Relaxed);
     }
 
     /// Activate graceful shutdown signal tracking.
