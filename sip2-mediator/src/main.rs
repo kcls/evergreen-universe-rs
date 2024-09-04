@@ -28,6 +28,7 @@ fn main() -> EgResult<()> {
     let conf = load_config()?;
     let max_workers = conf.max_workers;
     let min_workers = conf.min_workers;
+    let min_idle_workers = conf.min_idle_workers;
 
     let options = eg::init::InitOptions {
         skip_logging: false,
@@ -47,10 +48,7 @@ fn main() -> EgResult<()> {
 
     s.set_max_workers(max_workers);
     s.set_min_workers(min_workers);
-
-    // Each SIP sessions counts as one request to MPTC.
-    // Use the default value for max worker requests.
-    // s.set_max_worker_requests(...);
+    s.set_min_idle_workers(min_idle_workers);
 
     s.run();
 

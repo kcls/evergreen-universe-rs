@@ -10,6 +10,7 @@ pub struct Config {
     pub sip_port: u16,
     pub max_workers: usize,
     pub min_workers: usize,
+    pub min_idle_workers: usize,
     pub ascii: bool,
 }
 
@@ -20,6 +21,7 @@ impl Config {
             sip_port: 6001,
             max_workers: 64,
             min_workers: 1,
+            min_idle_workers: 1,
             ascii: true,
         }
     }
@@ -57,6 +59,10 @@ impl Config {
 
         if let Some(v) = root["min-workers"].as_i64() {
             conf.min_workers = v as usize;
+        }
+
+        if let Some(v) = root["min-idle-workers"].as_i64() {
+            conf.min_idle_workers = v as usize;
         }
 
         if let Some(v) = root["ascii"].as_bool() {

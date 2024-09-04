@@ -12,11 +12,14 @@ sip2-mediator:
 
     # Maximum number of allowed SIP client connections.  Once reached,
     # new connection attempts are rejected.
-    max-workers: 128
+    max-workers: 64 
 
     # Mumber of worker threads to launch at start and the minimum
-    # number to maintain throughout.
-    min-workers: 8
+    # bare number to maintain throughout.
+    min-workers: 4
+
+    # Maintain this many idle workers at all times, up to max-workers.
+    min-idle-workers: 2
 
     # If true, replace non-ASCII characters in SIP responses with their
     # rough equivalent.  See https://docs.rs/deunicode/latest/deunicode/
