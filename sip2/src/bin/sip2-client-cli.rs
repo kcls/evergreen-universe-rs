@@ -31,6 +31,12 @@ Parameters:
     --repeat <count>
         Repeat all requested messages this many times.
 
+    --sleep <milliseconds>
+        Sleep this long between requests to similulate slower traffic.
+
+        Sleeps occur after each request minus the opening Login and
+        SC Status requests.
+
     --quiet
         Print only summary information
 
@@ -79,6 +85,7 @@ fn main() {
     let repeat = options.opt_get_default("repeat", 1).expect("Valid Repeat Option");
     let parallel = options.opt_get_default("parallel", 1).expect("Valid Parallel Option");
     let messages = Arc::new(options.opt_strs("message-type"));
+    let sleep = options.opt_get_default("sleep", 0).expect("Valid Sleep Option");
 
     let mut handles = Vec::new();
 
@@ -88,7 +95,7 @@ fn main() {
         let h = host.clone();
         let m = messages.clone();
         let p = sip_params.clone();
-        handles.push(thread::spawn(move || run_one_thread(h, m, p, quiet, repeat)));
+        handles.push(thread::spawn(move || run_one_thread(h, m, p, quiet, repeat, sleep)));
     }
 
     for h in handles {
@@ -109,6 +116,7 @@ fn run_one_thread(
     sip_params: ParamSet,
     quiet: bool,
     repeat: usize,
+    sleep: u64,
 ) {
     // Connect to the SIP server
     let mut client = Client::new(&host).expect("Cannot Connect");
@@ -165,6 +173,10 @@ fn run_one_thread(
             } else {
                 println!("{}{} ms\n", resp.msg(), ms);
             }
+
+            if sleep > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(sleep));
+            }
         }
     }
 }
@@ -184,6 +196,7 @@ fn read_options() -> getopts::Matches {
     opts.optopt("", "item-barcode", "Item Barcode", "");
     opts.optopt("", "location-code", "Location Code", "");
     opts.optopt("", "repeat", "Repeat Count", "");
+    opts.optopt("", "sleep", "Sleep Time (millis)", "");
     opts.optopt("", "parallel", "Parallel Count", "");
 
     opts.optopt("", "pay-amount", "Fee Paid Amount", "");
