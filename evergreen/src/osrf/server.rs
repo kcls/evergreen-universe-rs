@@ -11,6 +11,7 @@ use crate::util;
 use crate::EgResult;
 use mptc::signals::SignalTracker;
 use std::collections::HashMap;
+use std::env;
 use std::sync::mpsc;
 use std::sync::OnceLock;
 use std::thread;
@@ -82,18 +83,48 @@ impl Server {
 
         let client = init::osrf_init(&options)?;
 
-        let min_workers = HostSettings::get(&format!("apps/{service}/unix_config/min_children"))?
-            .as_usize()
-            .unwrap_or(DEFAULT_MIN_WORKERS);
+        let mut min_workers =
+            HostSettings::get(&format!("apps/{service}/unix_config/min_children"))?
+                .as_usize()
+                .unwrap_or(DEFAULT_MIN_WORKERS);
 
-        let min_idle_workers =
+        let mut min_idle_workers =
             HostSettings::get(&format!("apps/{service}/unix_config/min_spare_children"))?
                 .as_usize()
                 .unwrap_or(DEFAULT_MIN_IDLE_WORKERS);
 
-        let max_workers = HostSettings::get(&format!("apps/{service}/unix_config/max_children"))?
-            .as_usize()
-            .unwrap_or(DEFAULT_MAX_WORKERS);
+        let mut max_workers =
+            HostSettings::get(&format!("apps/{service}/unix_config/max_children"))?
+                .as_usize()
+                .unwrap_or(DEFAULT_MAX_WORKERS);
+
+        // Environment vars override values from opensrf.settings
+
+        if let Ok(num) = env::var("OSRF_SERVER_MIN_WORKERS") {
+            if let Ok(num) = num.parse::<usize>() {
+                min_workers = num;
+            }
+        }
+
+        if let Ok(num) = env::var("OSRF_SERVER_MIN_IDLE_WORKERS") {
+            if let Ok(num) = num.parse::<usize>() {
+                min_idle_workers = num;
+            }
+        }
+
+        if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKERS") {
+            if let Ok(num) = num.parse::<usize>() {
+                max_workers = num;
+            }
+        }
+
+        log::info!(
+            "Starting service {} with min-workers={} min-idle={} max-workers={}",
+            service,
+            min_workers,
+            min_idle_workers,
+            max_workers,
+        );
 
         // We have a single to-parent channel whose trasmitter is cloned
         // per thread.  Communication from worker threads to the parent
