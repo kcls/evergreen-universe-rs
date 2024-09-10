@@ -183,18 +183,21 @@ impl Server {
     /// non-ready mode.
     fn check_aliveness_signals(&mut self) {
         if self.is_ready.load(Ordering::Relaxed) {
+            // We're in ready mode.  Do we change?
             if self.sig_tracker.usr1_is_set() {
-                log::info!("Going into non-ready mode");
+                log::info!("Entering non-ready mode");
                 self.is_ready.store(false, Ordering::Relaxed);
                 self.sig_tracker.clear_usr1();
             }
         } else if self.sig_tracker.usr2_is_set() {
+            // We're in non-ready mode, time to go back?
             log::info!("Entering ready mode");
             self.is_ready.store(true, Ordering::Relaxed);
             self.sig_tracker.clear_usr2();
         }
     }
 
+    /// Setup our TCP server socket and create our Server instance.
     pub fn setup(config: Config) -> Result<Server, String> {
         let tcp_listener = eg::util::tcp_listener(
             &config.sip_address,
@@ -206,11 +209,13 @@ impl Server {
         sig_tracker.track_usr1();
         sig_tracker.track_usr2();
 
+        let ready = config.start_in_ready_mode;
+
         let server = Server {
             tcp_listener,
             sig_tracker,
             sip_config: Arc::new(config),
-            is_ready: Arc::new(AtomicBool::new(true)),
+            is_ready: Arc::new(AtomicBool::new(ready)),
             shutdown: Arc::new(AtomicBool::new(false)),
         };
 

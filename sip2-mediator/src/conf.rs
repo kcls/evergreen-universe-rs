@@ -13,6 +13,7 @@ pub struct Config {
     pub min_idle_workers: usize,
     pub ascii: bool,
     pub aliveness_account: Option<String>,
+    pub start_in_ready_mode: bool,
 }
 
 impl Default for Config {
@@ -25,6 +26,7 @@ impl Default for Config {
             min_idle_workers: 1,
             ascii: true,
             aliveness_account: None,
+            start_in_ready_mode: true,
         }
     }
 }
@@ -75,6 +77,10 @@ impl Config {
 
         if let Some(v) = root["ascii"].as_bool() {
             conf.ascii = v;
+        }
+
+        if let Some(v) = root["start-in-ready-mode"].as_bool() {
+            conf.start_in_ready_mode = v;
         }
 
         conf.aliveness_account = root["aliveness-account"].as_str().map(|s| s.to_string());

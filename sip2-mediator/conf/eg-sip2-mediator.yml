@@ -32,3 +32,9 @@ sip2-mediator:
     # want to start the medaitor (e.g. for testing) without it being
     # put into the load balancer pool for new client connections.
     aliveness-account: sipalive
+
+    # If explicitly set to false, login attempts made to the
+    # 'aliveness-account' (see above) will be rejected.
+    #
+    # Sending a SIGUSR2 to the mediator will put it back into ready mode.
+    start-in-ready-mode: true
