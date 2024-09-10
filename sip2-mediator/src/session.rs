@@ -34,6 +34,12 @@ pub struct Session {
 
     /// If true, we're shutting down.
     shutdown: Arc<AtomicBool>,
+
+    is_ready: Arc<AtomicBool>,
+
+    login_failed_msg: sip2::Message,
+
+    aliveness_account: Option<String>,
 }
 
 impl Session {
@@ -45,6 +51,7 @@ impl Session {
         osrf_bus: eg::osrf::bus::Bus,
         stream: net::TcpStream,
         shutdown: Arc<AtomicBool>,
+        is_ready: Arc<AtomicBool>,
     ) -> EgResult<Session> {
         match stream.peer_addr() {
             Ok(a) => log::info!("New SIP connection from {a}"),
@@ -59,12 +66,21 @@ impl Session {
 
         let client = eg::Client::from_bus(osrf_bus);
 
+        let login_failed_msg =
+            sip2::Message::from_values(sip2::spec::M_LOGIN_RESP.code, &["0"], &[])
+                .expect("Login failure message should be corrrectly formatted");
+
+        let aliveness_account = sip_config.aliveness_account.as_ref().map(|a| a.to_string());
+
         let ses = Session {
             key,
             shutdown,
             client,
+            is_ready,
             sip_connection: con,
             sip_user: None,
+            login_failed_msg,
+            aliveness_account,
         };
 
         Ok(ses)
@@ -104,12 +120,13 @@ impl Session {
 
             log::trace!("{} Read SIP message: {:?}", self, sip_req);
 
-            if sip_req.spec() == &sip2::spec::M_LOGIN {
-                // If this is a login request, capture the SIP username
-                // for improved session logging.
-                if let Some(sip_user) = sip_req.get_field_value("CN") {
-                    self.sip_user = Some(sip_user.to_string());
+            if sip_req.spec() == &sip2::spec::M_LOGIN && !self.login_should_continue(&sip_req)? {
+                // Login should not continue.  Reply with a login
+                // failed message an break the loop.
+                if let Err(e) = self.sip_connection.send(&self.login_failed_msg) {
+                    log::error!("{self} error sending response to SIP client: {e}");
                 }
+                break;
             }
 
             // Relay the request to the Evergreen backend and wait for a
@@ -147,6 +164,32 @@ impl Session {
 
         // Tell the Evergreen server our session is done.
         self.send_end_session()
+    }
+
+    /// Returns true if the login should continue.
+    /// Returns false if the message is malformed or we are in non-ready
+    /// mode and this is a login attempt by the aliveness-account.
+    ///
+    /// No authentication is performed here.  That's handled by the backend service.
+    fn login_should_continue(&mut self, sip_req: &sip2::Message) -> EgResult<bool> {
+        let sip_user = match sip_req.get_field_value("CN") {
+            Some(u) => u,
+            None => return Ok(false),
+        };
+
+        // Capture the SIP username for session ogging.
+        self.sip_user = Some(sip_user.to_string());
+
+        if !self.is_ready.load(Ordering::Relaxed) {
+            if let Some(account) = self.aliveness_account.as_ref() {
+                if account == sip_user {
+                    log::debug!("Rejecting SIP login for {account} in non-ready mode");
+                    return Ok(false);
+                }
+            }
+        }
+
+        Ok(true)
     }
 
     /// Send the final End Session (XS) message to the ILS.

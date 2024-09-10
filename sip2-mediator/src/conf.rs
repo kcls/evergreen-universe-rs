@@ -12,10 +12,11 @@ pub struct Config {
     pub min_workers: usize,
     pub min_idle_workers: usize,
     pub ascii: bool,
+    pub aliveness_account: Option<String>,
 }
 
-impl Config {
-    pub fn new() -> Config {
+impl Default for Config {
+    fn default() -> Config {
         Config {
             sip_address: String::from("localhost"),
             sip_port: 6001,
@@ -23,7 +24,14 @@ impl Config {
             min_workers: 1,
             min_idle_workers: 1,
             ascii: true,
+            aliveness_account: None,
         }
+    }
+}
+
+impl Config {
+    pub fn new() -> Config {
+        Config::default()
     }
 
     /// Parse a YAML configuration file.
@@ -68,6 +76,8 @@ impl Config {
         if let Some(v) = root["ascii"].as_bool() {
             conf.ascii = v;
         }
+
+        conf.aliveness_account = root["aliveness-account"].as_str().map(|s| s.to_string());
 
         Ok(conf)
     }

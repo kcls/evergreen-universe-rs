@@ -2,6 +2,7 @@ use super::conf::Config;
 use super::session::Session;
 use eg::osrf;
 use evergreen as eg;
+use mptc::signals::SignalTracker;
 use std::any::Any;
 use std::net::TcpListener;
 use std::net::TcpStream;
@@ -38,6 +39,8 @@ pub struct SessionFactory {
 
     /// OpenSRF bus.
     osrf_bus: Option<eg::osrf::bus::Bus>,
+
+    is_ready: Arc<AtomicBool>,
 }
 
 impl mptc::RequestHandler for SessionFactory {
@@ -73,7 +76,9 @@ impl mptc::RequestHandler for SessionFactory {
         // this request.
         let stream = request.stream.take().unwrap();
 
-        let mut session = Session::new(sip_config, osrf_bus, stream, shutdown)?;
+        let is_ready = self.is_ready.clone();
+
+        let mut session = Session::new(sip_config, osrf_bus, stream, shutdown, is_ready)?;
 
         if let Err(e) = session.start() {
             // This is not necessarily an error.  The client may simply
@@ -113,6 +118,10 @@ pub struct Server {
 
     /// Inbound SIP connections start here.
     tcp_listener: TcpListener,
+
+    sig_tracker: SignalTracker,
+
+    is_ready: Arc<AtomicBool>,
 }
 
 impl mptc::RequestStream for Server {
@@ -122,6 +131,9 @@ impl mptc::RequestStream for Server {
             Err(e) => {
                 match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
+                        // See if we need to to into/out of ready mode.
+                        self.check_aliveness_signals();
+
                         // No connection received within the timeout.
                         // Return None to the mptc::Server so it can
                         // perform housekeeping.
@@ -143,6 +155,7 @@ impl mptc::RequestStream for Server {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         let sf = SessionFactory {
             shutdown: self.shutdown.clone(),
+            is_ready: self.is_ready.clone(),
             sip_config: self.sip_config.clone(),
             osrf_bus: None, // set in worker_start
         };
@@ -166,6 +179,22 @@ impl mptc::RequestStream for Server {
 }
 
 impl Server {
+    /// Check for SIGUSR1 to go into non-ready mode or SIGUSR2 to exit
+    /// non-ready mode.
+    fn check_aliveness_signals(&mut self) {
+        if self.is_ready.load(Ordering::Relaxed) {
+            if self.sig_tracker.usr1_is_set() {
+                log::info!("Going into non-ready mode");
+                self.is_ready.store(false, Ordering::Relaxed);
+                self.sig_tracker.clear_usr1();
+            }
+        } else if self.sig_tracker.usr2_is_set() {
+            log::info!("Entering ready mode");
+            self.is_ready.store(true, Ordering::Relaxed);
+            self.sig_tracker.clear_usr2();
+        }
+    }
+
     pub fn setup(config: Config) -> Result<Server, String> {
         let tcp_listener = eg::util::tcp_listener(
             &config.sip_address,
@@ -173,9 +202,15 @@ impl Server {
             SIP_SHUTDOWN_POLL_INTERVAL,
         )?;
 
+        let mut sig_tracker = SignalTracker::new();
+        sig_tracker.track_usr1();
+        sig_tracker.track_usr2();
+
         let server = Server {
             tcp_listener,
+            sig_tracker,
             sip_config: Arc::new(config),
+            is_ready: Arc::new(AtomicBool::new(true)),
             shutdown: Arc::new(AtomicBool::new(false)),
         };
 

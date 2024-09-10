@@ -24,3 +24,11 @@ sip2-mediator:
     # If true, replace non-ASCII characters in SIP responses with their
     # rough equivalent.  See https://docs.rs/deunicode/latest/deunicode/
     ascii: true
+
+    # Attempts to login with this SIP account while the mediator is
+    # in non-ready mode will be rejected with a login failure.
+    #
+    # This is primarily useful for load-balanced mediators where you
+    # want to start the medaitor (e.g. for testing) without it being
+    # put into the load balancer pool for new client connections.
+    aliveness-account: sipalive
