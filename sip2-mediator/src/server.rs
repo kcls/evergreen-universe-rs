@@ -182,18 +182,36 @@ impl Server {
     /// Check for SIGUSR1 to go into non-ready mode or SIGUSR2 to exit
     /// non-ready mode.
     fn check_aliveness_signals(&mut self) {
+
         if self.is_ready.load(Ordering::Relaxed) {
-            // We're in ready mode.  Do we change?
+            // In ready mode.
+
             if self.sig_tracker.usr1_is_set() {
+                // Received exit-ready-mode signal
                 log::info!("Entering non-ready mode");
                 self.is_ready.store(false, Ordering::Relaxed);
                 self.sig_tracker.clear_usr1();
             }
-        } else if self.sig_tracker.usr2_is_set() {
-            // We're in non-ready mode, time to go back?
-            log::info!("Entering ready mode");
-            self.is_ready.store(true, Ordering::Relaxed);
-            self.sig_tracker.clear_usr2();
+
+            if self.sig_tracker.usr2_is_set() {
+                // Received superfluous ready-mode signal
+                self.sig_tracker.clear_usr2();
+            }
+
+        } else {
+            // In non-ready mode.
+
+            if self.sig_tracker.usr1_is_set() {
+                // Received superflous exit-ready-mode signal
+                self.sig_tracker.clear_usr1();
+            }
+
+            if self.sig_tracker.usr2_is_set() {
+                // Received ready-mode signal
+                log::info!("Entering ready mode");
+                self.is_ready.store(true, Ordering::Relaxed);
+                self.sig_tracker.clear_usr2();
+            }
         }
     }
 
