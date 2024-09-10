@@ -124,7 +124,10 @@ fn run_one_thread(
     // Login to the SIP server
     match client.login(&sip_params).expect("Login Error").ok() {
         true => println!("Login OK"),
-        false => eprintln!("Login Failed"),
+        false => {
+            eprintln!("Login Failed");
+            return;
+        }
     }
 
     // Check the SIP server status
