@@ -39,7 +39,7 @@ pub struct Session {
 
     login_failed_msg: sip2::Message,
 
-    aliveness_account: Option<String>,
+    heartbeat_account: Option<String>,
 }
 
 impl Session {
@@ -70,7 +70,7 @@ impl Session {
             sip2::Message::from_values(sip2::spec::M_LOGIN_RESP.code, &["0"], &[])
                 .expect("Login failure message should be corrrectly formatted");
 
-        let aliveness_account = sip_config.aliveness_account.as_ref().map(|a| a.to_string());
+        let heartbeat_account = sip_config.heartbeat_account.as_ref().map(|a| a.to_string());
 
         let ses = Session {
             key,
@@ -80,7 +80,7 @@ impl Session {
             sip_connection: con,
             sip_user: None,
             login_failed_msg,
-            aliveness_account,
+            heartbeat_account,
         };
 
         Ok(ses)
@@ -168,7 +168,7 @@ impl Session {
 
     /// Returns true if the login should continue.
     /// Returns false if the message is malformed or we are in non-ready
-    /// mode and this is a login attempt by the aliveness-account.
+    /// mode and this is a login attempt by the heartbeat-account.
     ///
     /// No authentication is performed here.  That's handled by the backend service.
     fn login_should_continue(&mut self, sip_req: &sip2::Message) -> EgResult<bool> {
@@ -181,7 +181,7 @@ impl Session {
         self.sip_user = Some(sip_user.to_string());
 
         if !self.is_ready.load(Ordering::Relaxed) {
-            if let Some(account) = self.aliveness_account.as_ref() {
+            if let Some(account) = self.heartbeat_account.as_ref() {
                 if account == sip_user {
                     log::debug!("Rejecting SIP login for {account} in non-ready mode");
                     return Ok(false);

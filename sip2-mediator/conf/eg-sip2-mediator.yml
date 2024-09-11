@@ -31,10 +31,10 @@ sip2-mediator:
     # This is primarily useful for load-balanced mediators where you
     # want to start the medaitor (e.g. for testing) without it being
     # put into the load balancer pool for new client connections.
-    aliveness-account: sipalive
+    heartbeat-account: sipalive
 
     # If explicitly set to false, login attempts made to the
-    # 'aliveness-account' (see above) will be rejected.
+    # 'heartbeat-account' (see above) will be rejected.
     #
     # Sending a SIGUSR2 to the mediator will put it back into ready mode.
     start-in-ready-mode: true

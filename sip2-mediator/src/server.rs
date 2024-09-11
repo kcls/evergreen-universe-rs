@@ -132,7 +132,7 @@ impl mptc::RequestStream for Server {
                 match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
                         // See if we need to to into/out of ready mode.
-                        self.check_aliveness_signals();
+                        self.check_heartbeat_signals();
 
                         // No connection received within the timeout.
                         // Return None to the mptc::Server so it can
@@ -181,7 +181,7 @@ impl mptc::RequestStream for Server {
 impl Server {
     /// Check for SIGUSR1 to go into non-ready mode or SIGUSR2 to exit
     /// non-ready mode.
-    fn check_aliveness_signals(&mut self) {
+    fn check_heartbeat_signals(&mut self) {
 
         if self.is_ready.load(Ordering::Relaxed) {
             // In ready mode.

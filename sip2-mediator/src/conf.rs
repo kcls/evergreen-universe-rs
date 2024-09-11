@@ -12,7 +12,7 @@ pub struct Config {
     pub min_workers: usize,
     pub min_idle_workers: usize,
     pub ascii: bool,
-    pub aliveness_account: Option<String>,
+    pub heartbeat_account: Option<String>,
     pub start_in_ready_mode: bool,
 }
 
@@ -25,7 +25,7 @@ impl Default for Config {
             min_workers: 1,
             min_idle_workers: 1,
             ascii: true,
-            aliveness_account: None,
+            heartbeat_account: None,
             start_in_ready_mode: true,
         }
     }
@@ -83,7 +83,7 @@ impl Config {
             conf.start_in_ready_mode = v;
         }
 
-        conf.aliveness_account = root["aliveness-account"].as_str().map(|s| s.to_string());
+        conf.heartbeat_account = root["heartbeat-account"].as_str().map(|s| s.to_string());
 
         Ok(conf)
     }
