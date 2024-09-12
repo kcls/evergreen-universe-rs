@@ -182,7 +182,6 @@ impl Server {
     /// Check for SIGUSR1 to go into non-ready mode or SIGUSR2 to exit
     /// non-ready mode.
     fn check_heartbeat_signals(&mut self) {
-
         if self.is_ready.load(Ordering::Relaxed) {
             // In ready mode.
 
@@ -197,7 +196,6 @@ impl Server {
                 // Received superfluous ready-mode signal
                 self.sig_tracker.clear_usr2();
             }
-
         } else {
             // In non-ready mode.
 

@@ -55,6 +55,10 @@ socket2 = "0.5"
 # For gateway
 url = "2.3"
 
+# For remote account
+ssh2 = "0.9.4"
+glob = "0.3.1"
+
 [[bin]]
 name = "osrf-router"
 path = "src/bin/router.rs"

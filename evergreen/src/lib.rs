@@ -25,6 +25,7 @@ pub mod idldb;
 pub mod init;
 pub mod norm;
 pub mod osrf;
+pub mod remote;
 pub mod result;
 pub mod samples;
 pub mod script;
