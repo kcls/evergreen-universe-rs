@@ -7,6 +7,7 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::io::Read;
 use std::fmt;
 use url::Url;
 
@@ -128,11 +129,51 @@ impl RemoteAccount {
         }
     }
 
+    /// Returns a list of file paths matching our remote path and optional glob.
+    pub fn get(&self, file: &str) -> EgResult<String> {
+        if self.proto == Proto::Sftp {
+            self.get_sftp(file)
+        } else {
+            Err(format!("Unsupported protocol: {:?}", self.proto).into())
+        }
+    }
+
+    /// Returns an Err if we're not connected
+    pub fn check_connected(&self) -> EgResult<()> {
+        if self.proto == Proto::Sftp {
+            self.check_connected_sftp()
+        } else {
+            Err(format!("Unsupported protocol: {:?}", self.proto).into())
+        }
+    }
+
+    fn check_connected_sftp(&self) -> EgResult<()> {
+        match self.sftp_session {
+            Some(_) => Ok(()),
+            _ => Err(format!("{self} is not connected to SFTP").into()),
+        }
+    }
+
+    /// Fetch the specified file by name and return its contents as a String.
+    fn get_sftp(&self, filename: &str) -> EgResult<String> {
+        self.check_connected()?;
+
+        let mut file = self.sftp_session.as_ref().unwrap().open(Path::new(filename))
+            .map_err(|e| format!("Cannot open remote file {filename} {e}"))?;
+
+        let mut buf = String::new();
+
+        file.read_to_string(&mut buf)
+            .map_err(|e| format!("Cannot read file {filename} {e}"))?;
+
+        Ok(buf)
+    }
+
     /// Returns a list of files/directories within our remote_path directory.
     ///
     /// If our remote_path contains a file name glob, the list only
     /// includes files that match the glob.
-    pub fn ls_sftp(&self) -> EgResult<Vec<String>> {
+    fn ls_sftp(&self) -> EgResult<Vec<String>> {
         let (remote_path, maybe_glob) = self.remote_path_and_glob()?;
 
         log::info!("{self} listing directory {remote_path}");

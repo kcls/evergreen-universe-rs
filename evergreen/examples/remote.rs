@@ -6,19 +6,21 @@ use eg::script::ScriptUtil;
 const HELP_TEXT: &str = r#"
     --proto <sftp|ftp>
 
-    --host
-        hostname
+    --host <hostname>
+        Required
 
     --remote-path <path>
+        Required
 
-    --username
-        account username
+    --username <username>
+        Required
 
-    --passsword
-        account password
+    --passsword <password>
 
-    --ssh-private-key
-        SSH private key file
+    --ssh-private-key <key-file>
+        SSH private key file.
+
+    --cat-remote-file <remote-file>
 "#;
 
 
@@ -30,6 +32,7 @@ pub fn main() {
     ops.optopt("", "password", "", "");
     ops.optopt("", "remote-path", "", "");
     ops.optopt("", "ssh-private-key", "", "");
+    ops.optopt("", "cat-remote-file", "", "");
 
     let scripter = match ScriptUtil::init(&mut ops, true, Some(HELP_TEXT))
         .expect("ScriptUtil should init OK")
@@ -70,6 +73,9 @@ pub fn main() {
         println!("Found remote file: {file}");
     }
 
+    if let Some(cat_file) = scripter.params().opt_str("cat-remote-file").as_ref() {
+        println!("{}", account.get(cat_file).expect("Cat file"));
+    }
 }
 
 
