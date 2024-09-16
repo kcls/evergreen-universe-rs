@@ -318,24 +318,27 @@ impl RemoteAccount {
             .ftp_session
             .as_mut()
             .unwrap()
-            .list(Some(&remote_path))
+            .nlst(Some(&remote_path))
             .map_err(|e| format!("{self} cannot list directory {remote_path} : {e}"))?;
 
-        for fullname in contents {
-            let file = Path::new(&fullname);
+        // nlist returns the file name only, no path information.  Reconstruct
+        // the path so we can return the fully qualified file name to the caller.
+        
+        let mut path = PathBuf::new();
+        path.push(remote_path);
+
+        for file_name in contents {
+
+            path.push(file_name.to_string());
+            let full_name = path.as_os_str().to_string_lossy().to_string();
+            path.pop(); // remove filename
 
             if let Some(pattern) = maybe_glob.as_ref() {
-                if let Some(file_name) = file.file_name() {
-                    if let Some(name) = file_name.to_str() {
-                        if pattern.matches(name) {
-                            files.push(fullname);
-                        }
-                    } else {
-                        log::warn!("{self} skipping non-stringifiable path: {file_name:?}");
-                    }
+                if pattern.matches(&file_name) {
+                    files.push(full_name);
                 }
             } else {
-                files.push(fullname);
+                files.push(full_name);
             }
         }
 

@@ -44,13 +44,21 @@ pub fn main() -> EgResult<()> {
     ops.optflag("", "list", "");
     ops.optflag("", "save-files", "");
 
-    let scripter = match ScriptUtil::init(&mut ops, true, Some(HELP_TEXT))? {
+    let mut scripter = match ScriptUtil::init(&mut ops, false, Some(HELP_TEXT))? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };
 
     if let Some(url) = scripter.params().opt_str("url") {
         let mut account = RemoteAccount::from_url_string(&url)?;
+        process_one_account(&scripter, &mut account)?;
+        return Ok(());
+    }
+
+    if let Some(id_str) = scripter.params().opt_str("edi-account") {
+        let id = id_str.parse::<i64>().expect("ID should be a number");
+        // TODO read_mode will be false if we're writing files...
+        let mut account = RemoteAccount::from_edi_account(scripter.editor_mut(), id, true)?;
         process_one_account(&scripter, &mut account)?;
         return Ok(());
     }
