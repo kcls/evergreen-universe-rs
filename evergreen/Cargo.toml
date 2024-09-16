@@ -83,6 +83,11 @@ path = "src/bin/marc-export.rs"
 name = "eg-parallel-ingest"
 path = "src/bin/parallel-ingest.rs"
 
+[[bin]]
+name = "eg-edi-file-fetcher"
+path = "src/bin/edi-file-fetcher.rs"
+
+
 # --- Services
 # Service names are prefixed with rs- to prevent
 # clobberation with existing service names.
