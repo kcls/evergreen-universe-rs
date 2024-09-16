@@ -1,7 +1,7 @@
 use crate as eg;
 use eg::Editor;
 use eg::EgResult;
-//use eg::EgValue;
+use ftp::FtpStream;
 use glob;
 use std::env;
 use std::fmt;
@@ -31,6 +31,8 @@ pub struct RemoteAccount {
     remote_path: Option<String>,
 
     sftp_session: Option<ssh2::Sftp>,
+
+    ftp_session: Option<ftp::FtpStream>,
 
     /// Connect/read timeout
     timeout: u32,
@@ -66,6 +68,7 @@ impl RemoteAccount {
             ssh_private_key: None,
             ssh_private_key_password: None,
             sftp_session: None,
+            ftp_session: None,
             try_typical_ssh_keys: true,
         }
     }
@@ -159,45 +162,49 @@ impl RemoteAccount {
     pub fn connect(&mut self) -> EgResult<()> {
         match self.proto {
             Proto::Sftp => self.connect_sftp(),
-            _ => Err(format!("Unsupported protocol: {:?}", self.proto).into()),
+            Proto::Ftp => self.connect_ftp(),
         }
     }
 
     /// Returns a list of file paths matching our remote path and optional glob.
-    pub fn ls(&self) -> EgResult<Vec<String>> {
+    pub fn ls(&mut self) -> EgResult<Vec<String>> {
         self.check_connected()?;
 
         match self.proto {
             Proto::Sftp => self.ls_sftp(),
-            _ => Err(format!("Unsupported protocol: {:?}", self.proto).into()),
+            Proto::Ftp => self.ls_ftp(),
         }
     }
 
     /// Fetch a remote file by name, store the contents in a local
     /// file, and return the created File handle.
-    pub fn get(&self, remote_file: &str, local_file: &str) -> EgResult<fs::File> {
+    pub fn get(&mut self, remote_file: &str, local_file: &str) -> EgResult<fs::File> {
         self.check_connected()?;
 
         match self.proto {
             Proto::Sftp => self.get_sftp(remote_file, local_file),
-            _ => Err(format!("Unsupported protocol: {:?}", self.proto).into()),
+            Proto::Ftp => self.get_ftp(remote_file, local_file),
         }
     }
 
-    /// Returns an Err if we're not connected
+    /// Returns an Err if we were never connected.
+    ///
+    /// This does not verify the connection is still open.
     pub fn check_connected(&self) -> EgResult<()> {
         match self.proto {
-            Proto::Sftp => self.check_connected_sftp(),
-            _ => Err(format!("Unsupported protocol: {:?}", self.proto).into()),
+            Proto::Sftp => {
+                if self.sftp_session.is_none() {
+                    return Err(format!("{self} is not connected to SFTP").into());
+                }
+            }
+            Proto::Ftp => {
+                if self.ftp_session.is_none() {
+                    return Err(format!("{self} is not connected to FTP").into());
+                }
+            }
         }
-    }
 
-    /// Returns an Err if we're not connected
-    fn check_connected_sftp(&self) -> EgResult<()> {
-        match self.sftp_session {
-            Some(_) => Ok(()),
-            _ => Err(format!("{self} is not connected to SFTP").into()),
-        }
+        Ok(())
     }
 
     /// Fetch a remote file by name, store the contents in a local
@@ -217,6 +224,28 @@ impl RemoteAccount {
         remote_file
             .read_to_end(&mut bytes)
             .map_err(|e| format!("Cannot read remote file: {remote_filename} {e}"))?;
+
+        local_file
+            .write_all(bytes.as_slice())
+            .map_err(|e| format!("Cannot write to local file: {local_filename} {e}"))?;
+
+        Ok(local_file)
+    }
+
+    /// Fetch a remote file by name, store the contents in a local
+    /// file, and return the created File handle.
+    fn get_ftp(&mut self, remote_filename: &str, local_filename: &str) -> EgResult<fs::File> {
+        let cursor = self
+            .ftp_session
+            .as_mut()
+            .unwrap()
+            .simple_retr(remote_filename)
+            .map_err(|e| format!("Cannot open remote file {remote_filename} {e}"))?;
+
+        let bytes = cursor.into_inner();
+
+        let mut local_file = fs::File::create(Path::new(local_filename))
+            .map_err(|e| format!("Cannot create local file {local_filename} {e}"))?;
 
         local_file
             .write_all(bytes.as_slice())
@@ -253,6 +282,47 @@ impl RemoteAccount {
                     continue;
                 }
             };
+
+            if let Some(pattern) = maybe_glob.as_ref() {
+                if let Some(file_name) = file.file_name() {
+                    if let Some(name) = file_name.to_str() {
+                        if pattern.matches(name) {
+                            files.push(fullname);
+                        }
+                    } else {
+                        log::warn!("{self} skipping non-stringifiable path: {file_name:?}");
+                    }
+                }
+            } else {
+                files.push(fullname);
+            }
+        }
+
+        Ok(files)
+    }
+
+    // TODO move file name filtering to standalone
+
+    /// Returns a list of files/directories within our remote_path directory.
+    ///
+    /// If our remote_path contains a file name glob, the list only
+    /// includes files that match the glob.
+    fn ls_ftp(&mut self) -> EgResult<Vec<String>> {
+        let (remote_path, maybe_glob) = self.remote_path_and_glob()?;
+
+        log::info!("{self} listing directory {remote_path}");
+
+        let mut files = Vec::new();
+
+        let contents = self
+            .ftp_session
+            .as_mut()
+            .unwrap()
+            .list(Some(&remote_path))
+            .map_err(|e| format!("{self} cannot list directory {remote_path} : {e}"))?;
+
+        for fullname in contents {
+            let file = Path::new(&fullname);
 
             if let Some(pattern) = maybe_glob.as_ref() {
                 if let Some(file_name) = file.file_name() {
@@ -325,6 +395,39 @@ impl RemoteAccount {
         self.sftp_session = Some(sftp);
 
         log::info!("Successfully connected to SFTP at {host}");
+
+        Ok(())
+    }
+
+    fn connect_ftp(&mut self) -> EgResult<()> {
+        let port = self.port.unwrap_or(21);
+        let host = self.host.as_str();
+
+        let username = self
+            .username
+            .as_deref()
+            .ok_or("FTP connection requires a username")?;
+
+        let password = self
+            .password
+            .as_deref()
+            .ok_or("FTP connection requires a password")?;
+
+        let mut stream = FtpStream::connect(format!("{host}:{port}"))
+            .map_err(|e| format!("Cannot connect to host: {host}:{port} : {e}"))?;
+
+        if self.timeout > 0 {
+            stream
+                .get_ref()
+                .set_read_timeout(Some(Duration::from_secs(self.timeout.into())))
+                .map_err(|e| format!("Cannot set read timeout {} : {e}", self.timeout))?;
+        }
+
+        stream
+            .login(username, password)
+            .map_err(|e| format!("Login failed at host {host} for {username} : {e}"))?;
+
+        self.ftp_session = Some(stream);
 
         Ok(())
     }

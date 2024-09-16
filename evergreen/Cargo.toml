@@ -55,8 +55,9 @@ socket2 = "0.5"
 # For gateway
 url = "2.3"
 
-# For remote account
+# For remote account / edi fetcher
 ssh2 = "0.9.4"
+ftp = "3.0.1"
 glob = "0.3.1"
 
 [[bin]]
