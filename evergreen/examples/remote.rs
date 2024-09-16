@@ -4,6 +4,9 @@ use eg::EgResult;
 use evergreen as eg;
 
 const HELP_TEXT: &str = r#"
+    --url <full-url-string>
+        E.g. sftp://user@localhost:2020/edi/pick-up/edifact.*
+
     --proto <sftp|ftp>
 
     --host <hostname>
@@ -20,18 +23,21 @@ const HELP_TEXT: &str = r#"
     --ssh-private-key <key-file>
         SSH private key file.
 
-    --cat <remote-file>
-
     --remote-file <remote-file>
         Name of remote file to perform actions on.
 
     --local-file <local-file>
         Name of local file to perform actions on.
+
+    --timeout
+        Timeout in seconds for blocking operations
 "#;
 
 pub fn main() -> EgResult<()> {
     let mut ops = getopts::Options::new();
 
+    ops.optopt("", "timeout", "", "");
+    ops.optopt("", "url", "", "");
     ops.optopt("", "host", "", "");
     ops.optopt("", "username", "", "");
     ops.optopt("", "password", "", "");
@@ -47,19 +53,22 @@ pub fn main() -> EgResult<()> {
         None => return Ok(()), // e.g. --help
     };
 
-    let host = scripter
-        .params()
-        .opt_str("host")
-        .expect("--hostname is required");
+    let mut account = if let Some(url) = scripter.params().opt_str("url") {
+        RemoteAccount::from_url_string(&url)?
+    } else if let Some(host) = scripter.params().opt_str("host") {
+        RemoteAccount::new(&host)
+    } else {
+        return Err(format!("--host or --url requried").into());
+    };
 
-    let mut account = RemoteAccount::new(&host);
+    if account.remote_path().is_none() {
+        let remote_path = scripter
+            .params()
+            .opt_str("remote-path")
+            .expect("--remote-path is required");
 
-    let remote_path = scripter
-        .params()
-        .opt_str("remote-path")
-        .expect("--remote-path is required");
-
-    account.set_remote_path(&remote_path);
+        account.set_remote_path(&remote_path);
+    }
 
     // proto
 
@@ -73,6 +82,13 @@ pub fn main() -> EgResult<()> {
 
     if let Some(ssh_private_key) = scripter.params().opt_str("ssh-private-key") {
         account.set_ssh_private_key(&ssh_private_key);
+    }
+
+    if let Some(timeout) = scripter.params().opt_str("timeout") {
+        let t = timeout
+            .parse::<u32>()
+            .map_err(|e| format!("Invalid timeout: {timeout} : {e}"))?;
+        account.set_timeout(t);
     }
 
     account.connect()?;

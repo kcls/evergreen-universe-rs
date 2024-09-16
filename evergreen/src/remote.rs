@@ -3,17 +3,17 @@ use eg::Editor;
 use eg::EgResult;
 //use eg::EgValue;
 use glob;
-use url::Url;
-//use std::net::SocketAddr;
-use std::net::TcpStream;
-use std::path::Path;
-use std::path::PathBuf;
-//use std::time::Duration;
 use std::env;
 use std::fmt;
 use std::fs;
 use std::io::Read;
 use std::io::Write;
+use std::net::TcpStream;
+use std::net::ToSocketAddrs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Proto {
@@ -119,7 +119,15 @@ impl RemoteAccount {
             account.set_username(url.username());
         }
 
+        if !url.path().is_empty() {
+            account.remote_path = Some(url.path().to_string());
+        }
+
         Ok(account)
+    }
+
+    pub fn remote_path(&mut self) -> Option<&str> {
+        self.remote_path.as_deref()
     }
 
     pub fn set_remote_path(&mut self, remote_path: &str) {
@@ -165,7 +173,8 @@ impl RemoteAccount {
         }
     }
 
-    /// Gets a file and writes its contents to a local file.
+    /// Fetch a remote file by name, store the contents in a local
+    /// file, and return the created File handle.
     pub fn get(&self, remote_file: &str, local_file: &str) -> EgResult<fs::File> {
         self.check_connected()?;
 
@@ -183,6 +192,7 @@ impl RemoteAccount {
         }
     }
 
+    /// Returns an Err if we're not connected
     fn check_connected_sftp(&self) -> EgResult<()> {
         match self.sftp_session {
             Some(_) => Ok(()),
@@ -190,7 +200,8 @@ impl RemoteAccount {
         }
     }
 
-    /// Fetch the specified file by name and return its contents as a String.
+    /// Fetch a remote file by name, store the contents in a local
+    /// file, and return the created File handle.
     fn get_sftp(&self, remote_filename: &str, local_filename: &str) -> EgResult<fs::File> {
         let mut remote_file = self
             .sftp_session
@@ -271,10 +282,13 @@ impl RemoteAccount {
             .ok_or("SFTP connection requires a username")?;
 
         let tcp_result = if self.timeout > 0 {
-            todo!();
-            /* TODO SocketAddr needs
-            TcpStream::connect_timeout((host, port), Duration::from_secs(self.timeout.into()))
-            */
+            let sock_addr = format!("{host}:{port}")
+                .to_socket_addrs()
+                .map_err(|e| format!("Cannot resolve host: {host} : {e}"))?
+                .next()
+                .ok_or_else(|| format!("Cannot resolve host: {host}"))?;
+
+            TcpStream::connect_timeout(&sock_addr, Duration::from_secs(self.timeout.into()))
         } else {
             TcpStream::connect((host, port))
         };
@@ -283,6 +297,10 @@ impl RemoteAccount {
 
         let mut sess = ssh2::Session::new()
             .map_err(|e| format!("Cannot create SFTP session to {host} : {e}"))?;
+
+        if self.timeout > 0 {
+            sess.set_timeout(self.timeout * 1000); // ms
+        }
 
         sess.set_tcp_stream(tcp_stream);
 
