@@ -3,6 +3,7 @@ use eg::Editor;
 use eg::EgResult;
 use ftp::FtpStream;
 use glob;
+use std::cmp;
 use std::env;
 use std::fmt;
 use std::fs;
@@ -37,11 +38,25 @@ pub struct RemoteAccount {
     /// Connect/read timeout
     timeout: u32,
 
+    remote_account_id: Option<i64>,
+
     /// Full path to an SSH private key file.
     ssh_private_key: Option<String>,
     ssh_private_key_password: Option<String>,
 
     try_typical_ssh_keys: bool,
+}
+
+impl cmp::PartialEq for RemoteAccount {
+    /// Two accounts are the same if their connection details match.
+    fn eq(&self, other: &RemoteAccount) -> bool {
+        self.proto == other.proto
+            && self.host == other.host
+            && self.port == other.port
+            && self.username == other.username
+            && self.password == other.password
+            && self.remote_path == other.remote_path
+    }
 }
 
 impl fmt::Display for RemoteAccount {
@@ -70,6 +85,7 @@ impl RemoteAccount {
             sftp_session: None,
             ftp_session: None,
             try_typical_ssh_keys: true,
+            remote_account_id: None,
         }
     }
 
@@ -85,6 +101,8 @@ impl RemoteAccount {
             .ok_or_else(|| editor.die_event())?;
 
         let mut account = RemoteAccount::from_url_string(edi_account["host"].str()?)?;
+
+        account.remote_account_id = Some(account_id);
 
         account.remote_path = if read_mode {
             edi_account["in_dir"].as_str().map(|s| s.to_string())
@@ -106,16 +124,16 @@ impl RemoteAccount {
     /// Extract whatever components we can from a URL.
     ///
     /// Example "sftp://localhost"
-    pub fn from_url_string(url: &str) -> EgResult<RemoteAccount> {
-        let url = Url::parse(url).map_err(|e| format!("Cannot parse URL: {url} : {e}"))?;
+    pub fn from_url_string(url_str: &str) -> EgResult<RemoteAccount> {
+        let url = Url::parse(url_str).map_err(|e| format!("Cannot parse URL: {url_str} : {e}"))?;
 
         let hostname = url.host_str().ok_or("URL has no host")?;
         let mut account = RemoteAccount::new(hostname);
 
-        account.proto = if url.scheme() == "sftp" {
-            Proto::Sftp
-        } else {
-            Proto::Ftp
+        account.proto = match url.scheme() {
+            "sftp" => Proto::Sftp,
+            "ftp" | "" => Proto::Ftp,
+            _ => return Err(format!("Unsupported protocol: '{url_str}'").into()),
         };
 
         if !url.username().is_empty() {
@@ -129,7 +147,23 @@ impl RemoteAccount {
         Ok(account)
     }
 
-    pub fn remote_path(&mut self) -> Option<&str> {
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    }
+
+    pub fn username(&self) -> Option<&str> {
+        self.username.as_deref()
+    }
+
+    pub fn remote_account_id(&self) -> Option<i64> {
+        self.remote_account_id
+    }
+
+    pub fn remote_path(&self) -> Option<&str> {
         self.remote_path.as_deref()
     }
 
@@ -160,6 +194,8 @@ impl RemoteAccount {
 
     /// Connect and authenticate with the remote site.
     pub fn connect(&mut self) -> EgResult<()> {
+        log::debug!("{self} connect()");
+
         match self.proto {
             Proto::Sftp => self.connect_sftp(),
             Proto::Ftp => self.connect_ftp(),
@@ -168,6 +204,8 @@ impl RemoteAccount {
 
     /// Returns a list of file paths matching our remote path and optional glob.
     pub fn ls(&mut self) -> EgResult<Vec<String>> {
+        log::debug!("{self} ls() {:?}", self.remote_path);
+
         self.check_connected()?;
 
         match self.proto {
@@ -179,6 +217,8 @@ impl RemoteAccount {
     /// Fetch a remote file by name, store the contents in a local
     /// file, and return the created File handle.
     pub fn get(&mut self, remote_file: &str, local_file: &str) -> EgResult<fs::File> {
+        log::debug!("{self} get() {remote_file} => {local_file}");
+
         self.check_connected()?;
 
         match self.proto {

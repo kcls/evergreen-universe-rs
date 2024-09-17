@@ -46,6 +46,7 @@ install-evergreen-bin:
 	cp ./target/debug/osrf-router ${TARGET}/bin
 	cp ./target/debug/eg-http-gateway ${TARGET}/bin
 	cp ./target/debug/eg-websockets ${TARGET}/bin
+	cp ./target/debug/eg-edi-file-fetcher ${TARGET}/bin
 	cp ./target/debug/eg-service-rs-actor ${TARGET}/bin
 	cp ./target/debug/eg-service-rs-circ ${TARGET}/bin
 	cp ./target/debug/eg-service-rs-sip2 ${TARGET}/bin
@@ -57,6 +58,7 @@ install-evergreen-bin-release:
 	cp ./target/release/osrf-router ${TARGET}/bin
 	cp ./target/release/eg-http-gateway ${TARGET}/bin
 	cp ./target/release/eg-websockets ${TARGET}/bin
+	cp ./target/release/eg-edi-file-fetcher ${TARGET}/bin
 	cp ./target/release/eg-service-rs-actor ${TARGET}/bin
 	cp ./target/release/eg-service-rs-circ ${TARGET}/bin
 	cp ./target/release/eg-service-rs-sip2 ${TARGET}/bin
