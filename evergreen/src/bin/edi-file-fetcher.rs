@@ -49,6 +49,15 @@ Actions:
         the remote account ID to the directory path to ensure we
         can always map a file back to its remote account.
 
+    --force-save
+        Save local copies even if a matching EDI message is found
+        in the database (acq.edi_message).  This is useful for 
+        re-fetching files which have already been processed (e.g. to 
+        make backups).
+
+        New copies of files will not be saved if existing copies 
+        exist in the output directory.
+
 General Settings:
 
     --timeout
@@ -67,6 +76,7 @@ pub fn main() -> EgResult<()> {
     ops.optflag("", "save-files", "");
     ops.optflag("", "active-edi-accounts", "");
     ops.optflag("", "list-edi-accounts", "");
+    ops.optflag("", "force-save", "");
 
     let mut scripter = match ScriptUtil::init(&mut ops, false, Some(HELP_TEXT))? {
         Some(s) => s,
@@ -75,13 +85,13 @@ pub fn main() -> EgResult<()> {
 
     if let Some(url) = scripter.params().opt_str("url") {
         let mut account = RemoteAccount::from_url_string(&url)?;
-        process_one_account(&scripter, &mut account)?;
+        process_one_account(&mut scripter, &mut account)?;
     }
 
     if let Some(id_str) = scripter.params().opt_str("edi-account") {
         let id = id_str.parse::<i64>().expect("ID should be a number");
         let mut account = RemoteAccount::from_edi_account(scripter.editor_mut(), id, true)?;
-        process_one_account(&scripter, &mut account)?;
+        process_one_account(&mut scripter, &mut account)?;
     }
 
     if scripter.params().opt_present("list-edi-accounts") {
@@ -90,7 +100,7 @@ pub fn main() -> EgResult<()> {
 
     if scripter.params().opt_present("active-edi-accounts") {
         for mut account in get_active_edi_accounts(&mut scripter)?.drain(..) {
-            process_one_account(&scripter, &mut account)?;
+            process_one_account(&mut scripter, &mut account)?;
         }
     }
 
@@ -148,7 +158,44 @@ fn list_accounts(scripter: &mut ScriptUtil) -> EgResult<()> {
     Ok(())
 }
 
-fn process_one_account(scripter: &ScriptUtil, account: &mut RemoteAccount) -> EgResult<()> {
+/// Returns true if row exists in acq.edi_message with the same file
+/// name and remote account connectivity details.
+fn edi_message_exists(
+    scripter: &mut ScriptUtil,
+    account: &RemoteAccount,
+    file_name: &str,
+) -> EgResult<bool> {
+    // acq.edi_account host is scheme-qualified.
+    let scheme: &str = account.proto().into();
+    let host = format!("{scheme}://{}", account.host());
+
+    let query = eg::hash! {
+        "select": {"acqedim": ["id"]},
+        "from": {"acqedim": "acqedi"},
+        "where": {
+            "+acqedim": {
+                "remote_file": {
+                    "=": {
+                        "transform": "evergreen.lowercase",
+                        "value": ["evergreen.lowercase", file_name]
+                    }
+                },
+                "status": {"in": ["processed", "proc_error", "trans_error"]}
+            },
+            "+acqedi": {
+                "host": host,
+                "username": account.username(), // null-able
+                "password": account.password(), // null-able
+                "in_dir": account.remote_path(), // null-able
+            },
+        },
+        "limit": 1
+    };
+
+    Ok(!scripter.editor_mut().json_query(query)?.is_empty())
+}
+
+fn process_one_account(scripter: &mut ScriptUtil, account: &mut RemoteAccount) -> EgResult<()> {
     if let Some(password) = scripter.params().opt_str("password") {
         account.set_password(&password);
     }
@@ -193,6 +240,13 @@ fn process_one_account(scripter: &ScriptUtil, account: &mut RemoteAccount) -> Eg
             let file_path = Path::new(file);
 
             if let Some(Some(file_name)) = file_path.file_name().map(|s| s.to_str()) {
+                if edi_message_exists(scripter, account, file)?
+                    && !scripter.params().opt_present("force-save")
+                {
+                    println!("EDI file already exists: {account} => {file_name}");
+                    continue;
+                }
+
                 dir_path.push(file_name);
                 let out_file = dir_path.as_os_str().to_string_lossy().to_string();
 

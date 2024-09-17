@@ -22,6 +22,15 @@ pub enum Proto {
     Ftp,
 }
 
+impl From<Proto> for &'static str {
+    fn from(p: Proto) -> &'static str {
+        match p {
+            Proto::Sftp => "sftp",
+            Proto::Ftp => "ftp",
+        }
+    }
+}
+
 pub struct RemoteAccount {
     host: String,
     port: Option<u16>,
@@ -155,8 +164,16 @@ impl RemoteAccount {
         self.port
     }
 
+    pub fn proto(&self) -> Proto {
+        self.proto
+    }
+
     pub fn username(&self) -> Option<&str> {
         self.username.as_deref()
+    }
+
+    pub fn password(&self) -> Option<&str> {
+        self.password.as_deref()
     }
 
     pub fn remote_account_id(&self) -> Option<i64> {
