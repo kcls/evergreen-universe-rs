@@ -591,9 +591,13 @@ impl Session {
 
     fn find_copy_for_hold(&mut self, hold: &EgValue) -> EgResult<Option<EgValue>> {
         if !hold["current_copy"].is_null() {
-            // We have a captured copy.  Use it.
-            let copy_id = hold["current_copy"].int()?;
-            return self.editor().retrieve("acp", copy_id);
+            // We have a captured copy.
+            if let Some(copy_id) = hold["current_copy"].as_int() {
+                return self.editor().retrieve("acp", copy_id);
+            } else {
+                // Current copy is fleshed.
+                return Ok(Some(hold["current_copy"].clone()));
+            }
         }
 
         let hold_type = hold["hold_type"].as_str().unwrap(); // required
