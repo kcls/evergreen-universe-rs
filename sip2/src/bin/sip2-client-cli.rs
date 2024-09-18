@@ -64,6 +64,12 @@ Message Parameters:
             * checkout
             * checkin
             * fee-paid
+
+    --patron-summary-index
+        Specify an index within the Patron Info "summary" section
+        to set to "Y".  E.g. setting position 0 means including
+        patron hold items in the Patron Info Response
+
 "#;
 
 #[rustfmt::skip]
@@ -201,6 +207,7 @@ fn read_options() -> getopts::Matches {
     opts.optopt("", "repeat", "Repeat Count", "");
     opts.optopt("", "sleep", "Sleep Time (millis)", "");
     opts.optopt("", "parallel", "Parallel Count", "");
+    opts.optopt("", "patron-summary-index", "", "");
 
     opts.optopt("", "pay-amount", "Fee Paid Amount", "");
     opts.optopt("", "transaction-id", "Fee Paid Transaction ID", "");
@@ -263,6 +270,14 @@ fn setup_params(options: &getopts::Matches) -> ParamSet {
 
     if let Some(ref id) = options.opt_str("transaction-id") {
         params.set_transaction_id(id);
+    }
+
+    if let Some(ref index) = options.opt_str("patron-summary-index") {
+        params.set_summary(
+            index
+                .parse::<usize>()
+                .expect("Summary index should be a usize"),
+        );
     }
 
     params
