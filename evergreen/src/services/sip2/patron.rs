@@ -637,7 +637,7 @@ impl Session {
 
         let copy_id_hashes = self.editor().json_query(query)?;
         if !copy_id_hashes.is_empty() {
-            let copy_id = copy_id_hashes[0].int()?;
+            let copy_id = copy_id_hashes[0].id()?;
             return self.editor().retrieve("acp", copy_id);
         }
 
