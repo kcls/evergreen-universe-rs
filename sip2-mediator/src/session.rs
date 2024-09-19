@@ -177,6 +177,8 @@ impl Session {
             None => return Ok(false),
         };
 
+        self.sip_connection.set_log_prefix(format!("[{sip_user}]"));
+
         // Capture the SIP username for session ogging.
         self.sip_user = Some(sip_user.to_string());
 

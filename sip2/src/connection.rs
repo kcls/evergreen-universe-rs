@@ -2,6 +2,7 @@ use super::error::Error;
 use super::spec;
 use super::Message;
 use deunicode::deunicode;
+use std::fmt;
 use std::io::prelude::*;
 use std::net::{Shutdown, TcpStream};
 use std::str;
@@ -17,6 +18,18 @@ pub struct Connection {
 
     // If set, non-ASCII chars are removed from outbound messages.
     ascii: bool,
+
+    log_prefix: Option<String>,
+}
+
+impl fmt::Display for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(log_prefix) = self.log_prefix.as_ref() {
+            write!(f, "{log_prefix} ")
+        } else {
+            write!(f, "")
+        }
+    }
 }
 
 impl Connection {
@@ -36,6 +49,7 @@ impl Connection {
             Ok(stream) => Ok(Connection {
                 tcp_stream: stream,
                 ascii: false,
+                log_prefix: None,
             }),
             Err(s) => {
                 log::error!("Connection::new() failed: {s}");
@@ -44,25 +58,34 @@ impl Connection {
         }
     }
 
+    /// Create a new SIP connection from an existing TCP stream.
     pub fn from_stream(tcp_stream: TcpStream) -> Self {
         Connection {
             ascii: false,
             tcp_stream,
+            log_prefix: None,
         }
     }
 
+    /// Add a string that will be prepended to all log:: calls where
+    /// a self exists.
+    pub fn set_log_prefix(&mut self, prefix: impl Into<String>) {
+        self.log_prefix = Some(prefix.into());
+    }
+
+    /// Set the ascii flag
     pub fn set_ascii(&mut self, ascii: bool) {
         self.ascii = ascii;
     }
 
     /// Shutdown the TCP connection with the SIP server.
     pub fn disconnect(&self) -> Result<(), Error> {
-        log::debug!("Connection::disconnect()");
+        log::debug!("{self}Connection::disconnect()");
 
         match self.tcp_stream.shutdown(Shutdown::Both) {
             Ok(_) => Ok(()),
             Err(s) => {
-                log::error!("disconnect() failed: {s}");
+                log::error!("{self}disconnect() failed: {s}");
                 Err(Error::NetworkError(s.to_string()))
             }
         }
@@ -79,14 +102,14 @@ impl Connection {
         }
 
         // No need to redact here since SIP replies do not include passwords.
-        log::info!("OUTBOUND: {}", msg_sip);
+        log::info!("{self}OUTBOUND: {}", msg_sip);
 
         msg_sip.push(spec::LINE_TERMINATOR);
 
         match self.tcp_stream.write_all(msg_sip.as_bytes()) {
             Ok(_) => Ok(()),
             Err(s) => {
-                log::error!("send() failed: {}", s);
+                log::error!("{self}send() failed: {}", s);
                 Err(Error::NetworkError(s.to_string()))
             }
         }
@@ -105,15 +128,16 @@ impl Connection {
         }
     }
 
+    /// Receive a message, waiting at most `timeout` seconds.
     pub fn recv_with_timeout(&mut self, timeout: u64) -> Result<Option<Message>, Error> {
         self.recv_internal(Some(Duration::from_secs(timeout)))
     }
 
     fn recv_internal(&mut self, timeout: Option<Duration>) -> Result<Option<Message>, Error> {
-        log::trace!("recv_internal() with timeout {:?}", timeout);
+        log::trace!("{self}recv_internal() with timeout {:?}", timeout);
 
         if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
-            log::error!("Invalid timeout: {timeout:?} {e}");
+            log::error!("{self}Invalid timeout: {timeout:?} {e}");
             return Err(Error::NetworkError(e.to_string()));
         }
 
@@ -126,11 +150,11 @@ impl Connection {
                 Ok(num) => num,
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
-                        log::trace!("SIP tcp read timed out.  Returning None");
+                        log::trace!("{self}SIP tcp read timed out.  Returning None");
                         return Ok(None);
                     }
                     _ => {
-                        log::error!("recv() failed: {e}");
+                        log::error!("{self}recv() failed: {e}");
                         return Err(Error::NetworkError(e.to_string()));
                     }
                 },
@@ -143,7 +167,7 @@ impl Connection {
             let chunk = match str::from_utf8(&buf) {
                 Ok(s) => s,
                 Err(s) => {
-                    log::error!("recv() got non-utf data: {}", s);
+                    log::error!("{self}recv() got non-utf data: {}", s);
                     return Err(Error::MessageFormatError);
                 }
             };
@@ -159,7 +183,7 @@ impl Connection {
         if text.is_empty() {
             // Receiving none with no timeout indicates either an error
             // or the client simply disconnected.
-            log::debug!("Reading TCP stream returned 0 bytes");
+            log::debug!("{self}Reading TCP stream returned 0 bytes");
             return Err(Error::NoResponseError);
         }
 
@@ -170,7 +194,7 @@ impl Connection {
         match parts.next() {
             Some(s) => {
                 let msg = Message::from_sip(s)?;
-                log::info!("INBOUND: {}", msg.to_sip_redacted());
+                log::info!("{self}INBOUND: {}", msg.to_sip_redacted());
                 Ok(Some(msg))
             }
             None => Err(Error::MessageFormatError),
