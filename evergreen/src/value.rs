@@ -1283,7 +1283,7 @@ impl fmt::Display for EgValue {
             EgValue::String(ref s) => write!(f, "{s}"),
             EgValue::Number(n) => write!(f, "{n}"),
             EgValue::Array(_) => write!(f, "<array>"),
-            EgValue::Hash(_) => write!(f, "<object>"),
+            EgValue::Hash(_) => write!(f, "<hash>"),
             EgValue::Blessed(ref o) => {
                 let mut s = o.idl_class.classname().to_string();
                 if let Some(pkey) = self.pkey_field() {
