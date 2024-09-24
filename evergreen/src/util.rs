@@ -172,7 +172,7 @@ pub fn stringify_params(method: &str, params: &[EgValue], log_protect: &[String]
             // EgValue.dump() consumes the value, hence the clone.
             .map(|p| p.clone().dump())
             .collect::<Vec<_>>()
-            .join(", ")
+            .join(" ")
     }
 }
 
