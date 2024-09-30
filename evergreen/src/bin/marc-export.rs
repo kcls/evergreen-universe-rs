@@ -4,6 +4,7 @@ use evergreen as eg;
 use marc::Record;
 use postgres_cursor::Cursor;
 use rust_decimal::Decimal;
+use std::collections::HashSet;
 use std::io::prelude::*;
 use std::path::Path;
 use std::{fs, io};
@@ -79,6 +80,10 @@ Options
     --db-name <database>
         Database connection options.  PG environment vars are used as
         defaults when available.
+
+    --report-on-marc-file
+        Reads a marc file and prints summary information about the file. 
+        Useful for verifying exported data is as expected.
 
     --verbose
         Print debug info to STDOUT.  This is not compatible with
@@ -164,6 +169,9 @@ struct ExportOptions {
     /// If true we're exporting authority records instead of bibs.
     authority_records: bool,
 
+    /// Print summary data on an already exported marc data file.
+    report_on_marc_file: Option<String>,
+
     query_file: Option<String>,
     verbose: bool,
 }
@@ -185,6 +193,7 @@ fn read_options() -> Option<(ExportOptions, ScriptUtil)> {
     opts.optopt("", "location-code", "", "");
     opts.optopt("", "currency-symbol", "", "");
     opts.optopt("", "modified-since", "", "");
+    opts.optopt("", "report-on-marc-file", "", "");
 
     opts.optmulti("", "library", "", "");
 
@@ -195,6 +204,7 @@ fn read_options() -> Option<(ExportOptions, ScriptUtil)> {
     opts.optflag("", "pipe", "");
     opts.optflag("", "limit-to-opac-visible", "");
     opts.optflag("", "items", "");
+    opts.optflag("", "to-xml", "");
     opts.optflag("", "to-xml", "");
     opts.optflag("h", "help", "");
     opts.optflag("v", "verbose", "");
@@ -251,6 +261,10 @@ fn read_options() -> Option<(ExportOptions, ScriptUtil)> {
         location_code: scripter.params().opt_str("location-code"),
         libraries: scripter.params().opt_strs("library"),
         library_ids: None,
+        report_on_marc_file: scripter
+            .params()
+            .opt_str("report-on-marc-file")
+            .map(|s| s.to_string()),
         authority_records: scripter.params().opt_present("authority-records"),
         currency_symbol: scripter
             .params()
@@ -503,7 +517,7 @@ fn export(scripter: &mut ScriptUtil, ops: &mut ExportOptions) -> Result<(), Stri
                         eprintln!("No record built from XML: record={record_id}: {err}");
                         continue;
                     }
-                }
+                },
                 None => {
                     eprintln!("No record built from XML: record={record_id} \n{marc_xml}");
                     continue;
@@ -627,6 +641,49 @@ fn add_items(
     Ok(())
 }
 
+// TODO file_type == marc curently only type supported.
+fn report_on_file(_scripter: &mut ScriptUtil, fname: &str, _file_type: &str) -> Result<(), String> {
+    println!("Scanning file {fname}...");
+
+    let mut counter = 0;
+    let mut items_counter = 0;
+    let mut ids: HashSet<i64> = HashSet::new();
+
+    // Parse all of the records to verify format.
+    for result in Record::from_binary_file(fname)? {
+        let record = match result {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Cannot parsing record in MARC file: {e}");
+                continue;
+            }
+        };
+
+        counter += 1;
+        if let Some(id) = record.get_values("901", "c").first() {
+            if let Ok(num) = id.parse::<i64>() {
+                ids.insert(num);
+            }
+        }
+
+        items_counter += record.get_fields(HOLDINGS_SUBFIELD).len();
+
+        if counter % 1000 == 0 {
+            println!("Parsed {counter} records...");
+        }
+    }
+
+    println!(
+        "File {} contains {} records with {} unique record IDs and {} holdings",
+        fname,
+        counter,
+        ids.len(),
+        items_counter,
+    );
+
+    Ok(())
+}
+
 fn write(writer: &mut Box<dyn Write>, bytes: &[u8]) -> Result<(), String> {
     match writer.write_all(bytes) {
         Ok(_) => Ok(()),
@@ -649,7 +706,11 @@ fn check_options(ops: &ExportOptions) -> Result<(), String> {
 fn main() -> Result<(), String> {
     if let Some((mut options, mut scripter)) = read_options() {
         check_options(&options)?;
-        export(&mut scripter, &mut options)
+        if let Some(fname) = options.report_on_marc_file.as_ref() {
+            report_on_file(&mut scripter, fname, "marc")
+        } else {
+            export(&mut scripter, &mut options)
+        }
     } else {
         Ok(())
     }
