@@ -199,11 +199,12 @@ fn read_options() -> Option<(ExportOptions, ScriptUtil)> {
     opts.optflag("h", "help", "");
     opts.optflag("v", "verbose", "");
 
-    let scripter =
-        match ScriptUtil::init(&mut opts, true, Some(HELP_TEXT)).expect("Scripter should init()") {
-            Some(s) => s,
-            None => return None,
-        };
+    let scripter = match ScriptUtil::init(&mut opts, false, true, Some(HELP_TEXT))
+        .expect("Scripter should init()")
+    {
+        Some(s) => s,
+        None => return None,
+    };
 
     let destination = match scripter.params().opt_get::<String>("out-file").unwrap() {
         Some(filename) => ExportDestination::File(filename),

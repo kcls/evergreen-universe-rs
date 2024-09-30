@@ -35,7 +35,7 @@ const DEFAULT_STAFF_ACCOUNT: i64 = 1;
 pub struct ScriptUtil {
     staff_account: i64,
     staff_workstation: Option<String>,
-    editor: Editor,
+    editor: Option<Editor>,
     params: getopts::Matches,
     db: Option<DatabaseConnection>,
 }
@@ -47,11 +47,14 @@ impl ScriptUtil {
     /// Return None if a command line option results in early exit, e.g. --help.
     ///
     /// * `ops` - getopts in progress
+    /// * `with_evergreen` - if true, connect to the evergreen/opensrf message
+    ///    bus and parse the Evergreen IDL.
     /// * `with_database` - if true, connect to the database.
     /// * `help_text` - Optional script-specific help text.  This text will
     ///    be augmented with ScriptUtil help text.
     pub fn init(
         ops: &mut getopts::Options,
+        with_evergreen: bool,
         with_database: bool,
         help_text: Option<&str>,
     ) -> EgResult<Option<ScriptUtil>> {
@@ -87,8 +90,12 @@ impl ScriptUtil {
 
         let staff_workstation = params.opt_str("staff-workstation").map(|v| v.to_string());
 
-        let client = init::init()?;
-        let editor = eg::Editor::new(&client);
+        let editor = if with_evergreen {
+            let client = init::init()?;
+            Some(eg::Editor::new(&client))
+        } else {
+            None
+        };
 
         let db = if with_database {
             let mut db = DatabaseConnection::new_from_options(&params);
@@ -111,8 +118,14 @@ impl ScriptUtil {
         self.staff_account
     }
 
+    /// * Panics if "with_evergreen" was set to false at init time.
     pub fn editor_mut(&mut self) -> &mut Editor {
-        &mut self.editor
+        self.editor.as_mut().unwrap()
+    }
+
+    /// * Panics if "with_evergreen" was set to false at init time.
+    pub fn editor(&self) -> &Editor {
+        self.editor.as_ref().unwrap()
     }
 
     pub fn params(&self) -> &getopts::Matches {
@@ -123,7 +136,7 @@ impl ScriptUtil {
     ///
     /// Panics if no auth session is present.
     pub fn authtoken(&self) -> &str {
-        self.editor.authtoken().unwrap()
+        self.editor().authtoken().unwrap()
     }
 
     /// Returns a mutable ref to our database connection
@@ -148,10 +161,10 @@ impl ScriptUtil {
             args.set_workstation(ws);
         }
 
-        let ses = auth::Session::internal_session_api(self.editor.client_mut(), &args)?;
+        let ses = auth::Session::internal_session_api(self.editor_mut().client_mut(), &args)?;
 
         if let Some(s) = ses {
-            self.editor.apply_authtoken(s.token())?;
+            self.editor_mut().apply_authtoken(s.token())?;
             Ok(s.token().to_string())
         } else {
             Err("Could not retrieve auth session".into())

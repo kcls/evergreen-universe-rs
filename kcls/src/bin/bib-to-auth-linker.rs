@@ -16,7 +16,7 @@ const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
 const HELP_TEXT: &str = "
 Link bib records to authority records by applying $0 values to controlled fields.
 
-By default, all non-deleted bib records are processed.  
+By default, all non-deleted bib records are processed.
 
     --record-id <id>
         Update links for a specific bib record.
@@ -743,7 +743,7 @@ fn main() -> EgResult<()> {
     ops.optopt("", "bibs-modified-since", "", "");
     ops.optopt("", "auths-modified-since", "", "");
 
-    let scripter = match ScriptUtil::init(&mut ops, true, Some(HELP_TEXT))? {
+    let scripter = match ScriptUtil::init(&mut ops, true, true, Some(HELP_TEXT))? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };

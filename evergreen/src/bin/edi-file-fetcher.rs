@@ -51,11 +51,11 @@ Actions:
 
     --force-save
         Save local copies even if a matching EDI message is found
-        in the database (acq.edi_message).  This is useful for 
-        re-fetching files which have already been processed (e.g. to 
+        in the database (acq.edi_message).  This is useful for
+        re-fetching files which have already been processed (e.g. to
         make backups).
 
-        New copies of files will not be saved if existing copies 
+        New copies of files will not be saved if existing copies
         exist in the output directory.
 
 General Settings:
@@ -78,7 +78,7 @@ pub fn main() -> EgResult<()> {
     ops.optflag("", "list-edi-accounts", "");
     ops.optflag("", "force-save", "");
 
-    let mut scripter = match ScriptUtil::init(&mut ops, false, Some(HELP_TEXT))? {
+    let mut scripter = match ScriptUtil::init(&mut ops, true, false, Some(HELP_TEXT))? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };

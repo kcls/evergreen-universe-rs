@@ -48,7 +48,7 @@ pub fn main() -> EgResult<()> {
     ops.optflag("", "ls", "");
     ops.optflag("", "get", "");
 
-    let scripter = match ScriptUtil::init(&mut ops, true, Some(HELP_TEXT))? {
+    let scripter = match ScriptUtil::init(&mut ops, true, true, Some(HELP_TEXT))? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };

@@ -13,7 +13,7 @@ fn main() -> EgResult<()> {
     ops.optflag("", "trim-labels", "");
     ops.optflag("", "dry-run", "");
 
-    let mut scripter = match ScriptUtil::init(&mut ops, false, None)? {
+    let mut scripter = match ScriptUtil::init(&mut ops, true, false, None)? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };
