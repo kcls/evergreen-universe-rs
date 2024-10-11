@@ -7,7 +7,7 @@ use eg::Editor;
 use eg::EgResult;
 
 const HELP_TEXT: &str = "
-ScriptUtil Additions:
+Runner Additions:
 
     --help
         Show help text
@@ -21,7 +21,7 @@ ScriptUtil Additions:
 
 Database Connector Additions:
 
-    Parameters supported when ScriptUtil is started with a database connection.
+    Parameters supported when Runner is started with a database connection.
 
     --db-host
     --db-port
@@ -32,7 +32,28 @@ Database Connector Additions:
 /// Account ID for updates, e.g. applying an 'editor' value to a bib record update.
 const DEFAULT_STAFF_ACCOUNT: i64 = 1;
 
-pub struct ScriptUtil {
+pub struct Options {
+    /// Getops Options prepopulated with script-local parameter definitions.
+    pub options: Option<getopts::Options>,
+
+    /// Connect to the Evergreen/OpenSRF message bus and load the
+    /// Evergreen IDL.
+    pub with_evergreen: bool,
+
+    /// Connect to the Evergreen database and append the database
+    /// options to the getops parameters.
+    pub with_database: bool,
+
+    /// Tell the world what your script does and how to use it.
+    pub help_text: Option<String>,
+
+    /// Pass additional command line options to the getopts parser.
+    ///
+    /// These are appended to parameters collected from the command line.
+    pub extra_params: Option<Vec<String>>,
+}
+
+pub struct Runner {
     staff_account: i64,
     staff_workstation: Option<String>,
     editor: Option<Editor>,
@@ -40,34 +61,35 @@ pub struct ScriptUtil {
     db: Option<DatabaseConnection>,
 }
 
-impl ScriptUtil {
+impl Runner {
     /// Parse the command line parameters, connect to Evergreen, and
     /// optionally create a direct database connection.
     ///
     /// Return None if a command line option results in early exit, e.g. --help.
     ///
-    /// * `ops` - getopts in progress
-    /// * `with_evergreen` - if true, connect to the evergreen/opensrf message
-    ///    bus and parse the Evergreen IDL.
-    /// * `with_database` - if true, connect to the database.
-    /// * `help_text` - Optional script-specific help text.  This text will
-    ///    be augmented with ScriptUtil help text.
-    pub fn init(
-        ops: &mut getopts::Options,
-        with_evergreen: bool,
-        with_database: bool,
-        help_text: Option<&str>,
-    ) -> EgResult<Option<ScriptUtil>> {
+    /// * `options` - Script options.
+    pub fn init(mut options: Options) -> EgResult<Option<Runner>> {
+        let mut ops_binding = None;
+
+        let ops = options.options.as_mut().unwrap_or_else(|| {
+            ops_binding = Some(getopts::Options::new());
+            ops_binding.as_mut().unwrap()
+        });
+
         ops.optflag("h", "help", "");
         ops.optopt("", "staff-account", "", "");
         ops.optopt("", "staff-workstation", "", "");
 
-        if with_database {
+        if options.with_database {
             // Append the datbase-specifc command line options.
             DatabaseConnection::append_options(ops);
         }
 
-        let args: Vec<String> = std::env::args().collect();
+        let mut args: Vec<String> = std::env::args().collect();
+
+        if let Some(extras) = options.extra_params.as_mut() {
+            args.append(extras);
+        }
 
         let params = ops
             .parse(&args[1..])
@@ -76,7 +98,9 @@ impl ScriptUtil {
         if params.opt_present("help") {
             println!(
                 "{}\n{}",
-                help_text.unwrap_or("No Application Help Text Provided"),
+                options
+                    .help_text
+                    .unwrap_or("No Application Help Text Provided".to_string()),
                 HELP_TEXT
             );
             return Ok(None);
@@ -90,14 +114,14 @@ impl ScriptUtil {
 
         let staff_workstation = params.opt_str("staff-workstation").map(|v| v.to_string());
 
-        let editor = if with_evergreen {
+        let editor = if options.with_evergreen {
             let client = init::init()?;
             Some(eg::Editor::new(&client))
         } else {
             None
         };
 
-        let db = if with_database {
+        let db = if options.with_database {
             let mut db = DatabaseConnection::new_from_options(&params);
             db.connect()?;
             Some(db)
@@ -105,7 +129,7 @@ impl ScriptUtil {
             None
         };
 
-        Ok(Some(ScriptUtil {
+        Ok(Some(Runner {
             db,
             editor,
             params,

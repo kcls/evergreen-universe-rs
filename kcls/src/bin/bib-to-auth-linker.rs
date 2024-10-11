@@ -5,7 +5,7 @@
  */
 use eg::date;
 use eg::norm::Normalizer;
-use eg::script::ScriptUtil;
+use eg::script;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
@@ -74,7 +74,7 @@ struct AuthLeader {
 }
 
 struct BibLinker {
-    scripter: ScriptUtil,
+    scripter: script::Runner,
     min_id: i64,
     max_id: Option<i64>,
     bibs_mod_since: Option<date::EgDate>,
@@ -87,7 +87,7 @@ impl BibLinker {
     /// Create a new linker.
     ///
     /// Exits early with None if the --help option is provided.
-    fn new(scripter: ScriptUtil) -> EgResult<Self> {
+    fn new(scripter: script::Runner) -> EgResult<Self> {
         let min_id = match scripter.params().opt_str("min-id") {
             Some(id) => id
                 .parse::<i64>()
@@ -743,7 +743,15 @@ fn main() -> EgResult<()> {
     ops.optopt("", "bibs-modified-since", "", "");
     ops.optopt("", "auths-modified-since", "", "");
 
-    let scripter = match ScriptUtil::init(&mut ops, true, true, Some(HELP_TEXT))? {
+    let options = script::Options {
+        with_evergreen: true,
+        with_database: true,
+        help_text: Some(HELP_TEXT.to_string()),
+        extra_params: None,
+        options: Some(ops),
+    };
+
+    let scripter = match script::Runner::init(options)? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };

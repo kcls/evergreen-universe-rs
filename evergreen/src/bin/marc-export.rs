@@ -1,5 +1,5 @@
 use eg::date;
-use eg::script::ScriptUtil;
+use eg::script;
 use evergreen as eg;
 use marc::Record;
 use postgres_cursor::Cursor;
@@ -82,7 +82,7 @@ Options
         defaults when available.
 
     --report-on-marc-file
-        Reads a marc file and prints summary information about the file. 
+        Reads a marc file and prints summary information about the file.
         Useful for verifying exported data is as expected.
 
     --verbose
@@ -182,7 +182,7 @@ enum ExportDestination {
     File(String),
 }
 
-fn read_options() -> Option<(ExportOptions, ScriptUtil)> {
+fn read_options() -> Option<(ExportOptions, script::Runner)> {
     let mut opts = getopts::Options::new();
 
     opts.optopt("", "min-id", "", "");
@@ -209,9 +209,15 @@ fn read_options() -> Option<(ExportOptions, ScriptUtil)> {
     opts.optflag("h", "help", "");
     opts.optflag("v", "verbose", "");
 
-    let scripter = match ScriptUtil::init(&mut opts, false, true, Some(HELP_TEXT))
-        .expect("Scripter should init()")
-    {
+    let options = script::Options {
+        with_evergreen: false,
+        with_database: true,
+        help_text: Some(HELP_TEXT.to_string()),
+        extra_params: None,
+        options: Some(opts),
+    };
+
+    let scripter = match script::Runner::init(options).expect("Scripter should init()") {
         Some(s) => s,
         None => return None,
     };
@@ -433,7 +439,7 @@ fn set_pipe_ids(ops: &mut ExportOptions) -> Result<(), String> {
 }
 
 /// Translate library filter shortnames into org unit IDs
-fn set_library_ids(scripter: &mut ScriptUtil, ops: &mut ExportOptions) -> Result<(), String> {
+fn set_library_ids(scripter: &mut script::Runner, ops: &mut ExportOptions) -> Result<(), String> {
     if ops.libraries.is_empty() {
         return Ok(());
     }
@@ -456,7 +462,7 @@ fn set_library_ids(scripter: &mut ScriptUtil, ops: &mut ExportOptions) -> Result
     Ok(())
 }
 
-fn export(scripter: &mut ScriptUtil, ops: &mut ExportOptions) -> Result<(), String> {
+fn export(scripter: &mut script::Runner, ops: &mut ExportOptions) -> Result<(), String> {
     // Where are we spewing bytes?
     let mut writer: Box<dyn Write> = match &ops.destination {
         ExportDestination::File(fname) => {
@@ -577,7 +583,7 @@ fn export(scripter: &mut ScriptUtil, ops: &mut ExportOptions) -> Result<(), Stri
 /// Append holdings data to this MARC record.
 fn add_items(
     record_id: i64,
-    scripter: &mut ScriptUtil,
+    scripter: &mut script::Runner,
     ops: &ExportOptions,
     record: &mut Record,
     items_query: &str,
@@ -642,7 +648,11 @@ fn add_items(
 }
 
 // TODO file_type == marc curently only type supported.
-fn report_on_file(_scripter: &mut ScriptUtil, fname: &str, _file_type: &str) -> Result<(), String> {
+fn report_on_file(
+    _scripter: &mut script::Runner,
+    fname: &str,
+    _file_type: &str,
+) -> Result<(), String> {
     println!("Scanning file {fname}...");
 
     let mut counter = 0;

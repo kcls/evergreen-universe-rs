@@ -1,5 +1,5 @@
 use eg::remote::RemoteAccount;
-use eg::script::ScriptUtil;
+use eg::script;
 use eg::EgResult;
 use evergreen as eg;
 use std::fs;
@@ -78,7 +78,15 @@ pub fn main() -> EgResult<()> {
     ops.optflag("", "list-edi-accounts", "");
     ops.optflag("", "force-save", "");
 
-    let mut scripter = match ScriptUtil::init(&mut ops, true, false, Some(HELP_TEXT))? {
+    let options = script::Options {
+        with_evergreen: true,
+        with_database: false,
+        help_text: Some(HELP_TEXT.to_string()),
+        extra_params: None,
+        options: Some(ops),
+    };
+
+    let mut scripter = match script::Runner::init(options)? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };
@@ -111,7 +119,7 @@ pub fn main() -> EgResult<()> {
 /// accounts, linked to active providers.
 ///
 /// Accounts are uniqued by host/directory/etc.
-fn get_active_edi_accounts(scripter: &mut ScriptUtil) -> EgResult<Vec<RemoteAccount>> {
+fn get_active_edi_accounts(scripter: &mut script::Runner) -> EgResult<Vec<RemoteAccount>> {
     let mut remote_accounts = Vec::new();
 
     let providers = scripter
@@ -144,7 +152,7 @@ fn get_active_edi_accounts(scripter: &mut ScriptUtil) -> EgResult<Vec<RemoteAcco
     Ok(remote_accounts)
 }
 
-fn list_accounts(scripter: &mut ScriptUtil) -> EgResult<()> {
+fn list_accounts(scripter: &mut script::Runner) -> EgResult<()> {
     for account in get_active_edi_accounts(scripter)? {
         println!(
             "Account edi-acount-id={} host={} username={} remote-path={}",
@@ -161,7 +169,7 @@ fn list_accounts(scripter: &mut ScriptUtil) -> EgResult<()> {
 /// Returns true if row exists in acq.edi_message with the same file
 /// name and remote account connectivity details.
 fn edi_message_exists(
-    scripter: &mut ScriptUtil,
+    scripter: &mut script::Runner,
     account: &RemoteAccount,
     file_name: &str,
 ) -> EgResult<bool> {
@@ -195,7 +203,7 @@ fn edi_message_exists(
     Ok(!scripter.editor_mut().json_query(query)?.is_empty())
 }
 
-fn process_one_account(scripter: &mut ScriptUtil, account: &mut RemoteAccount) -> EgResult<()> {
+fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccount) -> EgResult<()> {
     if let Some(password) = scripter.params().opt_str("password") {
         account.set_password(&password);
     }

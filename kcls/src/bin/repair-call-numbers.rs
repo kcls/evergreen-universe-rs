@@ -1,4 +1,4 @@
-use eg::script::ScriptUtil;
+use eg::script;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
@@ -13,7 +13,15 @@ fn main() -> EgResult<()> {
     ops.optflag("", "trim-labels", "");
     ops.optflag("", "dry-run", "");
 
-    let mut scripter = match ScriptUtil::init(&mut ops, true, false, None)? {
+    let options = script::Options {
+        with_evergreen: true,
+        with_database: false,
+        help_text: None,
+        extra_params: None,
+        options: Some(ops),
+    };
+
+    let mut scripter = match script::Runner::init(options)? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };
@@ -58,7 +66,7 @@ fn read_ids(file_name: &str, id_list: &mut Vec<i64>) -> EgResult<()> {
 /// Fetch the requested call numbers, trim the labels (preceding and
 /// trailing spaces) where necessary, then update the call numbers in
 /// the database, with auto-merge enabled.
-fn trim_labels(scripter: &mut ScriptUtil, ids: &[i64], dry_run: bool) -> EgResult<()> {
+fn trim_labels(scripter: &mut script::Runner, ids: &[i64], dry_run: bool) -> EgResult<()> {
     for id in ids {
         let vol = scripter
             .editor_mut()
@@ -71,7 +79,7 @@ fn trim_labels(scripter: &mut ScriptUtil, ids: &[i64], dry_run: bool) -> EgResul
     Ok(())
 }
 
-fn trim_one_label(scripter: &mut ScriptUtil, mut vol: EgValue, dry_run: bool) -> EgResult<()> {
+fn trim_one_label(scripter: &mut script::Runner, mut vol: EgValue, dry_run: bool) -> EgResult<()> {
     let vol_id = vol.id()?;
     let bib_id = vol["record"].int()?;
     let label = vol["label"].str()?;
