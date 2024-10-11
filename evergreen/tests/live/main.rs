@@ -1,5 +1,6 @@
 use evergreen as eg;
 mod auth;
+mod auth_to_auth_linker;
 mod cache;
 mod circ;
 mod json_query;
@@ -30,16 +31,20 @@ fn main() -> eg::EgResult<()> {
         timer: util::Timer::new(),
     };
 
-    cache::run_live_tests(&mut tester)?;
+    let suites = [
+        cache::run_live_tests,
+        auth::run_live_tests,
+        auth_to_auth_linker::run_live_tests, // THIS ONE DESTROYS DATA, please be careful with it!
+        circ::run_live_tests,
+        json_query::run_live_tests
+    ];
 
-    auth::run_live_tests(&mut tester)?;
-
-    circ::run_live_tests(&mut tester)?;
+    for suite in suites.iter() {
+        suite(&mut tester)?;
+    }
 
     // open-ils.rs-store tester
     //store::run_live_tests(&mut tester)?;
-
-    json_query::run_live_tests(&mut tester)?;
 
     Ok(())
 }

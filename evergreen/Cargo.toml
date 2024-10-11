@@ -85,6 +85,10 @@ name = "eg-parallel-ingest"
 path = "src/bin/parallel-ingest.rs"
 
 [[bin]]
+name = "eg-auth-to-auth-linker"
+path = "src/bin/auth-to-auth-linker.rs"
+
+[[bin]]
 name = "eg-edi-file-fetcher"
 path = "src/bin/edi-file-fetcher.rs"
 
