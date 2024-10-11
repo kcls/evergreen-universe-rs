@@ -1,5 +1,5 @@
 use eg::remote::RemoteAccount;
-use eg::script::ScriptUtil;
+use eg::script;
 use eg::EgResult;
 use evergreen as eg;
 
@@ -48,7 +48,15 @@ pub fn main() -> EgResult<()> {
     ops.optflag("", "ls", "");
     ops.optflag("", "get", "");
 
-    let scripter = match ScriptUtil::init(&mut ops, true, true, Some(HELP_TEXT))? {
+    let options = script::Options {
+        with_evergreen: true,
+        with_database: true,
+        help_text: Some(HELP_TEXT.to_string()),
+        extra_params: None,
+        options: Some(ops),
+    };
+
+    let scripter = match script::Runner::init(options)? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };
