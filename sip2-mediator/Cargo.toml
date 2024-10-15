@@ -20,4 +20,4 @@ path = "src/main.rs"
 
 [[bin]]
 name = "eg-sip2-mediator-check"
-path = "src/bin/sip2-mediator-check"
+path = "src/bin/sip2-mediator-check.rs"

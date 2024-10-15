@@ -6,6 +6,7 @@ use eg::EgValue;
 use evergreen as eg;
 use std::fmt;
 use std::net;
+use std::time;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -91,10 +92,14 @@ impl Session {
     pub fn start(&mut self) -> EgResult<()> {
         log::debug!("{self} starting");
 
+        self.sip_connection
+            .set_recv_timeout(Some(time::Duration::from_secs(SIG_POLL_INTERVAL)))
+            .map_err(|e| format!("Cannot set recv timeout: {e}"))?;
+
         loop {
             // Blocks waiting for a SIP request to arrive or for the
             // poll interval to timeout.
-            let sip_req_op = match self.sip_connection.recv_with_timeout(SIG_POLL_INTERVAL) {
+            let sip_req_op = match self.sip_connection.recv() {
                 Ok(msg_op) => msg_op,
                 Err(e) => {
                     // We'll end up here if the client disconnects.

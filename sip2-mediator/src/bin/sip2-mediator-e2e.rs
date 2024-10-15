@@ -223,7 +223,8 @@ fn test_invalid_login(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_invalid_login");
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
@@ -251,7 +252,8 @@ fn test_valid_login(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_valid_login");
 
     assert_eq!(resp.spec().code, sip2::spec::M_LOGIN_RESP.code);
@@ -276,7 +278,8 @@ fn test_sc_status(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_sc_status");
 
     assert!(!resp.fixed_fields().is_empty());
@@ -309,7 +312,8 @@ fn test_bill_pay(tester: &mut Tester) -> EgResult<()> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
 
     t.done("test_bill_pay");
 
@@ -332,7 +336,8 @@ fn test_invalid_item_info(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_invalid_item_info");
 
     let circ_status = resp.fixed_fields()[0].value();
@@ -365,7 +370,8 @@ fn test_item_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_item_info");
 
     let circ_status = resp.fixed_fields()[0].value();
@@ -424,7 +430,8 @@ fn test_patron_status(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_patron_status");
 
     assert_eq!(
@@ -468,7 +475,8 @@ fn test_patron_info(tester: &mut Tester, charged: bool) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_patron_info");
 
     assert_eq!(
@@ -532,7 +540,8 @@ fn test_checkout(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_checkout");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkout ok.
@@ -579,7 +588,8 @@ fn test_checkin(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_checkin");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
@@ -635,7 +645,8 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_checkin_with_transit");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.
@@ -683,7 +694,8 @@ fn test_checkin_with_transit(tester: &mut Tester) -> Result<(), String> {
     let resp = tester
         .sipcon
         .sendrecv(&req)
-        .map_err(|e| format!("SIP sendrecv error: {e}"))?;
+        .map_err(|e| format!("SIP sendrecv error: {e}"))?
+        .ok_or("SIP request timed out")?;
     t.done("test_checkin_with_transit");
 
     assert_eq!(resp.fixed_fields()[0].value(), "1"); // checkin ok.

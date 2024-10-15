@@ -1,6 +1,4 @@
-use getopts;
-use eg::script;
-use evergreen as eg;
+use std::time::Duration;
 
 const HELP_TEXT: &str = r#"
     --sip-host <hostname>
@@ -11,7 +9,7 @@ const HELP_TEXT: &str = r#"
 "#;
 
 fn main() {
-    let mut ops = getops::Options::new();
+    let mut ops = getopts::Options::new();
 
     ops.optflag("h", "help", "");
     ops.optopt("", "sip-host", "", "");
@@ -20,6 +18,7 @@ fn main() {
     ops.optopt("", "sip-pass", "", "");
     ops.optopt("", "timeout", "", "");
 
+    let args: Vec<String> = std::env::args().collect();
     let params = match ops.parse(&args[1..]) {
         Ok(p) => p,
         Err(e) => panic!("Error parsing options: {}", e),
@@ -43,21 +42,36 @@ fn main() {
         .opt_get_default("sip-user", "sip-user".to_string())
         .unwrap();
 
-    let sip_pas = params
+    let sip_pass = params
         .opt_get_default("sip-pass", "sip-pass".to_string())
         .unwrap();
 
-    let timeout = params.opt_get_default("timeout", 2u8).unwrap();
-
     let sip_host = format!("{host}:{port}");
 
-    let sipcon = match sip2::Connection::new(&sip_host) {
+    let mut sipcon = match sip2::Connection::new(&sip_host) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{e}");
             std::process::exit(exitcode::UNAVAILABLE);
         }
     };
+
+    let timeout = Some(
+        Duration::from_secs(
+            params.opt_get_default("timeout", 2u64)
+            .expect("Timeout value should be sane")
+        )
+    );
+
+    if let Err(e) = sipcon.set_recv_timeout(timeout) {
+        eprintln!("{e}");
+        std::process::exit(exitcode::USAGE);
+    }
+
+    if let Err(e) = sipcon.set_send_timeout(timeout) {
+        eprintln!("{e}");
+        std::process::exit(exitcode::USAGE);
+    }
 
     let req = sip2::Message::from_values(
         sip2::spec::M_LOGIN.code,
@@ -72,7 +86,7 @@ fn main() {
     )
     .unwrap();
 
-    let resp = match sipcon.sendrecv_with_timeout(&req, timeout) {
+    let resp_op = match sipcon.sendrecv(&req) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("{e}");
@@ -80,7 +94,15 @@ fn main() {
         }
     };
 
-    tester.sipcon.disconnect().ok();
+    let resp = match resp_op {
+        Some(r) => r,
+        None => {
+            eprintln!("SIP request returned no response");
+            std::process::exit(exitcode::UNAVAILABLE);
+        }
+    };
+
+    sipcon.disconnect().ok();
 
     if resp.fixed_fields().len() == 1 && resp.fixed_fields()[0].value() == "1" {
         std::process::exit(exitcode::OK);
