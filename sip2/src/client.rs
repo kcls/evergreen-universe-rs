@@ -68,7 +68,7 @@ impl Client {
 
         req.maybe_add_field(spec::F_LOCATION_CODE.code, params.location());
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if resp.spec().code == spec::M_LOGIN_RESP.code
             && resp.fixed_fields().len() == 1
@@ -94,7 +94,7 @@ impl Client {
             vec![],
         );
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if !resp.fixed_fields().is_empty() && resp.fixed_fields()[0].value() == "Y" {
             Ok(SipResponse::new(resp, true))
@@ -125,7 +125,7 @@ impl Client {
         req.maybe_add_field(spec::F_PATRON_PWD.code, params.patron_pwd());
         req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if let Some(bl_val) = resp.get_field_value(spec::F_VALID_PATRON.code) {
             if bl_val == "Y" {
@@ -177,7 +177,7 @@ impl Client {
             req.add_field(spec::F_END_ITEM.code, &v.to_string());
         }
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if let Some(bl_val) = resp.get_field_value(spec::F_VALID_PATRON.code) {
             if bl_val == "Y" {
@@ -207,7 +207,7 @@ impl Client {
         req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
         req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if let Some(title_val) = resp.get_field_value(spec::F_TITLE_IDENT.code) {
             if !title_val.is_empty() {
@@ -241,7 +241,7 @@ impl Client {
         req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
         req.maybe_add_field(spec::F_PATRON_PWD.code, params.patron_pwd());
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if let Some(status) = resp.fixed_fields().first() {
             if status.value() == "1" {
@@ -269,7 +269,7 @@ impl Client {
         req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
         req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if let Some(status) = resp.fixed_fields().first() {
             if status.value() == "1" {
@@ -308,7 +308,7 @@ impl Client {
         req.maybe_add_field(spec::F_TRANSACTION_ID.code, params.transaction_id());
         req.maybe_add_field(spec::F_FEE_IDENTIFIER.code, params.fee_id());
 
-        let resp = self.connection.sendrecv(&req)?;
+        let resp = self.connection.sendrecv(&req)?.ok_or(Error::NoResponseError)?;
 
         if let Some(status) = resp.fixed_fields().first() {
             if status.value() == "1" {

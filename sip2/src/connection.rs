@@ -67,17 +67,13 @@ impl Connection {
         }
     }
 
-    /// Sets the read and write timeouts on our tcp socket to the provided duration.
+    /// Set the write timeout on our TCP socket to the provided duration.
     ///
-    /// If this method is never called, no timeouts are applied.
-    pub fn set_network_timeout(&mut self, timeout: Duration) -> Result<(), Error> {
-        self.timeout = Some(timeout);
-
-        if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
-            log::error!("{self}Invalid timeout: {timeout:?} {e}");
-            return Err(Error::NetworkError(e.to_string()));
-        }
-
+    /// If this method is never called, no timeout is applied.
+    ///
+    /// * `timeout` - The max duration to block.
+    ///   A value of None removes the timeout.
+    pub fn set_send_timeout(&mut self, timeout: Option<Duration>) -> Result<(), Error> {
         if let Err(e) = self.tcp_stream.set_write_timeout(timeout) {
             log::error!("{self}Invalid timeout: {timeout:?} {e}");
             return Err(Error::NetworkError(e.to_string()));
@@ -86,6 +82,20 @@ impl Connection {
         Ok(())
     }
 
+    /// Set the read timeout on our TCP socket to the provided duration.
+    ///
+    /// If this method is never called, no timeout is applied.
+    ///
+    /// * `timeout` - The max duration to block.
+    ///   A value of None removes the timeout.
+    pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) -> Result<(), Error> {
+        if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
+            log::error!("{self}Invalid timeout: {timeout:?} {e}");
+            return Err(Error::NetworkError(e.to_string()));
+        }
+
+        Ok(())
+    }
 
     /// Add a string that will be prepended to all log:: calls where
     /// a self exists.
@@ -112,6 +122,9 @@ impl Connection {
     }
 
     /// Send a SIP message
+    ///
+    /// If a send timeout is applied and the send operation times out,
+    /// returns an Err.
     pub fn send(&mut self, msg: &Message) -> Result<(), Error> {
         let mut msg_sip = msg.to_sip();
 
@@ -137,30 +150,9 @@ impl Connection {
 
     /// Receive a SIP response.
     ///
-    /// Blocks until a response is received.
-    pub fn recv(&mut self) -> Result<Message, Error> {
-        match self.recv_internal(None) {
-            Ok(op) => match op {
-                Some(m) => Ok(m),
-                None => unreachable!("Cannot return None w/o timeout"),
-            },
-            Err(e) => Err(e),
-        }
-    }
-
-    /// Receive a message, waiting at most `timeout` seconds.
-    pub fn recv_with_timeout(&mut self, timeout: u64) -> Result<Option<Message>, Error> {
-        self.recv_internal(Some(Duration::from_secs(timeout)))
-    }
-
-    fn recv_internal(&mut self, timeout: Option<Duration>) -> Result<Option<Message>, Error> {
-        log::trace!("{self}recv_internal() with timeout {:?}", timeout);
-
-        if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
-            log::error!("{self}Invalid timeout: {timeout:?} {e}");
-            return Err(Error::NetworkError(e.to_string()));
-        }
-
+    /// If a recv timeout is applied and the timeout is reached,
+    /// returns None.
+    pub fn recv(&mut self) -> Result<Option<Message>, Error> {
         let mut text = String::from("");
 
         loop {
@@ -222,7 +214,7 @@ impl Connection {
     }
 
     /// Shortcut for:  self.send(msg); resp = self.recv();
-    pub fn sendrecv(&mut self, msg: &Message) -> Result<Message, Error> {
+    pub fn sendrecv(&mut self, msg: &Message) -> Result<Option<Message>, Error> {
         self.send(msg)?;
         self.recv()
     }
