@@ -225,24 +225,10 @@ impl DatabaseConnectionBuilder {
             },
         };
 
-        let mut dsn = format!(
-            "host={} port={} user={} dbname={}",
-            host, port, user, database
-        );
-
-        if let Some(ref p) = pass {
-            dsn += &format!(" password={}", p);
-        }
-
-        if let Some(ref app) = self.application {
-            dsn += &format!(" application_name={}", app);
-        }
-
         DatabaseConnection {
             host,
             port,
             user,
-            dsn,
             database,
             password: pass,
             application: self.application,
@@ -255,7 +241,6 @@ impl DatabaseConnectionBuilder {
 /// Wrapper for a postgres::Client with connection metadata.
 pub struct DatabaseConnection {
     client: Option<pg::Client>,
-    dsn: String,
     host: String,
     port: u16,
     user: String,
@@ -270,7 +255,6 @@ impl Clone for DatabaseConnection {
     fn clone(&self) -> DatabaseConnection {
         DatabaseConnection {
             client: None,
-            dsn: self.dsn.clone(),
             host: self.host.clone(),
             port: self.port,
             user: self.user.clone(),
@@ -360,23 +344,36 @@ impl DatabaseConnection {
         builder.build()
     }
 
-    /// Our connection string
-    pub fn dsn(&self) -> &str {
-        &self.dsn
+    /// Our database connection string.
+    ///
+    /// * `redact` - Set the password to "[REDACTED]" in the connection string.
+    fn dsn_internal(&self, redact: bool) -> String {
+        let mut dsn = format!(
+            "host={} port={} user={} dbname={}",
+            self.host, self.port, self.user, self.database
+        );
+
+        if let Some(ref app) = self.application {
+            dsn += &format!(" application_name={}", app);
+        }
+
+        if redact {
+            dsn += " password=[REDACTED]";
+        } else if let Some(ref p) = self.password {
+            dsn += &format!(" password={}", p);
+        }
+
+        dsn
     }
 
+    /// Our database connection string, including the password if available.
+    pub fn dsn(&self) -> String {
+        self.dsn_internal(false)
+    }
+
+    /// Our database connection string minus the password
     fn redacted_dsn(&self) -> String {
-        self.dsn
-            .split(' ')
-            .map(|param| {
-                if param.starts_with("password=") {
-                    "password=[REDACTED]"
-                } else {
-                    param
-                }
-            })
-            .collect::<Vec<&str>>()
-            .join(" ")
+        self.dsn_internal(true)
     }
 
     /// Mutable client ref
@@ -394,9 +391,10 @@ impl DatabaseConnection {
     ///
     /// Non-TLS connections only supported at present.
     pub fn connect(&mut self) -> EgResult<()> {
-        debug!("Connecting to DB {}", self.dsn());
+        let dsn = self.dsn();
+        debug!("Connecting to DB {dsn}");
 
-        match pg::Client::connect(self.dsn(), pg::NoTls) {
+        match pg::Client::connect(&dsn, pg::NoTls) {
             Ok(c) => {
                 self.client = Some(c);
                 Ok(())
@@ -426,7 +424,6 @@ impl DatabaseConnection {
     pub fn partial_clone(&self) -> DatabaseConnection {
         DatabaseConnection {
             client: None,
-            dsn: self.dsn.to_string(),
             host: self.host.to_string(),
             port: self.port,
             user: self.user.to_string(),
