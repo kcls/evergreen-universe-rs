@@ -80,7 +80,7 @@ fn main() {
 
     let req = sip2::Message::from_values(
         sip2::spec::M_LOGIN.code,
-        &["0", "0",],
+        &["0", "0"],
         &[("CN", &sip_user), ("CO", &sip_pass)],
     )
     .unwrap();
