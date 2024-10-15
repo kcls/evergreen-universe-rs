@@ -365,6 +365,20 @@ impl DatabaseConnection {
         &self.dsn
     }
 
+    fn redacted_dsn(&self) -> String {
+        self.dsn
+            .split(' ')
+            .map(|param| {
+                if param.starts_with("password=") {
+                    "password=[REDACTED]"
+                } else {
+                    param
+                }
+            })
+            .collect::<Vec<&str>>()
+            .join(" ")
+    }
+
     /// Mutable client ref
     ///
     /// Panics if the client is not yet connected / created.
@@ -387,7 +401,11 @@ impl DatabaseConnection {
                 self.client = Some(c);
                 Ok(())
             }
-            Err(e) => Err(format!("Error connecting to database: {e}").into()),
+            Err(e) => Err(format!(
+                "Error connecting to database with params {}: {e}",
+                self.redacted_dsn()
+            )
+            .into()),
         }
     }
 
@@ -486,4 +504,23 @@ pub fn is_identifier(s: &str) -> bool {
 /// Verify a query operator provided by the caller is allowed.
 pub fn is_supported_operator(op: &str) -> bool {
     SUPPORTED_OPERATORS.contains(&op.to_uppercase().as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_it_can_redact_dsn() {
+        let mut builder = DatabaseConnection::builder();
+        builder.set_password("my_secret_password");
+        let connection = builder.build();
+
+        assert_eq!(
+            connection.redacted_dsn(),
+            "host=localhost port=5432 user=evergreen dbname=evergreen password=[REDACTED]"
+        );
+        assert!(connection.dsn().contains("my_secret_password"));
+        assert!(!connection.redacted_dsn().contains("my_secret_password"));
+    }
 }
