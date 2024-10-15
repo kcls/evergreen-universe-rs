@@ -54,6 +54,17 @@ pub struct DatabaseConnectionBuilder {
 }
 
 impl DatabaseConnectionBuilder {
+    /// Create a new database connection with default values
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use evergreen::db::DatabaseConnectionBuilder;
+    ///
+    /// let builder = DatabaseConnectionBuilder::new();
+    /// let connection = builder.build();
+    /// assert_eq!(connection.dsn(), "host=localhost port=5432 user=evergreen dbname=evergreen");
+    /// ```
     pub fn new() -> Self {
         Default::default()
     }
@@ -69,6 +80,28 @@ impl DatabaseConnectionBuilder {
     ///     --db-port
     ///     --db-user
     ///     --db-name
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use evergreen::db::{DatabaseConnectionBuilder, DatabaseConnection};
+    ///
+    /// let mut options = getopts::Options::new();
+    /// DatabaseConnection::append_options(&mut options);
+    /// let matches = options.parse([
+    ///   "--db-host=my-host",
+    ///   "--db-port=1234",
+    ///   "--db-user=my-user",
+    ///   "--db-pass=my-password",
+    ///   "--db-name=evergreen-db"
+    /// ]).unwrap();
+    /// let mut builder = DatabaseConnectionBuilder::new();
+    ///
+    /// builder.set_opts(&matches);
+    ///
+    /// let connection = builder.build();
+    /// assert_eq!(connection.dsn(), "host=my-host port=1234 user=my-user dbname=evergreen-db password=my-password");
+    /// ```
     pub fn set_opts(&mut self, params: &getopts::Matches) {
         if self.host.is_none() && params.opt_defined("db-host") {
             self.host = params.opt_str("db-host");
@@ -93,6 +126,18 @@ impl DatabaseConnectionBuilder {
         }
     }
 
+    /// # Example
+    ///
+    /// ```
+    /// use evergreen::db::DatabaseConnectionBuilder;
+    ///
+    /// let mut builder = DatabaseConnectionBuilder::new();
+    ///
+    /// builder.set_host("/var/run/postgres"); // The host can be a domain socket or a hostname
+    ///
+    /// let connection = builder.build();
+    /// assert_eq!(connection.dsn(), "host=/var/run/postgres port=5432 user=evergreen dbname=evergreen");
+    /// ```
     pub fn set_host(&mut self, host: &str) {
         self.host = Some(host.to_string())
     }
@@ -113,6 +158,22 @@ impl DatabaseConnectionBuilder {
         self.database = Some(database.to_string());
     }
 
+    /// Set an application for your database connection, so that it's
+    /// easy to identify while monitoring and troubleshooting.
+    ///
+    /// ```
+    /// use evergreen::db::DatabaseConnectionBuilder;
+    ///
+    /// let mut builder = DatabaseConnectionBuilder::new();
+    ///
+    /// builder.set_application("open-ils.booking@appserver3(thread_123)");
+    ///
+    /// let connection = builder.build();
+    /// assert_eq!(
+    ///   connection.dsn(),
+    ///   "host=localhost port=5432 user=evergreen dbname=evergreen application_name=open-ils.booking@appserver3(thread_123)"
+    /// );
+    /// ```
     pub fn set_application(&mut self, application: &str) {
         self.application = Some(application.to_string());
     }
@@ -235,6 +296,30 @@ impl Drop for DatabaseConnection {
 impl DatabaseConnection {
     /// Add options to an in-progress getopts::Options related to creating
     /// a database connection.
+    ///
+    /// # Examples
+    ///
+    /// Without using append_options:
+    ///
+    /// ```should_panic
+    /// let options = getopts::Options::new();
+    ///
+    /// // The following line will panic because options doesn't know about --db-host
+    /// let matches = options.parse(["--db-host=my-host"]).unwrap(); // panics!
+    /// ```
+    ///
+    /// With append_options:
+    ///
+    /// ```
+    /// use evergreen::db::DatabaseConnection;
+    ///
+    /// let mut options = getopts::Options::new();
+    /// DatabaseConnection::append_options(&mut options);
+    ///
+    /// // The following line is okay, since append_options taught options about --db-host
+    /// let matches = options.parse(["--db-host=my-host"]).unwrap();
+    /// assert_eq!(matches.opt_str("db-host").unwrap(), "my-host");
+    /// ```
     pub fn append_options(options: &mut getopts::Options) {
         options.optopt("", "db-host", "Database Host", "DB_HOST");
         options.optopt("", "db-port", "Database Port", "DB_PORT");
@@ -248,6 +333,27 @@ impl DatabaseConnection {
     }
 
     /// Create a new DB connection from a set of gettops matches.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use evergreen::db::DatabaseConnection;
+    ///
+    /// let mut options = getopts::Options::new();
+    /// DatabaseConnection::append_options(&mut options);
+    /// let matches = options.parse([
+    ///   "--db-host=my-host",
+    ///   "--db-port=1234",
+    ///   "--db-user=my-user",
+    ///   "--db-pass=my-password",
+    ///   "--db-name=evergreen-db"
+    /// ]).unwrap();
+    ///
+    /// let mut connection = DatabaseConnection::new_from_options(&matches);
+    ///
+    /// assert_eq!(connection.dsn(), "host=my-host port=1234 user=my-user dbname=evergreen-db password=my-password");
+    /// assert_eq!(connection.in_transaction(), false);
+    /// ```
     pub fn new_from_options(params: &getopts::Matches) -> Self {
         let mut builder = DatabaseConnectionBuilder::new();
         builder.set_opts(params);
