@@ -67,6 +67,26 @@ impl Connection {
         }
     }
 
+    /// Sets the read and write timeouts on our tcp socket to the provided duration.
+    ///
+    /// If this method is never called, no timeouts are applied.
+    pub fn set_network_timeout(&mut self, timeout: Duration) -> Result<(), Error> {
+        self.timeout = Some(timeout);
+
+        if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
+            log::error!("{self}Invalid timeout: {timeout:?} {e}");
+            return Err(Error::NetworkError(e.to_string()));
+        }
+
+        if let Err(e) = self.tcp_stream.set_write_timeout(timeout) {
+            log::error!("{self}Invalid timeout: {timeout:?} {e}");
+            return Err(Error::NetworkError(e.to_string()));
+        }
+
+        Ok(())
+    }
+
+
     /// Add a string that will be prepended to all log:: calls where
     /// a self exists.
     pub fn set_log_prefix(&mut self, prefix: impl Into<String>) {

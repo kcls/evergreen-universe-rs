@@ -12,7 +12,12 @@ json = "0.12"
 log = "0.4"
 getopts = "0.2"
 yaml-rust = "0.4"
+exitcode = "1.1.2"
 
 [[bin]]
 name = "eg-sip2-mediator"
 path = "src/main.rs"
+
+[[bin]]
+name = "eg-sip2-mediator-check"
+path = "src/bin/sip2-mediator-check"
