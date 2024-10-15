@@ -6,9 +6,9 @@ use eg::EgValue;
 use evergreen as eg;
 use std::fmt;
 use std::net;
-use std::time;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time;
 
 /// How often do we wake up from blocking on our sip socket socket to check
 /// for shutdown, etc. signals.

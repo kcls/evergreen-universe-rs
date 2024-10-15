@@ -56,12 +56,11 @@ fn main() {
         }
     };
 
-    let timeout = Some(
-        Duration::from_secs(
-            params.opt_get_default("timeout", 2u64)
-            .expect("Timeout value should be sane")
-        )
-    );
+    let timeout = Some(Duration::from_secs(
+        params
+            .opt_get_default("timeout", 2u64)
+            .expect("Timeout value should be sane"),
+    ));
 
     if let Err(e) = sipcon.set_recv_timeout(timeout) {
         eprintln!("{e}");
@@ -110,4 +109,3 @@ fn main() {
         std::process::exit(exitcode::NOUSER);
     }
 }
-
