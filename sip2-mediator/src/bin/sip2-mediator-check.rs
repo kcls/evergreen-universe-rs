@@ -1,11 +1,17 @@
 use std::time::Duration;
 
 const HELP_TEXT: &str = r#"
+Utility for logging in to a SIP server to check its availability.
+The script exits with code 0 on success; non-zero code on failure.
+
+The original use case is as a check script executed by a proxy (e.g. HAProxy)
+to determine if the service is up and running.
+
     --sip-host <hostname>
     --sip-port <port>
     --sip-user <sip username>
     --sip-pass <sip password>
-    --timeout <receive timeout in seconds>
+    --timeout <send/recv timeout in seconds>
 "#;
 
 fn main() {
@@ -74,14 +80,8 @@ fn main() {
 
     let req = sip2::Message::from_values(
         sip2::spec::M_LOGIN.code,
-        &[
-            "0", // UID algo
-            "0", // PW algo
-        ],
-        &[
-            ("CN", &sip_user), // SIP login username
-            ("CO", &sip_pass), // SIP login password
-        ],
+        &["0", "0",],
+        &[("CN", &sip_user), ("CO", &sip_pass)],
     )
     .unwrap();
 
