@@ -115,32 +115,59 @@ impl Connection {
         }
     }
 
+    /// Send a message with a write timeout.
+    ///
+    /// Returns Err() if the send/write times out.  Clears the TCP socket
+    /// timeout upon completion.
+    pub fn send_with_timeout(&mut self, msg: &Message, timeout: u64) -> Result<(), Error> {
+        let time = Some(Duration::from_secs(timeout));
+
+        if let Err(e) = self.tcp_stream.set_write_timeout(time) {
+            log::error!("{self}Cannot set TCP write timeout: timeout={timeout} {e}");
+            return Err(Error::NetworkError(e.to_string()));
+        }
+
+        let result = self.send(msg);
+
+        // Clear the timeout
+        if let Err(e) = self.tcp_stream.set_write_timeout(None) {
+            log::error!("{self}Cannot set TCP write timeout: {e}");
+            return Err(Error::NetworkError(e.to_string()));
+        }
+
+        result
+    }
+
     /// Receive a SIP response.
     ///
     /// Blocks until a response is received.
     pub fn recv(&mut self) -> Result<Message, Error> {
-        match self.recv_internal(None) {
-            Ok(op) => match op {
-                Some(m) => Ok(m),
-                None => unreachable!("Cannot return None w/o timeout"),
-            },
-            Err(e) => Err(e),
-        }
+        self.recv_internal()?
+            .ok_or_else(|| Error::NetworkError("Receive timed out on vanilla recv()?".to_string()))
     }
 
-    /// Receive a message, waiting at most `timeout` seconds.
+    /// Receive a message, waiting at most `timeout` seconds.  Clears the
+    /// TCP socket timeout upon completion.
     pub fn recv_with_timeout(&mut self, timeout: u64) -> Result<Option<Message>, Error> {
-        self.recv_internal(Some(Duration::from_secs(timeout)))
-    }
+        let time = Some(Duration::from_secs(timeout));
 
-    fn recv_internal(&mut self, timeout: Option<Duration>) -> Result<Option<Message>, Error> {
-        log::trace!("{self}recv_internal() with timeout {:?}", timeout);
-
-        if let Err(e) = self.tcp_stream.set_read_timeout(timeout) {
-            log::error!("{self}Invalid timeout: {timeout:?} {e}");
+        if let Err(e) = self.tcp_stream.set_read_timeout(time) {
+            log::error!("{self}Cannot set TCP read timeout: timeout={timeout} {e}");
             return Err(Error::NetworkError(e.to_string()));
         }
 
+        let result = self.recv_internal();
+
+        // Clear the timeout
+        if let Err(e) = self.tcp_stream.set_read_timeout(None) {
+            log::error!("{self}Cannot set TCP read timeout: {e}");
+            return Err(Error::NetworkError(e.to_string()));
+        }
+
+        result
+    }
+
+    fn recv_internal(&mut self) -> Result<Option<Message>, Error> {
         let mut text = String::from("");
 
         loop {
@@ -181,7 +208,7 @@ impl Connection {
         }
 
         if text.is_empty() {
-            // Receiving none with no timeout indicates either an error
+            // Receiving no content here indicates either an error
             // or the client simply disconnected.
             log::debug!("{self}Reading TCP stream returned 0 bytes");
             return Err(Error::NoResponseError);
