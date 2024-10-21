@@ -36,7 +36,7 @@ fn main() -> eg::EgResult<()> {
         auth::run_live_tests,
         auth_to_auth_linker::run_live_tests, // THIS ONE DESTROYS DATA, please be careful with it!
         circ::run_live_tests,
-        json_query::run_live_tests
+        json_query::run_live_tests,
     ];
 
     for suite in suites.iter() {

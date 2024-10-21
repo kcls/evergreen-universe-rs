@@ -234,7 +234,8 @@ impl AuthLinker {
             if let Some(field_config) = self
                 .scripter
                 .editor_mut()
-                .retrieve_with_ops("acsaf", field_id, ops)? {
+                .retrieve_with_ops("acsaf", field_id, ops)?
+            {
                 e.insert(field_config);
             }
         }
