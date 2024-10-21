@@ -128,6 +128,25 @@ impl From<EgEvent> for EgError {
     }
 }
 
+/// Postgres errors can also be converted into EgErrors.  This allows you
+/// to use the question mark operator `?` to propagate postgres errors up
+/// the stack as EgErrors.
+/// # Example
+/// ```
+/// fn connect_to_a_nonexistant_db() -> evergreen::EgResult<()> {
+///   postgres::Client::connect("bad-bad-connection-string", postgres::NoTls)?;
+///   Ok(())
+/// }
+///
+/// let result = connect_to_a_nonexistant_db();
+/// assert!(result.err().unwrap().to_string().contains("invalid connection string"));
+/// ```
+impl From<postgres::Error> for EgError {
+    fn from(original: postgres::Error) -> Self {
+        EgError::Debug(original.to_string())
+    }
+}
+
 /// ```
 /// use evergreen::event::*;
 /// use evergreen::result::*;
