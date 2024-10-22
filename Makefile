@@ -61,7 +61,7 @@ install-evergreen-bin-release:
 	cp ./target/release/eg-http-gateway ${TARGET}/bin
 	cp ./target/release/eg-marc-export ${TARGET}/bin
 	cp ./target/release/eg-websockets ${TARGET}/bin
-	cp ./target/debug/eg-auth-to-auth-linker ${TARGET}/bin
+	cp ./target/release/eg-auth-to-auth-linker ${TARGET}/bin
 	cp ./target/release/eg-edi-file-fetcher ${TARGET}/bin
 	cp ./target/release/eg-service-rs-actor ${TARGET}/bin
 	cp ./target/release/eg-service-rs-circ ${TARGET}/bin
