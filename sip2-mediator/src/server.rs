@@ -147,6 +147,8 @@ impl mptc::RequestStream for Server {
             }
         };
 
+        self.check_heartbeat_signals();
+
         Ok(Some(Box::new(SipConnectRequest {
             stream: Some(stream),
         })))
@@ -186,26 +188,24 @@ impl Server {
             // In ready mode.
 
             if self.sig_tracker.usr1_is_set() {
-                // Received exit-ready-mode signal
                 log::info!("Entering non-ready mode");
                 self.is_ready.store(false, Ordering::Relaxed);
                 self.sig_tracker.clear_usr1();
             }
 
             if self.sig_tracker.usr2_is_set() {
-                // Received superfluous ready-mode signal
+                log::warn!("Received superfluous ready-mode signal");
                 self.sig_tracker.clear_usr2();
             }
         } else {
             // In non-ready mode.
 
             if self.sig_tracker.usr1_is_set() {
-                // Received superflous exit-ready-mode signal
+                log::warn!("Received superfluous exit-ready-mode signal");
                 self.sig_tracker.clear_usr1();
             }
 
             if self.sig_tracker.usr2_is_set() {
-                // Received ready-mode signal
                 log::info!("Entering ready mode");
                 self.is_ready.store(true, Ordering::Relaxed);
                 self.sig_tracker.clear_usr2();
