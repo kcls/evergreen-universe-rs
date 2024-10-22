@@ -85,7 +85,8 @@ impl Connection {
         match self.tcp_stream.shutdown(Shutdown::Both) {
             Ok(_) => Ok(()),
             Err(s) => {
-                log::error!("{self}disconnect() failed: {s}");
+                // Disconnect will fail if the other end already disconnected.
+                log::info!("{self}disconnect() failed: {s}");
                 Err(Error::NetworkError(s.to_string()))
             }
         }
