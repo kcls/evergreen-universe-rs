@@ -21,7 +21,6 @@ fn main() {
     ops.optflag("", "verbose", "");
 
     ops.optopt("", "sip-host", "", "");
-    ops.optopt("", "sip-port", "", "");
     ops.optopt("", "sip-user", "", "");
     ops.optopt("", "sip-pass", "", "");
     ops.optopt("", "timeout", "", "");
