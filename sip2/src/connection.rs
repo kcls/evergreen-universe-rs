@@ -181,6 +181,10 @@ impl Connection {
                         log::trace!("{self}SIP tcp read timed out.  Returning None");
                         return Ok(None);
                     }
+                    std::io::ErrorKind::ConnectionReset => {
+                        log::info!("{self}remote disconnected in recv()");
+                        return Err(Error::NetworkError(e.to_string()));
+                    }
                     _ => {
                         log::error!("{self}recv() failed: {e}");
                         return Err(Error::NetworkError(e.to_string()));
