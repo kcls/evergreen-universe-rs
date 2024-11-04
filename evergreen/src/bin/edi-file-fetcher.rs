@@ -1,12 +1,16 @@
 use eg::remote::RemoteAccount;
 use eg::script;
 use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
 const DEFAULT_TIMEOUT: u32 = 10;
+
+const ARCHIVE_DIR: &str = "archive";
+const ERROR_DIR: &str = "error";
 
 const HELP_TEXT: &str = r#"
 
@@ -41,6 +45,11 @@ Actions:
 
     --save-files
         Save a local copy of every matching file to the --output-dir.
+
+    --process-files
+        Send locally saved files to the open-ils.acq API for processing.
+
+        This is experimental and requires Evergreen API changes.
 
     --output-dir <directory>
         Location to store fetched files.
@@ -108,7 +117,9 @@ pub fn main() -> EgResult<()> {
 
     if scripter.params().opt_present("active-edi-accounts") {
         for mut account in get_active_edi_accounts(&mut scripter)?.drain(..) {
-            process_one_account(&mut scripter, &mut account)?;
+            if let Err(e) = process_one_account(&mut scripter, &mut account) {
+                eprintln!("Error process files for account: {account}: {e}");
+            }
         }
     }
 
@@ -203,6 +214,7 @@ fn edi_message_exists(
     Ok(!scripter.editor_mut().json_query(query)?.is_empty())
 }
 
+/// List, fetch, process remote EDI files for a single EDI account.
 fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccount) -> EgResult<()> {
     if let Some(password) = scripter.params().opt_str("password") {
         account.set_password(&password);
@@ -224,52 +236,150 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
         }
     }
 
-    if scripter.params().opt_present("save-files") {
-        let dir = scripter
-            .params()
-            .opt_str("output-dir")
-            .ok_or("--output-dir required to save files")?;
+    let save_files = scripter.params().opt_present("save-files");
+    let process_files = scripter.params().opt_present("process-files");
 
-        let mut dir_path = PathBuf::new();
-        dir_path.push(&dir);
+    if !save_files && !process_files {
+        return Ok(());
+    }
 
-        if let Some(id) = account.remote_account_id() {
-            // Append the account ID to the output directory so we can
-            // guarantee a link back from the retrieved file to the
-            // EDI account whence it came.
-            dir_path.push(format!("edi-account-{id}"));
+    let out_dir = scripter
+        .params()
+        .opt_str("output-dir")
+        .ok_or("--output-dir required to save or process files")?;
+
+    let account_id = account.remote_account_id().expect("Account ID should be set");
+
+    let mut local_base_path = PathBuf::new();
+    local_base_path.push(&out_dir);
+
+    if save_files {
+        // Append the account ID to the output directory so we can
+        // guarantee a link back from the retrieved file to the
+        // EDI account whence it came.
+        local_base_path.push(format!("edi-account-{account_id}"));
+
+        // This will also error if the directory already exists.
+        fs::create_dir_all(local_base_path.as_path()).ok();
+
+        if let Ok(true) = local_base_path.try_exists() {
+            // Directory existed or we successfully created it.
+        } else {
+            return Err(format!("Cannot create directory {local_base_path:?}").into());
         }
 
-        // This will error if the directory already exists.  That's fine.
-        // We'll fail later if we cannot actually write files to the dir.
-        fs::create_dir_all(dir_path.as_path()).ok();
+        for remote_file in account.ls()?.iter() {
+            save_one_file(scripter, account, &mut local_base_path, remote_file)?;
+        }
+    }
 
-        for file in account.ls()?.iter() {
-            let file_path = Path::new(file);
+    if process_files {
+        // Process all files in the local output directory for this EDI account.
 
-            if let Some(Some(file_name)) = file_path.file_name().map(|s| s.to_str()) {
-                if edi_message_exists(scripter, account, file)?
-                    && !scripter.params().opt_present("force-save")
-                {
-                    println!("EDI file already exists: {account} => {file_name}");
-                    continue;
+        // We need an authtoken to process EDI files.
+        if scripter.editor().authtoken().is_none() {
+            scripter.login_staff()?;
+        };
+
+        let file_list = fs::read_dir(&out_dir).map_err(|e|
+            format!("Cannot list files in directory: {out_dir} {e}"))?;
+
+        for local_file_res in file_list {
+            let local_file = local_file_res.map_err(|e| format!("Cannot read file: {e}"))?;
+
+            let local_file = local_file.path().as_os_str().to_string_lossy().to_string();
+
+            match process_edi_file(scripter, account_id, &local_file) {
+                Ok(()) => {
+                    println!("Successfully processed {local_file}");
+
+                    local_base_path.push(ARCHIVE_DIR);
+                    if let Err(e) = fs::rename(&local_file, &local_base_path) {
+                        eprintln!("Cannot archive EDI file: {e}");
+                    }
+                    local_base_path.pop();
                 }
+                Err(e) => {
+                    eprintln!("{e}");
 
-                dir_path.push(file_name);
-                let out_file = dir_path.as_os_str().to_string_lossy().to_string();
-
-                if Path::new(&out_file).exists() {
-                    println!("Skipping existing file: {out_file}");
-                } else {
-                    println!("Saving file {out_file}");
-                    account.get(file, &out_file)?;
+                    local_base_path.push(ERROR_DIR);
+                    if let Err(e) = fs::rename(&local_file, &local_base_path) {
+                        eprintln!("Cannot archive EDI file: {e}");
+                    }
+                    local_base_path.pop();
                 }
-
-                // Remove the file name
-                dir_path.pop();
             }
         }
     }
 
     Ok(())
+}
+
+/// Retrieve one file from the remote location and save it locally.
+fn save_one_file(
+    scripter: &mut script::Runner,
+    account: &mut RemoteAccount,
+    local_base_path: &mut PathBuf,
+    remote_file: &str,
+) -> EgResult<()> {
+    let remote_file_path = Path::new(remote_file);
+
+    let Some(Some(file_name)) = remote_file_path.file_name().map(|s| s.to_str()) else {
+        eprintln!("Remote file has no file name: {remote_file}");
+        return Ok(()); // skip it.
+    };
+
+    println!("Fetching remote EDI file {remote_file}");
+
+    // Local file is the local base path plus the file name
+    local_base_path.push(file_name);
+
+    let local_file = local_base_path.as_os_str().to_string_lossy().to_string();
+
+    // Remove the file name so the local base path can be reused.
+    local_base_path.pop();
+
+    if edi_message_exists(scripter, account, &local_file)?
+        && !scripter.params().opt_present("force-save")
+    {
+        println!("EDI file already exists: {account} => {file_name}");
+        return Ok(());
+    }
+
+    println!("Saving file {local_file}");
+
+    account.get(remote_file, &local_file)?;
+
+    Ok(())
+}
+
+
+/// Send a file to the acq API for processing.
+fn process_edi_file(
+    scripter: &mut script::Runner,
+    account_id: i64,
+    local_file: &str,
+) -> EgResult<()> {
+    println!("Processing local EDI file {local_file}");
+
+    let params: Vec<EgValue> = vec![
+        scripter.authtoken().into(),
+        account_id.into(),
+        local_file.into(),
+    ];
+
+    let resp = scripter.editor_mut().send_recv_one(
+        "open-ils.acq",
+        "open-ils.acq.edi.file.process",
+        params
+    )?;
+
+    if let Some(val) = resp.as_ref() {
+        if val.is_number() {
+            println!("Successfully processed EDI file {local_file} => ID {val}");
+            return Ok(());
+        }
+    }
+
+    Err(format!("Failed to process EDI file: {resp:?}").into())
 }
