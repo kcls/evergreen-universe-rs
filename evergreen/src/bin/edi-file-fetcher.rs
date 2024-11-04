@@ -214,7 +214,7 @@ fn edi_message_exists(
     Ok(!scripter.editor_mut().json_query(query)?.is_empty())
 }
 
-/// Creates the base and  archive directories for an EDI account.
+/// Creates the base and archive directories for an EDI account.
 ///
 /// Returns (base_path, archive_path)
 fn create_account_directories(
@@ -288,8 +288,6 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
 
     let (base_path, archive_path) = create_account_directories(scripter, account)?;
 
-    let account_id = account.remote_account_id().expect("Account ID should be set");
-
     if save_files {
         for remote_file in account.ls()?.iter() {
             save_one_file(scripter, account, &base_path, &archive_path, remote_file)?;
@@ -322,9 +320,8 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
             // Note that just because the API successfully created and
             // EDI message, it does not mean it was successfully processed
             // as an EDI file.
-            match process_edi_file(scripter, account_id, &local_file) {
-                Ok(()) => println!("Successfully off-loaded {local_file}"),
-                Err(e) => eprintln!("Error processing EDI file: {e}"),
+            if let Err(e) = process_edi_file(scripter, account, &local_file) {
+                eprintln!("Error processing EDI file: {e}");
             }
 
             let mut path = archive_path.clone();
@@ -391,14 +388,19 @@ fn save_one_file(
 /// Send a file to the acq API for processing.
 fn process_edi_file(
     scripter: &mut script::Runner,
-    account_id: i64,
+    account: &RemoteAccount,
     local_file: &str,
 ) -> EgResult<()> {
     println!("Processing local EDI file {local_file}");
 
+    if edi_message_exists(scripter, account, local_file)? {
+        println!("Already processed EDI file {local_file}");
+        return Ok(());
+    }
+
     let params: Vec<EgValue> = vec![
         scripter.authtoken().into(),
-        account_id.into(),
+        account.remote_account_id().unwrap().into(),
         local_file.into(),
     ];
 
