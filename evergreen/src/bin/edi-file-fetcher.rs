@@ -83,6 +83,7 @@ pub fn main() -> EgResult<()> {
     ops.optopt("", "edi-account", "", "");
     ops.optflag("", "list-files", "");
     ops.optflag("", "save-files", "");
+    ops.optflag("", "process-files", "");
     ops.optflag("", "active-edi-accounts", "");
     ops.optflag("", "list-edi-accounts", "");
     ops.optflag("", "force-save", "");
