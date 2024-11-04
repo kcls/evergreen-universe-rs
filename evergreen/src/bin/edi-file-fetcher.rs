@@ -251,13 +251,16 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
     let account_id = account.remote_account_id().expect("Account ID should be set");
 
     let mut local_base_path = PathBuf::new();
+
+    // Base path for all EDI file output
     local_base_path.push(&out_dir);
 
+    // Append the account ID to the output directory so we can
+    // guarantee a link back from the retrieved file to the
+    // EDI account whence it came.
+    local_base_path.push(format!("edi-account-{account_id}"));
+
     if save_files {
-        // Append the account ID to the output directory so we can
-        // guarantee a link back from the retrieved file to the
-        // EDI account whence it came.
-        local_base_path.push(format!("edi-account-{account_id}"));
 
         // This will also error if the directory already exists.
         fs::create_dir_all(local_base_path.as_path()).ok();
