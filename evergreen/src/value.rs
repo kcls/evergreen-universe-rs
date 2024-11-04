@@ -778,6 +778,11 @@ impl EgValue {
         matches!(self, EgValue::Number(_))
     }
 
+    /// True if this is a number or a string that is numeric.
+    pub fn is_numeric(&self) -> bool {
+        self.as_i64().is_some() || self.as_f64().is_some()
+    }
+
     pub fn is_string(&self) -> bool {
         matches!(self, EgValue::String(_))
     }
