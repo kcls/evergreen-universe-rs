@@ -75,7 +75,7 @@ macro_rules! blessed {
     }}
 }
 
-/// Macro for build EgValue's by leveraging the json::object! macro.
+/// Macro for building EgValue's by leveraging the json::object! macro.
 ///
 /// Panics if an attempt is made to build an EgValue::Blessed with
 /// an unknown class name or invalid field, however this should never
@@ -97,7 +97,6 @@ macro_rules! array {
         }
     }
 }
-// ---
 
 #[test]
 fn macros() {
@@ -779,6 +778,16 @@ impl EgValue {
     }
 
     /// True if this is a number or a string that is numeric.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use evergreen::value::EgValue;
+    /// assert!(EgValue::from(1).is_numeric());
+    /// assert!(EgValue::from("-12.99999").is_numeric());
+    /// assert!(!EgValue::from(true).is_numeric());
+    /// assert!(!EgValue::from(vec![1]).is_numeric());
+    /// ```
     pub fn is_numeric(&self) -> bool {
         self.as_i64().is_some() || self.as_f64().is_some()
     }
