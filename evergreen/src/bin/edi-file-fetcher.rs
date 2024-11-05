@@ -27,7 +27,7 @@ Remote Account Selection:
         For manually testing connectivity.
 
     --password <password>
-        Used in conjunction with --url to manually specify a destination
+        Used in conjunction with --url to manually specify a password
 
     --list-edi-accounts
         Print a list of EDI accounts linked to active providers,
@@ -182,11 +182,17 @@ fn list_accounts(scripter: &mut script::Runner) -> EgResult<()> {
 fn edi_message_exists(
     scripter: &mut script::Runner,
     account: &RemoteAccount,
-    file_name: &str,
+    local_file: &Path,
 ) -> EgResult<bool> {
     // acq.edi_account host is scheme-qualified.
     let scheme: &str = account.proto().into();
     let host = format!("{scheme}://{}", account.host());
+
+    let Some(Some(file_name)) = local_file
+        .file_name()
+        .map(|v| v.to_ascii_lowercase().to_str().map(|v| v.to_string())) else {
+        return Err(format!("Local EDI file has no name: {local_file:?}").into());
+    };
 
     let query = eg::hash! {
         "select": {"acqedim": ["id"]},
@@ -218,21 +224,23 @@ fn edi_message_exists(
 ///
 /// Returns (base_path, archive_path)
 fn create_account_directories(
-    scripter: &mut script::Runner, 
+    scripter: &mut script::Runner,
     account: &mut RemoteAccount
 ) -> EgResult<(PathBuf, PathBuf)> {
 
-    let out_dir = scripter
+    let base_dir = scripter
         .params()
         .opt_str("output-dir")
         .ok_or("--output-dir required to save or process files")?;
 
-    let account_id = account.remote_account_id().expect("Account ID should be set");
+    // When testing direct URL-bases connections, there will be
+    // no account id.  Use ID 0 as the catch-all
+    let account_id = account.remote_account_id().unwrap_or(0);
 
     let mut base_path = PathBuf::new();
 
     // Base path for all EDI file output
-    base_path.push(&out_dir);
+    base_path.push(&base_dir);
 
     // Append the account ID to the output directory so we can
     // guarantee a link back from the retrieved file to the
@@ -315,19 +323,17 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
 
             let local_file_name = local_file.file_name();
 
-            let local_file = local_file.path().as_os_str().to_string_lossy().to_string();
-
             // Note that just because the API successfully created and
             // EDI message, it does not mean it was successfully processed
             // as an EDI file.
-            if let Err(e) = process_edi_file(scripter, account, &local_file) {
+            if let Err(e) = process_edi_file(scripter, account, &local_file.path()) {
                 eprintln!("Error processing EDI file: {e}");
             }
 
             let mut path = archive_path.clone();
             path.push(local_file_name);
 
-            fs::rename(&local_file, &path)
+            fs::rename(local_file.path(), &path)
                 .map_err(|e| format!("Cannot archive EDI file: {e}"))?;
         }
     }
@@ -339,12 +345,12 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
 fn save_one_file(
     scripter: &mut script::Runner,
     account: &mut RemoteAccount,
-    base_path: &PathBuf,
-    archive_path: &PathBuf,
+    base_path: &Path,
+    archive_path: &Path,
     remote_file: &str,
 ) -> EgResult<()> {
     let remote_file_path = Path::new(remote_file);
-    let mut base_path = base_path.clone();
+    let mut file_path = base_path.to_path_buf();
 
     let Some(Some(file_name)) = remote_file_path.file_name().map(|s| s.to_str()) else {
         eprintln!("Remote file has no file name: {remote_file}");
@@ -354,28 +360,28 @@ fn save_one_file(
     println!("Fetching remote EDI file {remote_file}");
 
     // Verify we don't already have a local copy
-    base_path.push(file_name);
-    if base_path.try_exists().unwrap_or(false) {
-        println!("EDI file already exists locally: {base_path:?}");
+    file_path.push(file_name);
+    if file_path.try_exists().unwrap_or(false) {
+        println!("EDI file already exists locally: {file_path:?}");
         return Ok(());
     }
 
-    // Verify we don't have a local copy in the archive directory.
-    let mut path = archive_path.clone();
+    // Verify we don't have a copy in the archive directory.
+    let mut path = archive_path.to_path_buf();
     path.push(file_name);
     if path.try_exists().unwrap_or(false) {
         println!("EDI file already exists in archive: {path:?}");
         return Ok(());
     }
 
-    let local_file = base_path.as_os_str().to_string_lossy().to_string();
-
-    let exists = edi_message_exists(scripter, account, &local_file)?;
+    let exists = edi_message_exists(scripter, account, &file_path)?;
 
     if exists && !scripter.params().opt_present("force-save") {
-        println!("EDI file already exists: {account} => {file_name}");
+        println!("EDI message already exists with file name: {file_name}");
         return Ok(());
     }
+
+    let local_file = file_path.display().to_string();
 
     println!("Saving file {local_file}");
 
@@ -389,19 +395,25 @@ fn save_one_file(
 fn process_edi_file(
     scripter: &mut script::Runner,
     account: &RemoteAccount,
-    local_file: &str,
+    file_path: &Path,
 ) -> EgResult<()> {
+    let local_file = file_path.display();
+
     println!("Processing local EDI file {local_file}");
 
-    if edi_message_exists(scripter, account, local_file)? {
+    let Some(account_id) = account.remote_account_id() else {
+        return Err("Cannot process EDI files without an account ID".into());
+    };
+
+    if edi_message_exists(scripter, account, file_path)? {
         println!("Already processed EDI file {local_file}");
         return Ok(());
     }
 
     let params: Vec<EgValue> = vec![
         scripter.authtoken().into(),
-        account.remote_account_id().unwrap().into(),
-        local_file.into(),
+        account_id.into(),
+        local_file.to_string().into(),
     ];
 
     let resp = scripter.editor_mut().send_recv_one(
@@ -419,3 +431,5 @@ fn process_edi_file(
 
     Err(format!("Failed to process EDI file: {resp:?}").into())
 }
+
+
