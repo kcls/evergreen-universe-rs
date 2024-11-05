@@ -218,7 +218,7 @@ fn edi_message_exists(
     Ok(!scripter.editor_mut().json_query(query)?.is_empty())
 }
 
-/// Creates the base and archive directories for an EDI account.
+/// Fine or create the base and archive directories for an EDI account.
 ///
 /// Returns (base_path, archive_path)
 fn create_account_directories(
@@ -367,6 +367,15 @@ fn save_one_file(
     // Verify we don't have a copy in the archive directory.
     let mut path = archive_path.to_path_buf();
     path.push(file_name);
+    if path.try_exists().unwrap_or(false) {
+        println!("EDI file already exists in archive: {path:?}");
+        return Ok(());
+    }
+
+    // Verify we don't have a bzip2 copy in the archive directory.
+    let mut path = archive_path.to_path_buf();
+    path.push(file_name);
+    path.set_extension("bz2");
     if path.try_exists().unwrap_or(false) {
         println!("EDI file already exists in archive: {path:?}");
         return Ok(());
