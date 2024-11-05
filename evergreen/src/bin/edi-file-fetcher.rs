@@ -381,11 +381,13 @@ fn save_one_file(
         return Ok(());
     }
 
-    let exists = edi_message_exists(scripter, account, &file_path)?;
+    if !scripter.params().opt_present("force-save") {
+        let exists = edi_message_exists(scripter, account, &file_path)?;
 
-    if exists && !scripter.params().opt_present("force-save") {
-        println!("EDI message already exists with file name: {file_name}");
-        return Ok(());
+        if exists {
+            println!("EDI message already exists with file name: {file_name}");
+            return Ok(());
+        }
     }
 
     let local_file = file_path.display().to_string();
