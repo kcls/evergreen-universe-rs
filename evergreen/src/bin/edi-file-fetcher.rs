@@ -188,9 +188,7 @@ fn edi_message_exists(
     let scheme: &str = account.proto().into();
     let host = format!("{scheme}://{}", account.host());
 
-    let Some(Some(file_name)) = local_file
-        .file_name()
-        .map(|v| v.to_ascii_lowercase().to_str().map(|v| v.to_string())) else {
+    let Some(Some(file_name)) = local_file.file_name().map(|s| s.to_str()) else {
         return Err(format!("Local EDI file has no name: {local_file:?}").into());
     };
 
