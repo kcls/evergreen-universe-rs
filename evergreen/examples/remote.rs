@@ -1,8 +1,8 @@
 use eg::remote::RemoteAccount;
 use eg::script;
 use eg::EgResult;
-use std::path::Path;
 use evergreen as eg;
+use std::path::Path;
 
 const HELP_TEXT: &str = r#"
     --url <full-url-string>

@@ -114,9 +114,9 @@ impl RemoteAccount {
         account.remote_account_id = Some(account_id);
 
         account.remote_path = if read_mode {
-            edi_account["in_dir"].as_str().map(|s| PathBuf::from(s))
+            edi_account["in_dir"].as_str().map(PathBuf::from)
         } else {
-            edi_account["path"].as_str().map(|s| PathBuf::from(s))
+            edi_account["path"].as_str().map(PathBuf::from)
         };
 
         if let Some(username) = edi_account["username"].as_str() {
@@ -221,7 +221,10 @@ impl RemoteAccount {
 
     /// Returns a list of file paths matching our remote path and optional glob.
     pub fn ls(&mut self) -> EgResult<Vec<PathBuf>> {
-        log::debug!("{self} ls() {:?}", self.remote_path.as_ref().map(|p| p.display()));
+        log::debug!(
+            "{self} ls() {:?}",
+            self.remote_path.as_ref().map(|p| p.display())
+        );
 
         self.check_connected()?;
 
@@ -234,7 +237,11 @@ impl RemoteAccount {
     /// Fetch a remote file by name, store the contents in a local
     /// file, and return the created File handle.
     pub fn get(&mut self, remote_path: &Path, local_path: &Path) -> EgResult<fs::File> {
-        log::debug!("{self} get() {} => {}", remote_path.display(), local_path.display());
+        log::debug!(
+            "{self} get() {} => {}",
+            remote_path.display(),
+            local_path.display()
+        );
 
         self.check_connected()?;
 
@@ -328,7 +335,12 @@ impl RemoteAccount {
             .as_ref()
             .unwrap()
             .readdir(&remote_path)
-            .map_err(|e| format!("{self} cannot list directory {} : {e}", remote_path.display()))?;
+            .map_err(|e| {
+                format!(
+                    "{self} cannot list directory {} : {e}",
+                    remote_path.display()
+                )
+            })?;
 
         let mut paths = Vec::new();
 
