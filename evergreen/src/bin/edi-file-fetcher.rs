@@ -170,7 +170,7 @@ fn list_accounts(scripter: &mut script::Runner) -> EgResult<()> {
             account.remote_account_id().unwrap_or(0),
             account.host(),
             account.username().unwrap_or(""),
-            account.remote_path().unwrap_or(""),
+            account.remote_path().map(|p| p.display()).unwrap_or(Path::new("").display())
         );
     }
 
@@ -209,7 +209,7 @@ fn edi_message_exists(
                 "host": host,
                 "username": account.username(), // null-able
                 "password": account.password(), // null-able
-                "in_dir": account.remote_path(), // null-able
+                "in_dir": account.remote_path().map(|p| p.display().to_string()), // null-able
             },
         },
         "limit": 1
@@ -279,8 +279,8 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
     account.connect()?;
 
     if scripter.params().opt_present("list-files") {
-        for file in account.ls()?.iter() {
-            println!("{file}");
+        for path in account.ls()?.iter() {
+            println!("{}", path.display());
         }
     }
 
@@ -294,8 +294,8 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
     let (base_path, archive_path) = create_account_directories(scripter, account)?;
 
     if save_files {
-        for remote_file in account.ls()?.iter() {
-            save_one_file(scripter, account, &base_path, &archive_path, remote_file)?;
+        for remote_path in account.ls()?.iter() {
+            save_one_file(scripter, account, &base_path, &archive_path, remote_path)?;
         }
     }
 
@@ -345,13 +345,13 @@ fn save_one_file(
     account: &mut RemoteAccount,
     base_path: &Path,
     archive_path: &Path,
-    remote_file: &str,
+    remote_path: &Path,
 ) -> EgResult<()> {
-    let remote_file_path = Path::new(remote_file);
     let mut file_path = base_path.to_path_buf();
+    let remote_file = remote_path.display();
 
-    let Some(Some(file_name)) = remote_file_path.file_name().map(|s| s.to_str()) else {
-        eprintln!("Remote file has no file name: {remote_file}");
+    let Some(Some(file_name)) = remote_path.file_name().map(|s| s.to_str()) else {
+        eprintln!("Remote file has no base name: {remote_file}");
         return Ok(()); // skip it.
     };
 
@@ -375,7 +375,16 @@ fn save_one_file(
     // Verify we don't have a bzip2 copy in the archive directory.
     let mut path = archive_path.to_path_buf();
     path.push(file_name);
-    path.set_extension("bz2");
+
+    // TODO path.add_extension(), which appends an extension instead
+    // of replacing it, is currently nightly/experiement.  Revisit.
+    let bz_ext = if let Some(Some(ext)) = path.extension().map(|e| e.to_str()) {
+        format!("{ext}.bz2")
+    } else {
+        "bz2".to_string()
+    };
+    path.set_extension(bz_ext);
+
     if path.try_exists().unwrap_or(false) {
         println!("EDI file already exists in archive: {path:?}");
         return Ok(());
@@ -391,11 +400,9 @@ fn save_one_file(
         }
     }
 
-    let local_file = file_path.display().to_string();
+    println!("Saving file {}", file_path.display());
 
-    println!("Saving file {local_file}");
-
-    account.get(remote_file, &local_file)?;
+    account.get(remote_path, &file_path)?;
 
     Ok(())
 }
