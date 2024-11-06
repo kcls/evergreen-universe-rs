@@ -38,7 +38,7 @@ pub struct RemoteAccount {
     password: Option<String>,
     proto: Proto,
 
-    remote_path: Option<String>,
+    remote_path: Option<PathBuf>,
 
     sftp_session: Option<ssh2::Sftp>,
 
@@ -50,7 +50,7 @@ pub struct RemoteAccount {
     remote_account_id: Option<i64>,
 
     /// Full path to an SSH private key file.
-    ssh_private_key: Option<String>,
+    ssh_private_key: Option<PathBuf>,
     ssh_private_key_password: Option<String>,
 
     try_typical_ssh_keys: bool,
@@ -114,9 +114,9 @@ impl RemoteAccount {
         account.remote_account_id = Some(account_id);
 
         account.remote_path = if read_mode {
-            edi_account["in_dir"].as_str().map(|s| s.to_string())
+            edi_account["in_dir"].as_str().map(|s| PathBuf::from(s))
         } else {
-            edi_account["path"].as_str().map(|s| s.to_string())
+            edi_account["path"].as_str().map(|s| PathBuf::from(s))
         };
 
         if let Some(username) = edi_account["username"].as_str() {
@@ -150,7 +150,7 @@ impl RemoteAccount {
         }
 
         if !url.path().is_empty() {
-            account.remote_path = Some(url.path().to_string());
+            account.remote_path = Some(PathBuf::from(url.path()));
         }
 
         Ok(account)
@@ -180,12 +180,12 @@ impl RemoteAccount {
         self.remote_account_id
     }
 
-    pub fn remote_path(&self) -> Option<&str> {
+    pub fn remote_path(&self) -> Option<&Path> {
         self.remote_path.as_deref()
     }
 
-    pub fn set_remote_path(&mut self, remote_path: &str) {
-        self.remote_path = Some(remote_path.to_string());
+    pub fn set_remote_path(&mut self, remote_path: &Path) {
+        self.remote_path = Some(remote_path.to_path_buf());
     }
 
     pub fn set_username(&mut self, username: &str) {
@@ -196,8 +196,8 @@ impl RemoteAccount {
         self.password = Some(password.to_string());
     }
 
-    pub fn set_ssh_private_key(&mut self, keyfile: &str) {
-        self.ssh_private_key = Some(keyfile.to_string());
+    pub fn set_ssh_private_key(&mut self, keyfile: &Path) {
+        self.ssh_private_key = Some(keyfile.to_path_buf());
     }
 
     pub fn set_ssh_private_key_password(&mut self, keypass: &str) {
@@ -220,8 +220,8 @@ impl RemoteAccount {
     }
 
     /// Returns a list of file paths matching our remote path and optional glob.
-    pub fn ls(&mut self) -> EgResult<Vec<String>> {
-        log::debug!("{self} ls() {:?}", self.remote_path);
+    pub fn ls(&mut self) -> EgResult<Vec<PathBuf>> {
+        log::debug!("{self} ls() {:?}", self.remote_path.as_ref().map(|p| p.display()));
 
         self.check_connected()?;
 
@@ -233,14 +233,14 @@ impl RemoteAccount {
 
     /// Fetch a remote file by name, store the contents in a local
     /// file, and return the created File handle.
-    pub fn get(&mut self, remote_file: &str, local_file: &str) -> EgResult<fs::File> {
-        log::debug!("{self} get() {remote_file} => {local_file}");
+    pub fn get(&mut self, remote_path: &Path, local_path: &Path) -> EgResult<fs::File> {
+        log::debug!("{self} get() {} => {}", remote_path.display(), local_path.display());
 
         self.check_connected()?;
 
         match self.proto {
-            Proto::Sftp => self.get_sftp(remote_file, local_file),
-            Proto::Ftp => self.get_ftp(remote_file, local_file),
+            Proto::Sftp => self.get_sftp(remote_path, local_path),
+            Proto::Ftp => self.get_ftp(remote_path, local_path),
         }
     }
 
@@ -266,44 +266,50 @@ impl RemoteAccount {
 
     /// Fetch a remote file by name, store the contents in a local
     /// file, and return the created File handle.
-    fn get_sftp(&self, remote_filename: &str, local_filename: &str) -> EgResult<fs::File> {
+    fn get_sftp(&self, remote_path: &Path, local_path: &Path) -> EgResult<fs::File> {
+        let remote_filename = remote_path.display();
+
         let mut remote_file = self
             .sftp_session
             .as_ref()
             .unwrap()
-            .open(Path::new(remote_filename))
-            .map_err(|e| format!("Cannot open remote file {remote_filename} {e}"))?;
+            .open(remote_path)
+            .map_err(|e| format!("Cannot open remote path {remote_filename} {e}"))?;
 
         let mut bytes: Vec<u8> = Vec::new();
         remote_file
             .read_to_end(&mut bytes)
             .map_err(|e| format!("Cannot read remote file: {remote_filename} {e}"))?;
 
-        self.write_local_file(local_filename, &bytes)
+        self.write_local_file(local_path, &bytes)
     }
 
     /// Fetch a remote file by name, store the contents in a local
     /// file, and return the created File handle.
-    fn get_ftp(&mut self, remote_filename: &str, local_filename: &str) -> EgResult<fs::File> {
+    fn get_ftp(&mut self, remote_path: &Path, local_path: &Path) -> EgResult<fs::File> {
+        let remote_filename = remote_path.display().to_string();
+
         let cursor = self
             .ftp_session
             .as_mut()
             .unwrap()
-            .simple_retr(remote_filename)
+            .simple_retr(&remote_filename)
             .map_err(|e| format!("Cannot open remote file {remote_filename} {e}"))?;
 
         let bytes = cursor.into_inner();
 
-        self.write_local_file(local_filename, &bytes)
+        self.write_local_file(local_path, &bytes)
     }
 
-    fn write_local_file(&self, file_name: &str, bytes: &[u8]) -> EgResult<fs::File> {
-        let mut local_file = fs::File::create(Path::new(file_name))
-            .map_err(|e| format!("Cannot create local file {file_name} {e}"))?;
+    fn write_local_file(&self, local_path: &Path, bytes: &[u8]) -> EgResult<fs::File> {
+        let local_filename = local_path.display();
+
+        let mut local_file = fs::File::create(local_path)
+            .map_err(|e| format!("Cannot create local file {local_filename} {e}"))?;
 
         local_file
             .write_all(bytes)
-            .map_err(|e| format!("Cannot write to local file: {file_name} {e}"))?;
+            .map_err(|e| format!("Cannot write to local file: {local_filename} {e}"))?;
 
         Ok(local_file)
     }
@@ -312,89 +318,76 @@ impl RemoteAccount {
     ///
     /// If our remote_path contains a file name glob, the list only
     /// includes files that match the glob.
-    fn ls_sftp(&self) -> EgResult<Vec<String>> {
+    fn ls_sftp(&self) -> EgResult<Vec<PathBuf>> {
         let (remote_path, maybe_glob) = self.remote_path_and_glob()?;
 
-        log::info!("{self} listing directory {remote_path}");
-
-        let mut files = Vec::new();
-
-        let dir_path = Path::new(&remote_path);
+        log::info!("{self} listing directory {}", remote_path.display());
 
         let contents = self
             .sftp_session
             .as_ref()
             .unwrap()
-            .readdir(dir_path)
-            .map_err(|e| format!("{self} cannot list directory {remote_path} : {e}"))?;
+            .readdir(&remote_path)
+            .map_err(|e| format!("{self} cannot list directory {} : {e}", remote_path.display()))?;
 
-        for (file, _) in contents {
-            let fullname = match file.to_str() {
-                Some(s) => s.to_string(),
-                None => {
-                    log::warn!("{self} skipping non-stringifiable path: {file:?}");
-                    continue;
-                }
-            };
+        let mut paths = Vec::new();
 
+        for (path, _) in contents {
             if let Some(pattern) = maybe_glob.as_ref() {
-                if let Some(file_name) = file.file_name() {
-                    if let Some(name) = file_name.to_str() {
-                        if pattern.matches(name) {
-                            files.push(fullname);
-                        }
-                    } else {
-                        log::warn!("{self} skipping non-stringifiable path: {file_name:?}");
+                if let Some(Some(name)) = path.file_name().map(|n| n.to_str()) {
+                    if pattern.matches(name) {
+                        paths.push(path);
                     }
+                } else {
+                    log::warn!("{self} skipping non-stringifiable path: {path:?}");
                 }
             } else {
-                files.push(fullname);
+                paths.push(path);
             }
         }
 
-        Ok(files)
+        Ok(paths)
     }
 
     /// Returns a list of files/directories within our remote_path directory.
     ///
     /// If our remote_path contains a file name glob, the list only
     /// includes files that match the glob.
-    fn ls_ftp(&mut self) -> EgResult<Vec<String>> {
-        let (remote_path, maybe_glob) = self.remote_path_and_glob()?;
+    fn ls_ftp(&mut self) -> EgResult<Vec<PathBuf>> {
+        let (mut remote_path, maybe_glob) = self.remote_path_and_glob()?;
 
-        log::info!("{self} listing directory {remote_path}");
+        let remote_filename = remote_path.display().to_string();
 
-        let mut files = Vec::new();
+        log::info!("{self} listing directory {remote_filename}");
 
         let contents = self
             .ftp_session
             .as_mut()
             .unwrap()
-            .nlst(Some(&remote_path))
-            .map_err(|e| format!("{self} cannot list directory {remote_path} : {e}"))?;
+            .nlst(Some(&remote_filename))
+            .map_err(|e| format!("{self} cannot list directory {remote_filename} : {e}"))?;
+
+        let mut paths = Vec::new();
 
         // nlist() returns the file name only, no path information.
         // Reconstruct the path so we can return the fully qualified
         // file name to the caller.
 
-        let mut path = PathBuf::new();
-        path.push(remote_path);
-
         for file_name in contents {
-            path.push(&file_name);
-            let full_name = path.as_os_str().to_string_lossy().to_string();
-            path.pop(); // remove filename
+            remote_path.push(&file_name);
 
             if let Some(pattern) = maybe_glob.as_ref() {
                 if pattern.matches(&file_name) {
-                    files.push(full_name);
+                    paths.push(remote_path.clone());
                 }
             } else {
-                files.push(full_name);
+                paths.push(remote_path.clone());
             }
+
+            remote_path.pop(); // remove filename
         }
 
-        Ok(files)
+        Ok(paths)
     }
 
     fn connect_sftp(&mut self) -> EgResult<()> {
@@ -493,7 +486,7 @@ impl RemoteAccount {
         let mut key_files = Vec::new();
 
         if let Some(keyfile) = self.ssh_private_key.as_ref() {
-            key_files.push(keyfile.to_string());
+            key_files.push(keyfile.display().to_string());
         }
 
         if self.try_typical_ssh_keys {
@@ -535,19 +528,18 @@ impl RemoteAccount {
     /// contains a glob file name (e.g. /foo/bar/*.edi).   Otherwise,
     /// returns None, meaning the originally provided path is the
     /// one that should be used for send/recv files.
-    fn remote_path_and_glob(&self) -> EgResult<(String, Option<glob::Pattern>)> {
-        let remote_path = self.remote_path.as_deref().unwrap_or("/");
-        let full_path = Path::new(remote_path);
+    fn remote_path_and_glob(&self) -> EgResult<(PathBuf, Option<glob::Pattern>)> {
+        let remote_path = self.remote_path.as_deref().unwrap_or(Path::new("/"));
 
         // Is there a trailing file name or is it just a directory?
-        let filename = match full_path.file_name().map(|f| f.to_str()) {
+        let filename = match remote_path.file_name().map(|f| f.to_str()) {
             Some(Some(f)) => f,
-            _ => return Ok((remote_path.to_string(), None)),
+            _ => return Ok((remote_path.to_path_buf(), None)),
         };
 
         // Does the file name contain a glob star
         if !filename.contains('*') {
-            return Ok((remote_path.to_string(), None));
+            return Ok((remote_path.to_path_buf(), None));
         }
 
         // It's a glob.
@@ -558,16 +550,13 @@ impl RemoteAccount {
         let mut path_buf = PathBuf::new();
 
         // Rebuild the path from its components then trim the globbed filename
-        for part in full_path.iter() {
+        for part in remote_path.iter() {
             path_buf.push(part);
         }
 
         // Remove the filename part
         path_buf.pop();
 
-        Ok((
-            path_buf.into_os_string().to_string_lossy().to_string(),
-            Some(glob_pattern),
-        ))
+        Ok((path_buf, Some(glob_pattern)))
     }
 }
