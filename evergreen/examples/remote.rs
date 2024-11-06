@@ -76,7 +76,7 @@ pub fn main() -> EgResult<()> {
             .opt_str("remote-path")
             .expect("--remote-path is required");
 
-        account.set_remote_path(&remote_path);
+        account.set_remote_path(Path::new(&remote_path));
     }
 
     // proto
@@ -89,8 +89,8 @@ pub fn main() -> EgResult<()> {
         account.set_password(&password);
     }
 
-    if let Some(ssh_private_key) = scripter.params().opt_str("ssh-private-key") {
-        account.set_ssh_private_key(&ssh_private_key);
+    if let Some(ref ssh_private_key) = scripter.params().opt_str("ssh-private-key") {
+        account.set_ssh_private_key(Path::new(ssh_private_key));
     }
 
     if let Some(timeout) = scripter.params().opt_str("timeout") {
