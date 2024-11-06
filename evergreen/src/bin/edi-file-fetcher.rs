@@ -170,7 +170,10 @@ fn list_accounts(scripter: &mut script::Runner) -> EgResult<()> {
             account.remote_account_id().unwrap_or(0),
             account.host(),
             account.username().unwrap_or(""),
-            account.remote_path().map(|p| p.display()).unwrap_or(Path::new("").display())
+            account
+                .remote_path()
+                .map(|p| p.display())
+                .unwrap_or(Path::new("").display())
         );
     }
 
