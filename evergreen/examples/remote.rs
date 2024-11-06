@@ -2,6 +2,7 @@ use eg::remote::RemoteAccount;
 use eg::script;
 use eg::EgResult;
 use evergreen as eg;
+use std::path::Path;
 
 const HELP_TEXT: &str = r#"
     --url <full-url-string>
@@ -75,7 +76,7 @@ pub fn main() -> EgResult<()> {
             .opt_str("remote-path")
             .expect("--remote-path is required");
 
-        account.set_remote_path(&remote_path);
+        account.set_remote_path(Path::new(&remote_path));
     }
 
     // proto
@@ -88,8 +89,8 @@ pub fn main() -> EgResult<()> {
         account.set_password(&password);
     }
 
-    if let Some(ssh_private_key) = scripter.params().opt_str("ssh-private-key") {
-        account.set_ssh_private_key(&ssh_private_key);
+    if let Some(ref ssh_private_key) = scripter.params().opt_str("ssh-private-key") {
+        account.set_ssh_private_key(Path::new(ssh_private_key));
     }
 
     if let Some(timeout) = scripter.params().opt_str("timeout") {
@@ -102,8 +103,8 @@ pub fn main() -> EgResult<()> {
     account.connect()?;
 
     if scripter.params().opt_present("ls") {
-        for file in account.ls()?.iter() {
-            println!("Found remote file: {file}");
+        for path in account.ls()?.iter() {
+            println!("Found remote file: {}", path.display());
         }
     }
 
@@ -117,7 +118,7 @@ pub fn main() -> EgResult<()> {
             .opt_str("local-file")
             .expect("Pass --local-file");
 
-        let _file = account.get(&remote_file, &local_file)?;
+        let _file = account.get(Path::new(&remote_file), Path::new(&local_file))?;
 
         println!("Saved {remote_file} as {local_file}");
     }
