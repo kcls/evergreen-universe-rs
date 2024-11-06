@@ -1,6 +1,7 @@
 use eg::remote::RemoteAccount;
 use eg::script;
 use eg::EgResult;
+use std::path::Path;
 use evergreen as eg;
 
 const HELP_TEXT: &str = r#"
@@ -102,8 +103,9 @@ pub fn main() -> EgResult<()> {
     account.connect()?;
 
     if scripter.params().opt_present("ls") {
-        for file in account.ls()?.iter() {
-            println!("Found remote file: {file}");
+        for path in account.ls()?.iter() {
+            println!("Found remote file: {}", path.display());
+            //println!("Found remote file: {}", path);
         }
     }
 
@@ -117,7 +119,7 @@ pub fn main() -> EgResult<()> {
             .opt_str("local-file")
             .expect("Pass --local-file");
 
-        let _file = account.get(&remote_file, &local_file)?;
+        let _file = account.get(Path::new(&remote_file), Path::new(&local_file))?;
 
         println!("Saved {remote_file} as {local_file}");
     }
