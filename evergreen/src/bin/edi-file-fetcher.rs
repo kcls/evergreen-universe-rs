@@ -320,9 +320,10 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
 
             let local_file_name = local_file.file_name();
 
-            // Note that just because the API successfully created and
-            // EDI message, it does not mean it was successfully processed
-            // as an EDI file.
+            // Just because the API successfully created an EDI message
+            // does not mean it was successfully processed.  It only means
+            // no duplicate was found (which we guarantee as well) and that
+            // the backend API didn't blow up.
             if let Err(e) = process_edi_file(scripter, account, &local_file.path()) {
                 eprintln!("Error processing EDI file: {e}");
             }
@@ -380,6 +381,7 @@ fn save_one_file(
         return Ok(());
     }
 
+    // Verify we don't have a copy in the acq.edi_message table
     if !scripter.params().opt_present("force-save") {
         let exists = edi_message_exists(scripter, account, &file_path)?;
 
