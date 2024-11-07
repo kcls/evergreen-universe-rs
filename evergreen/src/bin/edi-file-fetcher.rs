@@ -12,6 +12,8 @@ const DEFAULT_TIMEOUT: u32 = 10;
 const ARCHIVE_DIR: &str = "archive";
 
 const HELP_TEXT: &str = r#"
+Command line tool for listing, fetching, and processing EDI files for
+Evergreen EDI accounts.
 
 Remote Account Selection:
 
@@ -47,8 +49,9 @@ Actions:
 
     --process-files
         Send locally saved files to the open-ils.acq API for processing.
+        Files are archived once processing is complete.
 
-        This is experimental and requires Evergreen API changes.
+        XXX This is experimental and requires Evergreen API changes. XXX
 
     --output-dir <directory>
         Location to store fetched files.
@@ -163,6 +166,7 @@ fn get_active_edi_accounts(scripter: &mut script::Runner) -> EgResult<Vec<Remote
     Ok(remote_accounts)
 }
 
+/// List active EDI accounts
 fn list_accounts(scripter: &mut script::Runner) -> EgResult<()> {
     for account in get_active_edi_accounts(scripter)? {
         println!(
@@ -334,6 +338,7 @@ fn process_one_account(scripter: &mut script::Runner, account: &mut RemoteAccoun
             let mut path = archive_path.clone();
             path.push(local_file_name);
 
+            // Move the processed file into the archive directory.
             fs::rename(local_file.path(), &path)
                 .map_err(|e| format!("Cannot archive EDI file: {e}"))?;
         }
@@ -376,9 +381,6 @@ fn save_one_file(
     }
 
     // Verify we don't have a bzip2 copy in the archive directory.
-    let mut path = archive_path.to_path_buf();
-    path.push(file_name);
-
     // TODO path.add_extension(), which appends an extension instead
     // of replacing it, is currently nightly/experiement.  Revisit.
     let bz_ext = if let Some(Some(ext)) = path.extension().map(|e| e.to_str()) {
