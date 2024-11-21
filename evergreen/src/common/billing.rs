@@ -1051,7 +1051,7 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
     }
 
     // Now we want numbers
-    let mut price = if let Ok(p) = price.float() { p } else { 0.00 };
+    let mut price = price.float().unwrap_or(0.00);
 
     if let Some(max_price) = settings.get_value("circ.max_item_price")?.as_f64() {
         if price > max_price {

@@ -58,11 +58,7 @@ pub fn noncat_due_date(editor: &mut Editor, noncat: &EgValue) -> EgResult<String
     let mut settings = Settings::new(editor);
 
     let timezone = settings.get_value_at_org("lib.timezone", circ_lib)?;
-    let timezone = if let Some(tz) = timezone.as_str() {
-        tz
-    } else {
-        "local"
-    };
+    let timezone = timezone.as_str().unwrap_or("local");
 
     let checkout_time = noncat["circ_time"]
         .as_str()

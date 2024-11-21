@@ -175,7 +175,7 @@ impl AuthLinker {
                 if source_field
                     .add_subfield(
                         "0",
-                        &control_number_identifier(&target_marc, target_record_id),
+                        control_number_identifier(&target_marc, target_record_id),
                     )
                     .is_ok()
                 {

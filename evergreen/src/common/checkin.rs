@@ -511,19 +511,13 @@ impl Circulator<'_> {
         if pickup_lib != self.circ_lib && !self.get_option_bool("hold_as_transit") {
             let suppress_here = self.settings.get_value("circ.transit.suppress_hold")?;
 
-            let suppress_here = match suppress_here.string() {
-                Ok(s) => s,
-                Err(_) => String::from(""),
-            };
+            let suppress_here = suppress_here.string().unwrap_or_default();
 
             let suppress_there = self
                 .settings
                 .get_value_at_org("circ.transit.suppress_hold", pickup_lib)?;
 
-            let suppress_there = match suppress_there.string() {
-                Ok(s) => s,
-                Err(_) => String::from(""),
-            };
+            let suppress_there = suppress_there.string().unwrap_or_default();
 
             if suppress_here == suppress_there && !suppress_here.is_empty() {
                 log::info!("{self} hold is within transit suppress group: {suppress_here}");

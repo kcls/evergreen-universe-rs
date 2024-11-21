@@ -39,7 +39,7 @@ fn test_auth_to_auth_linker_script_creates_links(tester: &mut util::Tester) -> E
         .arg("--")
         .arg("-a")
         .output()
-        .or(EgResult::Err(EgError::Debug(
+        .or(EgResult::Err(EgError::from_string(
             "could not run authority_authority linker".to_string(),
         )))?;
     // You can also run this test against the original Perl implementation

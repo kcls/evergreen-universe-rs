@@ -14,7 +14,7 @@ use std::fmt;
 ///
 /// fn foo1() -> EgResult<()> {
 ///   let evt = EgEvent::new("PROBLEM");
-///   let err = EgError::Event(evt);
+///   let err = EgError::from_event(evt);
 ///   Err(err)
 /// }
 ///
