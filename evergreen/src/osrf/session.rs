@@ -399,7 +399,10 @@ impl ClientSessionInternal {
         let trace = msg.thread_trace();
 
         if let Payload::Status(stat) = msg.payload() {
-            self.unpack_status_message(trace, timer, stat).inspect_err(|_| self.reset())
+            self.unpack_status_message(trace, timer, stat).map_err(|e| {
+                self.reset();
+                e
+            })
         } else {
             self.reset();
             Err(format!("{self} unexpected response for request {trace}: {msg:?}").into())
