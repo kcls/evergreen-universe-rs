@@ -8,3 +8,8 @@ edition = "2021"
 [dependencies]
 xml-rs = "0.8.4"
 getopts = "~0.2"
+
+[[bin]]
+name = "marc-converter"
+path = "src/bin/marc-converter.rs"
+

@@ -88,6 +88,12 @@ impl Record {
         Ok(record)
     }
 
+    pub fn from_breaker_file(filename: &str) -> Result<Self, String> {
+        let breaker = std::fs::read_to_string(filename)
+            .map_err(|e| format!("Error reading breaker file: {e}"))?;
+        Record::from_breaker(&breaker)
+    }
+
     /// Process one line of breaker text
     fn add_breaker_line(&mut self, line: &str) -> Result<(), String> {
         let mut len = line.len();
