@@ -292,8 +292,8 @@ impl Editor {
 
     pub fn event_as_err(&self) -> EgError {
         match self.last_event() {
-            Some(e) => EgError::Event(e.clone()),
-            None => EgError::Debug("Editor Has No Event".to_string()),
+            Some(e) => EgError::from_event(e.clone()),
+            None => EgError::from_string("Editor Has No Event".to_string()),
         }
     }
 
@@ -319,8 +319,8 @@ impl Editor {
             return e;
         }
         match self.last_event() {
-            Some(e) => EgError::Event(e.clone()),
-            None => EgError::Debug("Die-Event Called With No Event".to_string()),
+            Some(e) => EgError::from_event(e.clone()),
+            None => EgError::from_string("Die-Event Called With No Event".to_string()),
         }
     }
 
@@ -336,9 +336,9 @@ impl Editor {
             Some(e) => {
                 let mut e2 = e.clone();
                 e2.set_debug(msg);
-                EgError::Event(e2)
+                EgError::from_event(e2)
             }
-            None => EgError::Debug(msg.to_string()),
+            None => EgError::from_string(msg.to_string()),
         }
     }
 

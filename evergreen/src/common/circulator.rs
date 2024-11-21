@@ -381,7 +381,7 @@ impl<'a> Circulator<'a> {
     /// a rollback on the main editor.
     pub fn exit_err_on_event(&mut self, evt: EgEvent) -> EgResult<()> {
         self.add_event(evt.clone());
-        Err(EgError::Event(evt))
+        Err(EgError::from_event(evt))
     }
 
     /// Sets a final event and sets the exit_early flag.
@@ -1102,7 +1102,7 @@ impl<'a> Circulator<'a> {
 
         if !self.failed_events.is_empty() {
             log::info!("Exiting early on failed events: {:?}", self.failed_events);
-            Err(EgError::Event(self.failed_events[0].clone()))
+            Err(EgError::from_event(self.failed_events[0].clone()))
         } else {
             // If all is well and we encountered a SUCCESS event, keep
             // it in place so it can ultimately be returned to the caller.

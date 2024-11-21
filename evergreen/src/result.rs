@@ -56,8 +56,8 @@ pub enum EgError {
     ///
     /// For one thing, this is useful for encapsulating OpenSRF's generic
     /// fatal error strings.
-    Debug(String),
-    Event(EgEvent),
+    Debug(Box<String>),
+    Event(Box<EgEvent>),
 }
 
 impl std::error::Error for EgError {
@@ -75,7 +75,7 @@ impl EgError {
     /// Otherwise, return a copy of the contained event.
     pub fn event_or_default(&self) -> EgEvent {
         match self {
-            EgError::Event(e) => e.clone(),
+            EgError::Event(e) => *e.clone(),
             EgError::Debug(s) => {
                 let mut evt = EgEvent::new("INTERNAL_SERVER_ERROR");
                 // This is for debug purposes only -- i18n not needed.
@@ -83,6 +83,14 @@ impl EgError {
                 evt
             }
         }
+    }
+
+    pub fn from_event(e: EgEvent) -> EgError {
+        Self::Event(Box::new(e))
+    }
+
+    pub fn from_string(s: String) -> EgError {
+        Self::Debug(Box::new(s))
     }
 }
 
@@ -98,13 +106,13 @@ impl fmt::Display for EgError {
 /// Useful for translating generic OSRF Err(String)'s into EgError's
 impl From<String> for EgError {
     fn from(msg: String) -> Self {
-        EgError::Debug(msg)
+        EgError::from_string(msg)
     }
 }
 
 impl From<&str> for EgError {
     fn from(msg: &str) -> Self {
-        EgError::Debug(msg.to_string())
+        EgError::from_string(msg.to_string())
     }
 }
 
@@ -124,7 +132,7 @@ impl From<EgError> for String {
 /// fully-fledged Err(EgError) responses.
 impl From<EgEvent> for EgError {
     fn from(evt: EgEvent) -> Self {
-        EgError::Event(evt)
+        EgError::from_event(evt)
     }
 }
 
@@ -143,7 +151,7 @@ impl From<EgEvent> for EgError {
 /// ```
 impl From<postgres::Error> for EgError {
     fn from(original: postgres::Error) -> Self {
-        EgError::Debug(original.to_string())
+        EgError::from_string(original.to_string())
     }
 }
 
@@ -168,6 +176,6 @@ impl From<postgres::Error> for EgError {
 /// ```
 impl From<&EgEvent> for EgError {
     fn from(evt: &EgEvent) -> Self {
-        EgError::Event(evt.clone())
+        EgError::from_event(evt.clone())
     }
 }

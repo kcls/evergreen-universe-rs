@@ -1556,7 +1556,7 @@ impl<'a> HoldTargeter<'a> {
 
             if let Some(mut evt) = self.editor().take_last_event() {
                 evt.set_debug(msg);
-                return Err(EgError::Event(evt));
+                return Err(EgError::from_event(evt));
             }
         }
 
