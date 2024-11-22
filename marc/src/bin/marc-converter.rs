@@ -6,7 +6,7 @@ use std::io::Read;
 use std::io::Write;
 
 const HELP_TEXT: &str = r#"
-Converts MARC records between MARC21, MARC XML, and MARC Breaker.
+Converts MARC records between UTF8-encoded MARC21, MARC XML, and MARC Breaker.
 
 Synopsis:
 
