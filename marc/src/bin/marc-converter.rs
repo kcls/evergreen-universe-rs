@@ -6,22 +6,34 @@ use std::io::Read;
 use std::io::Write;
 
 const HELP_TEXT: &str = r#"
-Converts MARC records between UTF8-encoded MARC21, MARC XML, and MARC Breaker.
+Converts MARC records between UTF8 MARC21, MARC XML, and MARC Breaker.
+
+Usage:
+
+    marc-converter --to-xml /path/to/marc-or-xml-or-breaker.file
 
 Synopsis:
 
-    marc-converter --to-xml /path/to/marc-file.mrc
+Translates a MARC binary, xml, or breaker file into either MARC, XML
+or breaker.  The resulting content is dumped to STDOUT.
 
-Options
+Binary and XML files may contain multiple records.
+
+XML output is wrapped in a <collection/> element.
+
+Options:
 
     --to-xml
-        Conver to XML
+        Produce XML output.
 
     --to-marc
-        Conver to MARC binary
+        Produce MARC UTF8 output.
 
     --to-breaker
-        Conver to Breaker text
+        Produce Breaker output.
+
+    --format-xml
+        Format XML output with 2-space indent.
 
 "#;
 
@@ -30,10 +42,17 @@ fn main() {
     let mut opts = getopts::Options::new();
 
     opts.optflag("", "to-xml", "");
-    opts.optflag("", "to-bin", "");
+    opts.optflag("", "to-marc", "");
     opts.optflag("", "to-breaker", "");
+    opts.optflag("", "format-xml", "");
+    opts.optflag("h", "help", "");
 
     let params = opts.parse(&args[1..]).expect("Options should parse");
+
+    if params.opt_present("help") {
+        println!("{HELP_TEXT}");
+        return;
+    }
 
     let Some(filename) = params.free.first() else {
         eprintln!("Input file required");
@@ -41,23 +60,24 @@ fn main() {
     };
 
     let to_xml = params.opt_present("to-xml");
-    let to_bin = params.opt_present("to-bin");
+    let to_marc = params.opt_present("to-marc");
     let to_breaker = params.opt_present("to-breaker");
+    let format_xml = params.opt_present("format-xml");
 
     let xml_ops = marc::xml::XmlOptions {
-        formatted: false, // TODO
+        formatted: format_xml,
         with_xml_declaration: false,
     };
 
     // Prints one record using the requested output.
     let printer = move |r: &Record| {
-        if to_bin {
+        if to_marc {
             let bytes = &r.to_binary().expect("Binary generation failed");
             std::io::stdout().write_all(&bytes).expect("Cannot write bytes");
         } else if to_xml {
             print!("{}", r.to_xml_ops(&xml_ops).expect("XML generation failed"));
         } else if to_breaker {
-            print!("{}", r.to_breaker());
+            println!("{}", r.to_breaker());
         };
     };
 
@@ -72,15 +92,17 @@ fn main() {
         return;
     };
 
+    // XML output has to be wrapped.
+    if to_xml {
+        println!(r#"<?xml version="1.0"?>"#);
+        print!(r#"<collection xmlns="{MARCXML_NAMESPACE}">"#);
+    }
+
     match first_byte {
         b'<' => {
-            // TODO bake some of this into marc::xml?
-            print!(r#"<?xml version="1.0"?>"#);
-            print!(r#"<collection xmlns="{MARCXML_NAMESPACE}">"#);
             for rec in Record::from_xml_file(filename).expect("XML file read filed") {
                 printer(&rec.expect("XML record read failed"));
             }
-            print!("</collection>");
         }
 
         b'=' => printer(&Record::from_breaker_file(filename).expect("Breaker parsing failed")),
@@ -95,4 +117,8 @@ fn main() {
             eprintln!("Unable to determine file type");
         }
     };
+
+    if to_xml {
+        print!("\n</collection>");
+    }
 }
