@@ -1,7 +1,29 @@
 use marc::Record;
+use marc::MARCXML_NAMESPACE;
 use std::env;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::Read;
+use std::io::Write;
+
+const HELP_TEXT: &str = r#"
+Converts MARC records between MARC21, MARC XML, and MARC Breaker.
+
+Synopsis:
+
+    marc-converter --to-xml /path/to/marc-file.mrc
+
+Options
+
+    --to-xml
+        Conver to XML
+
+    --to-marc
+        Conver to MARC binary
+
+    --to-breaker
+        Conver to Breaker text
+
+"#;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -22,18 +44,11 @@ fn main() {
     let to_bin = params.opt_present("to-bin");
     let to_breaker = params.opt_present("to-breaker");
 
-    // TODO --to-file option.
-
     // Prints one record using the requested output.
     let printer = move |r: &Record| {
         if to_bin {
-            print!(
-                "{}",
-                // Convert the raw bytes to a UTF8 string so the terminal
-                // can make sense of it.
-                std::str::from_utf8(&r.to_binary().expect("Binary generation failed"))
-                    .expect("UTF8 conversion failed")
-            );
+            let bytes = &r.to_binary().expect("Binary generation failed");
+            std::io::stdout().write_all(&bytes).expect("Cannot write bytes");
         } else if to_xml {
             print!("{}", r.to_xml().expect("XML generation failed"));
         } else if to_breaker {
@@ -41,32 +56,30 @@ fn main() {
         };
     };
 
-    // Find the first character of the file so we can determine its
-    // type automagically.
-    let mut first_char = '\0';
+    // Get the first character of the file so we can determine its type.
+    let mut buf: [u8; 1] = [0];
+    let mut file = File::open(filename).expect("Cannot open file");
 
-    let reader = BufReader::new(File::open(filename).expect("open failed"));
+    let first_byte = if file.read(&mut buf).expect("Cannot read file") > 0 {
+        buf[0]
+    } else {
+        eprintln!("File is empty");
+        return;
+    };
 
-    // Find the first non-whitespace character.
-    for line in reader.lines() {
-        for ch in line.expect("lines() failed").chars() {
-            if ch != ' ' {
-                first_char = ch;
-                break;
-            }
-        }
-    }
-
-    match first_char {
-        '<' => {
+    match first_byte {
+        b'<' => {
+            print!(r#"<<collection xmlns="{MARCXML_NAMESPACE}">"#);
             for rec in Record::from_xml_file(filename).expect("XML file read filed") {
                 printer(&rec.expect("XML record read failed"));
             }
+            print!("</collection>");
         }
-        '=' => printer(&Record::from_breaker_file(filename).expect("Breaker parsing failed")),
+
+        b'=' => printer(&Record::from_breaker_file(filename).expect("Breaker parsing failed")),
 
         // Binary MARC begins with the record length, i.e. number characters
-        '0'..='9' => {
+        b'0'..=b'9' => {
             for rec in Record::from_binary_file(filename).expect("Binary parsing failed") {
                 printer(&rec.expect("Binary record read failed"));
             }
