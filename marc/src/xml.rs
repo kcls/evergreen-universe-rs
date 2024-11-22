@@ -9,9 +9,9 @@ use super::Field;
 use super::Record;
 use super::Subfield;
 
-const MARCXML_NAMESPACE: &str = "http://www.loc.gov/MARC21/slim";
-const MARCXML_XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance";
-const MARCXML_SCHEMA_LOCATION: &str =
+pub const MARCXML_NAMESPACE: &str = "http://www.loc.gov/MARC21/slim";
+pub const MARCXML_XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance";
+pub const MARCXML_SCHEMA_LOCATION: &str =
     "http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd";
 
 /// Replace non-ASCII characters and special characters with escaped
