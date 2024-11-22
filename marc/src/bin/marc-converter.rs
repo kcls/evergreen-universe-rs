@@ -44,13 +44,18 @@ fn main() {
     let to_bin = params.opt_present("to-bin");
     let to_breaker = params.opt_present("to-breaker");
 
+    let xml_ops = marc::xml::XmlOptions {
+        formatted: false, // TODO
+        with_xml_declaration: false,
+    };
+
     // Prints one record using the requested output.
     let printer = move |r: &Record| {
         if to_bin {
             let bytes = &r.to_binary().expect("Binary generation failed");
             std::io::stdout().write_all(&bytes).expect("Cannot write bytes");
         } else if to_xml {
-            print!("{}", r.to_xml().expect("XML generation failed"));
+            print!("{}", r.to_xml_ops(&xml_ops).expect("XML generation failed"));
         } else if to_breaker {
             print!("{}", r.to_breaker());
         };
@@ -69,7 +74,9 @@ fn main() {
 
     match first_byte {
         b'<' => {
-            print!(r#"<<collection xmlns="{MARCXML_NAMESPACE}">"#);
+            // TODO bake some of this into marc::xml?
+            print!(r#"<?xml version="1.0"?>"#);
+            print!(r#"<collection xmlns="{MARCXML_NAMESPACE}">"#);
             for rec in Record::from_xml_file(filename).expect("XML file read filed") {
                 printer(&rec.expect("XML record read failed"));
             }
