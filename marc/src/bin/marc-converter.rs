@@ -6,7 +6,7 @@ use std::io::Read;
 use std::io::Write;
 
 const HELP_TEXT: &str = r#"
-Converts MARC records between UTF8 MARC21, MARC XML, and MARC Breaker.
+Converts MARC records between MARC21 UTF-8, MARC XML, and MARC Breaker.
 
 Usage:
 
@@ -14,8 +14,8 @@ Usage:
 
 Synopsis:
 
-Translates a MARC binary, xml, or breaker file into either MARC, XML
-or breaker.  The resulting content is dumped to STDOUT.
+Converts a MARC, XML, or Breaker file to MARC, XML, or Breaker output on
+STDOUT.  The type of the input file is determined automatically.
 
 Binary and XML files may contain multiple records.
 
