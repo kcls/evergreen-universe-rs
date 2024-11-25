@@ -47,17 +47,18 @@ fn main() {
     opts.optflag("", "format-xml", "");
     opts.optflag("h", "help", "");
 
-    let params = opts.parse(&args[1..]).expect("Options should parse");
+    let params = match opts.parse(&args[1..]) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Cannot parse command line options: {e}");
+            return;
+        }
+    };
 
     if params.opt_present("help") {
         println!("{HELP_TEXT}");
         return;
     }
-
-    let Some(filename) = params.free.first() else {
-        eprintln!("Input file required");
-        return;
-    };
 
     let to_xml = params.opt_present("to-xml");
     let to_marc = params.opt_present("to-marc");
@@ -66,6 +67,7 @@ fn main() {
 
     let xml_ops = marc::xml::XmlOptions {
         formatted: format_xml,
+        // We'll add our own XML declaration.
         with_xml_declaration: false,
     };
 
@@ -73,12 +75,19 @@ fn main() {
     let printer = move |r: &Record| {
         if to_marc {
             let bytes = &r.to_binary().expect("Binary generation failed");
-            std::io::stdout().write_all(&bytes).expect("Cannot write bytes");
+            std::io::stdout()
+                .write_all(bytes)
+                .expect("Cannot write bytes");
         } else if to_xml {
-            print!("{}", r.to_xml_ops(&xml_ops).expect("XML generation failed"));
+            print!("{}", r.to_xml_ops(&xml_ops));
         } else if to_breaker {
             println!("{}", r.to_breaker());
         };
+    };
+
+    let Some(filename) = params.free.first() else {
+        eprintln!("Input file required");
+        return;
     };
 
     // Get the first character of the file so we can determine its type.
@@ -92,7 +101,8 @@ fn main() {
         return;
     };
 
-    // XML output has to be wrapped.
+    // Wrap XML in a <collection/> so that we produce a single valid
+    // document when outputting multiple records.
     if to_xml {
         println!(r#"<?xml version="1.0"?>"#);
         print!(r#"<collection xmlns="{MARCXML_NAMESPACE}">"#);
@@ -107,7 +117,7 @@ fn main() {
 
         b'=' => printer(&Record::from_breaker_file(filename).expect("Breaker parsing failed")),
 
-        // Binary MARC begins with the record length, i.e. number characters
+        // Binary MARC begins with the record length, i.e. numbers
         b'0'..=b'9' => {
             for rec in Record::from_binary_file(filename).expect("Binary parsing failed") {
                 printer(&rec.expect("Binary record read failed"));
@@ -119,6 +129,6 @@ fn main() {
     };
 
     if to_xml {
-        print!("\n</collection>");
+        println!("\n</collection>");
     }
 }
