@@ -540,15 +540,7 @@ fn export(scripter: &mut script::Runner, ops: &mut ExportOptions) -> Result<(), 
                     with_xml_declaration: false,
                 };
 
-                let xml = match record.to_xml_ops(&options) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("Error creating XML from record: record={record_id} {e}");
-                        continue;
-                    }
-                };
-
-                write(&mut writer, xml.as_bytes())?;
+                write(&mut writer, record.to_xml_ops(&options).as_bytes())?;
             } else {
                 let binary = match record.to_binary() {
                     Ok(b) => b,

@@ -423,18 +423,13 @@ impl BibLinker {
         orig_record: &marc::Record,
         record: &marc::Record,
     ) -> EgResult<()> {
-        let ops = marc::xml::XmlOptions {
-            formatted: false,
-            with_xml_declaration: false,
-        };
-
         // We compare locally re-generated XML instead of comparing
         // to bre["marc"], because bre["marc"] is always generated
         // by the EG Perl code, which has minor spacing/sorting
         // differences in the generated XML.
-        let orig_xml = orig_record.to_xml_ops(&ops)?;
+        let orig_xml = orig_record.to_xml();
 
-        let xml = record.to_xml_ops(&ops)?;
+        let xml = record.to_xml();
 
         let bre_id = bre["id"].int()?;
 
