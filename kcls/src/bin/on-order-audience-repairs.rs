@@ -4,11 +4,6 @@ use evergreen as eg;
 use getopts::Options;
 use marc::Record;
 
-const XML_EXPORT_OPTIONS: marc::xml::XmlOptions = marc::xml::XmlOptions {
-    formatted: false,
-    with_xml_declaration: false,
-};
-
 /// actor.usr ID
 const RECORD_EDITOR: i32 = 1;
 
@@ -218,13 +213,7 @@ fn process_one_record(
 
     cf008.set_content(content);
 
-    let new_xml = match record.to_xml_ops(&XML_EXPORT_OPTIONS) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Could not generate XML for {id}: {e}");
-            return;
-        }
-    };
+    let new_xml = record.to_xml();
 
     if ops.opt_present("print-result") {
         println!("{new_xml}");
