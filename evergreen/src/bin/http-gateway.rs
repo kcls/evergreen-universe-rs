@@ -89,6 +89,9 @@ impl GatewayHandler {
                 Ok(hreq) => {
                     http_req = Some(hreq);
 
+                    // Every new request gets its own log trace.
+                    Logger::mk_log_trace();
+
                     // Log the call before we relay it to OpenSRF in case the
                     // request exits early on a failure.
                     self.log_request(request, http_req.as_ref().unwrap());
@@ -538,9 +541,6 @@ impl mptc::RequestStream for GatewayStream {
                 _ => return Err(format!("accept() failed: {e}")),
             },
         };
-
-        // Every new request gets its own log trace.
-        Logger::mk_log_trace();
 
         let request = GatewayRequest {
             stream,
