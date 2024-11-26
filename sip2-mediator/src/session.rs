@@ -86,8 +86,7 @@ impl Session {
         Ok(ses)
     }
 
-    /// /// Go into the main listen loop.
-    /// Go into the main listen loop
+    /// Main listen loop
     pub fn start(&mut self) -> EgResult<()> {
         log::debug!("{self} starting");
 
@@ -162,8 +161,14 @@ impl Session {
         // Might already be disconnected
         self.sip_connection.disconnect().ok();
 
-        // Tell the Evergreen server our session is done.
-        self.send_end_session()
+        // Tell the Evergreen server our session is done, but don't
+        // bother unless the client successfully logged in.  Otherwise,
+        // we get no-session warnings because there's nothing to clean up.
+        if self.sip_user.is_some() {
+            self.send_end_session()
+        } else {
+            Ok(())
+        }
     }
 
     /// Returns true if the login should continue.
