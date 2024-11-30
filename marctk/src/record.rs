@@ -31,11 +31,11 @@ impl Controlfield {
     /// # Examples
     ///
     /// ```
-    /// let control_field = marc::Controlfield::new("008", "12345").unwrap();
+    /// let control_field = marctk::Controlfield::new("008", "12345").unwrap();
     /// assert_eq!(control_field.tag(), "008");
     /// ```
     /// ```
-    /// let control_field = marc::Controlfield::new("010", "12345");
+    /// let control_field = marctk::Controlfield::new("010", "12345");
     ///
     /// assert_eq!(control_field.is_err(), true);
     /// assert_eq!(control_field.unwrap_err(), "Invalid Controlfield tag: 010");
@@ -59,7 +59,7 @@ impl Controlfield {
     /// # Examples
     ///
     /// ```
-    /// use marc::Controlfield;
+    /// use marctk::Controlfield;
     ///
     /// let control_field = Controlfield::new("008", "12345").unwrap();
     /// assert_eq!(control_field.tag(), "008");
@@ -73,7 +73,7 @@ impl Controlfield {
     /// # Examples
     ///
     /// ```
-    /// use marc::Controlfield;
+    /// use marctk::Controlfield;
     ///
     /// let control_field = Controlfield::new("008", "12345").unwrap();
     /// assert_eq!(control_field.content(), "12345");
@@ -87,7 +87,7 @@ impl Controlfield {
     /// # Examples
     ///
     /// ```
-    /// use marc::Controlfield;
+    /// use marctk::Controlfield;
     ///
     /// let mut control_field = Controlfield::new("008", "12345").unwrap();
     /// control_field.set_content("6789");
@@ -113,7 +113,7 @@ impl Subfield {
     /// # Examples
     ///
     /// ```
-    /// use marc::Subfield;
+    /// use marctk::Subfield;
     /// let subfield: Subfield = match Subfield::new("a", "Στη σκιά της πεταλούδας") {
     ///   Ok(sf) => sf,
     ///   Err(e) => panic!("Subfield::new() failed with: {}", e),
@@ -122,7 +122,7 @@ impl Subfield {
     /// ```
     ///
     /// ```should_panic
-    /// use marc::Subfield;
+    /// use marctk::Subfield;
     /// Subfield::new("🦋", "Στη σκιά της πεταλούδας").unwrap();
     /// ```
     ///
@@ -143,7 +143,7 @@ impl Subfield {
     /// # Examples
     ///
     /// ```
-    /// use marc::Subfield;
+    /// use marctk::Subfield;
     /// let mut subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// subfield.set_content("cheese");
     /// assert_eq!(subfield.content(), "cheese");
@@ -157,7 +157,7 @@ impl Subfield {
     /// # Examples
     ///
     /// ```
-    /// use marc::Subfield;
+    /// use marctk::Subfield;
     /// let subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// assert_eq!(subfield.code(), "a");
     /// ```
@@ -170,14 +170,14 @@ impl Subfield {
     /// # Examples
     ///
     /// ```
-    /// use marc::Subfield;
+    /// use marctk::Subfield;
     /// let mut subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// subfield.set_code("q");
     /// assert_eq!(subfield.code(), "q");
     /// ```
     ///
     /// ```should_panic
-    /// use marc::Subfield;
+    /// use marctk::Subfield;
     /// let mut subfield: Subfield = Subfield::new("a", "potato").unwrap();
     /// subfield.set_code("🥔").unwrap();
     /// ```
@@ -207,7 +207,7 @@ impl Field {
     /// # Examples
     ///
     /// ```
-    /// use marc::record::Field;
+    /// use marctk::record::Field;
     ///
     /// let field: Field = match Field::new("245") {
     ///   Ok(f) => f,
@@ -327,7 +327,7 @@ impl Field {
     /// # Examples
     ///
     /// ```
-    /// use marc::record::Field;
+    /// use marctk::record::Field;
     /// let mut field = Field::new("505").unwrap();
     /// let _ = field.add_subfield("t", "Chapter 1 /");
     /// let _ = field.add_subfield("r", "Cool author --");
@@ -387,7 +387,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marc::record::Record;
+    /// use marctk::record::Record;
     /// let mut record = Record::default();
     /// assert!(record.set_leader("too short").is_err());
     /// assert!(record.set_leader("just right              ").is_ok());
@@ -407,7 +407,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marc::record::Record;
+    /// use marctk::record::Record;
     /// let mut record = Record::default();
     /// assert!(record.set_leader_bytes("too short".as_bytes()).is_err());
     /// assert!(record.set_leader_bytes("just right              ".as_bytes()).is_ok());
@@ -463,7 +463,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marc::record::Record;
+    /// use marctk::record::Record;
     /// let mut record = Record::default();
     /// assert!(record.add_control_field("011", "foo").is_err());
     /// assert!(record.add_control_field("002", "bar").is_ok());
@@ -511,7 +511,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marc::record::Record;
+    /// use marctk::record::Record;
     /// let mut record = Record::default();
     /// assert!(record.add_data_field("245").is_ok());
     /// assert!(record.add_data_field("240").is_ok());
@@ -529,7 +529,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marc::record::Record;
+    /// use marctk::record::Record;
     /// let mut record = Record::default();
     /// let field = record.add_data_field("650").expect("added field");
     /// field.add_subfield("a", "foo");
@@ -554,26 +554,50 @@ impl Record {
     }
 
     /// Remove all occurrences of control fields with the provided tag.
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::record::Record;
+    /// let mut record = Record::default();
+    /// let _ = record.add_control_field("008", "stuffandsuch").unwrap();
+    /// let _ = record.add_control_field("008", "morestuffandsuch").unwrap();
+    ///
+    /// assert_eq!(record.get_control_fields("008").len(), 2);
+    ///
+    /// record.remove_control_fields("007");
+    /// assert_eq!(record.get_control_fields("008").len(), 2);
+    ///
+    /// record.remove_control_fields("008");
+    /// assert!(record.get_fields("008").is_empty());
+    /// ```
     pub fn remove_control_fields(&mut self, tag: &str) {
-        loop {
-            if let Some(pos) = self.control_fields.iter().position(|f| f.tag() == tag) {
-                self.control_fields.remove(pos);
-            } else {
-                // No more fields to remove.
-                return;
-            }
+        while let Some(pos) = self.control_fields.iter().position(|f| f.tag() == tag) {
+            self.control_fields.remove(pos);
         }
     }
 
     /// Remove all occurrences of fields with the provided tag.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::record::Record;
+    /// let mut record = Record::default();
+    /// let field = record.add_data_field("650").unwrap();
+    /// field.add_subfield("a", "Art");
+    /// field.add_subfield("a", "Science");
+    ///
+    /// assert_eq!(record.get_fields("650").len(), 1);
+    ///
+    /// record.remove_fields("200");
+    /// assert_eq!(record.get_fields("650").len(), 1);
+    ///
+    /// record.remove_fields("650");
+    /// assert!(record.get_fields("650").is_empty());
+    /// ```
     pub fn remove_fields(&mut self, tag: &str) {
-        loop {
-            if let Some(pos) = self.fields.iter().position(|f| f.tag() == tag) {
-                self.fields.remove(pos);
-            } else {
-                // No more fields to remove.
-                return;
-            }
+        while let Some(pos) = self.fields.iter().position(|f| f.tag() == tag) {
+            self.fields.remove(pos);
         }
     }
 }

@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
-marc = { path = "../marc" }
+marctk = { path = "../marctk" }
 evergreen = { path = "../evergreen" }
 json = "0.12"
 log = "0.4"

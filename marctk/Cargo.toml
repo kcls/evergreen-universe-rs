@@ -1,0 +1,20 @@
+[package]
+name = "marctk"
+version = "0.2.0"
+edition = "2021"
+authors = ["Bill Erickson <berickxx@gmail.com>"]
+license-file = "../LICENSE"
+description = "MARC21 Toolkit"
+readme = "README.md"
+keywords = ["marc", "marc21", "marcxml", "library"]
+categories = ["parser-implementations", "value-formatting", "command-line-utilities"]
+repository = "https://github.com/kcls/evergreen-universe-rs"
+
+[dependencies]
+xml-rs = "0.8.23"
+getopts = "0.2.21"
+
+[[bin]]
+name = "marc-converter"
+path = "src/bin/marc-converter.rs"
+

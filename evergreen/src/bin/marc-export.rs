@@ -2,6 +2,7 @@ use eg::date;
 use eg::script;
 use evergreen as eg;
 use marc::Record;
+use marctk as marc;
 use postgres_cursor::Cursor;
 use rust_decimal::Decimal;
 use std::collections::HashSet;
