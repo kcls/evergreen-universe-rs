@@ -9,6 +9,8 @@
 ```rs
 use marc::Record;
 
+// Parse a binary MARC file, modify each record, and print the results.
+
 fn main() {
     let mut args = std::env::args();
     args.next(); // name of executable
