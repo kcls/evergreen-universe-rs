@@ -1,12 +1,3 @@
-# Rust MARC XML / Breaker / Binary Library
-
-## API Docs (Github)
-
-[https://kcls.github.io/evergreen-universe-rs/marc/index.html](https://kcls.github.io/evergreen-universe-rs/marc/index.html)
-
-## Synopsis
-
-```rs
 use marc::Record;
 
 fn main() {
@@ -45,27 +36,4 @@ fn main() {
         // println!("{}", record.to_xml());
     }
 }
-```
 
-## About
-
-MARC Library for translating to/from MARC XML, MARC Breaker, and Binary MARC.
-
-### Strings vs. Bytes?
-
-For ease of use, the public API primarily traffics in Strings instead of Bytes.
-Byte counts are enforced where needed, but otherwise the user can simply use
-strings, without concern for bytes and UTF-8 conversions.
-
-## Data Requirements
-
-1. Data must be UTF-8 compatible.
-1. Indicators and subfield codes must have a byte length of 1.
-1. Tags must have a byte length of 3.
-1. Leaders must have a byte length of 24.
-1. Binary leader/directory metadata must be sane/usable.
-
-In cases where these conditions are not met, routines exit early with
-explanatory Err()'s.
-
-Otherwise, no restrictions are placed on the data values.
