@@ -12,12 +12,9 @@ fn main() {
     for record in Record::from_binary_file(&file_name).expect("File should be readable") {
         let mut record = record.expect("Record should be parseable");
 
-        if let Some(title) = record.get_values("245", "a").first() {
-            println!("Maintitle => {title}");
-        }
-
         if let Some(field) = record.get_fields_mut("245").first_mut() {
             if let Some(sf) = field.get_subfields_mut("a").first_mut() {
+                println!("Maintitle => {}", sf.content());
                 sf.set_content("I Prefer This Title");
             }
         }
@@ -36,4 +33,3 @@ fn main() {
         // println!("{}", record.to_xml());
     }
 }
-

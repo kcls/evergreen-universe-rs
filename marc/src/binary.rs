@@ -28,8 +28,8 @@ impl Iterator for BinaryRecordIterator {
         let mut bytes: Vec<u8> = Vec::new();
 
         loop {
-            // Read bytes from the file until we hit an END_OF_RECORD byte.
-            // Pass the read bytes to the Record binary data parser.
+            // Read the file one byte at a time until we encounter an
+            // END_OF_RECORD byte.  Pass the bytes to the Record binary parser.
 
             let mut buf: [u8; 1] = [0];
             match self.file.read(&mut buf) {

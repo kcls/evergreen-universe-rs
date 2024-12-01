@@ -554,26 +554,50 @@ impl Record {
     }
 
     /// Remove all occurrences of control fields with the provided tag.
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Record;
+    /// let mut record = Record::default();
+    /// let _ = record.add_control_field("008", "stuffandsuch").unwrap();
+    /// let _ = record.add_control_field("008", "morestuffandsuch").unwrap();
+    ///
+    /// assert_eq!(record.get_control_fields("008").len(), 2);
+    ///
+    /// record.remove_control_fields("007");
+    /// assert_eq!(record.get_control_fields("008").len(), 2);
+    ///
+    /// record.remove_control_fields("008");
+    /// assert!(record.get_fields("008").is_empty());
+    /// ```
     pub fn remove_control_fields(&mut self, tag: &str) {
-        loop {
-            if let Some(pos) = self.control_fields.iter().position(|f| f.tag() == tag) {
-                self.control_fields.remove(pos);
-            } else {
-                // No more fields to remove.
-                return;
-            }
+        while let Some(pos) = self.control_fields.iter().position(|f| f.tag() == tag) {
+            self.control_fields.remove(pos);
         }
     }
 
     /// Remove all occurrences of fields with the provided tag.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marc::record::Record;
+    /// let mut record = Record::default();
+    /// let field = record.add_data_field("650").unwrap();
+    /// field.add_subfield("a", "Art");
+    /// field.add_subfield("a", "Science");
+    ///
+    /// assert_eq!(record.get_fields("650").len(), 1);
+    ///
+    /// record.remove_fields("200");
+    /// assert_eq!(record.get_fields("650").len(), 1);
+    ///
+    /// record.remove_fields("650");
+    /// assert!(record.get_fields("650").is_empty());
+    /// ```
     pub fn remove_fields(&mut self, tag: &str) {
-        loop {
-            if let Some(pos) = self.fields.iter().position(|f| f.tag() == tag) {
-                self.fields.remove(pos);
-            } else {
-                // No more fields to remove.
-                return;
-            }
+        while let Some(pos) = self.fields.iter().position(|f| f.tag() == tag) {
+            self.fields.remove(pos);
         }
     }
 }
