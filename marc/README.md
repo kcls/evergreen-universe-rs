@@ -38,9 +38,9 @@ MARC Library for translating to/from MARC XML, MARC Breaker, and Binary MARC.
 
 ### Strings vs. Bytes?
 
-For ease of use, the public API primarily traffics in Strings instead of Bytes.
-Byte counts are enforced where needed, but otherwise the user can simply use
-strings, without concern for bytes and UTF-8 conversions.
+For ease of use, the public API primarily traffics in Strings.  Byte
+counts are enforced where needed, but otherwise the user can simply use
+strings without concern for bytes and UTF-8 conversions.
 
 ## Data Requirements
 
