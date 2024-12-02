@@ -1,10 +1,8 @@
-# Rust MARC XML / Breaker / Binary Library
+# Rust MARC XML / Breaker / Binary Toolkit
 
-## API Docs (Github)
+Tools for parsing and generating MARC21 binary, XML, and breaker text.
 
-[https://kcls.github.io/evergreen-universe-rs/marc/index.html](https://kcls.github.io/evergreen-universe-rs/marc/index.html)
-
-## Synopsis
+## Example
 
 ```rs
 use marctk::Record;
@@ -26,23 +24,17 @@ for record in Record::from_binary_file(&file_name).expect("File should be readab
     f.add_subfield("a", "Hobbitz").unwrap();
     f.add_subfield("b", "So Many Wizards").unwrap();
 
-    println!("{}", record.to_breaker());
-    // println!("{:?}", record.to_binary());
-    // println!("{}", record.to_xml());
+    println!("{}", record.to_xml());
 }
 ```
 
-## About
+### Strings & Bytes
 
-MARC Library for translating to/from MARC XML, MARC Breaker, and Binary MARC.
-
-### Strings vs. Bytes?
-
-For ease of use, the public API primarily traffics in Strings.  Byte
+For ease of use, the API primarily traffics in &str/String's.  Byte
 counts are enforced where needed, but otherwise the user can generally 
-use strings without concern for bytes and UTF-8 conversions.
+use Rust strings without concern for bytes and UTF-8 conversions.
 
-## Data Requirements
+## Requirements
 
 1. Data must be UTF-8 compatible.
 1. Indicators and subfield codes must have a byte length of 1.
