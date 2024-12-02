@@ -7,7 +7,7 @@
 ## Synopsis
 
 ```rs
-use marc::Record;
+use marctk::Record;
 
 // Read a file of MARC records, modify, and print them.
 

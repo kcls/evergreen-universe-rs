@@ -1,5 +1,6 @@
 use marc::Record;
 use marc::MARCXML_NAMESPACE;
+use marctk as marc;
 use std::env;
 use std::fs::File;
 use std::io::Read;

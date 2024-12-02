@@ -4,7 +4,7 @@ use eg::idl;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
-use marc;
+use marctk as marc;
 use std::collections::HashMap;
 
 // Bib record display attributes are used widely. May as well flesh them

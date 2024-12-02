@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
   "mptc",
-  "marc",
+  "marctk",
   "evergreen",
   "sip2",
   "sip2-mediator",
@@ -10,7 +10,7 @@ members = [
 ]
 default-members = [
   "mptc",
-  "marc",
+  "marctk",
   "sip2",
   "evergreen",
 ]

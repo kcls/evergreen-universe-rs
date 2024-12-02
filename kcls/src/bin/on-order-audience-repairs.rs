@@ -2,7 +2,7 @@
 use eg::db::DatabaseConnection;
 use evergreen as eg;
 use getopts::Options;
-use marc::Record;
+use marctk::Record;
 
 /// actor.usr ID
 const RECORD_EDITOR: i32 = 1;

@@ -287,7 +287,7 @@ impl Record {
     ///
     /// # Examples
     /// ```
-    /// use marc::Record;
+    /// use marctk::Record;
     /// let mut my_record = Record::new();
     /// my_record
     ///     .add_data_field("245")

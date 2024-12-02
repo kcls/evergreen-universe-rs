@@ -9,6 +9,7 @@ use eg::script;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
+use marctk as marc;
 use std::collections::HashMap;
 
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";

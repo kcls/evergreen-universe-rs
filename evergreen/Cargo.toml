@@ -14,7 +14,7 @@ redis = "0.22.1"
 gethostname = "0.4"
 signal-hook = "0.3"
 mptc = { path = "../mptc" }
-marc = { path = "../marc" }
+marctk = { path = "../marctk" }
 chrono = "0.4"
 chrono-tz = "0.8"
 yaml-rust = "0.4"

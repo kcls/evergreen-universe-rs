@@ -20,7 +20,7 @@ pub const MARCXML_SCHEMA_LOCATION: &str =
 /// * is_attr - If true, also escape single and double quotes.
 ///
 /// ```
-/// use marc::xml;
+/// use marctk::xml;
 /// assert_eq!(xml::escape_xml("<'É'>", false).as_str(), "&lt;'&#xC9;'&gt;");
 /// assert_eq!(xml::escape_xml("<'É'>", true).as_str(), "&lt;&apos;&#xC9;&apos;&gt;");
 /// ```
