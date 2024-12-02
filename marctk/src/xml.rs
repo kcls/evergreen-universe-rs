@@ -1,3 +1,4 @@
+//! Routines for reading and writing MARC XML
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -57,8 +58,11 @@ fn format(formatted: bool, value: &mut String, depth: u8) {
     }
 }
 
+/// Options for controling the format of XML output
 pub struct XmlOptions {
+    /// Format generated with 2-space indent.
     pub formatted: bool,
+    /// Include an XML declaration in the generated XML.
     pub with_xml_declaration: bool,
 }
 
@@ -94,7 +98,8 @@ impl Iterator for XmlRecordIterator {
 }
 
 impl XmlRecordIterator {
-    pub fn from_file(filename: &str) -> Result<Self, String> {
+    /// Create a new iterator from a MARC XML file
+    fn from_file(filename: &str) -> Result<Self, String> {
         match File::open(filename) {
             Ok(file) => Ok(XmlRecordIterator::FileReader(EventReader::new(
                 BufReader::new(file),
@@ -103,7 +108,8 @@ impl XmlRecordIterator {
         }
     }
 
-    pub fn from_string(xml: &str) -> Self {
+    /// Create a new iterator from a MARC string
+    fn from_string(xml: &str) -> Self {
         XmlRecordIterator::ByteReader(EventReader::new(Cursor::new(xml.as_bytes().to_vec())))
     }
 

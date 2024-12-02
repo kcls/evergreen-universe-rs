@@ -161,7 +161,7 @@ fn binary() {
 
     let record = Record::from_binary(src_bytes).unwrap();
 
-    let author = record.get_values("100", "a").pop().unwrap();
+    let author = record.get_field_values("100", "a").pop().unwrap();
 
     assert_eq!(author, "Handel, George Frideric, 1685-1759.");
 
@@ -185,7 +185,7 @@ fn set_values() {
 
     sf.set_content(v);
 
-    let w = record.get_values("028", "a")[0];
+    let w = record.get_field_values("028", "a")[0];
     assert_eq!(v, w);
 
     let breaker2 = record.to_breaker();

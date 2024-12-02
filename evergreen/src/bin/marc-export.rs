@@ -631,7 +631,7 @@ fn add_items(
         }
 
         if ops.force_ordered_holdings_fields {
-            record.insert_field(field);
+            record.insert_data_field(field);
         } else {
             record.fields_mut().push(field);
         }
@@ -663,7 +663,7 @@ fn report_on_file(
         };
 
         counter += 1;
-        if let Some(id) = record.get_values("901", "c").first() {
+        if let Some(id) = record.get_field_values("901", "c").first() {
             if let Ok(num) = id.parse::<i64>() {
                 ids.insert(num);
             }

@@ -1,3 +1,4 @@
+//! Routines for reading and writing binary MARC data.
 use super::Controlfield;
 use super::Field;
 use super::Record;
@@ -61,7 +62,7 @@ impl Iterator for BinaryRecordIterator {
 }
 
 impl BinaryRecordIterator {
-    pub fn new(filename: &str) -> Result<Self, String> {
+    fn new(filename: &str) -> Result<Self, String> {
         let file = match File::open(filename) {
             Ok(f) => f,
             Err(e) => return Err(format!("Cannot read MARC file: {filename} {e}")),
@@ -101,7 +102,7 @@ impl DirectoryEntry {
     ///     we care about start.
     /// * `dir_bytes` - Bytes of this directory entry.
     ///
-    /// #REFERENCES
+    /// # References
     ///
     /// * <https://www.loc.gov/marc/bibliographic/bddirectory.html>
     pub fn new(which: usize, data_start_idx: usize, dir_bytes: &[u8]) -> Result<Self, String> {
@@ -222,7 +223,7 @@ impl Record {
     /// Unpack a single control field / data field and append to the
     /// record in progress.
     ///
-    /// #REFERENCES
+    /// # References
     ///
     /// * <https://www.loc.gov/marc/bibliographic/bddirectory.html>
     fn process_directory_entry(
@@ -323,7 +324,7 @@ impl Record {
 
     /// Compile the directory entries for the control fields and data fields.
     ///
-    /// #REFERENCES
+    /// # References
     ///
     /// * <https://www.loc.gov/marc/bibliographic/bddirectory.html>
     fn build_directory(&self, bytes: &mut Vec<u8>) -> usize {

@@ -1,4 +1,4 @@
-//! Models a MARC record with associated components.
+//! Base MARC record model and associated components.
 const TAG_SIZE: usize = 3;
 const LEADER_SIZE: usize = 24;
 const CODE_SIZE: usize = 1;
@@ -284,10 +284,13 @@ impl Field {
         self.subfields.iter().filter(|f| f.code() == code).collect()
     }
 
+    /// Get the first occurrence of the subfield with the provided code,
+    /// if one is present.
     pub fn first_subfield(&self, code: &str) -> Option<&Subfield> {
         self.subfields.iter().find(|f| f.code() == code)
     }
 
+    /// True if a subfield with the provided code is present.
     pub fn has_subfield(&self, code: &str) -> bool {
         self.subfields.iter().any(|f| f.code() == code)
     }
@@ -350,6 +353,7 @@ impl Field {
     }
 }
 
+/// A MARC record with leader, control fields, and data fields.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Record {
     leader: String,
@@ -357,7 +361,6 @@ pub struct Record {
     fields: Vec<Field>,
 }
 
-/// A MARC record with leader, control fields, and data fields.
 impl Default for Record {
     fn default() -> Self {
         Self::new()
@@ -473,35 +476,31 @@ impl Record {
     /// assert_eq!(record.control_fields()[0].tag(), "001");
     /// ```
     pub fn add_control_field(&mut self, tag: &str, content: &str) -> Result<(), String> {
-        if tag >= "010" || tag <= "000" {
-            return Err(format!("Invalid control field tag: '{tag}'"));
-        }
         self.insert_control_field(Controlfield::new(tag, content)?);
         Ok(())
     }
 
+    /// Insert a [`Controlfield`] in tag order.
     pub fn insert_control_field(&mut self, field: Controlfield) {
-        match self
+        if let Some(idx) = self
             .control_fields()
             .iter()
             .position(|f| f.tag() > field.tag())
         {
-            Some(idx) => self.control_fields_mut().insert(idx, field),
-            None => self.control_fields_mut().push(field),
+            self.control_fields_mut().insert(idx, field);
+        } else {
+            self.control_fields_mut().push(field);
         }
     }
 
-    /// Insert a data field in tag order
-    pub fn insert_field(&mut self, field: Field) -> usize {
-        match self.fields().iter().position(|f| f.tag() > field.tag()) {
-            Some(idx) => {
-                self.fields_mut().insert(idx, field);
-                idx
-            }
-            None => {
-                self.fields_mut().push(field);
-                0
-            }
+    /// Insert a [`Field`] in tag order
+    pub fn insert_data_field(&mut self, field: Field) -> usize {
+        if let Some(idx) = self.fields().iter().position(|f| f.tag() > field.tag()) {
+            self.fields_mut().insert(idx, field);
+            idx
+        } else {
+            self.fields_mut().push(field);
+            0
         }
     }
 
@@ -520,7 +519,7 @@ impl Record {
     /// assert_eq!(record.fields()[0].tag(), "240");
     /// ```
     pub fn add_data_field(&mut self, tag: impl Into<String>) -> Result<&mut Field, String> {
-        let pos = self.insert_field(Field::new(tag)?);
+        let pos = self.insert_data_field(Field::new(tag)?);
         Ok(self.fields_mut().get_mut(pos).unwrap())
     }
 
@@ -538,12 +537,12 @@ impl Record {
     /// let field = record.add_data_field("650").expect("added field");
     /// field.add_subfield("a", "baz");
     ///
-    /// let values = record.get_values("650", "a");
+    /// let values = record.get_field_values("650", "a");
     ///
     /// assert_eq!(values.len(), 3);
     /// assert_eq!(values[1], "bar");
     /// ```
-    pub fn get_values(&self, tag: &str, sfcode: &str) -> Vec<&str> {
+    pub fn get_field_values(&self, tag: &str, sfcode: &str) -> Vec<&str> {
         let mut vec = Vec::new();
         for field in self.get_fields(tag) {
             for sf in field.get_subfields(sfcode) {
@@ -554,6 +553,7 @@ impl Record {
     }
 
     /// Remove all occurrences of control fields with the provided tag.
+    ///
     /// # Examples
     ///
     /// ```

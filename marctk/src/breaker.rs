@@ -1,3 +1,4 @@
+//! Routines for reading and writing MARC Breaker text
 use super::Controlfield;
 use super::Field;
 use super::Record;
@@ -17,6 +18,7 @@ pub fn unescape_from_breaker(value: &str) -> String {
 }
 
 impl Controlfield {
+    /// Generate breaker text for a [`Controlfield`]
     pub fn to_breaker(&self) -> String {
         if !self.content().is_empty() {
             format!("={} {}", self.tag(), escape_to_breaker(self.content()))
@@ -27,6 +29,7 @@ impl Controlfield {
 }
 
 impl Subfield {
+    /// Generate breaker text for a [`Subfield`]
     pub fn to_breaker(&self) -> String {
         format!(
             "${}{}",
@@ -37,6 +40,7 @@ impl Subfield {
 }
 
 impl Field {
+    /// Generate breaker text for a [`Field`]
     pub fn to_breaker(&self) -> String {
         let mut s = format!(
             "={} {}{}",
@@ -62,7 +66,11 @@ impl Field {
 }
 
 impl Record {
-    /// Creates the MARC Breaker representation of this record as a String.
+    /// Generate breaker text for a [`Record`]
+    ///
+    /// # References
+    ///
+    /// * <https://www.loc.gov/marc/makrbrkr.html>
     pub fn to_breaker(&self) -> String {
         let mut s = format!("=LDR {}", &escape_to_breaker(self.leader()));
 
@@ -77,7 +85,9 @@ impl Record {
         s
     }
 
-    /// Creates a new MARC Record from a MARC Breaker string.
+    /// Create a MARC [`Record`] from a MARC Breaker string.
+    ///
+    /// Assumes one record per input string.
     pub fn from_breaker(breaker: &str) -> Result<Self, String> {
         let mut record = Record::new();
 
@@ -88,6 +98,9 @@ impl Record {
         Ok(record)
     }
 
+    /// Create a MARC [`Record`] from a file containing MARC Breaker text.
+    ///
+    /// Assumes one record per file.
     pub fn from_breaker_file(filename: &str) -> Result<Self, String> {
         let breaker = std::fs::read_to_string(filename)
             .map_err(|e| format!("Error reading breaker file: {e}"))?;

@@ -19,7 +19,7 @@ fn main() {
             }
         }
 
-        if let Some(title) = record.get_values("245", "a").first() {
+        if let Some(title) = record.get_field_values("245", "a").first() {
             println!("New Maintitle => {title}");
         }
 
