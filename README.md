@@ -15,11 +15,11 @@ other binaries.
 
 [README](./evergreen/README.md)
 
-### MARC
+### MARCTK
 
 Library for reading/writing MARC Binary, MARC XML, and MARC Breaker.
 
-[README](./marc/README.md)
+[README](./marctk/README.md)
 
 ### SIP2
 
