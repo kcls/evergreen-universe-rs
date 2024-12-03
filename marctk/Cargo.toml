@@ -6,7 +6,7 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 license-file = "../LICENSE"
 description = "MARC21 Binary, Breaker, and XML Toolkit"
 readme = "README.md"
-keywords = ["marc", "marc21", "marcxml", "marcbreaker", "library", "bibliographic"]
+keywords = ["marc", "marc21", "marcxml", "library", "bibliographic"]
 categories = ["parser-implementations", "value-formatting", "command-line-utilities"]
 repository = "https://github.com/kcls/evergreen-universe-rs"
 
