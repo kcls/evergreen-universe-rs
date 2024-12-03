@@ -541,7 +541,7 @@ fn export(scripter: &mut script::Runner, ops: &mut ExportOptions) -> Result<(), 
                     with_xml_declaration: false,
                 };
 
-                write(&mut writer, record.to_xml_ops(&options).as_bytes())?;
+                write(&mut writer, record.to_xml_string_ops(&options).as_bytes())?;
             } else {
                 let binary = match record.to_binary() {
                     Ok(b) => b,

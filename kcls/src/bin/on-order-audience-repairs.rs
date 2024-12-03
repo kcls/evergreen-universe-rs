@@ -213,7 +213,7 @@ fn process_one_record(
 
     cf008.set_content(content);
 
-    let new_xml = record.to_xml();
+    let new_xml = record.to_xml_string();
 
     if ops.opt_present("print-result") {
         println!("{new_xml}");

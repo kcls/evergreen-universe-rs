@@ -30,6 +30,6 @@ fn main() {
 
         println!("{}", record.to_breaker());
         // println!("{:?}", record.to_binary());
-        // println!("{}", record.to_xml());
+        // println!("{}", record.to_xml_string());
     }
 }

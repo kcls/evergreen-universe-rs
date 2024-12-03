@@ -1,12 +1,12 @@
 [package]
 name = "marctk"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 license-file = "../LICENSE"
-description = "MARC21 Toolkit"
+description = "MARC21 Binary, Breaker, and XML Toolkit"
 readme = "README.md"
-keywords = ["marc", "marc21", "marcxml", "library"]
+keywords = ["marc", "marc21", "marcxml", "marcbreaker", "library", "bibliographic"]
 categories = ["parser-implementations", "value-formatting", "command-line-utilities"]
 repository = "https://github.com/kcls/evergreen-universe-rs"
 

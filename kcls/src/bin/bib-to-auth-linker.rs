@@ -428,9 +428,9 @@ impl BibLinker {
         // to bre["marc"], because bre["marc"] is always generated
         // by the EG Perl code, which has minor spacing/sorting
         // differences in the generated XML.
-        let orig_xml = orig_record.to_xml();
+        let orig_xml = orig_record.to_xml_string();
 
-        let xml = record.to_xml();
+        let xml = record.to_xml_string();
 
         let bre_id = bre["id"].int()?;
 

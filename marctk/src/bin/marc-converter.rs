@@ -80,7 +80,7 @@ fn main() {
                 .write_all(bytes)
                 .expect("Cannot write bytes");
         } else if to_xml {
-            print!("{}", r.to_xml_ops(&xml_ops));
+            print!("{}", r.to_xml_string_ops(&xml_ops));
         } else if to_breaker {
             println!("{}", r.to_breaker());
         };

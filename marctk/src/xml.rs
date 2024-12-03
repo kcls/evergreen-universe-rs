@@ -265,24 +265,39 @@ impl Record {
         XmlRecordIterator::from_string(xml)
     }
 
-    /// Creates the XML representation of a MARC record as a String.
+    #[deprecated(note = "See to_xml_string()")]
     pub fn to_xml(&self) -> String {
-        self.to_xml_ops(&XmlOptions {
+        self.to_xml_string()
+    }
+
+    /// Creates an XML string from a [`Record`]
+    pub fn to_xml_string(&self) -> String {
+        self.to_xml_string_ops(&XmlOptions {
             formatted: false,
             with_xml_declaration: false,
         })
     }
 
-    /// Creates the XML representation of a MARC record as a formatted
-    /// string using 2-space indentation.
+    #[deprecated(note = "See to_xml_string_formatted()")]
     pub fn to_xml_formatted(&self) -> String {
-        self.to_xml_ops(&XmlOptions {
+        self.to_xml_string_formatted()
+    }
+
+    /// Creates an XML string from a [`Record`] formatted with 2-space indents.
+    pub fn to_xml_string_formatted(&self) -> String {
+        self.to_xml_string_ops(&XmlOptions {
             formatted: true,
             with_xml_declaration: false,
         })
     }
 
+    #[deprecated(note = "See to_xml_string_ops()")]
     pub fn to_xml_ops(&self, options: &XmlOptions) -> String {
+        self.to_xml_string_ops(options)
+    }
+
+    /// Creates an XML string from a [`Record`] using the provided options.
+    pub fn to_xml_string_ops(&self, options: &XmlOptions) -> String {
         // We could use XmlWriter here, but manual creation works fine
         // and offers more flexibility.
 

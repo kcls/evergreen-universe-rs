@@ -197,7 +197,7 @@ impl AuthLinker {
         source_marc: marc::Record,
     ) -> EgResult<()> {
         let mut updated = source_record.clone();
-        updated["marc"] = EgValue::from(source_marc.to_xml());
+        updated["marc"] = EgValue::from(source_marc.to_xml_string());
         self.save_a_record(updated)
     }
 

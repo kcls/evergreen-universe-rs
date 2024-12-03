@@ -24,7 +24,7 @@ for record in Record::from_binary_file(&file_name).expect("File should be readab
     f.add_subfield("a", "Hobbitz").unwrap();
     f.add_subfield("b", "So Many Wizards").unwrap();
 
-    println!("{}", record.to_xml());
+    println!("{}", record.to_xml_string());
 }
 ```
 

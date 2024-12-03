@@ -80,13 +80,13 @@ fn mixed_round_trips() {
         .next()
         .unwrap()
         .expect("Parse Failed");
-    assert_eq!(MARC_XML, record1.to_xml());
+    assert_eq!(MARC_XML, record1.to_xml_string());
 
     let breaker1 = record1.to_breaker();
 
     let record2 = Record::from_breaker(&breaker1).unwrap();
 
-    assert_eq!(MARC_XML, record2.to_xml());
+    assert_eq!(MARC_XML, record2.to_xml_string());
     assert_eq!(record1, record2);
 
     let binary1 = record2.to_binary().unwrap();
@@ -95,7 +95,7 @@ fn mixed_round_trips() {
 
     assert_eq!(binary1, binary3);
 
-    let xml = record3.to_xml();
+    let xml = record3.to_xml_string();
 
     assert_eq!(xml, MARC_XML);
 }
@@ -107,7 +107,7 @@ fn xml_round_trip() {
         .unwrap()
         .expect("Parse Failed");
 
-    let xml = record.to_xml();
+    let xml = record.to_xml_string();
 
     assert_eq!(MARC_XML, xml);
 }
@@ -122,7 +122,7 @@ fn all_round_trip() {
     let breaker = record.to_breaker();
 
     let record2 = Record::from_breaker(&breaker).unwrap();
-    let xml = record2.to_xml();
+    let xml = record2.to_xml_string();
 
     assert_eq!(MARC_XML, xml);
 }
@@ -140,7 +140,7 @@ fn odd_records() {
     let res = Record::from_breaker(&brk);
     assert!(res.is_ok());
 
-    let xml = res.unwrap().to_xml();
+    let xml = res.unwrap().to_xml_string();
 
     assert_eq!(EMPTY_MARC_XML, xml);
 
