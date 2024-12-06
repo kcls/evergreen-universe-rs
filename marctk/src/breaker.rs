@@ -174,7 +174,7 @@ impl Record {
 mod breaker_tests {
     #[test]
     fn test_add_breaker_line() {
-        let mut record = crate::record::Record::default();
+        let mut record = crate::Record::default();
 
         assert!(record.add_breaker_line("=LDR too short").is_err());
 

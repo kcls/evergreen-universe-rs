@@ -7,7 +7,7 @@ const DEFAULT_INDICATOR: &str = " ";
 
 /// Verifies the provided string is composed of 'len' number of bytes.
 fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
-    let byte_len = s.bytes().len();
+    let byte_len = s.as_bytes().len();
     if byte_len != len {
         return Err(format!(
             "Invalid byte count for string s={s} wanted={len} found={byte_len}"
@@ -207,7 +207,7 @@ impl Field {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Field;
+    /// use marctk::Field;
     ///
     /// let field: Field = match Field::new("245") {
     ///   Ok(f) => f,
@@ -330,7 +330,7 @@ impl Field {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Field;
+    /// use marctk::Field;
     /// let mut field = Field::new("505").unwrap();
     /// let _ = field.add_subfield("t", "Chapter 1 /");
     /// let _ = field.add_subfield("r", "Cool author --");
@@ -390,7 +390,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Record;
+    /// use marctk::Record;
     /// let mut record = Record::default();
     /// assert!(record.set_leader("too short").is_err());
     /// assert!(record.set_leader("just right              ").is_ok());
@@ -410,7 +410,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Record;
+    /// use marctk::Record;
     /// let mut record = Record::default();
     /// assert!(record.set_leader_bytes("too short".as_bytes()).is_err());
     /// assert!(record.set_leader_bytes("just right              ".as_bytes()).is_ok());
@@ -466,7 +466,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Record;
+    /// use marctk::Record;
     /// let mut record = Record::default();
     /// assert!(record.add_control_field("011", "foo").is_err());
     /// assert!(record.add_control_field("002", "bar").is_ok());
@@ -510,7 +510,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Record;
+    /// use marctk::Record;
     /// let mut record = Record::default();
     /// assert!(record.add_data_field("245").is_ok());
     /// assert!(record.add_data_field("240").is_ok());
@@ -528,7 +528,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Record;
+    /// use marctk::Record;
     /// let mut record = Record::default();
     /// let field = record.add_data_field("650").expect("added field");
     /// field.add_subfield("a", "foo");
@@ -557,7 +557,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Record;
+    /// use marctk::Record;
     /// let mut record = Record::default();
     /// let _ = record.add_control_field("008", "stuffandsuch").unwrap();
     /// let _ = record.add_control_field("008", "morestuffandsuch").unwrap();
@@ -581,7 +581,7 @@ impl Record {
     /// # Examples
     ///
     /// ```
-    /// use marctk::record::Record;
+    /// use marctk::Record;
     /// let mut record = Record::default();
     /// let field = record.add_data_field("650").unwrap();
     /// field.add_subfield("a", "Art");
