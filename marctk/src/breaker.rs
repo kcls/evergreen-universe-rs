@@ -107,10 +107,11 @@ impl Record {
         Record::from_breaker(&breaker)
     }
 
-    /// Process one line of breaker text
+    /// Process one line of breaker text and append the result to [`self`]
     fn add_breaker_line(&mut self, line: &str) -> Result<(), String> {
         let mut len = line.len();
         if len < 4 {
+            // Skip unusable lines
             return Ok(());
         }
 
@@ -127,8 +128,6 @@ impl Record {
             return Ok(());
         }
 
-        // There is a space between the tag and the 1st indicator.
-
         if tag < "010" {
             let content = if len > 4 {
                 unescape_from_breaker(&line[4..])
@@ -141,6 +140,8 @@ impl Record {
         }
 
         let mut field = Field::new(tag)?;
+
+        // There is a space between the tag and the 1st indicator.
 
         if len > 4 {
             field.set_ind1(line[4..5].replace('\\', " "))?;
@@ -155,9 +156,9 @@ impl Record {
                 if sf.is_empty() {
                     continue;
                 }
-                let subfield = Subfield::new(&sf[..1], if sf.len() > 1 { &sf[1..] } else { "" })?;
-
-                field.subfields_mut().push(subfield);
+                let code = &sf[..1];
+                let content = &sf[1..]; // maybe ""
+                field.subfields_mut().push(Subfield::new(code, content)?);
             }
         }
 
@@ -165,4 +166,22 @@ impl Record {
 
         Ok(())
     }
+
+
 }
+
+#[cfg(test)]
+mod breaker_tests {
+    #[test]
+    fn test_add_breaker_line() {
+        let mut record = crate::record::Record::default();
+
+        assert!(record.add_breaker_line("=LDR too short").is_err());
+
+        record.add_breaker_line("=100 11$aSunshine$b$csquashes").unwrap();
+        assert_eq!(record.get_field_values("100", "a")[0], "Sunshine");
+        assert_eq!(record.get_field_values("100", "b")[0], "");
+    }
+}
+
+
