@@ -286,16 +286,59 @@ impl Field {
 
     /// Get the first occurrence of the subfield with the provided code,
     /// if one is present.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Field;
+    ///
+    /// let mut field: Field =  Field::new("245").unwrap();
+    /// assert!(field.first_subfield("a").is_none());
+    ///
+    /// field.add_subfield("a", "First one").unwrap();
+    /// field.add_subfield("a", "Second one").unwrap();
+    ///
+    /// assert_eq!(field.first_subfield("a").unwrap().content(), "First one");
+    /// ```
     pub fn first_subfield(&self, code: &str) -> Option<&Subfield> {
         self.subfields.iter().find(|f| f.code() == code)
     }
 
     /// True if a subfield with the provided code is present.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Field;
+    ///
+    /// let mut field: Field =  Field::new("245").unwrap();
+    /// assert!(!field.has_subfield("a"));
+    ///
+    /// field.add_subfield("a", "My title").unwrap();
+    ///
+    /// assert!(field.has_subfield("a"));
+    /// ```
     pub fn has_subfield(&self, code: &str) -> bool {
         self.subfields.iter().any(|f| f.code() == code)
     }
 
     /// Get a mutable list of subfields with the provided code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Field;
+    ///
+    /// let mut field: Field =  Field::new("245").unwrap();
+    /// field.add_subfield("a", "First one").unwrap();
+    /// field.add_subfield("a", "Second one").unwrap();
+    ///
+    /// for mut subfield in field.get_subfields_mut("a") {
+    ///   subfield.set_content(subfield.content().to_uppercase());
+    /// }
+    ///
+    /// assert_eq!(field.first_subfield("a").unwrap().content(), "FIRST ONE");
+    /// ```
     pub fn get_subfields_mut(&mut self, code: &str) -> Vec<&mut Subfield> {
         self.subfields
             .iter_mut()
@@ -316,6 +359,21 @@ impl Field {
     }
 
     /// Remove the first subfield with the specified code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Field;
+    ///
+    /// let mut field: Field =  Field::new("245").unwrap();
+    /// field.add_subfield("a", "First one").unwrap();
+    /// field.add_subfield("a", "Second one").unwrap();
+    /// assert_eq!(field.subfields().len(), 2);
+    ///
+    /// assert_eq!(field.remove_first_subfield("a").unwrap().content(), "First one");
+    /// assert_eq!(field.subfields().len(), 1);
+    /// assert_eq!(field.first_subfield("a").unwrap().content(), "Second one");
+    /// ```
     pub fn remove_first_subfield(&mut self, code: &str) -> Option<Subfield> {
         if let Some(index) = self.subfields.iter().position(|s| s.code.eq(code)) {
             return Some(self.subfields.remove(index));

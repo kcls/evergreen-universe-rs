@@ -261,6 +261,24 @@ impl Record {
     }
 
     /// Returns an iterator over the XML string which emits Records.
+    ///
+    /// It can parse MarcXML strings, whether or not they have the appropriate
+    /// XML namespace (`http://www.loc.gov/MARC21/slim`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Record;
+    ///
+    /// let iterator = Record::from_xml(r#"<collection>
+    ///   <record><datafield tag="245" ind1="1" ind2="0"><subfield code="a">First title</subfield></datafield></record>
+    ///   <record xmlns="http://www.loc.gov/MARC21/slim"><datafield tag="245" ind1="1" ind2="0"><subfield code="a">Second title</subfield></datafield></record>
+    /// </collection>"#);
+    ///
+    /// let values: Vec<String> = iterator.map(|item| item.unwrap().get_field_values("245", "a")[0].to_owned())
+    ///     .collect();
+    /// assert_eq!(values, ["First title".to_string(), "Second title".to_string()]);
+    /// ```
     pub fn from_xml(xml: &str) -> XmlRecordIterator {
         XmlRecordIterator::from_string(xml)
     }
@@ -369,5 +387,59 @@ impl Record {
         xml += "</record>";
 
         xml
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_can_parse_xml_string_with_namespace() {
+        let iterator = Record::from_xml(
+            r#"<collection xmlns="http://www.loc.gov/MARC21/slim">
+                <record><datafield tag="245" ind1="1" ind2="0"><subfield code="a">First title</subfield></datafield></record>
+                <record><datafield tag="245" ind1="1" ind2="0"><subfield code="a">Second title</subfield></datafield></record>
+            </collection>"#,
+        );
+        let values: Vec<String> = iterator
+            .map(|item| item.unwrap().get_field_values("245", "a")[0].to_owned())
+            .collect();
+        assert_eq!(
+            values,
+            ["First title".to_string(), "Second title".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_can_parse_xml_string_without_namespace() {
+        let iterator = Record::from_xml(
+            r#"<collection>
+                <record><datafield tag="245" ind1="1" ind2="0"><subfield code="a">First title</subfield></datafield></record>
+                <record><datafield tag="245" ind1="1" ind2="0"><subfield code="a">Second title</subfield></datafield></record>
+            </collection>"#,
+        );
+        let values: Vec<String> = iterator
+            .map(|item| item.unwrap().get_field_values("245", "a")[0].to_owned())
+            .collect();
+        assert_eq!(
+            values,
+            ["First title".to_string(), "Second title".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_can_parse_xml_string_without_collection() {
+        let iterator = Record::from_xml(
+            r#"<record><datafield tag="245" ind1="1" ind2="0"><subfield code="a">First title</subfield></datafield></record>
+                <record><datafield tag="245" ind1="1" ind2="0"><subfield code="a">Second title</subfield></datafield></record>"#,
+        );
+        let values: Vec<String> = iterator
+            .map(|item| item.unwrap().get_field_values("245", "a")[0].to_owned())
+            .collect();
+        assert_eq!(
+            values,
+            ["First title".to_string(), "Second title".to_string()]
+        );
     }
 }
