@@ -166,8 +166,6 @@ impl Record {
 
         Ok(())
     }
-
-
 }
 
 #[cfg(test)]
@@ -178,10 +176,10 @@ mod breaker_tests {
 
         assert!(record.add_breaker_line("=LDR too short").is_err());
 
-        record.add_breaker_line("=100 11$aSunshine$b$csquashes").unwrap();
+        record
+            .add_breaker_line("=100 11$aSunshine$b$csquashes")
+            .unwrap();
         assert_eq!(record.get_field_values("100", "a")[0], "Sunshine");
         assert_eq!(record.get_field_values("100", "b")[0], "");
     }
 }
-
-
