@@ -5,11 +5,8 @@ fn main() {
     let mut con = Connection::new("127.0.0.1:6001").expect("should connect");
 
     // Manually create a login message
-    let req = Message::from_values(
-        "93",
-        &["0", "0"],
-        &[("CN", "sip-user"), ("CO", "sip-pass")]
-    ).expect("should be valid message content");
+    let req = Message::from_values("93", &["0", "0"], &[("CN", "sip-user"), ("CO", "sip-pass")])
+        .expect("should be valid message content");
 
     // Send the message and wait for a response.
     let resp = con.sendrecv(&req).expect("should receive a response");
@@ -23,4 +20,3 @@ fn main() {
         }
     }
 }
-
