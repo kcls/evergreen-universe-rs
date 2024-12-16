@@ -1,11 +1,51 @@
 # SIP2 Rust Library
 
 Rust [SIP2](https://en.wikipedia.org/wiki/Standard_Interchange_Protocol)
-Client Library
+Communication Library
 
-## API Docs
+## The Basics
 
-[https://kcls.github.io/evergreen-universe-rs/sip2/index.html](https://kcls.github.io/evergreen-universe-rs/sip2/index.html)
+```rs
+use sip2::{Connection, Message};
+
+fn main() {
+    // Connect to our SIP server
+    let mut con = Connection::new("127.0.0.1:6001").expect("should connect");
+
+    // Manually create a login message with SIP username and password fields.
+    let req = Message::from_values(
+        "93",
+        &["0", "0"],
+        &[("CN", "sip-user"), ("CO", "sip-pass")]
+    ).expect("should be valid message content");
+
+    // Send the message and wait for a response.
+    let resp = con.sendrecv(&req).expect("should receive a response");
+
+    println!("resp: {resp:?}");
+
+    // A successful login returns a first fixed field value of "1".
+    if let Some(ff) = resp.fixed_fields().first() {
+        if ff.value() == "1" {
+            println!("Login succeeded");
+        }
+    }
+}
+
+```
+
+## Running the CLI
+
+```sh
+cargo run --bin sip2-client-cli -- --sip-user sip-user  \
+    --sip-pass sip-pass                                 \
+    --item-barcode 30000017113634                       \
+    --patron-barcode 394902                             \
+    --message-type item-information                     \
+    --message-type patron-status                        \
+    --message-type patron-information
+
+```
 
 ## Two Modes of Operation
 
@@ -20,19 +60,6 @@ Client Library
 * Sits atop the Connection API and provides canned actions for common tasks.  
 * Client methods allow the caller to send messages using a minimal
   number of parameters without having to create the message by hand.
-
-## Running the CLI
-
-```sh
-cargo run --bin sip2-client-cli -- --sip-user sip-user  \
-    --sip-pass sip-pass                                 \
-    --item-barcode 30000017113634                       \
-    --patron-barcode 394902                             \
-    --message-type item-information                     \
-    --message-type patron-status                        \
-    --message-type patron-information
-
-```
 
 ## Connection API Examples
 
@@ -76,18 +103,7 @@ if resp.spec().code == spec::M_LOGIN_RESP.code
 }
 ```
 
-### Connection API Free-Text Message Building
-
-```rs
-let req = Message::from_values(
-    &spec::M_LOGIN,
-    &["0", "0"],
-    &[("CN", "sip-username"), ("CO", "sip-password")]
-).expect("Message Has Valid Content");
-```
-
 ## Client API example
-
 
 ```rs
 use sip2::*;
