@@ -30,6 +30,13 @@ impl Controlfield {
 
 impl Subfield {
     /// Generate breaker text for a [`Subfield`]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let sf = marctk::Subfield::new("q", "Howdy, folks").unwrap();
+    /// assert_eq!(sf.to_breaker(), "$qHowdy, folks");
+    /// ```
     pub fn to_breaker(&self) -> String {
         format!(
             "${}{}",
@@ -41,6 +48,15 @@ impl Subfield {
 
 impl Field {
     /// Generate breaker text for a [`Field`]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut field = marctk::Field::new("856").unwrap();
+    /// field.set_ind1("1");
+    /// field.add_subfield("q", "https://example.org").unwrap();
+    /// assert_eq!(field.to_breaker(), "=856 1\\$qhttps://example.org");
+    /// ```
     pub fn to_breaker(&self) -> String {
         let mut s = format!(
             "={} {}{}",
