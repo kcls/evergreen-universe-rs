@@ -10,7 +10,7 @@ use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
 use marctk as marc;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
 
@@ -439,7 +439,7 @@ impl BibLinker {
             return Ok(());
         }
 
-        log::info!("Applying updates to bib record {bre_id}");
+        log::info!("[LINKER={bre_id}] applying updates to bib record");
 
         bre["marc"] = EgValue::from(xml);
         bre["edit_date"] = EgValue::from("now");
@@ -607,24 +607,32 @@ impl BibLinker {
 
         let mut bib_modified = false;
 
-        let mut seen_bib_tags: HashMap<&str, bool> = HashMap::new();
+        let mut seen_bib_tags: HashSet<&str> = HashSet::new();
 
         for cfield in control_fields.iter() {
-            if seen_bib_tags.contains_key(cfield.bib_tag.as_str()) {
+            if seen_bib_tags.contains(cfield.bib_tag.as_str()) {
                 continue;
             }
 
-            seen_bib_tags.insert(&cfield.bib_tag, true);
+            seen_bib_tags.insert(&cfield.bib_tag);
 
             for bib_field in record.get_fields_mut(&cfield.bib_tag) {
                 let bib_tag = bib_field.tag().to_string(); // mut borrow
 
                 let is_fast_heading = self.is_fast_heading(bib_field);
 
+                let mut prev_sf0_val = None;
+
                 if let Some(sf0) = bib_field.get_subfields("0").first() {
                     let sf0_val = sf0.content();
 
+                    prev_sf0_val = Some(sf0_val.to_string());
+
                     if sf0_val.contains(")fst") && is_fast_heading {
+                        // Here we have a bib field controlled by a "fast"
+                        // thesaurus and a subfield $0 which points to a
+                        // "fast" authority record.  All is well.
+
                         log::debug!(
                             "Ignoring FAST heading on rec={} and tag={} $0={}",
                             rec_id,
@@ -635,8 +643,8 @@ impl BibLinker {
                         continue;
                     }
 
-                    log::info!(
-                        "Removing $0 {sf0_val} rec={rec_id} and field={}",
+                    log::debug!(
+                        "[LINKER={rec_id}] removing $0 from field={}",
                         bib_field.to_breaker()
                     );
 
@@ -646,7 +654,9 @@ impl BibLinker {
                     bib_modified = true;
 
                     if is_fast_heading {
-                        // We don't control fast headings. Move to the next field.
+                        // This bib field is controlled by a "fast" thesaurus.
+                        // We don't control fast headings. Leave the $0 out
+                        // (removed above) and move to the next field.
                         log::debug!(
                             "No linking performed on FAST heading field on rec={} and tag={}",
                             rec_id,
@@ -708,15 +718,29 @@ impl BibLinker {
                 // those changes.
 
                 if let Some(id) = auth_id {
-                    let content = format!("({}){}", DEFAULT_CONTROL_NUMBER_IDENTIFIER, id);
-                    bib_field.add_subfield("0", &content)?;
-                    bib_modified = true;
+                    let new_sf0_val = format!("({}){}", DEFAULT_CONTROL_NUMBER_IDENTIFIER, id);
+                    if let Some(prev_sf0) = prev_sf0_val.as_ref() {
+                        if prev_sf0 != &new_sf0_val {
+                            log::info!(
+                                "[LINKER={rec_id}] replacing $0 [{}] with [{}] for {}",
+                                prev_sf0,
+                                new_sf0_val,
+                                bib_field.to_breaker()
+                            );
+                        }
+                    } else {
+                        log::info!(
+                            "[LINKER={rec_id}] adding $0 [{new_sf0_val}] to {}",
+                            bib_field.to_breaker()
+                        );
+                    }
 
+                    bib_field.add_subfield("0", &new_sf0_val)?;
+                    bib_modified = true;
+                } else if let Some(prev_sf0) = prev_sf0_val {
                     log::info!(
-                        "Found a match on bib={} tag={} auth={}",
-                        rec_id,
-                        bib_tag,
-                        id
+                        "[LINKER={rec_id}] removed $0 [{prev_sf0}] from {}",
+                        bib_field.to_breaker()
                     );
                 }
             } // Each bib field with selected bib tag
