@@ -439,7 +439,7 @@ impl BibLinker {
             return Ok(());
         }
 
-        log::info!("[LINKER={bre_id}] applying updates to bib record");
+        log::debug!("[LINKER={bre_id}] saving changes to record");
 
         bre["marc"] = EgValue::from(xml);
         bre["edit_date"] = EgValue::from("now");
@@ -739,7 +739,7 @@ impl BibLinker {
                     bib_modified = true;
                 } else if let Some(prev_sf0) = prev_sf0_val {
                     log::info!(
-                        "[LINKER={rec_id}] removed $0 [{prev_sf0}] from {}",
+                        "[LINKER={rec_id}] removing $0 [{prev_sf0}] from {}",
                         bib_field.to_breaker()
                     );
                 }
