@@ -17,17 +17,17 @@ pub struct Normalizer {}
 
 impl Normalizer {
     pub fn init() {
-        if REGEX_CONTROL_CODES.get().is_some() {
-            return;
-        }
-        // The above check should make the outer unwrap()'s below succeed.
+        // Treat multiple attempts to apply values to our regex oncelocks
+        // as non-errors, since it can happen if multiple threads call
+        // init() at practically the same time, even when first checking 
+        // for the presence of values in the oncelock.
         REGEX_CONTROL_CODES
             .set(Regex::new(REGEX_CONTROL_CODES_PATTERN).unwrap())
-            .unwrap();
+            .ok();
         REGEX_PUNCTUATION
             .set(Regex::new(REGEX_PUNCTUATION_PATTERN).unwrap())
-            .unwrap();
-        REGEX_MULTI_SPACES.set(Regex::new("\\s+").unwrap()).unwrap();
+            .ok();
+        REGEX_MULTI_SPACES.set(Regex::new("\\s+").unwrap()).ok();
     }
 
     pub fn new() -> Normalizer {

@@ -8,11 +8,16 @@ use eg::norm::Normalizer;
 use eg::script;
 use eg::EgResult;
 use eg::EgValue;
+use eg::Editor;
 use evergreen as eg;
 use marctk as marc;
 use std::collections::HashSet;
+use std::sync::OnceLock;
+use std::thread;
 
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
+
+static CONTROLLED_FIELDS: OnceLock<Vec<ControlledField>> = OnceLock::new();
 
 const HELP_TEXT: &str = "
 Link bib records to authority records by applying $0 values to controlled fields.
@@ -35,6 +40,9 @@ By default, all non-deleted bib records are processed.
         Limit to bib records that share a browse entry with an authority
         record whose edit date is >= the provided date and is not
         already linked to the authority record.
+
+    --parallel <count>
+        Number of parallel worker threads to run.  Defaults to 1.
 
     -h, --help
         Display this help
@@ -81,7 +89,7 @@ struct BibLinker {
     bibs_mod_since: Option<date::EgDate>,
     auths_mod_since: Option<date::EgDate>,
     record_id: Option<i64>,
-    normalizer: Normalizer,
+    parallel: usize,
 }
 
 impl BibLinker {
@@ -124,6 +132,12 @@ impl BibLinker {
             None => None,
         };
 
+        let parallel = match scripter.params().opt_str("parallel") {
+            Some(p) => p.parse::<usize>()
+                .map_err(|e| format!("error parsing value for --parallel: {e}"))?,
+            None => 1,
+        };
+
         Ok(BibLinker {
             min_id,
             max_id,
@@ -131,7 +145,7 @@ impl BibLinker {
             bibs_mod_since,
             auths_mod_since,
             scripter,
-            normalizer: Normalizer::new(),
+            parallel,
         })
     }
 
@@ -202,7 +216,11 @@ impl BibLinker {
     }
 
     /// Collect the list of controlled fields from the database.
-    fn get_controlled_fields(&mut self) -> EgResult<Vec<ControlledField>> {
+    ///
+    /// # Panics
+    ///
+    /// If called more than once.
+    fn load_controlled_fields(&mut self) -> EgResult<()> {
         let search = eg::hash! {"id": {"<>": EgValue::Null}};
 
         let flesh = eg::hash! {
@@ -268,7 +286,64 @@ impl BibLinker {
             }
         }
 
-        Ok(controlled_fields)
+        CONTROLLED_FIELDS.set(controlled_fields).unwrap(); 
+
+        Ok(())
+    }
+
+    /// Fine bib IDs to link then divy them up among the workers.
+    fn link_bibs(&mut self) -> EgResult<()> {
+        let bib_ids = self.get_bib_ids()?;
+        let mut handles = Vec::new();
+        let chunksize = bib_ids.len() / self.parallel + 1;
+
+        for chunk in bib_ids.chunks(chunksize) {
+            let chunk = chunk.to_vec();
+            let staff_account = self.scripter.staff_account();
+
+            let handle = thread::spawn(move || {
+                let client = eg::Client::connect().expect("should connect to opensrf");
+                let editor = eg::Editor::new(&client);
+
+                let mut worker = Worker {
+                    editor,
+                    staff_account,
+                    normalizer: Normalizer::new(),
+                };
+
+                // TODO error handling?
+                worker.link_batch(chunk).expect("batch should complete");
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            if let Err(e) = handle.join() {
+                log::error!("Worker join failed with: {e:?}");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Processes one batch of bib IDs within its own thread.
+struct Worker {
+    editor: Editor,
+    staff_account: i64,
+    normalizer: Normalizer,
+}
+
+impl Worker {
+    /// Returns a ref to our collection of controlled fields
+    ///
+    /// # Panics
+    ///
+    /// If load_controlled_fields() is not called first.
+    fn get_controlled_fields(&self) -> &'static Vec<ControlledField> {
+        CONTROLLED_FIELDS.get().unwrap()
     }
 
     // Fetch leader/008 values for authority records.  Filter out any whose
@@ -282,7 +357,7 @@ impl BibLinker {
         let mut leaders: Vec<AuthLeader> = Vec::new();
 
         let params = eg::hash! {tag: "008", record: auth_ids.clone()};
-        let maybe_leaders = self.scripter.editor_mut().search("afr", params)?;
+        let maybe_leaders = self.editor.search("afr", params)?;
 
         // Sort the auth_leaders list to match the order of the original
         // list of auth_ids, since they are prioritized by heading
@@ -443,11 +518,11 @@ impl BibLinker {
 
         bre["marc"] = EgValue::from(xml);
         bre["edit_date"] = EgValue::from("now");
-        bre["editor"] = EgValue::from(self.scripter.staff_account());
+        bre["editor"] = EgValue::from(self.staff_account);
 
-        self.scripter.editor_mut().xact_begin()?;
-        self.scripter.editor_mut().update(bre)?;
-        self.scripter.editor_mut().commit()?;
+        self.editor.xact_begin()?;
+        self.editor.update(bre)?;
+        self.editor.commit()?;
 
         Ok(())
     }
@@ -518,7 +593,7 @@ impl BibLinker {
             };
 
             // TODO idlist searches
-            let recs = match self.scripter.editor_mut().search("are", search) {
+            let recs = match self.editor.search("are", search) {
                 Ok(r) => r,
                 Err(e) => {
                     // Don't let a cstore query failure kill the whole batch.
@@ -541,19 +616,18 @@ impl BibLinker {
         Ok(auth_ids)
     }
 
-    fn link_bibs(&mut self) -> EgResult<()> {
-        let control_fields = self.get_controlled_fields()?;
-
+    fn link_batch(&mut self, batch: Vec<i64>) -> EgResult<()> {
         let mut counter = 0;
-        let bib_ids = self.get_bib_ids()?;
-        let bib_count = bib_ids.len();
+        let bib_count = batch.len();
+        
+        // for chunk in bib_ids.chunk(self.scripter.parallel)
 
-        for rec_id in bib_ids {
+        for rec_id in batch {
             counter += 1;
 
             log::info!("Processing record [{}/{}] {rec_id}", counter, bib_count);
 
-            let bre = match self.scripter.editor_mut().retrieve("bre", rec_id)? {
+            let bre = match self.editor.retrieve("bre", rec_id)? {
                 Some(r) => r,
                 None => {
                     log::warn!("No such bib record: {rec_id}");
@@ -583,12 +657,10 @@ impl BibLinker {
 
             let mut record = orig_record.clone();
 
-            if let Err(e) =
-                self.link_one_bib(rec_id, bre, &control_fields, &orig_record, &mut record)
-            {
+            if let Err(e) = self.link_one_bib(rec_id, bre, &orig_record, &mut record) {
                 log::error!("Error processing bib record {rec_id}: {e}");
                 eprintln!("Error processing bib record {rec_id}: {e}");
-                self.scripter.editor_mut().rollback()?;
+                self.editor.rollback()?;
             }
         }
 
@@ -599,17 +671,18 @@ impl BibLinker {
         &mut self,
         rec_id: i64,
         bre: EgValue,
-        control_fields: &[ControlledField],
         orig_record: &marc::Record,
         record: &mut marc::Record,
     ) -> EgResult<()> {
         log::info!("Processing record {rec_id}");
 
+        let controlled_fields = self.get_controlled_fields();
+
         let mut bib_modified = false;
 
         let mut seen_bib_tags: HashSet<&str> = HashSet::new();
 
-        for cfield in control_fields.iter() {
+        for cfield in controlled_fields.iter() {
             if seen_bib_tags.contains(cfield.bib_tag.as_str()) {
                 continue;
             }
@@ -673,7 +746,7 @@ impl BibLinker {
                 }
 
                 let mut auth_matches =
-                    self.find_potential_auth_matches(control_fields, bib_field)?;
+                    self.find_potential_auth_matches(controlled_fields, bib_field)?;
 
                 if auth_matches.is_empty() {
                     continue;
@@ -754,12 +827,14 @@ impl BibLinker {
     }
 }
 
+
 fn main() -> EgResult<()> {
     let mut ops = getopts::Options::new();
 
     ops.optopt("", "min-id", "", "");
     ops.optopt("", "max-id", "", "");
     ops.optopt("", "record-id", "", "");
+    ops.optopt("", "parallel", "", "");
     ops.optopt("", "bibs-modified-since", "", "");
     ops.optopt("", "auths-modified-since", "", "");
 
@@ -776,7 +851,10 @@ fn main() -> EgResult<()> {
         None => return Ok(()), // e.g. --help
     };
 
+    Normalizer::init();
+
     let mut linker = BibLinker::new(scripter)?;
+    linker.load_controlled_fields()?;
 
     linker.link_bibs()?;
 
