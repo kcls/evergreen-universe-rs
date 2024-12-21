@@ -13,5 +13,6 @@ pub use self::xml::MARCXML_XSI_NAMESPACE;
 
 pub mod binary;
 pub mod breaker;
+mod query;
 pub mod record;
 pub mod xml;
