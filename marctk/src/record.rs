@@ -686,6 +686,21 @@ impl Record {
         }
     }
 
+    /// Extract MARC fields using a range of tags or a specification
+    /// inspired by [ruby-marc](https://github.com/ruby-marc/ruby-marc/),
+    /// [SolrMarc](https://github.com/solrmarc/solrmarc/wiki/Basic-field-based-extraction-specifications),
+    /// and [traject](https://github.com/traject/traject).
+    ///
+    /// # Specification syntax
+    ///
+    /// * A three-character tag will match any field that has that tag, for example `650` would
+    ///   only match fields with the tag `650`.
+    /// * The letter `x` (or upper case `X`) can be used as a wildcard, for example `2xx` would
+    ///   match any field with a tag that starts with the character `2`.
+    /// * Multiple specifications can be combined with a `:` between them, for example
+    ///   `4xx:52x:901` would match any field with tag `901` or a tag that begins with
+    ///   `4` or `52`.
+    ///
     /// # Examples
     ///
     /// ```
@@ -704,10 +719,15 @@ impl Record {
     /// let mut more_fields = record.extract_fields("9xx");
     /// assert_eq!(more_fields.next().unwrap().tag(), "955");
     /// assert!(more_fields.next().is_none());
+    ///
+    /// let mut you_can_combine_specs = record.extract_fields("600:9xx");
+    /// assert_eq!(you_can_combine_specs.next().unwrap().tag(), "600");
+    /// assert_eq!(you_can_combine_specs.next().unwrap().tag(), "955");
+    /// assert!(you_can_combine_specs.next().is_none());
     /// ```
     pub fn extract_fields(
         &self,
-        query: impl Into<crate::query::Query>,
+        query: impl Into<crate::query::FieldQuery>,
     ) -> impl Iterator<Item = &Field> {
         self.fields().iter().filter(query.into().field_filter)
     }
