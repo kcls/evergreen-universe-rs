@@ -308,11 +308,11 @@ impl BibLinker {
                 let mut worker = Worker {
                     editor,
                     staff_account,
-                    normalizer: Normalizer::new(),
                 };
 
-                // TODO error handling?
-                worker.link_batch(chunk).expect("batch should complete");
+                if let Err(e) = worker.link_batch(chunk) {
+                    log::error!("Batch failed to complete: {e}");
+                }
             });
 
             handles.push(handle);
@@ -333,7 +333,6 @@ impl BibLinker {
 struct Worker {
     editor: Editor,
     staff_account: i64,
-    normalizer: Normalizer,
 }
 
 impl Worker {
@@ -582,7 +581,7 @@ impl Worker {
 
             for s in searches.iter() {
                 // s.0=subfield; s.1=subfield-value
-                heading += &format!(" {} {}", s.0, self.normalizer.naco_normalize(s.1));
+                heading += &format!(" {} {}", s.0, Normalizer::naco_normalize_once(s.1));
             }
 
             log::debug!("Sub-heading search for: {heading}");
