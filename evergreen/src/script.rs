@@ -2,6 +2,7 @@
 use crate as eg;
 use eg::common::auth;
 use eg::db::DatabaseConnection;
+use eg::date;
 use eg::init;
 use eg::Editor;
 use eg::EgResult;
@@ -18,6 +19,9 @@ Runner Additions:
 
     --staff-workstation
         Name of the staff login workstation.  See --staff-acount. Optional.
+
+    --log-stdout
+        Log announcements to STDOUT in addition to log::info!().
 
 Database Connector Additions:
 
@@ -53,12 +57,34 @@ pub struct Options {
     pub extra_params: Option<Vec<String>>,
 }
 
-pub struct Runner {
+/// Parts of a script runner which are thread-Sendable.
+///
+/// Useful for cloning the sendable parts of a Runner, passing it to
+/// a thread, then reconstituting a Runner on the other side.
+#[derive(Debug, Clone)]
+pub struct RunnerCore {
     staff_account: i64,
     staff_workstation: Option<String>,
-    editor: Option<Editor>,
     params: getopts::Matches,
+    log_prefix: Option<String>,
+    log_stdout: bool,
+}
+
+/// Core runner plus non-sendable components (editor, db).
+pub struct Runner {
+    core: RunnerCore,
+    editor: Option<Editor>,
     db: Option<DatabaseConnection>,
+}
+
+impl From<RunnerCore> for Runner {
+    fn from(core: RunnerCore) -> Self {
+        Runner {
+            core,
+            editor: None,
+            db: None,
+        }
+    }
 }
 
 impl Runner {
@@ -77,6 +103,7 @@ impl Runner {
         });
 
         ops.optflag("h", "help", "");
+        ops.optflag("", "log-stdout", "");
         ops.optopt("", "staff-account", "", "");
         ops.optopt("", "staff-workstation", "", "");
 
@@ -113,33 +140,72 @@ impl Runner {
             .map_err(|e| format!("Error parsing staff-account value: {e}"))?;
 
         let staff_workstation = params.opt_str("staff-workstation").map(|v| v.to_string());
+        let log_stdout = params.opt_present("log-stdout");
 
-        let editor = if options.with_evergreen {
+        let mut runner = Runner {
+            db: None,
+            editor: None,
+            core: RunnerCore {
+                params,
+                staff_account,
+                staff_workstation,
+                log_stdout,
+                log_prefix: None,
+            }
+        };
+
+        if options.with_database {
+            runner.connect_db()?;
+        }
+
+        if options.with_evergreen {
+            // Avoid using self.connect_evergreen() here since that
+            // variant does not initialize logging.
             let client = init::init()?;
-            Some(eg::Editor::new(&client))
-        } else {
-            None
-        };
+            runner.editor = Some(eg::Editor::new(&client));
+        }
 
-        let db = if options.with_database {
-            let mut db = DatabaseConnection::new_from_options(&params);
-            db.connect()?;
-            Some(db)
-        } else {
-            None
-        };
+        Ok(Some(runner))
+    }
 
-        Ok(Some(Runner {
-            db,
-            editor,
-            params,
-            staff_account,
-            staff_workstation,
-        }))
+    pub fn connect_db(&mut self) -> EgResult<()> {
+        let mut db = DatabaseConnection::new_from_options(self.params());
+        db.connect()?;
+        self.db = Some(db);
+        Ok(())
+    }
+
+    pub fn connect_evergreen(&mut self) -> EgResult<()> {
+        let client = eg::Client::connect()?;
+        self.editor = Some(eg::Editor::new(&client));
+        Ok(())
+    }
+
+    pub fn core(&self) -> &RunnerCore {
+        &self.core
+    }
+
+    pub fn announce(&self, msg: &str) {
+        let pfx = self.core.log_prefix.as_deref().unwrap_or("");
+        if self.core.log_stdout {
+            println!("{} {pfx}{msg}", date::now().format("%F %T%.3f"));
+        }
+        log::info!("{pfx}{msg}");
+    }
+
+    /// Set the announcement log prefix.
+    /// 
+    /// Append a space so we don't have to do that at log time.
+    pub fn set_log_prefix(&mut self, p: &str) {
+        self.core.log_prefix = Some(p.to_string() + " ");
+    }
+
+    pub fn set_editor(&mut self, e: Editor) {
+        self.editor = Some(e);
     }
 
     pub fn staff_account(&self) -> i64 {
-        self.staff_account
+        self.core.staff_account
     }
 
     /// * Panics if "with_evergreen" was set to false at init time.
@@ -153,7 +219,7 @@ impl Runner {
     }
 
     pub fn params(&self) -> &getopts::Matches {
-        &self.params
+        &self.core.params
     }
 
     /// Returns the active authtoken
@@ -179,9 +245,9 @@ impl Runner {
     ///
     /// Returns the auth token.
     pub fn login_staff(&mut self) -> EgResult<String> {
-        let mut args = auth::InternalLoginArgs::new(self.staff_account, auth::LoginType::Staff);
+        let mut args = auth::InternalLoginArgs::new(self.core.staff_account, auth::LoginType::Staff);
 
-        if let Some(ws) = self.staff_workstation.as_ref() {
+        if let Some(ws) = self.core.staff_workstation.as_ref() {
             args.set_workstation(ws);
         }
 
