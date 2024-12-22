@@ -6,7 +6,6 @@
 use eg::date;
 use eg::norm::Normalizer;
 use eg::script;
-use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
@@ -300,19 +299,14 @@ impl BibLinker {
 
         for chunk in bib_ids.chunks(chunksize) {
             let chunk = chunk.to_vec();
-            let staff_account = self.scripter.staff_account();
-            let log_stdout = self.scripter.params().opt_present("log-stdout");
+            let script_core = self.scripter.core().clone();
 
             let handle = thread::spawn(move || {
                 // Each thread needs its own opensrf connection / editor.
-                let client = eg::Client::connect().expect("should connect to opensrf");
-                let editor = eg::Editor::new(&client);
+                let mut scripter: script::Runner = script_core.into();
+                scripter.connect_evergreen().expect("should connect to eg");
 
-                let mut worker = Worker {
-                    editor,
-                    staff_account,
-                    log_stdout,
-                };
+                let mut worker = Worker { scripter };
 
                 if let Err(e) = worker.link_batch(chunk) {
                     log::error!("Batch failed to complete: {e}");
@@ -335,20 +329,10 @@ impl BibLinker {
 
 /// Processes one batch of bib IDs within its own thread.
 struct Worker {
-    editor: Editor,
-    staff_account: i64,
-    log_stdout: bool,
+    scripter: script::Runner,
 }
 
 impl Worker {
-    /// Log record modifications to STDOUT and info logging.
-    fn announce(&self, s: &str) {
-        if self.log_stdout {
-            println!("{} {s}", date::now().format("%F %T%.3f"));
-        }
-        log::info!("B2AL: {s}");
-    }
-
     /// Returns a ref to our collection of controlled fields
     ///
     /// # Panics
@@ -369,7 +353,7 @@ impl Worker {
         let mut leaders: Vec<AuthLeader> = Vec::new();
 
         let params = eg::hash! {tag: "008", record: auth_ids.clone()};
-        let maybe_leaders = self.editor.search("afr", params)?;
+        let maybe_leaders = self.scripter.editor_mut().search("afr", params)?;
 
         // Sort the auth_leaders list to match the order of the original
         // list of auth_ids, since they are prioritized by heading
@@ -524,11 +508,11 @@ impl Worker {
 
         bre["marc"] = xml.into();
         bre["edit_date"] = "now".into();
-        bre["editor"] = self.staff_account.into();
+        bre["editor"] = self.scripter.staff_account().into();
 
-        self.editor.xact_begin()?;
-        self.editor.update(bre)?;
-        self.editor.commit()?;
+        self.scripter.editor_mut().xact_begin()?;
+        self.scripter.editor_mut().update(bre)?;
+        self.scripter.editor_mut().commit()?;
 
         Ok(())
     }
@@ -599,7 +583,7 @@ impl Worker {
             };
 
             // TODO idlist searches
-            let recs = match self.editor.search("are", search) {
+            let recs = match self.scripter.editor_mut().search("are", search) {
                 Ok(r) => r,
                 Err(e) => {
                     // Don't let a cstore query failure kill the whole batch.
@@ -631,7 +615,7 @@ impl Worker {
 
             log::info!("Processing record [{}/{}] {rec_id}", counter, bib_count);
 
-            let bre = match self.editor.retrieve("bre", rec_id)? {
+            let bre = match self.scripter.editor_mut().retrieve("bre", rec_id)? {
                 Some(r) => r,
                 None => {
                     log::warn!("No such bib record: {rec_id}");
@@ -664,7 +648,7 @@ impl Worker {
             if let Err(e) = self.link_one_bib(rec_id, bre, &orig_record, &mut record) {
                 log::error!("Error processing bib record {rec_id}: {e}");
                 eprintln!("Error processing bib record {rec_id}: {e}");
-                self.editor.rollback()?;
+                self.scripter.editor_mut().rollback()?;
             }
         }
 
@@ -788,7 +772,7 @@ impl Worker {
                         if prev_sf0 != &new_sf0_val {
                             // Replacing $0
 
-                            self.announce(&format!(
+                            self.scripter.announce(&format!(
                                 "[{rec_id}] replacing $0{} with $0{} for {}",
                                 prev_sf0,
                                 new_sf0_val,
@@ -801,7 +785,7 @@ impl Worker {
                     } else {
                         // Adding a new $0
 
-                        self.announce(&format!(
+                        self.scripter.announce(&format!(
                             "[{rec_id}] adding $0{new_sf0_val} to {}",
                             bib_field.to_breaker()
                         ));
@@ -811,7 +795,7 @@ impl Worker {
                 } else if let Some(prev_sf0) = prev_sf0_val {
                     // Removing the $0
 
-                    self.announce(&format!(
+                    self.scripter.announce(&format!(
                         "[{rec_id}] removing $0{prev_sf0} from {}",
                         bib_field.to_breaker()
                     ));
@@ -832,7 +816,6 @@ fn main() -> EgResult<()> {
     ops.optopt("", "parallel", "", "");
     ops.optopt("", "bibs-modified-since", "", "");
     ops.optopt("", "auths-modified-since", "", "");
-    ops.optflag("", "log-stdout", "");
 
     let options = script::Options {
         with_evergreen: true,
@@ -842,10 +825,12 @@ fn main() -> EgResult<()> {
         options: Some(ops),
     };
 
-    let scripter = match script::Runner::init(options)? {
+    let mut scripter = match script::Runner::init(options)? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };
+
+    scripter.set_log_prefix("B2A");
 
     Normalizer::init();
 
