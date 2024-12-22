@@ -6,9 +6,9 @@
 use eg::date;
 use eg::norm::Normalizer;
 use eg::script;
+use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
-use eg::Editor;
 use evergreen as eg;
 use marctk as marc;
 use std::collections::HashSet;
@@ -133,7 +133,8 @@ impl BibLinker {
         };
 
         let parallel = match scripter.params().opt_str("parallel") {
-            Some(p) => p.parse::<usize>()
+            Some(p) => p
+                .parse::<usize>()
                 .map_err(|e| format!("error parsing value for --parallel: {e}"))?,
             None => 1,
         };
@@ -286,7 +287,7 @@ impl BibLinker {
             }
         }
 
-        CONTROLLED_FIELDS.set(controlled_fields).unwrap(); 
+        CONTROLLED_FIELDS.set(controlled_fields).unwrap();
 
         Ok(())
     }
@@ -300,14 +301,17 @@ impl BibLinker {
         for chunk in bib_ids.chunks(chunksize) {
             let chunk = chunk.to_vec();
             let staff_account = self.scripter.staff_account();
+            let log_stdout = self.scripter.params().opt_present("log-stdout");
 
             let handle = thread::spawn(move || {
+                // Each thread needs its own opensrf connection / editor.
                 let client = eg::Client::connect().expect("should connect to opensrf");
                 let editor = eg::Editor::new(&client);
 
                 let mut worker = Worker {
                     editor,
                     staff_account,
+                    log_stdout,
                 };
 
                 if let Err(e) = worker.link_batch(chunk) {
@@ -333,9 +337,18 @@ impl BibLinker {
 struct Worker {
     editor: Editor,
     staff_account: i64,
+    log_stdout: bool,
 }
 
 impl Worker {
+    /// Log record modifications to STDOUT and info logging.
+    fn announce(&self, s: &str) {
+        if self.log_stdout {
+            println!("{s}");
+        }
+        log::info!("B2AL: {s}");
+    }
+
     /// Returns a ref to our collection of controlled fields
     ///
     /// # Panics
@@ -618,8 +631,6 @@ impl Worker {
     fn link_batch(&mut self, batch: Vec<i64>) -> EgResult<()> {
         let mut counter = 0;
         let bib_count = batch.len();
-        
-        // for chunk in bib_ids.chunk(self.scripter.parallel)
 
         for rec_id in batch {
             counter += 1;
@@ -715,11 +726,6 @@ impl Worker {
                         continue;
                     }
 
-                    log::debug!(
-                        "[LINKER={rec_id}] removing $0 from field={}",
-                        bib_field.to_breaker()
-                    );
-
                     // Remove any existing subfield 0 values -- should
                     // only be one of these at the most.
                     bib_field.remove_subfields("0");
@@ -784,36 +790,46 @@ impl Worker {
                     auth_id = self.find_matching_auth_for_thesaurus(bib_field, &auth_leaders)?;
                 }
 
-                // Avoid exiting here just because we have no matchable
-                // auth records, because the bib record may have changed
-                // above when subfields were removed.  We need to capture
-                // those changes.
-
                 if let Some(id) = auth_id {
                     let new_sf0_val = format!("({}){}", DEFAULT_CONTROL_NUMBER_IDENTIFIER, id);
+
                     if let Some(prev_sf0) = prev_sf0_val.as_ref() {
                         if prev_sf0 != &new_sf0_val {
-                            log::info!(
-                                "[LINKER={rec_id}] replacing $0 [{}] with [{}] for {}",
+                            // Replacing $0
+
+                            self.announce(&format!(
+                                "[{rec_id}] replacing $0 [{}] with [{}] for {}",
                                 prev_sf0,
                                 new_sf0_val,
                                 bib_field.to_breaker()
-                            );
+                            ));
+
+                            bib_modified = true;
+                        } else {
+                            // Retaining existing $0
+                            // No changes to save / log.
                         }
                     } else {
-                        log::info!(
-                            "[LINKER={rec_id}] adding $0 [{new_sf0_val}] to {}",
+                        // Adding a new $0
+
+                        self.announce(&format!(
+                            "[{rec_id}] adding $0 [{new_sf0_val}] to {}",
                             bib_field.to_breaker()
-                        );
+                        ));
+
+                        bib_modified = true;
                     }
 
                     bib_field.add_subfield("0", &new_sf0_val)?;
-                    bib_modified = true;
                 } else if let Some(prev_sf0) = prev_sf0_val {
-                    log::info!(
-                        "[LINKER={rec_id}] removing $0 [{prev_sf0}] from {}",
+                    // Removing the $0
+
+                    self.announce(&format!(
+                        "[{rec_id}] removing $0 [{prev_sf0}] from {}",
                         bib_field.to_breaker()
-                    );
+                    ));
+
+                    bib_modified = true;
                 }
             } // Each bib field with selected bib tag
         } // Each controlled bib tag
@@ -826,7 +842,6 @@ impl Worker {
     }
 }
 
-
 fn main() -> EgResult<()> {
     let mut ops = getopts::Options::new();
 
@@ -836,6 +851,7 @@ fn main() -> EgResult<()> {
     ops.optopt("", "parallel", "", "");
     ops.optopt("", "bibs-modified-since", "", "");
     ops.optopt("", "auths-modified-since", "", "");
+    ops.optflag("", "log-stdout", "");
 
     let options = script::Options {
         with_evergreen: true,
