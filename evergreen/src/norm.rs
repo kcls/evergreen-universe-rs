@@ -16,18 +16,25 @@ const REGEX_PUNCTUATION_PATTERN: &str =
 pub struct Normalizer {}
 
 impl Normalizer {
+    /// Pre-compile our regular expressions.
+    ///
+    /// Ideally called once before threads are spawned.
     pub fn init() {
-        // Treat multiple attempts to apply values to our regex oncelocks
-        // as non-errors, since it can happen if multiple threads call
-        // init() at practically the same time, even when first checking 
-        // for the presence of values in the oncelock.
-        REGEX_CONTROL_CODES
-            .set(Regex::new(REGEX_CONTROL_CODES_PATTERN).unwrap())
-            .ok();
-        REGEX_PUNCTUATION
-            .set(Regex::new(REGEX_PUNCTUATION_PATTERN).unwrap())
-            .ok();
-        REGEX_MULTI_SPACES.set(Regex::new("\\s+").unwrap()).ok();
+        // Treat multiple attempts to apply values to our regex
+        // oncelocks as non-errors, since it can happen if multiple
+        // threads call init() at practically the same time. However,
+        // exit as soon as we know any of the regexes have been applied.
+        if REGEX_CONTROL_CODES.set(Regex::new(REGEX_CONTROL_CODES_PATTERN).unwrap()).is_err() {
+            return;
+        }
+
+        if REGEX_PUNCTUATION.set(Regex::new(REGEX_PUNCTUATION_PATTERN).unwrap()).is_err() {
+            return;
+        }
+
+        if REGEX_MULTI_SPACES.set(Regex::new("\\s+").unwrap()).is_err() {
+            return;
+        }
     }
 
     pub fn new() -> Normalizer {
