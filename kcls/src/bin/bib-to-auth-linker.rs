@@ -789,7 +789,7 @@ impl Worker {
                             // Replacing $0
 
                             self.announce(&format!(
-                                "[{rec_id}] replacing $0 [{}] with [{}] for {}",
+                                "[{rec_id}] replacing $0{} with $0{} for {}",
                                 prev_sf0,
                                 new_sf0_val,
                                 bib_field.to_breaker()
@@ -802,7 +802,7 @@ impl Worker {
                         // Adding a new $0
 
                         self.announce(&format!(
-                            "[{rec_id}] adding $0 [{new_sf0_val}] to {}",
+                            "[{rec_id}] adding $0{new_sf0_val} to {}",
                             bib_field.to_breaker()
                         ));
                     }
@@ -812,7 +812,7 @@ impl Worker {
                     // Removing the $0
 
                     self.announce(&format!(
-                        "[{rec_id}] removing $0 [{prev_sf0}] from {}",
+                        "[{rec_id}] removing $0{prev_sf0} from {}",
                         bib_field.to_breaker()
                     ));
                 }
