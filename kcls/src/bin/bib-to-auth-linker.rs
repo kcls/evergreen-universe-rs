@@ -344,7 +344,7 @@ impl Worker {
     /// Log record modifications to STDOUT and info logging.
     fn announce(&self, s: &str) {
         if self.log_stdout {
-            println!("{s}");
+            println!("{} {s}", date::now().format("%F %T%.3f"));
         }
         log::info!("B2AL: {s}");
     }
@@ -511,26 +511,20 @@ impl Worker {
         orig_record: &marc::Record,
         record: &marc::Record,
     ) -> EgResult<()> {
-        // We compare locally re-generated XML instead of comparing
-        // to bre["marc"], because bre["marc"] is always generated
-        // by the EG Perl code, which has minor spacing/sorting
-        // differences in the generated XML.
-        let orig_xml = orig_record.to_xml_string();
-
-        let xml = record.to_xml_string();
-
         let bre_id = bre["id"].int()?;
 
-        if orig_xml == xml {
+        if record == orig_record {
             log::debug!("Skipping update of record {bre_id} -- no changes made");
             return Ok(());
         }
 
-        log::debug!("[LINKER={bre_id}] saving changes to record");
+        log::debug!("saving changes to record {bre_id}");
 
-        bre["marc"] = EgValue::from(xml);
-        bre["edit_date"] = EgValue::from("now");
-        bre["editor"] = EgValue::from(self.staff_account);
+        let xml = record.to_xml_string();
+
+        bre["marc"] = xml.into();
+        bre["edit_date"] = "now".into();
+        bre["editor"] = self.staff_account.into();
 
         self.editor.xact_begin()?;
         self.editor.update(bre)?;
@@ -688,8 +682,6 @@ impl Worker {
 
         let controlled_fields = self.get_controlled_fields();
 
-        let mut bib_modified = false;
-
         let mut seen_bib_tags: HashSet<&str> = HashSet::new();
 
         for cfield in controlled_fields.iter() {
@@ -729,7 +721,6 @@ impl Worker {
                     // Remove any existing subfield 0 values -- should
                     // only be one of these at the most.
                     bib_field.remove_subfields("0");
-                    bib_modified = true;
 
                     if is_fast_heading {
                         // This bib field is controlled by a "fast" thesaurus.
@@ -803,8 +794,6 @@ impl Worker {
                                 new_sf0_val,
                                 bib_field.to_breaker()
                             ));
-
-                            bib_modified = true;
                         } else {
                             // Retaining existing $0
                             // No changes to save / log.
@@ -816,8 +805,6 @@ impl Worker {
                             "[{rec_id}] adding $0 [{new_sf0_val}] to {}",
                             bib_field.to_breaker()
                         ));
-
-                        bib_modified = true;
                     }
 
                     bib_field.add_subfield("0", &new_sf0_val)?;
@@ -828,17 +815,11 @@ impl Worker {
                         "[{rec_id}] removing $0 [{prev_sf0}] from {}",
                         bib_field.to_breaker()
                     ));
-
-                    bib_modified = true;
                 }
             } // Each bib field with selected bib tag
         } // Each controlled bib tag
 
-        if bib_modified {
-            self.update_bib_record(bre, orig_record, record)
-        } else {
-            Ok(())
-        }
+        self.update_bib_record(bre, orig_record, record)
     }
 }
 
