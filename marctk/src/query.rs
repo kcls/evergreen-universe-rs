@@ -83,4 +83,16 @@ mod tests {
         assert_eq!(filtered.next().unwrap().tag(), "955");
         assert!(filtered.next().is_none());
     }
+
+    #[test]
+    fn test_if_filter_ignores_junk_and_non_numeric_tags() {
+        let query = FieldQuery::from("6XX:ABC$DEF");
+
+        // Some records have funky tags.
+        let record =
+            Record::from_breaker(r#"=ABC \0$aEarthquakes $v Juvenile literature."#).unwrap();
+        let filter = query.field_filter;
+        let mut filtered = record.fields().iter().filter(filter);
+        assert!(filtered.next().is_none());
+    }
 }
