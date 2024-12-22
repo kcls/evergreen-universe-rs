@@ -1,8 +1,8 @@
 //! Script utilities.
 use crate as eg;
 use eg::common::auth;
-use eg::db::DatabaseConnection;
 use eg::date;
+use eg::db::DatabaseConnection;
 use eg::init;
 use eg::Editor;
 use eg::EgResult;
@@ -151,7 +151,7 @@ impl Runner {
                 staff_workstation,
                 log_stdout,
                 log_prefix: None,
-            }
+            },
         };
 
         if options.with_database {
@@ -194,7 +194,7 @@ impl Runner {
     }
 
     /// Set the announcement log prefix.
-    /// 
+    ///
     /// Append a space so we don't have to do that at log time.
     pub fn set_log_prefix(&mut self, p: &str) {
         self.core.log_prefix = Some(p.to_string() + " ");
@@ -245,7 +245,8 @@ impl Runner {
     ///
     /// Returns the auth token.
     pub fn login_staff(&mut self) -> EgResult<String> {
-        let mut args = auth::InternalLoginArgs::new(self.core.staff_account, auth::LoginType::Staff);
+        let mut args =
+            auth::InternalLoginArgs::new(self.core.staff_account, auth::LoginType::Staff);
 
         if let Some(ws) = self.core.staff_workstation.as_ref() {
             args.set_workstation(ws);
