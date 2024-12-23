@@ -4,6 +4,7 @@ use eg::EgValue;
 use evergreen as eg;
 use std::cell::RefCell;
 use std::io;
+use std::io::IsTerminal;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -263,7 +264,9 @@ impl Shell {
     fn process_script_lines(&mut self) -> Result<(), String> {
         // Avoid mucking with STDIN if we have no piped data to process.
         // Otherwise, it conflict with rustlyine.
-        if atty::is(atty::Stream::Stdin) {
+        let stdin = io::stdin();
+
+        if stdin.is_terminal() {
             return Ok(());
         }
 
@@ -274,7 +277,6 @@ impl Shell {
         }
 
         let mut buffer = String::new();
-        let stdin = io::stdin();
 
         loop {
             buffer.clear();

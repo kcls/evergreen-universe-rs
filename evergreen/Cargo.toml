@@ -38,7 +38,6 @@ httparse = "1.8.0"
 # could be make optional
 # Issues with deriving Default for enums in v10.1.0
 rustyline = "10.1"
-atty = "0.2"
 sip2 = { path = "../sip2", features = ["json"] }
 # Bringing this in because it supports JSON stream parsing, which is
 # not supported by "json".  Ideally, we would replace "json" with

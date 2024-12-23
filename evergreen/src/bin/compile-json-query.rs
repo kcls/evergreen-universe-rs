@@ -11,6 +11,7 @@ use eg::{EgResult, EgValue};
 use evergreen as eg;
 use std::env;
 use std::io;
+use std::io::IsTerminal;
 
 fn main() -> EgResult<()> {
     // Load the IDL from the usual locations without connecting to Evergreen.
@@ -24,9 +25,14 @@ fn main() -> EgResult<()> {
         None => {
             // No content was read from the command line, see if we have
             // any piped to us on STDIN.
+            let stdin = io::stdin();
+
+            if stdin.is_terminal() {
+                // Avoid blocking on STDIN in interactive mode.
+                return Ok(());
+            }
 
             let mut lines = String::new();
-            let stdin = io::stdin();
 
             // Read the JSON piped to us via STDIN
             while stdin.read_line(&mut buffer).map_err(|e| e.to_string())? > 0 {
