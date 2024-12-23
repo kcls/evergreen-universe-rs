@@ -92,6 +92,10 @@ path = "src/bin/auth-to-auth-linker.rs"
 name = "eg-edi-file-fetcher"
 path = "src/bin/edi-file-fetcher.rs"
 
+[[bin]]
+name = "eg-compile-json-query"
+path = "src/bin/compile-json-query.rs"
+
 
 # --- Services
 # Service names are prefixed with rs- to prevent
