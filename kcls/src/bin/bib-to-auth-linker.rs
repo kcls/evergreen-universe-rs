@@ -291,7 +291,7 @@ impl BibLinker {
         Ok(())
     }
 
-    /// Fine bib IDs to link then divy them up among the workers.
+    /// Find bib IDs to link then divy them up among the workers.
     fn link_bibs(&mut self) -> EgResult<()> {
         let bib_ids = self.get_bib_ids()?;
         let mut handles = Vec::new();
