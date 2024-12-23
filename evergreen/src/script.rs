@@ -65,6 +65,7 @@ pub struct Options {
 pub struct RunnerCore {
     staff_account: i64,
     staff_workstation: Option<String>,
+    authtoken: Option<String>,
     params: getopts::Matches,
     log_prefix: Option<String>,
     log_stdout: bool,
@@ -150,6 +151,7 @@ impl Runner {
                 staff_account,
                 staff_workstation,
                 log_stdout,
+                authtoken: None,
                 log_prefix: None,
             },
         };
@@ -160,7 +162,8 @@ impl Runner {
 
         if options.with_evergreen {
             // Avoid using self.connect_evergreen() here since that
-            // variant does not initialize logging.
+            // variant simply connects to the bus and does not
+            // initialize the IDL, logging, etc.
             let client = init::init()?;
             runner.editor = Some(eg::Editor::new(&client));
         }
@@ -168,6 +171,7 @@ impl Runner {
         Ok(Some(runner))
     }
 
+    /// Connect to the database.
     pub fn connect_db(&mut self) -> EgResult<()> {
         let mut db = DatabaseConnection::new_from_options(self.params());
         db.connect()?;
@@ -175,16 +179,25 @@ impl Runner {
         Ok(())
     }
 
+    /// Connects to the Evergreen bus.
+    ///
+    /// Does not parse the IDL, etc., assuming those steps have already
+    /// been taken.
     pub fn connect_evergreen(&mut self) -> EgResult<()> {
         let client = eg::Client::connect()?;
         self.editor = Some(eg::Editor::new(&client));
         Ok(())
     }
 
+    /// Our core.
     pub fn core(&self) -> &RunnerCore {
         &self.core
     }
 
+    /// Send messages to log::info! and additoinally log messages to
+    /// STDOUT when self.core.log_stdout is true.
+    ///
+    /// Log prefix is appplied when set.
     pub fn announce(&self, msg: &str) {
         let pfx = self.core.log_prefix.as_deref().unwrap_or("");
         if self.core.log_stdout {
@@ -200,38 +213,59 @@ impl Runner {
         self.core.log_prefix = Some(p.to_string() + " ");
     }
 
+    /// Apply an Editor.
+    ///
+    /// This does not propagate the authtoken or force the editor
+    /// to fetch/set its requestor value.  If needed, call
+    /// editor.apply_authtoken(script.authtoken()).
     pub fn set_editor(&mut self, e: Editor) {
         self.editor = Some(e);
     }
 
+    /// Returns the staff account value.
     pub fn staff_account(&self) -> i64 {
         self.core.staff_account
     }
 
-    /// * Panics if "with_evergreen" was set to false at init time.
+    /// Mutable ref to our editor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `with_evergreen` was false during init and no calls
+    /// to set_editor were made.
     pub fn editor_mut(&mut self) -> &mut Editor {
         self.editor.as_mut().unwrap()
     }
 
-    /// * Panics if "with_evergreen" was set to false at init time.
+    /// Ref to our Editor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `with_evergreen` was false during init and no calls
+    /// to set_editor were made.
     pub fn editor(&self) -> &Editor {
         self.editor.as_ref().unwrap()
     }
 
+    /// Ref to our compiled command line parameters.
     pub fn params(&self) -> &getopts::Matches {
         &self.core.params
     }
 
     /// Returns the active authtoken
     ///
+    /// # Panics
+    ///
     /// Panics if no auth session is present.
     pub fn authtoken(&self) -> &str {
-        self.editor().authtoken().unwrap()
+        self.core.authtoken.as_deref().unwrap()
     }
 
     /// Returns a mutable ref to our database connection
     ///
-    /// * Panics if the database connection was not initialized.
+    /// # Panics
+    ///
+    /// Panics if the database connection was not initialized.
     ///
     pub fn db(&mut self) -> &mut DatabaseConnection {
         self.db
