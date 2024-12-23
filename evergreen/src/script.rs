@@ -290,6 +290,7 @@ impl Runner {
 
         if let Some(s) = ses {
             self.editor_mut().apply_authtoken(s.token())?;
+            self.core.authtoken = Some(s.token().to_string());
             Ok(s.token().to_string())
         } else {
             Err("Could not retrieve auth session".into())
