@@ -304,6 +304,26 @@ impl Field {
         self.subfields.iter().find(|f| f.code() == code)
     }
 
+    /// Mutable variant of ['first_subfield()`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Field;
+    ///
+    /// let mut field: Field =  Field::new("245").unwrap();
+    /// assert!(field.first_subfield("a").is_none());
+    ///
+    /// field.add_subfield("a", "First one").unwrap();
+    ///
+    /// field.first_subfield_mut("a").unwrap().set_content("Other text");
+    ///
+    /// assert_eq!(field.first_subfield("a").unwrap().content(), "Other text");
+    /// ```
+    pub fn first_subfield_mut(&mut self, code: &str) -> Option<&mut Subfield> {
+        self.subfields.iter_mut().find(|f| f.code() == code)
+    }
+
     /// True if a subfield with the provided code is present.
     ///
     /// # Examples
@@ -730,5 +750,34 @@ impl Record {
         query: impl Into<crate::query::FieldQuery>,
     ) -> impl Iterator<Item = &Field> {
         self.fields().iter().filter(query.into().field_filter)
+    }
+
+    /// Mutable variant of [`extract_fields()`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Record;
+    /// let mut record = Record::from_breaker(
+    ///     r#"=600 10$aZhang, Heng, $d 78-139 $v Juvenile literature.
+    /// =650 \0$aEarthquakes $v Juvenile literature.
+    /// =955 \0$a1234"#
+    /// ).unwrap();
+    ///
+    /// for field in record.extract_fields_mut(600..=699) {
+    ///     field.first_subfield_mut("a").unwrap().set_content("HELLOOO");
+    ///     field.add_subfield("x", "X CONTENT");
+    /// }
+    ///
+    /// // This is kinda lazy, but you get the idea.
+    /// assert!(record.to_breaker().contains("$xX CONTENT"));
+    ///
+    pub fn extract_fields_mut(
+        &mut self,
+        query: impl Into<crate::query::FieldQueryMut>,
+    ) -> impl Iterator<Item = &mut Field> {
+        self.fields_mut()
+            .iter_mut()
+            .filter(query.into().field_filter)
     }
 }

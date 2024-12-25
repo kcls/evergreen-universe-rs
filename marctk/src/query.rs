@@ -26,6 +26,33 @@ impl From<&str> for FieldQuery {
     }
 }
 
+/// Mutable variant of [`FieldQuery`]
+pub struct FieldQueryMut {
+    pub field_filter: Box<dyn FnMut(&&mut Field) -> bool>,
+}
+
+impl From<RangeInclusive<i64>> for FieldQueryMut {
+    fn from(range: RangeInclusive<i64>) -> Self {
+        FieldQueryMut {
+            field_filter: Box::new(move |f: &&mut Field| match f.tag().parse::<i64>() {
+                Ok(tag_number) => range.contains(&tag_number),
+                Err(_) => false,
+            }),
+        }
+    }
+}
+
+impl From<&str> for FieldQueryMut {
+    fn from(spec_input: &str) -> Self {
+        let specs: Vec<String> = spec_input.split(':').map(str::to_owned).collect();
+        FieldQueryMut {
+            field_filter: Box::new(move |f: &&mut Field| {
+                specs.iter().any(|spec| f.matches_spec(spec))
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
