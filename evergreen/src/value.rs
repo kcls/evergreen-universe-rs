@@ -1709,7 +1709,7 @@ impl IndexMut<&str> for EgValue {
                     o.values.insert(key.to_string(), eg::NULL);
                 }
 
-                return o.values.get_mut(key).unwrap();
+                o.values.get_mut(key).unwrap()
             } else {
                 panic!("Cannot get here");
             }

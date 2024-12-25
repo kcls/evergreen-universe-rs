@@ -25,6 +25,7 @@ pub struct BinaryRecordIterator {
 impl Iterator for BinaryRecordIterator {
     type Item = Result<Record, String>;
 
+    /// Returns the next [`Record`] extracted from the binary content.
     fn next(&mut self) -> Option<Self::Item> {
         let mut bytes: Vec<u8> = Vec::new();
 
@@ -62,7 +63,8 @@ impl Iterator for BinaryRecordIterator {
 }
 
 impl BinaryRecordIterator {
-    fn new(filename: &str) -> Result<Self, String> {
+    /// Create a new [`BinaryRecordIterator`] from a file
+    fn from_file(filename: &str) -> Result<Self, String> {
         let file = match File::open(filename) {
             Ok(f) => f,
             Err(e) => return Err(format!("Cannot read MARC file: {filename} {e}")),
@@ -72,8 +74,16 @@ impl BinaryRecordIterator {
     }
 }
 
-/// bytes => String => usize
-fn bytes_to_usize(bytes: &[u8]) -> Result<usize, String> {
+/// Translates a slice of bytes into a String which represents a number,
+/// then extracts and returns the number.
+///
+/// ```
+/// use marctk::binary;
+///
+/// let b = &[49, 50, 51, 52]; // "1234"
+/// assert_eq!(binary::bytes_to_usize(b), Ok(1234))
+/// ```
+pub fn bytes_to_usize(bytes: &[u8]) -> Result<usize, String> {
     match std::str::from_utf8(bytes) {
         Ok(bytes_str) => match bytes_str.parse::<usize>() {
             Ok(num) => Ok(num),
@@ -149,7 +159,7 @@ impl DirectoryEntry {
 impl Record {
     /// Returns an iterator over MARC records produced from a binary file.
     pub fn from_binary_file(filename: &str) -> Result<BinaryRecordIterator, String> {
-        BinaryRecordIterator::new(filename)
+        BinaryRecordIterator::from_file(filename)
     }
 
     /// Creates a single MARC Record from a series of bytes.

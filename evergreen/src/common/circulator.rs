@@ -520,12 +520,7 @@ impl<'a> Circulator<'a> {
         let mut wanted_alerts = Vec::new();
 
         let is_renewal = self.is_renewal();
-        loop {
-            let alert = match self.runtime_copy_alerts.pop() {
-                Some(a) => a,
-                None => break,
-            };
-
+        while let Some(alert) = self.runtime_copy_alerts.pop() {
             let atype = &alert["alert_type"];
 
             // Does this alert type only apply to renewals?
@@ -1067,12 +1062,7 @@ impl<'a> Circulator<'a> {
         let mut success: Option<EgEvent> = None;
         let selfstr = format!("{self}");
 
-        loop {
-            let evt = match self.events.pop() {
-                Some(e) => e,
-                None => break,
-            };
-
+        while let Some(evt) = self.events.pop() {
             if evt.is_success() {
                 success = Some(evt);
                 continue;

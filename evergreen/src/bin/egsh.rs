@@ -579,7 +579,9 @@ impl Shell {
         let name = &args[1];
         let value = sc.get_value(name)?;
 
-        Ok(println!("\n{name} => {value}\n"))
+        println!("\n{name} => {value}\n");
+
+        Ok(())
     }
 
     fn handle_prefs(&mut self, args: &[&str]) -> Result<(), String> {

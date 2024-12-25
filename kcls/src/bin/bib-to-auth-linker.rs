@@ -361,7 +361,7 @@ impl BibLinker {
         let mut authz_leader: Option<AuthLeader> = None;
 
         for leader in auth_leaders {
-            if leader.value.eq("") || leader.value.len() < 12 {
+            if leader.value.is_empty() || leader.value.len() < 12 {
                 continue;
             }
 

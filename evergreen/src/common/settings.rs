@@ -11,9 +11,9 @@ use std::fmt;
 // during lookuping.
 const SETTING_NAME_REGEX: &str = "[^a-zA-Z0-9_\\.]";
 
-/// SettingType may come in handy later when we need to know
-/// more about the types.
 /*
+// SettingType may come in handy later when we need to know
+// more about the types.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SettingType {
     name: String,

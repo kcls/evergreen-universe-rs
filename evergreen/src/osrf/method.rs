@@ -176,7 +176,7 @@ impl StaticMethodDef {
                 desc: None,
             };
 
-            if p.desc.ne("") {
+            if !p.desc.is_empty() {
                 param.desc = Some(p.desc.to_string());
             }
 

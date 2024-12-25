@@ -49,6 +49,7 @@ pub fn escape_xml(value: &str, is_attr: bool) -> String {
     buf
 }
 
+/// Append leading spaces for formatted XML.
 fn format(formatted: bool, value: &mut String, depth: u8) {
     if formatted {
         value.push('\n');
