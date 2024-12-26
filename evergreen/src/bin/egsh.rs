@@ -1,4 +1,5 @@
 use eg::common::auth;
+use eg::common::jq::JsonQueryCompiler;
 use eg::Client;
 use eg::EgValue;
 use evergreen as eg;
@@ -78,6 +79,9 @@ Commands
 
         NOTE: this command only works when connecting to a domain
         that has access to cstore, e.g. private.localhost.
+
+    jqc <json-query>
+        Compiles a JSON query into SQL.
 
     introspect <service> [<prefix>]
         List methods published by <service>, optionally limiting to
@@ -379,11 +383,11 @@ impl Shell {
             "db" => self.db_command(args),
             "req" | "request" => self.send_request(args),
             "reqauth" => self.send_reqauth(args),
-            //"introspect" | "introspect-names" | "introspect-summary" => self.introspect(args),
             x if x.starts_with("introspect") => self.introspect(args),
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
             "cstore" => self.handle_cstore(args),
+            "jqc" => self.handle_jqc(args),
             "sip" => {
                 let res = self.handle_sip(args);
                 if res.is_err() {
@@ -485,6 +489,19 @@ impl Shell {
         };
 
         println!("\n{}", response.msg());
+
+        Ok(())
+    }
+
+    fn handle_jqc(&mut self, args: &[&str]) -> Result<(), String> {
+        self.args_min_length(args, 1)?;
+        let query = EgValue::parse(&args.join(""))?;
+
+        let mut compiler = JsonQueryCompiler::new();
+
+        compiler.compile(&query)?;
+
+        println!("\n{}", compiler.debug_query_kludge());
 
         Ok(())
     }
