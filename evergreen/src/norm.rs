@@ -16,18 +16,29 @@ const REGEX_PUNCTUATION_PATTERN: &str =
 pub struct Normalizer {}
 
 impl Normalizer {
+    /// Pre-compile our regular expressions.
+    ///
+    /// Ideally called once before threads are spawned.
     pub fn init() {
-        if REGEX_CONTROL_CODES.get().is_some() {
+        // Treat multiple attempts to apply values to our regex
+        // oncelocks as non-errors, since it can happen if multiple
+        // threads call init() at practically the same time. However,
+        // exit as soon as we know any of the regexes have been applied.
+        if REGEX_CONTROL_CODES
+            .set(Regex::new(REGEX_CONTROL_CODES_PATTERN).unwrap())
+            .is_err()
+        {
             return;
         }
-        // The above check should make the outer unwrap()'s below succeed.
-        REGEX_CONTROL_CODES
-            .set(Regex::new(REGEX_CONTROL_CODES_PATTERN).unwrap())
-            .unwrap();
-        REGEX_PUNCTUATION
+
+        if REGEX_PUNCTUATION
             .set(Regex::new(REGEX_PUNCTUATION_PATTERN).unwrap())
-            .unwrap();
-        REGEX_MULTI_SPACES.set(Regex::new("\\s+").unwrap()).unwrap();
+            .is_err()
+        {
+            return;
+        }
+
+        REGEX_MULTI_SPACES.set(Regex::new("\\s+").unwrap()).ok();
     }
 
     pub fn new() -> Normalizer {
@@ -60,6 +71,10 @@ impl Normalizer {
     /// assert_eq!(normalizer.naco_normalize("Ægis"), normalizer.naco_normalize("aegis"));
     /// assert_eq!(normalizer.naco_normalize("Ryan, Pam Muñoz"), "ryan pam munoz");
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if Normalizer::init() is not called first.
     pub fn naco_normalize(&self, value: &str) -> String {
         let mut value = self.normalize_substitutions(value);
         value = value.replace('\'', "");
@@ -100,11 +115,11 @@ impl Normalizer {
     }
 
     fn normalize_codes(&self, value: String) -> String {
-        let mut value = if let Some(reg) = REGEX_CONTROL_CODES.get() {
-            reg.replace_all(&value, "").into_owned()
-        } else {
-            value
-        };
+        let mut value = REGEX_CONTROL_CODES
+            .get()
+            .expect("Normalizer::init() should be called first")
+            .replace_all(&value, "")
+            .into_owned();
 
         // Set aside some chars for safe keeping.
         value = value
@@ -115,9 +130,11 @@ impl Normalizer {
             .replace('\u{266F}', "\u{05}")
             .replace('#', "\u{06}");
 
-        if let Some(reg) = REGEX_PUNCTUATION.get() {
-            value = reg.replace_all(&value, " ").into_owned();
-        }
+        value = REGEX_PUNCTUATION
+            .get()
+            .expect("Normalizer::init() should be called first")
+            .replace_all(&value, " ")
+            .into_owned();
 
         // Now put them back
         value = value
@@ -134,9 +151,11 @@ impl Normalizer {
         $str =~ tr/\x{0660}-\x{0669}\x{06F0}-\x{06F9}\x{07C0}-\x{07C9}\x{0966}-\x{096F}\x{09E6}-\x{09EF}\x{0A66}-\x{0A6F}\x{0AE6}-\x{0AEF}\x{0B66}-\x{0B6F}\x{0BE6}-\x{0BEF}\x{0C66}-\x{0C6F}\x{0CE6}-\x{0CEF}\x{0D66}-\x{0D6F}\x{0E50}-\x{0E59}\x{0ED0}-\x{0ED9}\x{0F20}-\x{0F29}\x{1040}-\x{1049}\x{1090}-\x{1099}\x{17E0}-\x{17E9}\x{1810}-\x{1819}\x{1946}-\x{194F}\x{19D0}-\x{19D9}\x{1A80}-\x{1A89}\x{1A90}-\x{1A99}\x{1B50}-\x{1B59}\x{1BB0}-\x{1BB9}\x{1C40}-\x{1C49}\x{1C50}-\x{1C59}\x{A620}-\x{A629}\x{A8D0}-\x{A8D9}\x{A900}-\x{A909}\x{A9D0}-\x{A9D9}\x{AA50}-\x{AA59}\x{ABF0}-\x{ABF9}\x{FF10}-\x{FF19}/0-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-90-9/;
         */
 
-        if let Some(reg) = REGEX_MULTI_SPACES.get() {
-            value = reg.replace_all(&value, " ").into_owned();
-        }
+        value = REGEX_MULTI_SPACES
+            .get()
+            .expect("Normalizer::init() should be called first")
+            .replace_all(&value, " ")
+            .into_owned();
 
         // leaing / trailing spaces
         value.trim().to_lowercase()
