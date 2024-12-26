@@ -1,6 +1,7 @@
 //! Script utilities.
 use crate as eg;
 use eg::common::auth;
+use eg::date;
 use eg::db::DatabaseConnection;
 use eg::init;
 use eg::Editor;
@@ -18,6 +19,9 @@ Runner Additions:
 
     --staff-workstation
         Name of the staff login workstation.  See --staff-acount. Optional.
+
+    --announce
+        Log calls to announce() to STDOUT in addition to log::info!().
 
 Database Connector Additions:
 
@@ -53,12 +57,35 @@ pub struct Options {
     pub extra_params: Option<Vec<String>>,
 }
 
-pub struct Runner {
+/// Parts of a script runner which are thread-Sendable.
+///
+/// Useful for cloning the sendable parts of a Runner, passing it to
+/// a thread, then reconstituting a Runner on the other side.
+#[derive(Debug, Clone)]
+pub struct RunnerCore {
     staff_account: i64,
     staff_workstation: Option<String>,
-    editor: Option<Editor>,
+    authtoken: Option<String>,
     params: getopts::Matches,
+    log_prefix: Option<String>,
+    announce: bool,
+}
+
+/// Core runner plus non-sendable components (editor, db).
+pub struct Runner {
+    core: RunnerCore,
+    editor: Option<Editor>,
     db: Option<DatabaseConnection>,
+}
+
+impl From<RunnerCore> for Runner {
+    fn from(core: RunnerCore) -> Self {
+        Runner {
+            core,
+            editor: None,
+            db: None,
+        }
+    }
 }
 
 impl Runner {
@@ -77,6 +104,7 @@ impl Runner {
         });
 
         ops.optflag("h", "help", "");
+        ops.optflag("", "announce", "");
         ops.optopt("", "staff-account", "", "");
         ops.optopt("", "staff-workstation", "", "");
 
@@ -113,59 +141,131 @@ impl Runner {
             .map_err(|e| format!("Error parsing staff-account value: {e}"))?;
 
         let staff_workstation = params.opt_str("staff-workstation").map(|v| v.to_string());
+        let announce = params.opt_present("announce");
 
-        let editor = if options.with_evergreen {
+        let mut runner = Runner {
+            db: None,
+            editor: None,
+            core: RunnerCore {
+                params,
+                staff_account,
+                staff_workstation,
+                announce,
+                authtoken: None,
+                log_prefix: None,
+            },
+        };
+
+        if options.with_database {
+            runner.connect_db()?;
+        }
+
+        if options.with_evergreen {
+            // Avoid using self.connect_evergreen() here since that
+            // variant simply connects to the bus and does not
+            // initialize the IDL, logging, etc.
             let client = init::init()?;
-            Some(eg::Editor::new(&client))
-        } else {
-            None
-        };
+            runner.editor = Some(eg::Editor::new(&client));
+        }
 
-        let db = if options.with_database {
-            let mut db = DatabaseConnection::new_from_options(&params);
-            db.connect()?;
-            Some(db)
-        } else {
-            None
-        };
-
-        Ok(Some(Runner {
-            db,
-            editor,
-            params,
-            staff_account,
-            staff_workstation,
-        }))
+        Ok(Some(runner))
     }
 
+    /// Connect to the database.
+    pub fn connect_db(&mut self) -> EgResult<()> {
+        let mut db = DatabaseConnection::new_from_options(self.params());
+        db.connect()?;
+        self.db = Some(db);
+        Ok(())
+    }
+
+    /// Connects to the Evergreen bus.
+    ///
+    /// Does not parse the IDL, etc., assuming those steps have already
+    /// been taken.
+    pub fn connect_evergreen(&mut self) -> EgResult<()> {
+        let client = eg::Client::connect()?;
+        self.editor = Some(eg::Editor::new(&client));
+        Ok(())
+    }
+
+    /// Our core.
+    pub fn core(&self) -> &RunnerCore {
+        &self.core
+    }
+
+    /// Send messages to log::info! and additoinally log messages to
+    /// STDOUT when self.core.announce is true.
+    ///
+    /// Log prefix is appplied when set.
+    pub fn announce(&self, msg: &str) {
+        let pfx = self.core.log_prefix.as_deref().unwrap_or("");
+        if self.core.announce {
+            println!("{} {pfx}{msg}", date::now().format("%F %T%.3f"));
+        }
+        log::info!("{pfx}{msg}");
+    }
+
+    /// Set the announcement log prefix.
+    ///
+    /// Append a space so we don't have to do that at log time.
+    pub fn set_log_prefix(&mut self, p: &str) {
+        self.core.log_prefix = Some(p.to_string() + " ");
+    }
+
+    /// Apply an Editor.
+    ///
+    /// This does not propagate the authtoken or force the editor
+    /// to fetch/set its requestor value.  If needed, call
+    /// editor.apply_authtoken(script.authtoken()).
+    pub fn set_editor(&mut self, e: Editor) {
+        self.editor = Some(e);
+    }
+
+    /// Returns the staff account value.
     pub fn staff_account(&self) -> i64 {
-        self.staff_account
+        self.core.staff_account
     }
 
-    /// * Panics if "with_evergreen" was set to false at init time.
+    /// Mutable ref to our editor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `with_evergreen` was false during init and no calls
+    /// to set_editor were made.
     pub fn editor_mut(&mut self) -> &mut Editor {
         self.editor.as_mut().unwrap()
     }
 
-    /// * Panics if "with_evergreen" was set to false at init time.
+    /// Ref to our Editor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `with_evergreen` was false during init and no calls
+    /// to set_editor were made.
     pub fn editor(&self) -> &Editor {
         self.editor.as_ref().unwrap()
     }
 
+    /// Ref to our compiled command line parameters.
     pub fn params(&self) -> &getopts::Matches {
-        &self.params
+        &self.core.params
     }
 
     /// Returns the active authtoken
     ///
+    /// # Panics
+    ///
     /// Panics if no auth session is present.
     pub fn authtoken(&self) -> &str {
-        self.editor().authtoken().unwrap()
+        self.core.authtoken.as_deref().unwrap()
     }
 
     /// Returns a mutable ref to our database connection
     ///
-    /// * Panics if the database connection was not initialized.
+    /// # Panics
+    ///
+    /// Panics if the database connection was not initialized.
     ///
     pub fn db(&mut self) -> &mut DatabaseConnection {
         self.db
@@ -179,9 +279,10 @@ impl Runner {
     ///
     /// Returns the auth token.
     pub fn login_staff(&mut self) -> EgResult<String> {
-        let mut args = auth::InternalLoginArgs::new(self.staff_account, auth::LoginType::Staff);
+        let mut args =
+            auth::InternalLoginArgs::new(self.core.staff_account, auth::LoginType::Staff);
 
-        if let Some(ws) = self.staff_workstation.as_ref() {
+        if let Some(ws) = self.core.staff_workstation.as_ref() {
             args.set_workstation(ws);
         }
 
@@ -189,6 +290,7 @@ impl Runner {
 
         if let Some(s) = ses {
             self.editor_mut().apply_authtoken(s.token())?;
+            self.core.authtoken = Some(s.token().to_string());
             Ok(s.token().to_string())
         } else {
             Err("Could not retrieve auth session".into())
