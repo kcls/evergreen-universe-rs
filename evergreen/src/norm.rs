@@ -42,7 +42,6 @@ impl Normalizer {
     }
 
     pub fn new() -> Normalizer {
-        Normalizer::init();
         Default::default()
     }
 
@@ -56,6 +55,7 @@ impl Normalizer {
     ///
     /// ```
     /// use evergreen::norm::Normalizer;
+    /// Normalizer::init();
     ///
     /// let normalizer = Normalizer::new();
     /// assert_eq!(normalizer.naco_normalize("Café"), normalizer.naco_normalize("cafe"));

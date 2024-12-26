@@ -832,9 +832,8 @@ fn main() -> EgResult<()> {
 
     scripter.set_log_prefix("B2A");
 
-    Normalizer::init();
-
     let mut linker = BibLinker::new(scripter)?;
+
     linker.load_controlled_fields()?;
 
     linker.link_bibs()?;

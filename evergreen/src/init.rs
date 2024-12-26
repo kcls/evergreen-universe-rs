@@ -1,5 +1,6 @@
 //! Connect to OpenSRF/Redis, load host settings, and load the IDL.
 use crate::idl;
+use crate::norm::Normalizer;
 use crate::osrf::conf;
 use crate::osrf::conf::LogFile;
 use crate::osrf::logging;
@@ -176,6 +177,9 @@ pub fn osrf_init(options: &InitOptions) -> EgResult<Client> {
 
 pub fn with_options(options: &InitOptions) -> EgResult<Client> {
     let client = osrf_init(options)?;
+
+    // Compile the normalizer regex's so the caller doesn't have to.
+    Normalizer::init();
 
     load_idl()?;
 
