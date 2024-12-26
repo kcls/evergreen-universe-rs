@@ -11,8 +11,12 @@ use eg::EgValue;
 use evergreen as eg;
 use marctk as marc;
 use std::collections::HashSet;
+use std::sync::OnceLock;
+use std::thread;
 
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
+
+static CONTROLLED_FIELDS: OnceLock<Vec<ControlledField>> = OnceLock::new();
 
 const HELP_TEXT: &str = "
 Link bib records to authority records by applying $0 values to controlled fields.
@@ -35,6 +39,9 @@ By default, all non-deleted bib records are processed.
         Limit to bib records that share a browse entry with an authority
         record whose edit date is >= the provided date and is not
         already linked to the authority record.
+
+    --parallel <count>
+        Number of parallel worker threads to run.  Defaults to 1.
 
     -h, --help
         Display this help
@@ -81,7 +88,7 @@ struct BibLinker {
     bibs_mod_since: Option<date::EgDate>,
     auths_mod_since: Option<date::EgDate>,
     record_id: Option<i64>,
-    normalizer: Normalizer,
+    parallel: usize,
 }
 
 impl BibLinker {
@@ -124,6 +131,13 @@ impl BibLinker {
             None => None,
         };
 
+        let parallel = match scripter.params().opt_str("parallel") {
+            Some(p) => p
+                .parse::<usize>()
+                .map_err(|e| format!("error parsing value for --parallel: {e}"))?,
+            None => 1,
+        };
+
         Ok(BibLinker {
             min_id,
             max_id,
@@ -131,7 +145,7 @@ impl BibLinker {
             bibs_mod_since,
             auths_mod_since,
             scripter,
-            normalizer: Normalizer::new(),
+            parallel,
         })
     }
 
@@ -202,7 +216,11 @@ impl BibLinker {
     }
 
     /// Collect the list of controlled fields from the database.
-    fn get_controlled_fields(&mut self) -> EgResult<Vec<ControlledField>> {
+    ///
+    /// # Panics
+    ///
+    /// If called more than once.
+    fn load_controlled_fields(&mut self) -> EgResult<()> {
         let search = eg::hash! {"id": {"<>": EgValue::Null}};
 
         let flesh = eg::hash! {
@@ -268,7 +286,60 @@ impl BibLinker {
             }
         }
 
-        Ok(controlled_fields)
+        CONTROLLED_FIELDS.set(controlled_fields).unwrap();
+
+        Ok(())
+    }
+
+    /// Find bib IDs to link then divy them up among the workers.
+    fn link_bibs(&mut self) -> EgResult<()> {
+        let bib_ids = self.get_bib_ids()?;
+        let mut handles = Vec::new();
+        let chunksize = bib_ids.len() / self.parallel + 1;
+
+        for chunk in bib_ids.chunks(chunksize) {
+            let chunk = chunk.to_vec();
+            let script_core = self.scripter.core().clone();
+
+            let handle = thread::spawn(move || {
+                // Each thread needs its own opensrf connection / editor.
+                let mut scripter: script::Runner = script_core.into();
+                scripter.connect_evergreen().expect("should connect to eg");
+
+                let mut worker = Worker { scripter };
+
+                if let Err(e) = worker.link_batch(chunk) {
+                    log::error!("Batch failed to complete: {e}");
+                }
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            if let Err(e) = handle.join() {
+                log::error!("Worker join failed with: {e:?}");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Processes one batch of bib IDs within its own thread.
+struct Worker {
+    scripter: script::Runner,
+}
+
+impl Worker {
+    /// Returns a ref to our collection of controlled fields
+    ///
+    /// # Panics
+    ///
+    /// If load_controlled_fields() is not called first.
+    fn get_controlled_fields(&self) -> &'static Vec<ControlledField> {
+        CONTROLLED_FIELDS.get().unwrap()
     }
 
     // Fetch leader/008 values for authority records.  Filter out any whose
@@ -424,26 +495,20 @@ impl BibLinker {
         orig_record: &marc::Record,
         record: &marc::Record,
     ) -> EgResult<()> {
-        // We compare locally re-generated XML instead of comparing
-        // to bre["marc"], because bre["marc"] is always generated
-        // by the EG Perl code, which has minor spacing/sorting
-        // differences in the generated XML.
-        let orig_xml = orig_record.to_xml_string();
-
-        let xml = record.to_xml_string();
-
         let bre_id = bre["id"].int()?;
 
-        if orig_xml == xml {
+        if record == orig_record {
             log::debug!("Skipping update of record {bre_id} -- no changes made");
             return Ok(());
         }
 
-        log::debug!("[LINKER={bre_id}] saving changes to record");
+        log::debug!("saving changes to record {bre_id}");
 
-        bre["marc"] = EgValue::from(xml);
-        bre["edit_date"] = EgValue::from("now");
-        bre["editor"] = EgValue::from(self.scripter.staff_account());
+        let xml = record.to_xml_string();
+
+        bre["marc"] = xml.into();
+        bre["edit_date"] = "now".into();
+        bre["editor"] = self.scripter.staff_account().into();
 
         self.scripter.editor_mut().xact_begin()?;
         self.scripter.editor_mut().update(bre)?;
@@ -507,7 +572,7 @@ impl BibLinker {
 
             for s in searches.iter() {
                 // s.0=subfield; s.1=subfield-value
-                heading += &format!(" {} {}", s.0, self.normalizer.naco_normalize(s.1));
+                heading += &format!(" {} {}", s.0, Normalizer::naco_normalize_once(s.1));
             }
 
             log::debug!("Sub-heading search for: {heading}");
@@ -541,14 +606,11 @@ impl BibLinker {
         Ok(auth_ids)
     }
 
-    fn link_bibs(&mut self) -> EgResult<()> {
-        let control_fields = self.get_controlled_fields()?;
-
+    fn link_batch(&mut self, batch: Vec<i64>) -> EgResult<()> {
         let mut counter = 0;
-        let bib_ids = self.get_bib_ids()?;
-        let bib_count = bib_ids.len();
+        let bib_count = batch.len();
 
-        for rec_id in bib_ids {
+        for rec_id in batch {
             counter += 1;
 
             log::info!("Processing record [{}/{}] {rec_id}", counter, bib_count);
@@ -583,9 +645,7 @@ impl BibLinker {
 
             let mut record = orig_record.clone();
 
-            if let Err(e) =
-                self.link_one_bib(rec_id, bre, &control_fields, &orig_record, &mut record)
-            {
+            if let Err(e) = self.link_one_bib(rec_id, bre, &orig_record, &mut record) {
                 log::error!("Error processing bib record {rec_id}: {e}");
                 eprintln!("Error processing bib record {rec_id}: {e}");
                 self.scripter.editor_mut().rollback()?;
@@ -599,17 +659,16 @@ impl BibLinker {
         &mut self,
         rec_id: i64,
         bre: EgValue,
-        control_fields: &[ControlledField],
         orig_record: &marc::Record,
         record: &mut marc::Record,
     ) -> EgResult<()> {
         log::info!("Processing record {rec_id}");
 
-        let mut bib_modified = false;
+        let controlled_fields = self.get_controlled_fields();
 
         let mut seen_bib_tags: HashSet<&str> = HashSet::new();
 
-        for cfield in control_fields.iter() {
+        for cfield in controlled_fields.iter() {
             if seen_bib_tags.contains(cfield.bib_tag.as_str()) {
                 continue;
             }
@@ -643,15 +702,9 @@ impl BibLinker {
                         continue;
                     }
 
-                    log::debug!(
-                        "[LINKER={rec_id}] removing $0 from field={}",
-                        bib_field.to_breaker()
-                    );
-
                     // Remove any existing subfield 0 values -- should
                     // only be one of these at the most.
                     bib_field.remove_subfields("0");
-                    bib_modified = true;
 
                     if is_fast_heading {
                         // This bib field is controlled by a "fast" thesaurus.
@@ -673,7 +726,7 @@ impl BibLinker {
                 }
 
                 let mut auth_matches =
-                    self.find_potential_auth_matches(control_fields, bib_field)?;
+                    self.find_potential_auth_matches(controlled_fields, bib_field)?;
 
                 if auth_matches.is_empty() {
                     continue;
@@ -712,45 +765,45 @@ impl BibLinker {
                     auth_id = self.find_matching_auth_for_thesaurus(bib_field, &auth_leaders)?;
                 }
 
-                // Avoid exiting here just because we have no matchable
-                // auth records, because the bib record may have changed
-                // above when subfields were removed.  We need to capture
-                // those changes.
-
                 if let Some(id) = auth_id {
                     let new_sf0_val = format!("({}){}", DEFAULT_CONTROL_NUMBER_IDENTIFIER, id);
+
                     if let Some(prev_sf0) = prev_sf0_val.as_ref() {
                         if prev_sf0 != &new_sf0_val {
-                            log::info!(
-                                "[LINKER={rec_id}] replacing $0 [{}] with [{}] for {}",
+                            // Replacing $0
+
+                            self.scripter.announce(&format!(
+                                "[{rec_id}] replacing $0{} with $0{} for {}",
                                 prev_sf0,
                                 new_sf0_val,
                                 bib_field.to_breaker()
-                            );
+                            ));
+                        } else {
+                            // Retaining existing $0
+                            // No changes to save / log.
                         }
                     } else {
-                        log::info!(
-                            "[LINKER={rec_id}] adding $0 [{new_sf0_val}] to {}",
+                        // Adding a new $0
+
+                        self.scripter.announce(&format!(
+                            "[{rec_id}] adding $0{new_sf0_val} to {}",
                             bib_field.to_breaker()
-                        );
+                        ));
                     }
 
                     bib_field.add_subfield("0", &new_sf0_val)?;
-                    bib_modified = true;
                 } else if let Some(prev_sf0) = prev_sf0_val {
-                    log::info!(
-                        "[LINKER={rec_id}] removing $0 [{prev_sf0}] from {}",
+                    // Removing the $0
+
+                    self.scripter.announce(&format!(
+                        "[{rec_id}] removing $0{prev_sf0} from {}",
                         bib_field.to_breaker()
-                    );
+                    ));
                 }
             } // Each bib field with selected bib tag
         } // Each controlled bib tag
 
-        if bib_modified {
-            self.update_bib_record(bre, orig_record, record)
-        } else {
-            Ok(())
-        }
+        self.update_bib_record(bre, orig_record, record)
     }
 }
 
@@ -760,6 +813,7 @@ fn main() -> EgResult<()> {
     ops.optopt("", "min-id", "", "");
     ops.optopt("", "max-id", "", "");
     ops.optopt("", "record-id", "", "");
+    ops.optopt("", "parallel", "", "");
     ops.optopt("", "bibs-modified-since", "", "");
     ops.optopt("", "auths-modified-since", "", "");
 
@@ -771,12 +825,17 @@ fn main() -> EgResult<()> {
         options: Some(ops),
     };
 
-    let scripter = match script::Runner::init(options)? {
+    let mut scripter = match script::Runner::init(options)? {
         Some(s) => s,
         None => return Ok(()), // e.g. --help
     };
 
+    scripter.set_log_prefix("B2A");
+
+    Normalizer::init();
+
     let mut linker = BibLinker::new(scripter)?;
+    linker.load_controlled_fields()?;
 
     linker.link_bibs()?;
 
