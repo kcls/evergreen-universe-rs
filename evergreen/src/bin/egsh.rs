@@ -330,8 +330,6 @@ impl Shell {
             Err(_) => return Ok(()),
         };
 
-        let now = Instant::now();
-
         let user_input = user_input.trim();
 
         if user_input.is_empty() {
@@ -343,6 +341,8 @@ impl Shell {
         self.add_to_history(readline, user_input);
 
         self.result_count = 0;
+
+        let now = Instant::now();
         self.dispatch_command(user_input)?;
         self.print_duration(&now);
 
