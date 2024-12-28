@@ -1,6 +1,8 @@
 # Evergreen Universe / Rust
 
-Rust bindings, libs, and binaries for Evergreen and related projects.
+Rust bindings, libs, and binaries for 
+[Evergreen](https://github.com/evergreen-library-system/Evergreen) 
+and related projects.
 
 ## Included Packages
 
@@ -39,11 +41,7 @@ Currently assumes Ubuntu 22.04.
 
 ### Setup
 
-Actions that communicate via OpenSRF require the OpenSRF/Evergreen
-Redis branches be installed and running.
-
-Other actions, e.g. eg-marc-export, which communicate via database 
-connection do not require special OpenSRF/Evergreen code.
+Actions that communicate via OpenSRF require OpenSRF/Evergreen Redis.
 
 #### Install OpenSRF / Evergreen with Redis
 
@@ -90,6 +88,10 @@ cargo test --package evergreen --test live -- --ignored --nocapture
 
 # OPTIONAL: Install compiled binaries to /usr/local/bin/
 sudo make install-bin
+
+# OPTIONAL: Install compiled binaries and systemd service files.
+sudo make install
+
 ```
 
 ### Example: Running egsh ("eggshell")
@@ -100,7 +102,7 @@ sudo make install-bin
 cargo run --package evergreen --bin egsh
 ```
 
-> **_NOTE:_** If binaries are installed, the above command may be shortened to just `egsh`.
+> **_NOTE:_** If binaries are installed, the above command may be shortened to just `egsh` (or `/usr/local/bin/egsh`).
 
 #### Some Commands
 
