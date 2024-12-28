@@ -496,7 +496,7 @@ fn export(scripter: &mut script::Runner, ops: &mut ExportOptions) -> Result<(), 
 
     // Create a separate DB connection for our long-running mutable
     // cursor so can perform other DB actions in parallel
-    let mut cursor_con = scripter.db().clone();
+    let mut cursor_con = scripter.db().partial_clone();
     cursor_con.connect()?;
 
     let mut cursor = Cursor::build(cursor_con.client())

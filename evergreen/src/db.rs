@@ -250,22 +250,6 @@ pub struct DatabaseConnection {
     in_transaction: bool,
 }
 
-impl Clone for DatabaseConnection {
-    /// Clone all of the connection details minus the actual PG Client.
-    fn clone(&self) -> DatabaseConnection {
-        DatabaseConnection {
-            client: None,
-            host: self.host.clone(),
-            port: self.port,
-            user: self.user.clone(),
-            password: self.password.clone(),
-            database: self.database.clone(),
-            application: self.application.clone(),
-            in_transaction: false,
-        }
-    }
-}
-
 impl Drop for DatabaseConnection {
     fn drop(&mut self) {
         // This is probably unnecessary, since I expect the PG backend
@@ -420,17 +404,20 @@ impl DatabaseConnection {
         self.connect()
     }
 
-    /// Clones the connection, minus the acutal PG Client.
+    /// Clone everything except the actual PG client.
+    ///
+    /// Let the caller decide when/if/how a new connection to the database
+    /// is created.
     pub fn partial_clone(&self) -> DatabaseConnection {
         DatabaseConnection {
             client: None,
-            host: self.host.to_string(),
+            host: self.host.clone(),
             port: self.port,
-            user: self.user.to_string(),
-            database: self.database.to_string(),
+            user: self.user.clone(),
+            password: self.password.clone(),
+            database: self.database.clone(),
+            application: self.application.clone(),
             in_transaction: false,
-            password: self.password.as_ref().map(|p| p.to_string()),
-            application: self.application.as_ref().map(|p| p.to_string()),
         }
     }
 
