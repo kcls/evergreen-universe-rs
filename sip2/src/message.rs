@@ -17,6 +17,17 @@ pub struct FixedField {
 }
 
 impl FixedField {
+    /// Create a new FixeField using the provided spec and value.
+    /// let mut ff = FixedField::new(&spec::FF_MAX_PRINT_WIDTH, "999").unwrap();
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sip2::FixedField;
+    /// use sip2::spec;
+    /// assert!(FixedField::new(&spec::FF_MAX_PRINT_WIDTH, "999").is_ok());
+    /// assert!(FixedField::new(&spec::FF_MAX_PRINT_WIDTH, "999999").is_err());
+    /// ```
     pub fn new(spec: &'static spec::FixedField, value: &str) -> Result<Self, Error> {
         if value.len() == spec.length {
             Ok(FixedField {
@@ -28,14 +39,32 @@ impl FixedField {
         }
     }
 
+    /// Ref to the FixedField spec that defines our structure.
     pub fn spec(&self) -> &'static spec::FixedField {
         self.spec
     }
 
+    /// Value stored by this fixed field.
+    ///
+    /// The length of the value will match the length defined by the
+    /// Fixedfield spec.
     pub fn value(&self) -> &str {
         &self.value
     }
 
+    /// Apply a value to this FixedField.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sip2::FixedField;
+    /// use sip2::spec;
+    /// let mut ff = FixedField::new(&spec::FF_MAX_PRINT_WIDTH, "999").unwrap();
+    /// ff.set_value("000").unwrap();
+    /// assert_eq!(ff.value(), "000");
+    ///
+    /// assert!(ff.set_value("too long").is_err());
+    /// ```
     pub fn set_value(&mut self, value: &str) -> Result<(), Error> {
         if value.len() == self.spec.length {
             self.value = value.to_string();
@@ -76,6 +105,10 @@ pub struct Field {
 }
 
 impl Field {
+    /// Create a new Field with the provided code and value.
+    ///
+    /// No limits are place to the length of the code or value, though
+    /// in practice, the code will be 2 characters in length.
     pub fn new(code: &str, value: &str) -> Self {
         Field {
             code: code.to_string(),
@@ -83,21 +116,22 @@ impl Field {
         }
     }
 
-    /// value getter
+    /// Get the Field's value.
     pub fn value(&self) -> &str {
         &self.value
     }
 
+    /// Apply a value to this Field.
     pub fn set_value(&mut self, value: &str) {
         self.value = value.to_string();
     }
 
-    /// code getter
+    /// Get the Fields' code.
     pub fn code(&self) -> &str {
         &self.code
     }
 
-    /// Create a SIP string from a field
+    /// Create a partial SIP string from a field.
     ///
     /// String includes the trailing "|" delimiter.
     ///
@@ -142,10 +176,6 @@ impl Message {
         msg.sort_fields();
 
         msg
-    }
-
-    pub fn from_code(msg_code: &str) -> Result<Message, Error> {
-        Message::from_ff_values(msg_code, &[])
     }
 
     /// Creates a new message from a set of fixed field values.
@@ -259,22 +289,27 @@ impl Message {
         }
     }
 
+    /// Returns our message spec.
     pub fn spec(&self) -> &'static spec::Message {
         self.spec
     }
 
+    /// Ref to our list of fields.
     pub fn fields(&self) -> &Vec<Field> {
         &self.fields
     }
 
+    /// Mut ref to our list of fields
     pub fn fields_mut(&mut self) -> &mut Vec<Field> {
         &mut self.fields
     }
 
+    /// Ref to our list of fixed fields
     pub fn fixed_fields(&self) -> &Vec<FixedField> {
         &self.fixed_fields
     }
 
+    /// Mut ref to our list of fixed fields
     pub fn fixed_fields_mut(&mut self) -> &mut Vec<FixedField> {
         &mut self.fixed_fields
     }
@@ -392,8 +427,7 @@ impl Message {
             let value = &msg_text[0..ff_spec.length];
             msg_text = &msg_text[ff_spec.length..];
 
-            // unwrap() is OK because we have confirmed the value has
-            // the correct length above.
+            // Length of the value string is confirmed above.
             msg.fixed_fields
                 .push(FixedField::new(ff_spec, value).unwrap());
         }
@@ -403,6 +437,7 @@ impl Message {
             return Ok(msg);
         }
 
+        // Free-text fields are separated by "|" characters.
         for part in msg_text.split('|') {
             if part.len() > 1 {
                 let val = match part.len() > 2 {
@@ -419,6 +454,8 @@ impl Message {
 
 /// Message display support for logging / debugging.
 impl fmt::Display for Message {
+    /// Format a message into a human-readable list of field labels
+    /// and values.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{} {}", self.spec.code, self.spec.label)?;
 

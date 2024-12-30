@@ -1,3 +1,4 @@
+//! JSON serializatoin routintes for SIP messages.
 use super::Message;
 use std::collections::HashMap;
 use std::error;
@@ -114,6 +115,8 @@ impl Message {
 
     /// Translate a JSON object into a SIP Message.
     ///
+    /// Field and FixedField values must be JSON strings or numbers.
+    ///
     /// ```
     /// use sip2::{Message, Field, FixedField};
     /// use sip2::spec;
@@ -133,12 +136,15 @@ impl Message {
     ///
     /// let json_val = json::object!{
     ///   "code":"93",
-    ///   "fixed_fields":["0","0"],
+    ///   "fixed_fields":["0",0],
     ///   "fields":[{"CN":"sip_username"},{"CO":"sip_password"}]};
     ///
     /// let msg = Message::from_json_value(json_val).unwrap();
     ///
     /// assert_eq!(expected, msg);
+    ///
+    /// let m = Message::from_json_value(json::object! {"code":"93","fixed_fields":[{"bad":"news"}]});
+    /// assert!(m.is_err());
     /// ```
     pub fn from_json_value(mut json_value: json::JsonValue) -> Result<Message, SipJsonError> {
         // Start with a message that's just the code plus fixed fields
@@ -147,40 +153,42 @@ impl Message {
             SipJsonError::MessageFormatError("Message requires a code".to_string())
         })?;
 
-        while !json_value["fixed_fields"].is_empty() {
-            strbuf += &format!("{}", json_value["fixed_fields"].array_remove(0));
+        for ff in json_value["fixed_fields"].members() {
+            if let Some(s) = ff.as_str() {
+                strbuf += s;
+            } else if ff.is_number() {
+                strbuf += &format!("{ff}");
+            } else {
+                return Err(SipJsonError::MessageFormatError(format!(
+                    "Fixed field values must be JSON strings or numbers: {}",
+                    ff.dump()
+                )));
+            }
         }
 
         // Since we're creating this partial SIP string from raw
-        // JSON values, clean it up before parsing as SIP.
+        // JSON values and the buffer this far should not contain
+        // any separater chars, clean it up before parsing as SIP.
         strbuf = super::util::sip_string(&strbuf);
 
-        let mut msg = match Message::from_sip(&strbuf) {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(SipJsonError::MessageFormatError(format!(
-                    "Message is not correctly formatted: {e} {}",
-                    json_value.dump()
-                )))
-            }
-        };
-
-        // TODO this code could take better advantage of the fact
-        // that we're consuming the JsonValue.
+        let mut msg = Message::from_sip(&strbuf).map_err(|e| {
+            SipJsonError::MessageFormatError(format!(
+                "Message is not correctly formatted: {e} {}",
+                json_value.dump()
+            ))
+        })?;
 
         for field in json_value["fields"].members() {
             for (code, value) in field.entries() {
-                if value.is_object() || value.is_array() {
+                if let Some(s) = value.as_str() {
+                    msg.add_field(code, s);
+                } else if value.is_number() {
+                    msg.add_field(code, &format!("{value}"));
+                } else {
                     return Err(SipJsonError::MessageFormatError(format!(
                         "Message is not correctly formatted: {}",
                         json_value.dump()
                     )));
-                }
-
-                if value.is_null() {
-                    msg.add_field(code, "");
-                } else {
-                    msg.add_field(code, &format!("{}", value));
                 }
             }
         }

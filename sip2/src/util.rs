@@ -63,6 +63,7 @@ pub fn space_bool(value: bool) -> &'static str {
     }
 }
 
+/// Return "Y" on true and "N" on false
 pub fn sip_bool(value: bool) -> &'static str {
     match value {
         true => "Y",
@@ -70,6 +71,7 @@ pub fn sip_bool(value: bool) -> &'static str {
     }
 }
 
+/// Returns "1" for true and "0" for false
 pub fn num_bool(value: bool) -> &'static str {
     match value {
         true => "1",
@@ -77,7 +79,7 @@ pub fn num_bool(value: bool) -> &'static str {
     }
 }
 
-/// Stringify a number left padded with zeros.
+/// Stringify a number left padded with zeros to 4 spaces.
 pub fn sip_count4(value: usize) -> String {
     format!("{value:0>4}")
 }

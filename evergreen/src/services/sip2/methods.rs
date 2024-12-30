@@ -121,7 +121,7 @@ pub fn dispatch_sip_request(
             if msg_code == "XS" {
                 // End-session signal.  May as well handle it gracefully
 
-                let response = sip2::Message::from_code("XT").unwrap();
+                let response = sip2::Message::from_ff_values("XT", &[]).unwrap();
 
                 let value = EgValue::from_json_value(response.to_json_value())?;
                 return session.respond_complete(value);
@@ -367,7 +367,7 @@ fn handle_end_patron_session(
 /// No removal of sip.account here since we never create those.
 fn handle_end_session(sip_ses: &mut Session, _sip_msg: sip2::Message) -> EgResult<sip2::Message> {
     sip_ses.editor().clear_auth()?;
-    Ok(sip2::Message::from_code("XT").unwrap())
+    Ok(sip2::Message::from_ff_values("XT", &[]).unwrap())
 }
 
 fn handle_payment(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<sip2::Message> {

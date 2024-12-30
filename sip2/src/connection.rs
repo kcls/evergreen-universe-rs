@@ -168,6 +168,7 @@ impl Connection {
         result
     }
 
+    /// Do the actual receiving from the socket.
     fn recv_internal(&mut self) -> Result<Option<Message>, Error> {
         let mut text = String::from("");
 
