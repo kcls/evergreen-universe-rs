@@ -3,7 +3,7 @@
 
 // Values serialize and deserialize as JSON/serde_json::Value's and much of the
 // code here takes direct inspiration from from the implemention for:
-// <https://docs.rs/json/latest/json/enum.serde_json::Value.html>
+// <https://docs.rs/json/latest/json/enum.json::JsonValue.html>
 use crate as eg;
 use eg::idl;
 use std::collections::HashMap;
@@ -27,7 +27,7 @@ const HASH_CLASSNAME_KEY: &str = "_classname";
 /// Does serde_json not have a take_string() method?
 fn take_string(v: &mut serde_json::Value) -> Option<String> {
     if let serde_json::Value::String(ref mut s) = v {
-        return Some(std::mem::replace(s, String::default()));
+        return Some(mem::replace(s, String::default()));
     }
 
     None
@@ -63,18 +63,50 @@ pub enum EgValue {
     Blessed(BlessedValue),
 }
 
+impl fmt::Display for EgValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EgValue::Null => write!(f, "null"),
+            EgValue::Boolean(b) => write!(f, "{b}"),
+            EgValue::String(ref s) => write!(f, "{s}"),
+            EgValue::Number(n) => write!(f, "{n}"),
+            EgValue::Array(_) => write!(f, "<array>"),
+            EgValue::Hash(_) => write!(f, "<hash>"),
+            EgValue::Blessed(ref o) => {
+                let mut s = o.idl_class.classname().to_string();
+                if let Some(pkey) = self.pkey_field() {
+                    if let Some(pval) = self.pkey_value() {
+                        s += &format!(" {}={pval}", pkey.name());
+                    }
+                }
+                if let Some(selector) = self.selector_value() {
+                    s += &format!(" label={selector}");
+                }
+                write!(f, "{s}")
+            }
+        }
+    }
+}
 
 impl EgValue {
+
+    /// Logs a failure message for invalid Index, etc. invocations and
+    /// returns the error message for panic'ing.
+    fn index_failure(&self) -> String {
+        let msg = format!("Indexing only allowed on objects and arrays: {self}");
+        log::error!("{msg}");
+        msg
+    }
 
     /// Return the classname of the wrapped object if one exists.
     ///
     /// ```
     /// use evergreen_serde::value::EgValue;
     ///
-    /// let h = json::object! {
+    /// let h = serde_json::json!({
     ///   "__c": "yup",
     ///   "__p": [1, 2, 3]
-    /// };
+    /// });
     ///
     /// assert_eq!(EgValue::wrapped_classname(&h), Some("yup"));
     /// ```
@@ -139,13 +171,15 @@ impl EgValue {
             return Ok(EgValue::from_json_value_plain(v));
         }
 
-        if let serde_json::Value::Array(mut list) = v {
+        if let Some(vec) = v.as_array_mut() {
             let mut val_list = Vec::new();
-            for v in list.drain(..) {
+            for v in vec.drain(..) {
                 val_list.push(EgValue::from_json_value(v)?);
             }
             return Ok(EgValue::Array(val_list));
         }
+
+        // Object is the only option left.  May be blessed.
 
         let is_blessed = EgValue::wrapped_classname(&v).is_some();
 
@@ -185,77 +219,6 @@ impl EgValue {
         }))
     }
 
-
-    /*
-    /// Transform a JSON value into an EgValue.
-    ///
-    /// Returns an Err if the value is shaped like and IDL object
-    /// but contains an unrecognized class name.
-    pub fn from_json_value(v: &serde_json::Value) -> Result<EgValue, String> {
-        if v.is_number() || v.is_null() || v.is_boolean() || v.is_string() {
-            return Ok(EgValue::from_json_value_plain(v));
-        }
-
-        if let serde_json::Value::Array(list) = v {
-            let mut val_list = Vec::new();
-            for v in list {
-                val_list.push(EgValue::from_json_value(v)?);
-            }
-            return Ok(EgValue::Array(val_list));
-        }
-
-        let json_map = v.as_object().unwrap(); // only option left.
-
-        // JSON object
-        let mut hash = HashMap::new();
-
-        if EgValue::wrapped_classname(&v).is_none() {
-            // Vanilla JSON object
-            for (key, value) in json_map {
-                hash.insert(
-                    key.to_string(), 
-                    EgValue::from_json_value(value)?,
-                );
-            }
-
-            return Ok(EgValue::Hash(hash));
-        }
-
-        let mut o = serde_json::json!("howdy");
-        if let Some(val) = o.get_mut("key") {
-            if let serde_json::Value::String(ref mut s) = val {
-                let new_s = std::mem::replace(s, String::default());
-            }
-        }
-
-        // TODO clone
-        let (classname, mut list) = EgValue::remove_class_wrapper(v.clone()).unwrap();
-
-        let idl_class = idl::get_class(&classname)?;
-
-        for field in idl_class.fields().values() {
-            if let Some(val) = list.get(field.array_pos()) {
-                // No point in storing NULL entries since blessed values
-                // have known fields.
-                if !val.is_null() {
-                    hash.insert(
-                        field.name().to_string(), 
-                        EgValue::from_json_value(val)?
-                    );
-                }
-            }
-        }
-
-        Ok(EgValue::Blessed(BlessedValue {
-            idl_class: idl_class.clone(),
-            values: hash,
-        }))
-    }
-
-    */
-
-
-/*
     /// Parse a JSON string and turn it into an EgValue
     ///
     /// ```
@@ -270,11 +233,91 @@ impl EgValue {
     /// }
     /// ```
     pub fn parse(s: &str) -> Result<EgValue, String> {
-        match json::parse(s) {
+        match serde_json::from_str(s) {
             Ok(v) => EgValue::from_json_value(v),
             Err(e) => Err(format!("JSON Parse Error: {e} : {s}").into()),
         }
     }
+
+    /// Returns the IDL class if this is a blessed object.
+    pub fn classname(&self) -> Option<&str> {
+        if let EgValue::Blessed(b) = self {
+            Some(b.idl_class.classname())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            EgValue::Number(n) => n.as_i64(),
+            // It's not uncommon to receive numeric strings over the wire.
+            EgValue::String(ref s) => s.parse::<i64>().ok(),
+            _ => None,
+        }
+    }
+
+
+    /// Returns the numeric ID of this EgValue.
+    ///
+    /// Must be a Hash or Blessed with an "id" field containing a numeric
+    /// value.
+    pub fn id(&self) -> Result<i64, String> {
+        // If it's Blessed, verify "id" is a valid field so
+        // the index lookup doesn't panic.
+        if let EgValue::Blessed(ref o) = self {
+            if o.idl_class().has_field("id") {
+                self["id"]
+                    .as_i64()
+                    .ok_or_else(|| format!("{self} has no valid ID"))?;
+            }
+        }
+        self["id"]
+            .as_i64()
+            .ok_or_else(|| format!("{self} has no valid ID"))
+    }
+
+    /// Returns the idl::Field for the primary key if present.
+    pub fn pkey_field(&self) -> Option<&idl::Field> {
+        if let EgValue::Blessed(b) = self {
+            b.idl_class.pkey_field()
+        } else {
+            None
+        }
+    }
+
+    /// Returns the value from the primary key field.
+    ///
+    /// Returns None if the value has no primary key field.
+    pub fn pkey_value(&self) -> Option<&EgValue> {
+        if let Some(pkey_field) = self.pkey_field() {
+            Some(&self[pkey_field.name()])
+        } else {
+            None
+        }
+    }
+
+    pub fn pkey_info(&self) -> Option<(&idl::Field, &EgValue)> {
+        if let Some(f) = self.pkey_field() {
+            if let Some(v) = self.pkey_value() {
+                return Some((f, v));
+            }
+        }
+        None
+    }
+
+    /// Value stored in the reporter:selector field if set.
+    pub fn selector_value(&self) -> Option<&EgValue> {
+        if let EgValue::Blessed(b) = self {
+            if let Some(selector) = b.idl_class.selector() {
+                return Some(&self[selector]);
+            }
+        }
+
+        None
+    }
+
+
 
     /// Create a new empty blessed value using the provided class name.
     pub fn stub(classname: &str) -> Result<EgValue, String> {
@@ -284,6 +327,7 @@ impl EgValue {
             values: HashMap::new(),
         }))
     }
+
 
     /// Create a new blessed value from an existing Hash value using
     /// the provided class name.
@@ -299,14 +343,14 @@ impl EgValue {
     /// contains fields which are not in the IDL.
     ///
     /// Having all IDL fields is not required.
-    pub fn bless(&mut self, classname: &str) -> Result<()> {
+    pub fn bless(&mut self, classname: &str) -> Result<(), String> {
         let idl_class = idl::get_class(classname)?;
 
         // Pull the map out of the EgValue::Hash so we can inspect
         // it and eventually consume it.
         let map = match self {
             Self::Hash(ref mut h) => std::mem::take(h),
-            _ => return Err("Only EgValue::Hash's can be blessed".into()),
+            _ => return Err(format!("Only EgValue::Hash's can be blessed: {self}")),
         };
 
         // Verify the existing data contains only fields that are
@@ -354,11 +398,53 @@ impl EgValue {
         // Add the _classname entry
         map.insert(
             HASH_CLASSNAME_KEY.to_string(),
-            EgValue::from(idl_class.classname()),
+            idl_class.classname().into(),
         );
 
         *self = EgValue::Hash(map);
     }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, EgValue::String(_))
+    }
+
+    pub fn is_boolean(&self) -> bool {
+        matches!(self, EgValue::Boolean(_))
+    }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self, EgValue::Array(_))
+    }
+
+    /// True if this is a vanilla object or a classed object.
+    pub fn is_object(&self) -> bool {
+        matches!(self, EgValue::Hash(_) | EgValue::Blessed(_))
+    }
+
+    pub fn is_hash(&self) -> bool {
+        matches!(self, &EgValue::Hash(_))
+    }
+
+    /// True if this is an IDL-classed object
+    pub fn is_blessed(&self) -> bool {
+        matches!(self, &EgValue::Blessed(_))
+    }
+
+    pub fn is_null(&self) -> bool {
+        self == &EgValue::Null
+    }
+
+    pub fn is_number(&self) -> bool {
+        matches!(self, EgValue::Number(_))
+    }
+
+    /// True if self is not a Hash, Blessed, or Array.
+    pub fn is_scalar(&self) -> bool {
+        self.is_number() || self.is_null() || self.is_boolean() || self.is_string()
+    }
+
+
+/*
 
     /// Translates Blessed values into generic Hash values, recursively,
     /// retaining the original classname in the HASH_CLASSNAME_KEY key.
@@ -752,7 +838,7 @@ impl EgValue {
                 for field in sorted {
                     let v = match o.values.remove(field.name()) {
                         Some(v) => v,
-                        None => eg::NULL,
+                        None => Self::Null,
                     };
 
                     array.push(v.into_json_value()).expect("Is Array");
@@ -763,20 +849,8 @@ impl EgValue {
         }
     }
 
-    /// True if self is not a Hash, Blessed, or Array.
-    pub fn is_scalar(&self) -> bool {
-        self.is_number() || self.is_null() || self.is_boolean() || self.is_string()
-    }
-
-    pub fn is_null(&self) -> bool {
-        self == &EgValue::Null
-    }
-
-    pub fn is_number(&self) -> bool {
-        matches!(self, EgValue::Number(_))
-    }
-
-    /// True if this is a number or a string that is numeric.
+    /// True if this is a number or a string that can be directly
+    /// coerced into a number.
     ///
     /// # Examples
     ///
@@ -791,40 +865,6 @@ impl EgValue {
         self.as_i64().is_some() || self.as_f64().is_some()
     }
 
-    pub fn is_string(&self) -> bool {
-        matches!(self, EgValue::String(_))
-    }
-
-    pub fn is_boolean(&self) -> bool {
-        matches!(self, EgValue::Boolean(_))
-    }
-
-    pub fn is_array(&self) -> bool {
-        matches!(self, EgValue::Array(_))
-    }
-
-    /// True if this is a vanilla object or a classed object.
-    pub fn is_object(&self) -> bool {
-        matches!(self, EgValue::Hash(_) | EgValue::Blessed(_))
-    }
-
-    pub fn is_hash(&self) -> bool {
-        matches!(self, &EgValue::Hash(_))
-    }
-
-    /// True if this is an IDL-classed object
-    pub fn is_blessed(&self) -> bool {
-        matches!(self, &EgValue::Blessed(_))
-    }
-
-    /// Returns the IDL class if this is a blessed object.
-    pub fn classname(&self) -> Option<&str> {
-        if let EgValue::Blessed(b) = self {
-            Some(b.idl_class.classname())
-        } else {
-            None
-        }
-    }
 
     pub fn idl_class(&self) -> Option<&Arc<idl::Class>> {
         if let Self::Blessed(b) = self {
@@ -917,15 +957,6 @@ impl EgValue {
         self.int().expect("No int found")
     }
 
-    pub fn as_i64(&self) -> Option<i64> {
-        match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
-            // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<i64>().ok(),
-            _ => None,
-        }
-    }
-
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
@@ -1012,69 +1043,12 @@ impl EgValue {
         }
     }
 
-    /// Returns the numeric ID of this EgValue.
-    ///
-    /// Must be a Hash or Blessed with an "id" field and a numeric value.
-    pub fn id(&self) -> Result<i64> {
-        // If it's Blessed, verify "id" is a valid field so
-        // the index lookup doesn't panic.
-        if let EgValue::Blessed(ref o) = self {
-            if o.idl_class().has_field("id") {
-                self["id"]
-                    .as_i64()
-                    .ok_or_else(|| format!("{self} has no valid ID"))?;
-            }
-        }
-        self["id"]
-            .as_i64()
-            .ok_or_else(|| format!("{self} has no valid ID").into())
-    }
-
-    /// Returns the idl::Field for the primary key if present.
-    pub fn pkey_field(&self) -> Option<&idl::Field> {
-        if let EgValue::Blessed(b) = self {
-            b.idl_class.pkey_field()
-        } else {
-            None
-        }
-    }
-
-    /// Returns the value from the primary key field.
-    ///
-    /// Returns None if the value has no primary key field.
-    pub fn pkey_value(&self) -> Option<&EgValue> {
-        if let Some(pkey_field) = self.pkey_field() {
-            Some(&self[pkey_field.name()])
-        } else {
-            None
-        }
-    }
-
-    pub fn pkey_info(&self) -> Option<(&idl::Field, &EgValue)> {
-        if let Some(f) = self.pkey_field() {
-            if let Some(v) = self.pkey_value() {
-                return Some((f, v));
-            }
-        }
-        None
-    }
-
-    /// Value stored in the reporter:selector field if set.
-    pub fn selector_value(&self) -> Option<&EgValue> {
-        if let EgValue::Blessed(b) = self {
-            if let Some(selector) = b.idl_class.selector() {
-                return Some(&self[selector]);
-            }
-        }
-
-        None
-    }
 
     pub fn pop(&mut self) -> EgValue {
         if let Self::Array(ref mut list) = self {
-            list.pop().unwrap_or(eg::NULL)
+            list.pop().unwrap_or(Self::Null)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 
@@ -1088,7 +1062,7 @@ impl EgValue {
                 return list.remove(index);
             }
         }
-        eg::NULL
+        Self::Null
     }
 
     /// Remove a value from an object-like thing and, if found, return
@@ -1189,11 +1163,11 @@ impl EgValue {
 
             if field.is_virtual() {
                 // Virtual fields can be fully cleared.
-                self[name] = eg::NULL;
+                self[name] = Self::Null;
             } else if let Some(pval) = self[name].pkey_value() {
                 self[name] = pval.clone();
             } else {
-                self[name] = eg::NULL;
+                self[name] = Self::Null;
             }
         }
 
@@ -1288,31 +1262,6 @@ impl<'a> Iterator for EgValueKeys<'a> {
             iter.next().map(|k| k.as_str())
         } else {
             None
-        }
-    }
-}
-
-impl fmt::Display for EgValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EgValue::Null => write!(f, "null"),
-            EgValue::Boolean(b) => write!(f, "{b}"),
-            EgValue::String(ref s) => write!(f, "{s}"),
-            EgValue::Number(n) => write!(f, "{n}"),
-            EgValue::Array(_) => write!(f, "<array>"),
-            EgValue::Hash(_) => write!(f, "<hash>"),
-            EgValue::Blessed(ref o) => {
-                let mut s = o.idl_class.classname().to_string();
-                if let Some(pkey) = self.pkey_field() {
-                    if let Some(pval) = self.pkey_value() {
-                        s += &format!(" {}={pval}", pkey.name());
-                    }
-                }
-                if let Some(selector) = self.selector_value() {
-                    s += &format!(" label={selector}");
-                }
-                write!(f, "{s}")
-            }
         }
     }
 }
@@ -1434,7 +1383,7 @@ impl From<Option<bool>> for EgValue {
         if let Some(b) = o {
             EgValue::from(b)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1455,18 +1404,12 @@ impl From<Vec<EgValue>> for EgValue {
     }
 }
 
-impl From<&str> for EgValue {
-    fn from(s: &str) -> EgValue {
-        EgValue::String(s.to_string())
-    }
-}
-
 impl From<Option<String>> for EgValue {
     fn from(o: Option<String>) -> EgValue {
         if let Some(s) = o {
             EgValue::from(s)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1488,7 +1431,7 @@ impl From<Option<i32>> for EgValue {
         if let Some(n) = v {
             EgValue::from(n)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1510,7 +1453,7 @@ impl From<Option<i16>> for EgValue {
         if let Some(n) = v {
             EgValue::from(n)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1520,7 +1463,7 @@ impl From<Option<i8>> for EgValue {
         if let Some(n) = v {
             EgValue::from(n)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1542,7 +1485,7 @@ impl From<Option<i64>> for EgValue {
         if let Some(n) = v {
             EgValue::from(n)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1558,7 +1501,7 @@ impl From<Option<f64>> for EgValue {
         if let Some(n) = v {
             EgValue::from(n)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1574,7 +1517,7 @@ impl From<Option<f32>> for EgValue {
         if let Some(n) = v {
             EgValue::from(n)
         } else {
-            eg::NULL
+            Self::Null
         }
     }
 }
@@ -1621,10 +1564,10 @@ impl Index<usize> for EgValue {
                 if let Some(v) = o.get(index) {
                     v
                 } else {
-                    &eg::NULL
+                    &Self::Null
                 }
             }
-            _ => &eg::NULL,
+            _ => &Self::Null,
         }
     }
 }
@@ -1641,7 +1584,7 @@ impl IndexMut<usize> for EgValue {
         }
         if let EgValue::Array(ref mut list) = self {
             while list.len() < index + 1 {
-                list.push(eg::NULL)
+                list.push(Self::Null)
             }
             &mut list[index]
         } else {
@@ -1650,88 +1593,6 @@ impl IndexMut<usize> for EgValue {
     }
 }
 
-/// Allows index-based access to EgValue Hash and Blessed values.
-///
-/// Follows the pattern of serde_json::Value where undefined values are all null's
-impl Index<&str> for EgValue {
-    type Output = EgValue;
-
-    /// Returns the EgValue stored in this EgValue at the
-    /// specified index (field name).
-    ///
-    /// Panics if the IDL Class for this EgValue does not
-    /// contain the named field.
-    fn index(&self, key: &str) -> &Self::Output {
-        match self {
-            Self::Blessed(ref o) => {
-                if key.starts_with('_') || o.idl_class.has_field(key) {
-                    o.values.get(key).unwrap_or(&eg::NULL)
-                } else {
-                    let err = format!(
-                        "Indexing IDL class '{}': No field named '{key}'",
-                        self.classname().unwrap()
-                    );
-                    log::error!("{err}");
-                    panic!("{}", err);
-                }
-            }
-            EgValue::Hash(ref hash) => hash.get(key).unwrap_or(&eg::NULL),
-            // Only Object-y things can be indexed
-            _ => &eg::NULL,
-        }
-    }
-}
-
-/// DOCS
-///
-/// ```
-/// use evergreen::value::EgValue;
-/// let mut v = EgValue::String("hello".to_string());
-/// v["blarg"] = EgValue::String("b".to_string());
-/// assert_eq!(v["blarg"], EgValue::String("b".to_string()));
-/// ```
-impl IndexMut<&str> for EgValue {
-    fn index_mut(&mut self, key: &str) -> &mut Self::Output {
-        let (is_classed, has_field) = match self {
-            Self::Blessed(o) => (true, o.idl_class.has_field(key)),
-            _ => (false, false),
-        };
-
-        if is_classed {
-            if !has_field || key.starts_with('_') {
-                let err = format!(
-                    "Indexing IDL class '{}': No field named '{key}'",
-                    self.classname().unwrap()
-                );
-                log::error!("{err}");
-                panic!("{}", err);
-            }
-
-            if let Self::Blessed(ref mut o) = self {
-                if !o.values.contains_key(key) {
-                    o.values.insert(key.to_string(), eg::NULL);
-                }
-
-                o.values.get_mut(key).unwrap()
-            } else {
-                panic!("Cannot get here");
-            }
-        } else {
-            if let EgValue::Hash(ref mut hash) = self {
-                if hash.get(key).is_none() {
-                    hash.insert(key.to_string(), eg::NULL);
-                }
-                return hash.get_mut(key).unwrap();
-            }
-
-            // Indexing into a non-object turns it into an object.
-            let mut map = HashMap::new();
-            map.insert(key.to_string(), eg::NULL);
-            *self = EgValue::Hash(map);
-            &mut self[key]
-        }
-    }
-}
 
 impl Index<&String> for EgValue {
     type Output = EgValue;
@@ -1834,3 +1695,100 @@ fn macros() {
 }
 
 */
+
+
+// --- impl From<> ---
+
+impl From<&str> for EgValue {
+    fn from(s: &str) -> EgValue {
+        EgValue::String(s.to_string())
+    }
+}
+
+// --- Indexing ---
+
+/// Allows index-based access to EgValue Hash and Blessed values.
+///
+/// Follows the pattern of serde_json::Value where undefined values are all null's
+impl Index<&str> for EgValue {
+    type Output = EgValue;
+
+    /// Returns the EgValue stored in this EgValue at the
+    /// specified index (field name).
+    ///
+    /// Panics if the IDL Class for this EgValue does not
+    /// contain the named field.
+    fn index(&self, key: &str) -> &Self::Output {
+        match self {
+            Self::Blessed(ref o) => {
+                if key.starts_with('_') || o.idl_class.has_field(key) {
+                    o.values.get(key).unwrap_or(&Self::Null)
+                } else {
+                    let err = format!(
+                        "Indexing IDL class '{}': No field named '{key}'",
+                        self.classname().unwrap()
+                    );
+                    log::error!("{err}");
+                    panic!("{}", err);
+                }
+            }
+            EgValue::Hash(ref hash) => hash.get(key).unwrap_or(&Self::Null),
+            // Only Object-y things can be indexed
+            _ => &Self::Null,
+        }
+    }
+}
+
+
+/// TODO DOCS
+///
+/// # Panics
+///
+/// Panics if this value is neither an object or array.
+///
+/// ```
+/// use evergreen_serde::value::EgValue;
+/// let mut v = EgValue::parse(r#"{"hello":"foo"}"#).unwrap();
+/// v["blarg"] = EgValue::String("b".to_string());
+/// assert_eq!(v["blarg"], EgValue::String("b".to_string()));
+/// ```
+impl IndexMut<&str> for EgValue {
+    fn index_mut(&mut self, key: &str) -> &mut Self::Output {
+        let (is_classed, has_field) = match self {
+            Self::Blessed(o) => (true, o.idl_class.has_field(key)),
+            _ => (false, false),
+        };
+
+        if is_classed {
+            // Keys starting with "_" are allowed regardless of IDL class.
+            if !has_field && !key.starts_with('_') {
+                let err = format!(
+                    "Indexing IDL class '{}': No field named '{key}'",
+                    self.classname().unwrap()
+                );
+                log::error!("{err}");
+                panic!("{}", err);
+            }
+
+            let Self::Blessed(ref mut o) = self else { unreachable!(); };
+
+            // We need a place to store values, so create an entry
+            // in our hashmap if we don't have one yet.
+            if !o.values.contains_key(key) {
+                o.values.insert(key.to_string(), Self::Null);
+            }
+
+            o.values.get_mut(key).unwrap()
+
+        } else if let EgValue::Hash(ref mut hash) = self {
+            if hash.get(key).is_none() {
+                hash.insert(key.to_string(), Self::Null);
+            }
+            hash.get_mut(key).unwrap()
+        } else {
+            panic!("{}", self.index_failure());
+        }
+    }
+}
+
+
