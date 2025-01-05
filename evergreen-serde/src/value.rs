@@ -715,7 +715,7 @@ impl EgValue {
     /// ```
     /// use evergreen_serde::value::EgValue;
     ///
-    /// let v = json::array! ["one", "two", "three"];
+    /// let v = serde_json::json!(["one", "two", "three"]);
     /// let v = EgValue::add_class_wrapper(v, "foo");
     /// let v = EgValue::from_json_value_plain(v);
     /// assert!(v.is_object());
@@ -738,10 +738,10 @@ impl EgValue {
     /// use evergreen_serde as eg;
     /// use eg::EgValue;
     ///
-    /// let v = evergreen::array! ["one", "two", "three"];
+    /// let v = eg::value!(["one", "two", "three"]);
     /// assert_eq!(v.len(), 3);
     ///
-    /// let v = evergreen::hash! {"just":"some","stuff":["fooozle", "fazzle", "frizzle"]};
+    /// let v = eg::value!({"just":"some","stuff":["fooozle", "fazzle", "frizzle"]});
     /// assert_eq!(v.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -821,7 +821,7 @@ impl EgValue {
     /// # Examples
     ///
     ///```
-    /// use evergreen as eg;
+    /// use evergreen_serde as eg;
     /// use eg::EgValue;
     ///
     /// let mut v = EgValue::from(["hello", "everyone"].as_slice());
@@ -913,7 +913,7 @@ impl EgValue {
     /// # Examples
     ///
     /// ```
-    /// use evergreen::value::EgValue;
+    /// use evergreen_serde::value::EgValue;
     /// assert!(EgValue::from(1).is_numeric());
     /// assert!(EgValue::from("-12.99999").is_numeric());
     /// assert!(!EgValue::from(true).is_numeric());
@@ -937,7 +937,7 @@ impl EgValue {
     /// # Examples
     ///
     /// ```
-    /// use evergreen::value::EgValue;
+    /// use evergreen_serde::value::EgValue;
     /// assert!(EgValue::from("").is_empty());
     /// assert!(!EgValue::from(" ").is_empty());
     /// ```
@@ -971,7 +971,7 @@ impl EgValue {
     /// # Examples
     ///
     /// ```
-    /// use evergreen::value::EgValue;
+    /// use evergreen_serde::value::EgValue;
     /// assert_eq!(EgValue::from("abc").to_string().as_deref(), Some("abc"));
     /// assert_eq!(EgValue::from(true).to_string(), None);
     /// ```
@@ -1170,14 +1170,12 @@ impl EgValue {
         }
     }
 
-/*
-
     /// De-Flesh a blessed object.
     ///
     /// Replace Object values with the primary key value for each fleshed field.
     /// Replace Array values with empty arrays.
     /// Ignore everything else.
-    pub fn deflesh(&mut self) -> Result<()> {
+    pub fn deflesh(&mut self) -> Result<(), String> {
         let inner = match self {
             EgValue::Blessed(ref mut i) => i,
             _ => return Ok(()),
@@ -1239,16 +1237,9 @@ impl EgValue {
             false
         }
     }
-
-    */
 }
 
-/*
-
 // EgValue Iterators ------------------------------------------------------
-
-// HashMap iterators are a little more complicated and required
-// tracking the hashmap iterator within a custom iterator type.
 
 impl From<EgValue> for serde_json::Value {
     fn from(v: EgValue) -> serde_json::Value {
@@ -1271,6 +1262,7 @@ impl From<Option<&str>> for EgValue {
         }
     }
 }
+
 
 impl From<Vec<i64>> for EgValue {
     fn from(mut v: Vec<i64>) -> EgValue {
@@ -1416,7 +1408,11 @@ impl From<Option<i64>> for EgValue {
 
 impl From<f64> for EgValue {
     fn from(s: f64) -> EgValue {
-        EgValue::Number(s.into())
+        if let Some(n) = serde_json::Number::from_f64(s) {
+            EgValue::Number(n)
+        } else {
+            Self::Null
+        }
     }
 }
 
@@ -1427,28 +1423,6 @@ impl From<Option<f64>> for EgValue {
         } else {
             Self::Null
         }
-    }
-}
-
-impl From<f32> for EgValue {
-    fn from(s: f32) -> EgValue {
-        EgValue::Number(s.into())
-    }
-}
-
-impl From<Option<f32>> for EgValue {
-    fn from(v: Option<f32>) -> EgValue {
-        if let Some(n) = v {
-            EgValue::from(n)
-        } else {
-            Self::Null
-        }
-    }
-}
-
-impl From<u32> for EgValue {
-    fn from(s: u32) -> EgValue {
-        EgValue::Number(s.into())
     }
 }
 
@@ -1477,6 +1451,7 @@ impl TryFrom<(&str, EgValue)> for EgValue {
     }
 }
 
+/*
 /// Macro for buildling EgValue::Blessed values by encoding the
 /// classname directly in the hash via the HASH_CLASSNAME_KEY key
 /// ("_classname").
