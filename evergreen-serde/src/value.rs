@@ -251,8 +251,15 @@ impl EgValue {
     pub fn as_i64(&self) -> Option<i64> {
         match self {
             EgValue::Number(n) => n.as_i64(),
-            // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(ref s) => s.parse::<i64>().ok(),
+            _ => None,
+        }
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            EgValue::Number(n) => n.as_f64(),
+            EgValue::String(ref s) => s.parse::<f64>().ok(),
             _ => None,
         }
     }
@@ -443,8 +450,13 @@ impl EgValue {
         self.is_number() || self.is_null() || self.is_boolean() || self.is_string()
     }
 
-
-/*
+    pub fn as_str(&self) -> Option<&str> {
+        if let EgValue::String(s) = self {
+            Some(s.as_str())
+        } else {
+            None
+        }
+    }
 
     /// Translates Blessed values into generic Hash values, recursively,
     /// retaining the original classname in the HASH_CLASSNAME_KEY key.
@@ -486,6 +498,7 @@ impl EgValue {
         *self = EgValue::Hash(map);
     }
 
+
     /// Translate a raw serde_json::Value, which may contain class name keys
     /// in the HASH_CLASSNAME_KEY field, into an EgValue.
     pub fn from_classed_json_hash(v: serde_json::Value) -> Result<EgValue, String> {
@@ -496,7 +509,7 @@ impl EgValue {
 
     /// Translate Hash values containing class names in the HASH_CLASSNAME_KEY
     /// into Blessed values, recursively.
-    pub fn from_classed_hash(&mut self) -> Result<()> {
+    pub fn from_classed_hash(&mut self) -> Result<(), String> {
         if self.is_scalar() || self.is_blessed() {
             return Ok(());
         }
@@ -555,6 +568,7 @@ impl EgValue {
         Ok(())
     }
 
+
     /// Remove NULL values from EgValue::Hash's contained within
     /// EgValue::Hash's or EgValue::Array's
     ///
@@ -601,6 +615,53 @@ impl EgValue {
         }
     }
 
+    /// Turn an EgValue into a vanilla serde_json::Value consuming the EgValue.
+    ///
+    /// Blessed objects are serialized into IDL-classed Arrays
+    pub fn into_json_value(self) -> serde_json::Value {
+        match self {
+            EgValue::Null => serde_json::Value::Null,
+            EgValue::Boolean(v) => serde_json::Value::Bool(v),
+            EgValue::String(v) => serde_json::Value::String(v),
+            EgValue::Number(v) => serde_json::Value::from(v),
+            EgValue::Array(mut list) => {
+                let mut list2 = Vec::new();
+                for v in list.drain(..) {
+                    list2.push(v.into_json_value());
+                }
+                serde_json::Value::from(list2)
+            }
+            EgValue::Hash(mut o) => {
+                let mut obj = serde_json::Value::Object(serde_json::Map::default());
+                for (k, v) in o.drain() {
+                    obj[k] = v.into_json_value();
+                }
+                obj
+            }
+            EgValue::Blessed(mut o) => {
+                let fields = o.idl_class.fields();
+
+                // Translate the fields hash into a sorted array
+                let mut sorted = fields.values().collect::<Vec<&idl::Field>>();
+                sorted.sort_by_key(|f| f.array_pos());
+
+                let mut vec = Vec::new();
+
+                for field in sorted {
+                    let v = match o.values.remove(field.name()) {
+                        Some(v) => v,
+                        None => Self::Null,
+                    };
+
+                    vec.push(v.into_json_value());
+                }
+
+                Self::add_class_wrapper(serde_json::Value::Array(vec), o.idl_class.classname())
+            }
+        }
+    }
+
+
     /// True if this value is an Array and it contains the provided item.
     /// ```
     /// use evergreen_serde::value::EgValue;
@@ -628,13 +689,13 @@ impl EgValue {
     /// assert_eq!(v["__c"].as_str(), Some("foo"));
     /// assert_eq!(v["__p"][0].as_str(), Some("one"));
     /// assert_eq!(EgValue::wrapped_classname(&v.into_json_value()), Some("foo"));
-    pub fn add_class_wrapper(val: serde_json::Value, class: &str) -> json::serde_json::Value {
-        let mut hash = json::serde_json::Value::new_object();
-
-        hash.insert(JSON_CLASS_KEY, class).expect("Is Object");
-        hash.insert(JSON_PAYLOAD_KEY, val).expect("Is Object");
+    pub fn add_class_wrapper(val: serde_json::Value, class: &str) -> serde_json::Value {
+        let mut hash = serde_json::Value::Object(serde_json::Map::default());
+        hash[JSON_CLASS_KEY] = class.into();
+        hash[JSON_PAYLOAD_KEY] = val;
         hash
     }
+
 
     /// Returns the number of elements/entries contained in an EgValue
     /// Array, Hash, or BlessedValue.
@@ -658,6 +719,7 @@ impl EgValue {
             _ => 0,
         }
     }
+
 
     pub fn new_object() -> EgValue {
         EgValue::Hash(HashMap::new())
@@ -754,19 +816,22 @@ impl EgValue {
     /// Turn a value into a JSON string.
     pub fn dump(&self) -> String {
         // into_json_value consumes the value, hence the clone().
-        self.clone().into_json_value().dump()
+        self.clone().into_json_value().to_string()
     }
 
     /// Turn a value into a pretty-printed JSON string using the
     /// provided level of indentation.
-    pub fn pretty(&self, indent: u16) -> String {
-        self.clone().into_json_value().pretty(indent)
+    ///
+    /// Changing the indentation depth is not yet supported.  Defaults to 2 spaces.
+    pub fn pretty(&self, _indent: u16) -> String {
+        serde_json::to_string_pretty(&self.clone().into_json_value()).unwrap()
     }
+
 
     /// Push a value onto the end of an Array.
     ///
     /// Err if self is not an Array.
-    pub fn push(&mut self, v: impl Into<EgValue>) -> Result<()> {
+    pub fn push(&mut self, v: impl Into<EgValue>) -> Result<(), String> {
         if let EgValue::Array(ref mut list) = self {
             list.push(v.into());
             Ok(())
@@ -775,9 +840,10 @@ impl EgValue {
         }
     }
 
+
     /// Insert a new value into an object-typed value.  Returns Err
     /// if this is not an object-typed value.
-    pub fn insert(&mut self, key: &str, value: impl Into<EgValue>) -> Result<()> {
+    pub fn insert(&mut self, key: &str, value: impl Into<EgValue>) -> Result<(), String> {
         match self {
             EgValue::Hash(ref mut o) => o.insert(key.to_string(), value.into()),
             EgValue::Blessed(ref mut o) => o.values.insert(key.to_string(), value.into()),
@@ -803,51 +869,6 @@ impl EgValue {
         }
     }
 
-    /// Turn an EgValue into a vanilla serde_json::Value consuming the EgValue.
-    ///
-    /// Blessed objects are serialized into IDL-classed Arrays
-    pub fn into_json_value(self) -> serde_json::Value {
-        match self {
-            EgValue::Null => serde_json::Value::Null,
-            EgValue::Boolean(v) => serde_json::Value::Boolean(v),
-            EgValue::String(v) => serde_json::Value::String(v),
-            EgValue::Number(v) => json::from(v),
-            EgValue::Array(mut list) => {
-                let mut list2 = Vec::new();
-                for v in list.drain(..) {
-                    list2.push(v.into_json_value());
-                }
-                json::from(list2)
-            }
-            EgValue::Hash(mut o) => {
-                let mut obj = json::object! {};
-                for (k, v) in o.drain() {
-                    obj[k] = v.into_json_value();
-                }
-                obj
-            }
-            EgValue::Blessed(mut o) => {
-                let fields = o.idl_class.fields();
-
-                // Translate the fields hash into a sorted array
-                let mut sorted = fields.values().collect::<Vec<&idl::Field>>();
-                sorted.sort_by_key(|f| f.array_pos());
-
-                let mut array = serde_json::Value::new_array();
-
-                for field in sorted {
-                    let v = match o.values.remove(field.name()) {
-                        Some(v) => v,
-                        None => Self::Null,
-                    };
-
-                    array.push(v.into_json_value()).expect("Is Array");
-                }
-
-                Self::add_class_wrapper(array, o.idl_class.classname())
-            }
-        }
-    }
 
     /// True if this is a number or a string that can be directly
     /// coerced into a number.
@@ -885,7 +906,7 @@ impl EgValue {
     /// ```
     pub fn is_empty(&self) -> bool {
         match self {
-            Self::Number(n) => *n == 0,
+            Self::Number(n) => n.as_i64().unwrap_or(1) == 0,
             Self::String(ref s) => s.is_empty(),
             Self::Boolean(b) => !b,
             Self::Null => true,
@@ -900,18 +921,11 @@ impl EgValue {
     ///
     /// NOTE if the value may exist as a Number, consider .to_string()
     /// instead, which will coerce numbers into strings.
-    pub fn str(&self) -> Result<&str> {
+    pub fn str(&self) -> Result<&str, String> {
         self.as_str()
-            .ok_or_else(|| format!("{self} is not a string").into())
+            .ok_or_else(|| format!("{self} is not a string"))
     }
 
-    pub fn as_str(&self) -> Option<&str> {
-        if let EgValue::String(s) = self {
-            Some(s.as_str())
-        } else {
-            None
-        }
-    }
 
     /// Translates String and Number values into allocated strings.
     ///
@@ -931,6 +945,9 @@ impl EgValue {
             _ => None,
         }
     }
+
+
+/*
 
     /// Translates String and Number values into allocated strings.
     ///
@@ -998,14 +1015,6 @@ impl EgValue {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(ref s) => s.parse::<i16>().ok(),
-            _ => None,
-        }
-    }
-
-    pub fn as_f64(&self) -> Option<f64> {
-        match self {
-            EgValue::Number(n) => Some((*n).into()),
-            EgValue::String(ref s) => s.parse::<f64>().ok(),
             _ => None,
         }
     }
