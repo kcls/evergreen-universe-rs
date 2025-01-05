@@ -33,6 +33,32 @@ fn take_string(v: &mut serde_json::Value) -> Option<String> {
     None
 }
 
+/// Macro for building EgValue's by hand.
+///
+/// Blessed values are created by creating an object with a classname
+/// value in the "_classname" field OR the "__c" field (see
+/// [`HASH_CLASSNAME_KEY`] and [`JSON_CLASS_KEY`]).
+///
+/// # Panics
+///
+/// Panics if an attempt is made to build an EgValue::Blessed with
+/// an unknown class name or invalid field.
+///
+/// # Examples TODO
+///
+#[macro_export]
+macro_rules! value {
+    ($($tts:tt)*) => {
+        match eg::value::EgValue::from_json_value(serde_json::json!($($tts)*)) {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!("eg::value!() {e}");
+                panic!("eg::value!() {}", e);
+            }
+        }
+    }
+}
+
 /// An JSON-ish object whose structure is defined in the IDL.
 #[derive(Debug, PartialEq, Clone)]
 pub struct BlessedValue {
@@ -92,7 +118,7 @@ impl EgValue {
 
     /// Logs a failure message for invalid Index, etc. invocations and
     /// returns the error message for panic'ing.
-    fn index_failure(&self) -> String {
+    fn index_panic(&self) -> String {
         let msg = format!("Indexing only allowed on objects and arrays: {self}");
         log::error!("{msg}");
         msg
@@ -264,6 +290,13 @@ impl EgValue {
         }
     }
 
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            EgValue::Number(n) => n.as_u64(),
+            EgValue::String(ref s) => s.parse::<u64>().ok(),
+            _ => None,
+        }
+    }
 
     /// Returns the numeric ID of this EgValue.
     ///
@@ -702,7 +735,7 @@ impl EgValue {
     ///
     ///
     /// ```
-    /// use evergreen as eg;
+    /// use evergreen_serde as eg;
     /// use eg::EgValue;
     ///
     /// let v = evergreen::array! ["one", "two", "three"];
@@ -737,11 +770,11 @@ impl EgValue {
 
     /// Returns an owned String if this value is a String or a Number.
     ///
-    /// Implementation directly mimics
+    /// Implementation cribbed from
     /// <https://docs.rs/json/latest/src/json/value/mod.rs.html#367-381>
     ///
     /// ```
-    /// use evergreen as eg;
+    /// use evergreen_serde as eg;
     /// use eg::EgValue;
     ///
     /// let mut v = EgValue::from("howdy");
@@ -754,11 +787,15 @@ impl EgValue {
     /// assert_eq!(s, "17.88");
     /// assert!(v.is_null());
     ///
-    /// let mut v = eg::array! [null, false];
+    /// let mut v = eg::value!([null, false]);
     /// let s = v.take_string();
     /// assert!(s.is_none());
     /// ```
     pub fn take_string(&mut self) -> Option<String> {
+        if !self.is_string() && !self.is_number() {
+            return None;
+        }
+
         let mut placeholder = Self::Null;
 
         mem::swap(self, &mut placeholder);
@@ -946,86 +983,6 @@ impl EgValue {
         }
     }
 
-
-/*
-
-    /// Translates String and Number values into allocated strings.
-    ///
-    /// Err if self cannot be stringified.
-    pub fn string(&self) -> Result<String> {
-        self.to_string()
-            .ok_or_else(|| format!("{self} cannot be stringified").into())
-    }
-
-    pub fn as_int(&self) -> Option<i64> {
-        self.as_i64()
-    }
-
-    /// Variant of EgValue::as_int() that produces an Err self cannot be
-    /// turned into an int
-    pub fn int(&self) -> Result<i64> {
-        self.as_int()
-            .ok_or_else(|| format!("{self} is not an integer").into())
-    }
-
-    /// Useful for panicing if a value cannot be coerced into an int,
-    /// particularly within iterator filters, etc.
-    pub fn int_required(&self) -> i64 {
-        self.int().expect("No int found")
-    }
-
-    pub fn as_u64(&self) -> Option<u64> {
-        match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
-            // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<u64>().ok(),
-            _ => None,
-        }
-    }
-
-    pub fn as_usize(&self) -> Option<usize> {
-        match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
-            // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<usize>().ok(),
-            _ => None,
-        }
-    }
-
-    pub fn as_isize(&self) -> Option<isize> {
-        match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
-            // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<isize>().ok(),
-            _ => None,
-        }
-    }
-
-    pub fn as_u16(&self) -> Option<u16> {
-        match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
-            // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<u16>().ok(),
-            _ => None,
-        }
-    }
-
-    pub fn as_i16(&self) -> Option<i16> {
-        match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
-            // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<i16>().ok(),
-            _ => None,
-        }
-    }
-
-    /// Variant of EgValue::as_float() that produces an Err if no float
-    /// value is found.
-    pub fn float(&self) -> Result<f64> {
-        self.as_float()
-            .ok_or_else(|| format!("{self} is not a float").into())
-    }
-
     /// Returns a float if we can be coerced into one.
     pub fn as_float(&self) -> Option<f64> {
         self.as_f64()
@@ -1039,6 +996,72 @@ impl EgValue {
         }
     }
 
+
+
+    /// Translates String and Number values into allocated strings.
+    ///
+    /// Err if self cannot be stringified.
+    pub fn string(&self) -> Result<String, String> {
+        self.to_string()
+            .ok_or_else(|| format!("{self} cannot be stringified").into())
+    }
+
+    pub fn as_int(&self) -> Option<i64> {
+        self.as_i64()
+    }
+
+    /// Variant of EgValue::as_int() that produces an Err self cannot be
+    /// turned into an int
+    pub fn int(&self) -> Result<i64, String> {
+        self.as_int()
+            .ok_or_else(|| format!("{self} is not an integer").into())
+    }
+
+    /// Useful for panicing if a value cannot be coerced into an int,
+    /// particularly within iterator filters, etc.
+    pub fn int_required(&self) -> i64 {
+        self.int().expect("No int found")
+    }
+
+    pub fn as_usize(&self) -> Option<usize> {
+        if let Some(n) = self.as_u64() {
+            n.try_into().ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn as_isize(&self) -> Option<isize> {
+        if let Some(n) = self.as_i64() {
+            n.try_into().ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn as_u16(&self) -> Option<u16> {
+        if let Some(n) = self.as_u64() {
+            n.try_into().ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn as_i16(&self) -> Option<i16> {
+        if let Some(n) = self.as_i64() {
+            n.try_into().ok()
+        } else {
+            None
+        }
+    }
+
+    /// Variant of EgValue::as_float() that produces an Err if no float
+    /// value is found.
+    pub fn float(&self) -> Result<f64, String> {
+        self.as_float()
+            .ok_or_else(|| format!("{self} is not a float").into())
+    }
+
     /// True if this EgValue is scalar and its value is true-ish.
     ///
     /// Zeros, empty strings, and strings that start with "f" are false
@@ -1046,7 +1069,7 @@ impl EgValue {
     pub fn boolish(&self) -> bool {
         match self {
             EgValue::Boolean(b) => *b,
-            EgValue::Number(n) => *n != 0,
+            EgValue::Number(n) => n.as_u64().unwrap_or(1) != 0,
             EgValue::String(ref s) => !s.is_empty() && !s.starts_with('f'),
             _ => false,
         }
@@ -1061,6 +1084,7 @@ impl EgValue {
         }
     }
 
+
     /// Remove and return the value found at the specified index.
     ///
     /// If the index is not present or self is not an Array,
@@ -1073,6 +1097,7 @@ impl EgValue {
         }
         Self::Null
     }
+
 
     /// Remove a value from an object-like thing and, if found, return
     /// the value to the caller.
@@ -1089,7 +1114,7 @@ impl EgValue {
     /// Iterator over values in an EgValue::Array.
     ///
     /// Returns an empty iterator if this is not an EgValue::Array type.
-    pub fn members(&self) -> EgValueMembers {
+    pub fn members(&self) -> impl Iterator<Item = &EgValue> {
         match *self {
             EgValue::Array(ref list) => list.iter(),
             _ => [].iter(),
@@ -1099,7 +1124,7 @@ impl EgValue {
     /// Mutable Iterator over values in an EgValue::Array.
     ///
     /// Returns an empty iterator if this is not an EgValue::Array type.
-    pub fn members_mut(&mut self) -> EgValueMembersMut {
+    pub fn members_mut(&mut self) -> impl Iterator<Item = &mut EgValue> {
         match *self {
             EgValue::Array(ref mut list) => list.iter_mut(),
             _ => [].iter_mut(),
@@ -1144,6 +1169,8 @@ impl EgValue {
             },
         }
     }
+
+/*
 
     /// De-Flesh a blessed object.
     ///
@@ -1220,120 +1247,8 @@ impl EgValue {
 
 // EgValue Iterators ------------------------------------------------------
 
-// List iterators are simply standard slices.
-pub type EgValueMembers<'a> = std::slice::Iter<'a, EgValue>;
-pub type EgValueMembersMut<'a> = std::slice::IterMut<'a, EgValue>;
-
 // HashMap iterators are a little more complicated and required
 // tracking the hashmap iterator within a custom iterator type.
-
-pub struct EgValueEntriesMut<'a> {
-    map_iter: Option<std::collections::hash_map::IterMut<'a, String, EgValue>>,
-}
-
-impl<'a> Iterator for EgValueEntriesMut<'a> {
-    type Item = (&'a str, &'a mut EgValue);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(iter) = self.map_iter.as_mut() {
-            iter.next().map(|(k, v)| (k.as_str(), v))
-        } else {
-            None
-        }
-    }
-}
-
-pub struct EgValueEntries<'a> {
-    map_iter: Option<std::collections::hash_map::Iter<'a, String, EgValue>>,
-}
-
-impl<'a> Iterator for EgValueEntries<'a> {
-    type Item = (&'a str, &'a EgValue);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(iter) = self.map_iter.as_mut() {
-            iter.next().map(|(k, v)| (k.as_str(), v))
-        } else {
-            None
-        }
-    }
-}
-
-pub struct EgValueKeys<'a> {
-    map_iter: Option<std::collections::hash_map::Keys<'a, String, EgValue>>,
-}
-
-impl<'a> Iterator for EgValueKeys<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(iter) = self.map_iter.as_mut() {
-            iter.next().map(|k| k.as_str())
-        } else {
-            None
-        }
-    }
-}
-
-impl PartialEq<EgValue> for &str {
-    fn eq(&self, val: &EgValue) -> bool {
-        if let Some(s) = val.as_str() {
-            s == *self
-        } else {
-            false
-        }
-    }
-}
-
-impl PartialEq<EgValue> for &String {
-    fn eq(&self, val: &EgValue) -> bool {
-        if let Some(s) = val.as_str() {
-            s == self.as_str()
-        } else {
-            false
-        }
-    }
-}
-
-impl PartialEq<EgValue> for String {
-    fn eq(&self, val: &EgValue) -> bool {
-        if let Some(s) = val.as_str() {
-            s == self.as_str()
-        } else {
-            false
-        }
-    }
-}
-
-impl PartialEq<EgValue> for i64 {
-    fn eq(&self, val: &EgValue) -> bool {
-        if let Some(v) = val.as_i64() {
-            v == *self
-        } else {
-            false
-        }
-    }
-}
-
-impl PartialEq<EgValue> for f64 {
-    fn eq(&self, val: &EgValue) -> bool {
-        if let Some(v) = val.as_f64() {
-            v == *self
-        } else {
-            false
-        }
-    }
-}
-
-impl PartialEq<EgValue> for bool {
-    fn eq(&self, val: &EgValue) -> bool {
-        if let Some(v) = val.as_bool() {
-            v == *self
-        } else {
-            false
-        }
-    }
-}
 
 impl From<EgValue> for serde_json::Value {
     fn from(v: EgValue) -> serde_json::Value {
@@ -1562,6 +1477,107 @@ impl TryFrom<(&str, EgValue)> for EgValue {
     }
 }
 
+/// Macro for buildling EgValue::Blessed values by encoding the
+/// classname directly in the hash via the HASH_CLASSNAME_KEY key
+/// ("_classname").
+///
+/// Returns `Result<EgValue, String>` to accommodate invalid classnames or fields.
+/// Becuase of this, the macro only works within functions that return
+/// Result.
+///
+/// let v = eg::blessed! {
+///     "_classname": "aou",
+///     "id": 123,
+///     "name": "TEST",
+///     "shortname": "FOO",
+/// }?;
+#[macro_export]
+macro_rules! blessed {
+    ($($tts:tt)*) => {{
+        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
+            Ok(mut v) => {
+                v.from_classed_hash()?;
+                Ok(v)
+            },
+            Err(e) => {
+                log::error!("eg::hash! {e}");
+                Err(e)
+            }
+        }
+    }}
+}
+
+/// Macro for build EgValue::Hash's by leveraging the json::object! macro.
+///
+/// Panics if an attempt is made to build an EgValue::Blessed with
+/// an unknown class name or invalid field, which can only happen
+/// in practice if the caller defines the hash using the wire-level
+/// JSON_CLASS_KEY ("__c") and JSON_PAYLOAD_KEY ("__p") structure.
+///
+/// let h = eg::hash! {"hello": "errbody"};
+#[macro_export]
+macro_rules! hash {
+    ($($tts:tt)*) => {
+        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
+            Ok(v) => v,
+            Err(e) => {
+                // Unlikely to get here, but not impossible.
+                let msg = format!("eg::hash! {e}");
+                log::error!("{msg}");
+                panic!("{}", msg);
+            }
+        }
+    }
+}
+
+/// Macro for building EgValue's by leveraging the json::object! macro.
+///
+/// Panics if an attempt is made to build an EgValue::Blessed with
+/// an unknown class name or invalid field, however this should never
+/// happen in practice, since EgValue::Blessed's are validated well
+/// before they can be included in an eg::hash! {} invocation.
+///
+/// let a = eg::value!(["hello", "errbody"]);
+#[macro_export]
+macro_rules! array {
+    ($($tts:tt)*) => {
+        match eg::value::EgValue::from_json_value(json::array!($($tts)*)) {
+            Ok(v) => v,
+            Err(e) => {
+                // Unlikely to get here, but not impossible.
+                let msg = format!("eg::hash! {e}");
+                log::error!("{msg}");
+                panic!("{}", msg);
+            }
+        }
+    }
+}
+
+#[test]
+fn macros() {
+    let v = eg::hash! {
+        "hello": "stuff",
+        "gbye": ["floogle", EgValue::new_object()]
+    };
+
+    assert_eq!(v["hello"].as_str(), Some("stuff"));
+    assert_eq!((eg::value!([1, 2, 3])).len(), 3);
+}
+
+*/
+
+
+// --- impl From<> ---
+
+impl From<&str> for EgValue {
+    fn from(s: &str) -> EgValue {
+        EgValue::String(s.to_string())
+    }
+}
+
+// --- Indexing ---
+//
+
 /// Allows numeric index access to EgValue::Array's
 impl Index<usize> for EgValue {
     type Output = EgValue;
@@ -1603,122 +1619,12 @@ impl IndexMut<usize> for EgValue {
 }
 
 
-impl Index<&String> for EgValue {
-    type Output = EgValue;
-    fn index(&self, key: &String) -> &Self::Output {
-        &self[key.as_str()]
-    }
-}
 
-impl IndexMut<&String> for EgValue {
-    fn index_mut(&mut self, key: &String) -> &mut Self::Output {
-        &mut self[key.as_str()]
-    }
-}
-
-/// Macro for build EgValue::Hash's by leveraging the json::object! macro.
+/// String-based indexing into Hash and Blessed values.
 ///
-/// Panics if an attempt is made to build an EgValue::Blessed with
-/// an unknown class name or invalid field, which can only happen
-/// in practice if the caller defines the hash using the wire-level
-/// JSON_CLASS_KEY ("__c") and JSON_PAYLOAD_KEY ("__p") structure.
+/// # Panics
 ///
-/// let h = eg::hash! {"hello": "errbody"};
-#[macro_export]
-macro_rules! hash {
-    ($($tts:tt)*) => {
-        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
-            Ok(v) => v,
-            Err(e) => {
-                // Unlikely to get here, but not impossible.
-                let msg = format!("eg::hash! {e}");
-                log::error!("{msg}");
-                panic!("{}", msg);
-            }
-        }
-    }
-}
-
-/// Macro for buildling EgValue::Blessed values by encoding the
-/// classname directly in the hash via the HASH_CLASSNAME_KEY key
-/// ("_classname").
-///
-/// Returns `Result<EgValue, String>` to accommodate invalid classnames or fields.
-/// Becuase of this, the macro only works within functions that return
-/// Result.
-///
-/// let v = eg::blessed! {
-///     "_classname": "aou",
-///     "id": 123,
-///     "name": "TEST",
-///     "shortname": "FOO",
-/// }?;
-#[macro_export]
-macro_rules! blessed {
-    ($($tts:tt)*) => {{
-        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
-            Ok(mut v) => {
-                v.from_classed_hash()?;
-                Ok(v)
-            },
-            Err(e) => {
-                log::error!("eg::hash! {e}");
-                Err(e)
-            }
-        }
-    }}
-}
-
-/// Macro for building EgValue's by leveraging the json::object! macro.
-///
-/// Panics if an attempt is made to build an EgValue::Blessed with
-/// an unknown class name or invalid field, however this should never
-/// happen in practice, since EgValue::Blessed's are validated well
-/// before they can be included in an eg::hash! {} invocation.
-///
-/// let a = eg::array! ["hello", "errbody"];
-#[macro_export]
-macro_rules! array {
-    ($($tts:tt)*) => {
-        match eg::value::EgValue::from_json_value(json::array!($($tts)*)) {
-            Ok(v) => v,
-            Err(e) => {
-                // Unlikely to get here, but not impossible.
-                let msg = format!("eg::hash! {e}");
-                log::error!("{msg}");
-                panic!("{}", msg);
-            }
-        }
-    }
-}
-
-#[test]
-fn macros() {
-    let v = eg::hash! {
-        "hello": "stuff",
-        "gbye": ["floogle", EgValue::new_object()]
-    };
-
-    assert_eq!(v["hello"].as_str(), Some("stuff"));
-    assert_eq!((eg::array![1, 2, 3]).len(), 3);
-}
-
-*/
-
-
-// --- impl From<> ---
-
-impl From<&str> for EgValue {
-    fn from(s: &str) -> EgValue {
-        EgValue::String(s.to_string())
-    }
-}
-
-// --- Indexing ---
-
-/// Allows index-based access to EgValue Hash and Blessed values.
-///
-/// Follows the pattern of serde_json::Value where undefined values are all null's
+/// Panics if the value is not a Hash or Blessed value.
 impl Index<&str> for EgValue {
     type Output = EgValue;
 
@@ -1742,8 +1648,7 @@ impl Index<&str> for EgValue {
                 }
             }
             EgValue::Hash(ref hash) => hash.get(key).unwrap_or(&Self::Null),
-            // Only Object-y things can be indexed
-            _ => &Self::Null,
+            _ => panic!("{}", self.index_panic()),
         }
     }
 }
@@ -1762,7 +1667,7 @@ impl Index<&str> for EgValue {
 /// assert_eq!(v["blarg"], EgValue::String("b".to_string()));
 /// ```
 impl IndexMut<&str> for EgValue {
-    fn index_mut(&mut self, key: &str) -> &mut Self::Output {
+    fn index_mut(&mut self, key: &str) -> &mut EgValue {
         let (is_classed, has_field) = match self {
             Self::Blessed(o) => (true, o.idl_class.has_field(key)),
             _ => (false, false),
@@ -1795,7 +1700,136 @@ impl IndexMut<&str> for EgValue {
             }
             hash.get_mut(key).unwrap()
         } else {
-            panic!("{}", self.index_failure());
+            panic!("{}", self.index_panic());
+        }
+    }
+}
+
+
+impl Index<&String> for EgValue {
+    type Output = EgValue;
+
+    fn index(&self, key: &String) -> &Self::Output {
+        &self[key.as_str()]
+    }
+}
+
+impl IndexMut<&String> for EgValue {
+    fn index_mut(&mut self, key: &String) -> &mut EgValue {
+        &mut self[key.as_str()]
+    }
+}
+
+// --- Iterators ---
+
+pub struct EgValueEntriesMut<'a> {
+    map_iter: Option<std::collections::hash_map::IterMut<'a, String, EgValue>>,
+}
+
+impl<'a> Iterator for EgValueEntriesMut<'a> {
+    type Item = (&'a str, &'a mut EgValue);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(iter) = self.map_iter.as_mut() {
+            iter.next().map(|(k, v)| (k.as_str(), v))
+        } else {
+            None
+        }
+    }
+}
+
+pub struct EgValueEntries<'a> {
+    map_iter: Option<std::collections::hash_map::Iter<'a, String, EgValue>>,
+}
+
+impl<'a> Iterator for EgValueEntries<'a> {
+    type Item = (&'a str, &'a EgValue);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(iter) = self.map_iter.as_mut() {
+            iter.next().map(|(k, v)| (k.as_str(), v))
+        } else {
+            None
+        }
+    }
+}
+
+pub struct EgValueKeys<'a> {
+    map_iter: Option<std::collections::hash_map::Keys<'a, String, EgValue>>,
+}
+
+impl<'a> Iterator for EgValueKeys<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(iter) = self.map_iter.as_mut() {
+            iter.next().map(|k| k.as_str())
+        } else {
+            None
+        }
+    }
+}
+
+
+
+// --- PartialEq ---
+
+impl PartialEq<EgValue> for &str {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(s) = val.as_str() {
+            s == *self
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for &String {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(s) = val.as_str() {
+            s == self.as_str()
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for String {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(s) = val.as_str() {
+            s == self.as_str()
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for i64 {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(v) = val.as_i64() {
+            v == *self
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for f64 {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(v) = val.as_f64() {
+            v == *self
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<EgValue> for bool {
+    fn eq(&self, val: &EgValue) -> bool {
+        if let Some(v) = val.as_bool() {
+            v == *self
+        } else {
+            false
         }
     }
 }
