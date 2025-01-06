@@ -6,6 +6,7 @@
 // <https://docs.rs/json/latest/json/enum.json::JsonValue.html>
 use crate as eg;
 use eg::idl;
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::mem;
@@ -27,7 +28,7 @@ const HASH_CLASSNAME_KEY: &str = "_classname";
 /// Does serde_json not have a take_string() method?
 fn take_string(v: &mut serde_json::Value) -> Option<String> {
     if let serde_json::Value::String(ref mut s) = v {
-        return Some(mem::replace(s, String::default()));
+        return Some(mem::take(s));
     }
 
     None
@@ -59,8 +60,10 @@ macro_rules! value {
     }
 }
 
-/// An JSON-ish object whose structure is defined in the IDL.
-#[derive(Debug, PartialEq, Clone)]
+/// JSON Object whose fields are defined in the IDL.
+///
+/// Retains a link to its IDL class.
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct BlessedValue {
     idl_class: Arc<idl::Class>,
     values: HashMap<String, EgValue>,
@@ -78,7 +81,7 @@ impl BlessedValue {
 
 /// Wrapper class which stores JSON-style values with one special
 /// value type which maps to IDL objects.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum EgValue {
     Null,
     Number(serde_json::Number),
@@ -261,7 +264,7 @@ impl EgValue {
     pub fn parse(s: &str) -> Result<EgValue, String> {
         match serde_json::from_str(s) {
             Ok(v) => EgValue::from_json_value(v),
-            Err(e) => Err(format!("JSON Parse Error: {e} : {s}").into()),
+            Err(e) => Err(format!("JSON Parse Error: {e} : {s}")),
         }
     }
 
@@ -399,7 +402,7 @@ impl EgValue {
             if !idl_class.has_field(k) {
                 let msg = format!("IDL class '{classname}' has no field named '{k}'");
                 log::error!("{msg}");
-                return Err(msg.into());
+                return Err(msg);
             }
         }
 
@@ -586,8 +589,7 @@ impl EgValue {
                 return Err(format!(
                     "Class '{}' has no field named '{key}'",
                     idl_class.classname()
-                )
-                .into());
+                ));
             }
 
             value.from_classed_hash()?;
@@ -753,7 +755,6 @@ impl EgValue {
         }
     }
 
-
     pub fn new_object() -> EgValue {
         EgValue::Hash(HashMap::new())
     }
@@ -884,7 +885,7 @@ impl EgValue {
         match self {
             EgValue::Hash(ref mut o) => o.insert(key.to_string(), value.into()),
             EgValue::Blessed(ref mut o) => o.values.insert(key.to_string(), value.into()),
-            _ => return Err(format!("{self} Cannot call insert() on a non-object type").into()),
+            _ => return Err(format!("{self} Cannot call insert() on a non-object type")),
         };
 
         Ok(())
@@ -1003,7 +1004,7 @@ impl EgValue {
     /// Err if self cannot be stringified.
     pub fn string(&self) -> Result<String, String> {
         self.to_string()
-            .ok_or_else(|| format!("{self} cannot be stringified").into())
+            .ok_or_else(|| format!("{self} cannot be stringified"))
     }
 
     pub fn as_int(&self) -> Option<i64> {
@@ -1014,7 +1015,7 @@ impl EgValue {
     /// turned into an int
     pub fn int(&self) -> Result<i64, String> {
         self.as_int()
-            .ok_or_else(|| format!("{self} is not an integer").into())
+            .ok_or_else(|| format!("{self} is not an integer"))
     }
 
     /// Useful for panicing if a value cannot be coerced into an int,
@@ -1059,7 +1060,7 @@ impl EgValue {
     /// value is found.
     pub fn float(&self) -> Result<f64, String> {
         self.as_float()
-            .ok_or_else(|| format!("{self} is not a float").into())
+            .ok_or_else(|| format!("{self} is not a float"))
     }
 
     /// True if this EgValue is scalar and its value is true-ish.
@@ -1241,6 +1242,7 @@ impl EgValue {
 
 // EgValue Iterators ------------------------------------------------------
 
+/*
 impl From<EgValue> for serde_json::Value {
     fn from(v: EgValue) -> serde_json::Value {
         v.into_json_value()
@@ -1253,6 +1255,7 @@ impl TryFrom<serde_json::Value> for EgValue {
         EgValue::from_json_value(v)
     }
 }
+*/
 
 impl From<Option<&str>> for EgValue {
     fn from(v: Option<&str>) -> EgValue {
