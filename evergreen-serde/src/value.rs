@@ -6,7 +6,9 @@
 // <https://docs.rs/json/latest/json/enum.json::JsonValue.html>
 use crate as eg;
 use eg::idl;
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, Serializer};
+use serde::ser::SerializeStruct;
+use serde::de::{Deserialize, Deserializer, Visitor, SeqAccess, MapAccess};
 use std::collections::HashMap;
 use std::fmt;
 use std::mem;
@@ -63,7 +65,7 @@ macro_rules! value {
 /// JSON Object whose fields are defined in the IDL.
 ///
 /// Retains a link to its IDL class.
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BlessedValue {
     idl_class: Arc<idl::Class>,
     values: HashMap<String, EgValue>,
@@ -75,6 +77,15 @@ impl BlessedValue {
     }
     pub fn values(&self) -> &HashMap<String, EgValue> {
         &self.values
+    }
+}
+
+impl Serialize for BlessedValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut state = serializer.serialize_struct("BlessedValue", 2)?;
+        state.serialize_field("idl_class", self.idl_class.classname())?;
+        state.serialize_field("values", &self.values)?;
+        state.end()
     }
 }
 
