@@ -1107,7 +1107,7 @@ impl EgValue {
     /// Iterator over values in an EgValue::Array.
     ///
     /// Returns an empty iterator if this is not an EgValue::Array type.
-    pub fn members(&self) -> EgValueMembers {
+    pub fn members(&self) -> impl Iterator<Item = &EgValue> {
         match *self {
             EgValue::Array(ref list) => list.iter(),
             _ => [].iter(),
@@ -1117,7 +1117,7 @@ impl EgValue {
     /// Mutable Iterator over values in an EgValue::Array.
     ///
     /// Returns an empty iterator if this is not an EgValue::Array type.
-    pub fn members_mut(&mut self) -> EgValueMembersMut {
+    pub fn members_mut(&mut self) -> impl Iterator<Item = &mut EgValue> {
         match *self {
             EgValue::Array(ref mut list) => list.iter_mut(),
             _ => [].iter_mut(),
@@ -1233,10 +1233,6 @@ impl EgValue {
 }
 
 // EgValue Iterators ------------------------------------------------------
-
-// List iterators are simply standard slices.
-pub type EgValueMembers<'a> = std::slice::Iter<'a, EgValue>;
-pub type EgValueMembersMut<'a> = std::slice::IterMut<'a, EgValue>;
 
 // HashMap iterators are a little more complicated and required
 // tracking the hashmap iterator within a custom iterator type.
