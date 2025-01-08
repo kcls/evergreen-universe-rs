@@ -4,7 +4,10 @@ use eg::Client;
 use eg::EgValue;
 use evergreen as eg;
 use std::cell::RefCell;
+use std::fs::File;
 use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::IsTerminal;
 use std::rc::Rc;
 use std::time::Instant;
@@ -139,14 +142,25 @@ struct Shell {
     db_translator: Option<idldb::Translator>,
     history_file: Option<String>,
     auth_session: Option<auth::Session>,
+
+    /// Path to a file which contains a series of egsh commands.
+    script_file: Option<String>,
+
+    /// Number of responses received from various API calls.
     result_count: usize,
+
     /// Pretty-printed JSON uses this many spaces for formatting.
     json_print_depth: u16,
+
     /// Print IDL objects as they travel on the wire, as classed arrays,
     /// instead of using our internal structure.
     json_as_wire_protocal: bool,
     json_hash_slim: bool,
+
+    /// SIP2 client for executing SIP commands.
     sip_client: Option<sip2::Client>,
+
+    /// Name of command we are currently executing.
     command: String,
 }
 
@@ -184,6 +198,7 @@ impl Shell {
             json_as_wire_protocal: false,
             json_hash_slim: false,
             sip_client: None,
+            script_file: params.free.first().cloned(),
         };
 
         if params.opt_present("with-database") {
@@ -266,13 +281,27 @@ impl Shell {
     }
 
     fn process_script_lines(&mut self) -> Result<(), String> {
-        // Avoid mucking with STDIN if we have no piped data to process.
-        // Otherwise, it conflict with rustlyine.
-        let stdin = io::stdin();
+        // Read commands either from an egsh script or from commands
+        // piped in to STDIN.
+        let mut reader: Box<dyn BufRead> = match self.script_file.as_ref() {
+            Some(f) => {
+                log::info!("processing script file {f}");
+                let f = File::open(f).map_err(|e| format!("Cannot open file: {e}"))?;
+                Box::new(BufReader::new(f))
+            }
+            None => {
+                let stdin = io::stdin();
 
-        if stdin.is_terminal() {
-            return Ok(());
-        }
+                if stdin.is_terminal() {
+                    // Avoid mixing piped commands and terminal commands,
+                    // since it causes issues with readline.  Instead,
+                    // allow one or the other.
+                    return Ok(());
+                }
+
+                Box::new(stdin.lock())
+            }
+        };
 
         if self.db.is_some() {
             eprintln!("Cannot process piped content while --with-database is on");
@@ -284,7 +313,7 @@ impl Shell {
 
         loop {
             buffer.clear();
-            match stdin.read_line(&mut buffer) {
+            match reader.read_line(&mut buffer) {
                 Ok(count) => {
                     if count == 0 {
                         break; // EOF
@@ -292,8 +321,8 @@ impl Shell {
 
                     let command = buffer.trim();
 
-                    if command.is_empty() {
-                        // Empty line, but maybe still more data to process.
+                    if command.is_empty() || command.starts_with('#') {
+                        // Skip empty lines and comments.
                         continue;
                     }
 
@@ -303,7 +332,7 @@ impl Shell {
                     }
                 }
 
-                Err(e) => return Err(format!("Error reading stdin: {e}")),
+                Err(e) => return Err(format!("Error reading commands: {e}")),
             }
         }
 
