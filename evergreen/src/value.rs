@@ -33,7 +33,7 @@ const HASH_CLASSNAME_KEY: &str = "_classname";
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
-        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
+        match $crate::EgValue::from_json_value(json::object!($($tts)*)) {
             Ok(v) => v,
             Err(e) => {
                 // Unlikely to get here, but not impossible.
@@ -62,7 +62,7 @@ macro_rules! hash {
 #[macro_export]
 macro_rules! blessed {
     ($($tts:tt)*) => {{
-        match eg::value::EgValue::from_json_value(json::object!($($tts)*)) {
+        match $crate::EgValue::from_json_value(json::object!($($tts)*)) {
             Ok(mut v) => {
                 v.from_classed_hash()?;
                 Ok(v)
@@ -86,7 +86,7 @@ macro_rules! blessed {
 #[macro_export]
 macro_rules! array {
     ($($tts:tt)*) => {
-        match eg::value::EgValue::from_json_value(json::array!($($tts)*)) {
+        match $crate::EgValue::from_json_value(json::array!($($tts)*)) {
             Ok(v) => v,
             Err(e) => {
                 // Unlikely to get here, but not impossible.
