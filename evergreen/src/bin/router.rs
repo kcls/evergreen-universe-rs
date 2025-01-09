@@ -125,10 +125,7 @@ impl ServiceEntry {
             self.instance_index = 0;
         }
 
-        let instance = match self.instances.get_mut(self.instance_index) {
-            Some(i) => i,
-            None => return None,
-        };
+        let instance = self.instances.get_mut(self.instance_index)?;
 
         instance.route_count += 1;
         self.route_count += 1;

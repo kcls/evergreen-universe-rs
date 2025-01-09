@@ -1390,7 +1390,7 @@ impl JsonQueryCompiler {
     /// Verify the provided string may act as a valid PG identifier.
     ///
     /// Returns the source value on success for convenience.
-    fn check_identifier<'a>(&'a self, s: &'a str) -> EgResult<&str> {
+    fn check_identifier<'a>(&'a self, s: &'a str) -> EgResult<&'a str> {
         if db::is_identifier(s) {
             Ok(s)
         } else {
@@ -1401,7 +1401,7 @@ impl JsonQueryCompiler {
     /// Verify the provided string may act as a valid SQL operator
     ///
     /// Returns the source value on success for convenience.
-    fn check_operator<'a>(&'a self, operator: &'a str) -> EgResult<&str> {
+    fn check_operator<'a>(&'a self, operator: &'a str) -> EgResult<&'a str> {
         if db::is_supported_operator(operator) {
             Ok(operator)
         } else {

@@ -8,10 +8,10 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 mptc = { path = "../mptc" }
 evergreen = { path = "../evergreen" }
 sip2 = { path = "../sip2", features = ["json"] }
-json = "0.12"
-log = "0.4"
-getopts = "0.2"
-yaml-rust = "0.4"
+json = "0.12.4"
+log = "0.4.22"
+getopts = "0.2.21"
+yaml-rust = "0.4.5"
 exitcode = "1.1.2"
 
 [[bin]]

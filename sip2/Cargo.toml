@@ -11,11 +11,14 @@ categories = ["development-tools", "network-programming", "parser-implementation
 repository = "https://github.com/kcls/evergreen-universe-rs"
 
 [dependencies]
-chrono = "0.4.19"
-log = "0.4.17"
+chrono = "0.4.39"
+deunicode = "1.6.0"
 getopts = "0.2.21"
-deunicode = "1.3.2"
 json = { version = "0.12.4", optional = true }
+log = "0.4.22"
 
 [[bin]]
 name = "sip2-client-cli"
+
+[features]
+json = ["dep:json"]

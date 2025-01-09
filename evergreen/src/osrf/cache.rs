@@ -52,7 +52,7 @@ impl CacheConnection {
     /// If the timeout is 0, the default timeout for the connection type is used.
     fn set(&self, key: &str, value: EgValue, mut timeout: u32) -> EgResult<()> {
         let value = value.into_json_value().dump();
-        let byte_count = value.as_bytes().len();
+        let byte_count = value.len();
 
         log::debug!("{self} caching {byte_count} bytes at key={key}");
 

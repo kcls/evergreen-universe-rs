@@ -110,7 +110,7 @@ impl GatewayHandler {
         }
 
         let data = response.dump();
-        let length = format!("Content-Length: {}", data.as_bytes().len());
+        let length = format!("Content-Length: {}", data.len());
 
         let leader = if response["status"] == EgValue::Number(200.into()) {
             "HTTP/1.1 200 OK"

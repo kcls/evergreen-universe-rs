@@ -227,7 +227,7 @@ impl fmt::Display for Circulator<'_> {
 impl<'a> Circulator<'a> {
     /// Create a new Circulator.
     ///
-    pub fn new(editor: &'a mut Editor, options: HashMap<String, EgValue>) -> EgResult<Circulator> {
+    pub fn new(editor: &'a mut Editor, options: HashMap<String, EgValue>) -> EgResult<Circulator<'a>> {
         if editor.requestor().is_none() {
             Err("Circulator requires an authenticated requestor".to_string())?;
         }
