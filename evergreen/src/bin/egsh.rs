@@ -271,7 +271,7 @@ impl Shell {
     }
 
     fn add_to_history(&self, readline: &mut rustyline::DefaultEditor, line: &str) {
-        if let Ok(e) = readline.add_history_entry(line) {
+        if let Err(e) = readline.add_history_entry(line) {
             eprintln!("Cannot add to history: {e}");
             return;
         }
