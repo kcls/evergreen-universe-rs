@@ -1,5 +1,6 @@
 //! Partial values for Z39.50 Bib-1 attribute set.
 //! https://www.loc.gov/z3950/agency/bib1.html
+use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Structure {
@@ -85,18 +86,14 @@ impl TryFrom<u64> for Truncation {
 /// all of the options.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Use {
-    Value(u16),
+    Value(u64),
 }
 
 impl TryFrom<u64> for Use {
     type Error = String;
 
     fn try_from(n: u64) -> Result<Self, Self::Error> {
-        if let Ok(n16) = n.try_into() {
-            Ok(Use::Value(n16))
-        } else {
-            Err(format!("Invalid Use value: {n}"))
-        }
+        Ok(Use::Value(n))
     }
 }
 
@@ -142,6 +139,12 @@ pub enum AttrValue {
 pub struct Attr {
     attr_type: AttrType,
     attr_value: AttrValue,
+}
+
+impl fmt::Display for Attr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}={:?}", self.attr_type, self.attr_value)
+    }
 }
 
 impl TryFrom<&str> for Attr {

@@ -1,4 +1,5 @@
 use crate::bib1;
+use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
 enum Joiner {
@@ -23,22 +24,35 @@ impl TryFrom<&str> for Joiner {
 /// Search value with its attributes
 /// @attr 1=7 @attr 4=6 @attr 5=1 "testisbn"
 #[derive(Debug, PartialEq, Clone)]
-struct Clause {
+struct SearchClause {
     attrs: Vec<bib1::Attr>,
     value: String,
+}
+
+impl fmt::Display for SearchClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let attrs: String = self
+            .attrs
+            .iter()
+            .map(|a| a.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        write!(f, "{attrs} {}", self.value)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 enum Content {
     Joiner(Joiner),
-    Clause(Clause),
+    SearchClause(SearchClause),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 struct Node {
     content: Content,
-    left_child: Option<Box<Node>>,
-    right_child: Option<Box<Node>>,
+    left_node: Option<Box<Node>>,
+    right_node: Option<Box<Node>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -66,36 +80,74 @@ impl Query {
                 let part = parts.remove(0);
                 contents.push(Content::Joiner(Joiner::try_from(&part[1..])?));
             } else {
-                contents.push(Content::Clause(Query::build_clause(&mut parts)?));
+                contents.push(Content::SearchClause(Query::build_search_clause(
+                    &mut parts,
+                )?));
             }
         }
 
-        println!("Contents: {contents:?}");
-
-        todo!();
-
-        /*
-
-        let node = Query::read_parts(&mut query_parts)?;
-
-        let mut q = Query {
+        let q = Query {
             query_string: Some(s.to_string()),
-            tree: node,
+            tree: Query::next_node_from_content_list(contents)?,
         };
 
         Ok(q)
-        */
     }
 
-    /// Construct a cluase from a set of query parts.
-    fn build_clause(parts: &mut Vec<String>) -> Result<Clause, String> {
+    fn next_node_from_content_list(mut contents: Vec<Content>) -> Result<Node, String> {
+        if contents.is_empty() {
+            return Err("node_from_content_list() ran out of tokens to process".to_string());
+        }
+
+        let content = contents.remove(0);
+
+        let node = if let Content::Joiner(ref joiner) = content {
+            let (left_node, right_node) = Query::add_joined_children(&mut contents)?;
+            Node {
+                content,
+                left_node: Some(Box::new(left_node)),
+                right_node: Some(Box::new(right_node)),
+            }
+        } else {
+            Node {
+                content,
+                left_node: None,
+                right_node: None,
+            }
+        };
+
+        Ok(node)
+    }
+
+    /// Each join operation has two child sub-trees.
+    ///
+    /// A sub-tree may either be a search clause or another joiner.
+    fn add_joined_children(contents: &mut Vec<Content>) -> Result<(Node, Node), String> {
+        if contents.len() < 2 {
+            return Err("Joined sub-tree has too few nodes".to_string());
+        }
+
+        /*
+        let left_content = content.remove(0);
+        let right_content = content.remove(0);
+        */
+
+        /*
+        while !contents.is_empty() {
+        }
+        */
+
+        todo!();
+    }
+
+    /// Construct a cluase from a set of query parts, removing parts from
+    /// the parts array as we go.
+    fn build_search_clause(parts: &mut Vec<String>) -> Result<SearchClause, String> {
         let mut attrs = Vec::new();
 
         let mut in_attr = false;
         while !parts.is_empty() {
             let part = parts.remove(0);
-
-            println!("part: {part}");
 
             if part == "@attr" {
                 in_attr = true;
@@ -107,7 +159,7 @@ impl Query {
                 break;
             } else {
                 // The value is the final token in the clause
-                return Ok(Clause {
+                return Ok(SearchClause {
                     attrs,
                     value: part.to_string(),
                 });
@@ -115,66 +167,14 @@ impl Query {
         }
 
         Err(format!(
-            "Clause parsing completed without a search value: {attrs:?}"
+            "SearchClause parsing completed without a search value: {attrs:?}"
         ))
     }
-
-    /*
-    fn read_parts(parts: &mut Vec<String>) -> Result<Node, String> {
-        if let Some(token) = parts.get(0) {
-            if token == "@and" || token == "@or" {
-                Query::joiner(parts)
-            } else {
-                Query::value(parts)
-            }
-        } else {
-            error(parts)
-        }
-    }
-
-    fn joiner(parts: &mut Vec<String>) -> Result<Node, String> {
-        let join_type = if parts.len() > 0 {
-            parts.remove(0)
-        } else {
-            return error(parts);
-        };
-
-        let join_value = Joiner::try_from(join_type.as_str())?;
-
-        let node = Node {
-            content: Content::Joiner(join_value),
-            left_child: None,
-            right_child: None,
-        };
-
-        Ok(node)
-    }
-
-    fn value(parts: &mut Vec<String>) -> Result<Node, String> {
-        /*
-        let mut attrs = Vec::new();
-
-        while parts.len() > 0 {
-            let token = parts.remove(0);
-
-            if part == "@attr" {
-                if let Some(attr_
-            }
-
-        let mut node = Node {
-            content: Content::Clause(Clause { attrs: Vec::new(),
-            left_child: None,
-            right_child: None,
-        }
-        */
-
-        todo!();
-    }
-    */
 }
 
 #[test]
 fn test_query_str() {
     let s = r#"@and @and @attr 1=7 @attr 4=6 @attr 5=1 "testisbn" @attr 1=4 @attr 4=6 @attr 5=1 "testtitle" @attr 1=1003 @attr 4=6 @attr 5=1 "testauthor""#;
     let q = Query::from_query_str(s).unwrap();
+    println!("{q:?}");
 }
