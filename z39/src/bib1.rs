@@ -143,7 +143,16 @@ pub struct Attr {
 
 impl fmt::Display for Attr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}={:?}", self.attr_type, self.attr_value)
+        let val = match self.attr_value {
+            AttrValue::Use(v) => match v {
+                Value(v) => v as u64,
+                _ => todo!(),
+            },
+            AttrValue::Structure(v) => v as u64,
+            AttrValue::Truncation(v) => v as u64,
+            _ => todo!(),
+        };
+        write!(f, "{:?}={val}", self.attr_type)
     }
 }
 
