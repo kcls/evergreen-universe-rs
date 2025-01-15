@@ -2,7 +2,7 @@
 //! https://www.loc.gov/z3950/agency/bib1.html
 use std::fmt;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Structure {
     Phrase = 1,
     Word = 2,
@@ -50,7 +50,7 @@ impl TryFrom<u64> for Structure {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Truncation {
     Right = 1,
     Left = 2,
@@ -84,7 +84,7 @@ impl TryFrom<u64> for Truncation {
 ///
 /// For now, just store the raw number value instead of listing
 /// all of the options.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Use {
     Value(u64),
 }
@@ -97,7 +97,7 @@ impl TryFrom<u64> for Use {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum AttrType {
     Use = 1,
     Relation = 2,
@@ -143,14 +143,12 @@ pub struct Attr {
 
 impl fmt::Display for Attr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let val = match self.attr_value {
+        let val = match &self.attr_value {
             AttrValue::Use(v) => match v {
-                Value(v) => v as u64,
-                _ => todo!(),
+                Use::Value(v2) => *v2 as u64,
             },
-            AttrValue::Structure(v) => v as u64,
-            AttrValue::Truncation(v) => v as u64,
-            _ => todo!(),
+            AttrValue::Structure(v) => *v as u64,
+            AttrValue::Truncation(v) => *v as u64,
         };
         write!(f, "{:?}={val}", self.attr_type)
     }

@@ -7,7 +7,7 @@ members = [
   "sip2",
   "sip2-mediator",
   "kcls",
-  "z39",
+  "z39-server",
 ]
 default-members = [
   "mptc",
