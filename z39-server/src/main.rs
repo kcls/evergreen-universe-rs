@@ -1,9 +1,6 @@
 use evergreen as eg;
 
 use der_parser::ber::*;
-use der_parser::der::Tag;
-use der_parser::error::*;
-//use der_parser::nom::HexDisplay;
 
 use std::any::Any;
 use std::io::Read; // needed by TcpStream
@@ -11,10 +8,11 @@ use std::net::{TcpListener, TcpStream};
 
 mod messages;
 use messages::Message;
-use messages::InitializeRequest;
+
+const BUFSIZE: usize = 256;
 
 struct Z39ConnectRequest {
-    tcp_stream: TcpStream,
+    tcp_stream: Option<TcpStream>,
 }
 
 impl Z39ConnectRequest {
@@ -31,13 +29,24 @@ impl mptc::Request for Z39ConnectRequest {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Z39Session {
-    /// Example of a thread-local value
     id: u64,
+    tcp_stream: Option<TcpStream>,
 }
 
 impl Z39Session {
+
+    /// Panics if the stream is None.
+    fn tcp_stream_mut(&mut self) -> &mut TcpStream {
+        self.tcp_stream.as_mut().unwrap()
+    }
+
+    fn handle_message(&mut self, message: Message) -> Result<(), String> {
+        println!("REQ: {message:?}");
+
+        Ok(())
+    }
 }
 
 impl mptc::RequestHandler for Z39Session {
@@ -57,26 +66,49 @@ impl mptc::RequestHandler for Z39Session {
         // Turn the general mptc::Request into a type we can perform actions on.
         let request = Z39ConnectRequest::downcast(&mut request);
 
+        // Z39ConnectRequest's only real job was to pass us the stream.
+        self.tcp_stream = request.tcp_stream.take();
 
-        // Feed the BER parser bytes until it returns a completed object.
         let mut bytes = Vec::new();
-        let mut buffer = [0u8; 1];
+        let mut buffer = [0u8; BUFSIZE];
 
-        while let Ok(_) = request.tcp_stream.read(&mut buffer) {
-            bytes.push(buffer[0]);
+        // Read bytes from the TCP stream, feeding them into the BER
+        // parser, until a complete object/message is formed.  Handle
+        // the message, rinse and repeat.
+        while let Ok(count) = self.tcp_stream_mut().read(&mut buffer) {
+            if count == 0 {
+                log::debug!("client socket shutdown.  exiting");
+                break;
+            }
 
-            // TODO handle remainder?
+            bytes.extend_from_slice(&buffer);
+
             match parse_ber(&bytes) {
                 Ok((rem, obj)) => {
-                    println!("Read {} bytes\n{bytes:?}\n", bytes.len());
-                    let message = Message::from_ber(&obj)?;
-                    println!("REQ: {message:?}");
+                    log::debug!("read {} bytes\n{bytes:?}\n", bytes.len());
+
+                    let message = match Message::from_ber(&obj) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            log::error!("could not parse bytes as BER: {e:?} bytes={bytes:?}");
+                            break;
+                        }
+                    };
+
+                    if let Err(e) = self.handle_message(message) {
+                        log::warn!("exiting session after error: {e}");
+                        break;
+                    }
+
+                    // If we have trailing bytes add them to the pile
+                    // to get re-parsed on the next cycle.
+                    bytes = rem.to_vec();
                 }
                 Err(e) => {
-                    if let der_parser::asn1_rs::Err::Incomplete(needed) = e {
+                    if let der_parser::asn1_rs::Err::Incomplete(_) = e {
                         continue; // More data needed.
                     } else {
-                        println!("parsing failed: {e:?}");
+                        log::error!("parsing failed: {e:?} bytes={bytes:?}");
                         break;
                     }
                 }
@@ -95,10 +127,7 @@ impl mptc::RequestHandler for Z39Session {
             .expect("Stream.write()");
         */
 
-        request
-            .tcp_stream
-            .shutdown(std::net::Shutdown::Both)
-            .expect("shutdown()");
+        self.tcp_stream_mut().shutdown(std::net::Shutdown::Both).ok();
 
         Ok(())
     }
@@ -137,13 +166,16 @@ impl mptc::RequestStream for Z39Server {
             }
         };
 
-        let request = Z39ConnectRequest { tcp_stream };
+        let request = Z39ConnectRequest { tcp_stream: Some(tcp_stream) };
         Ok(Some(Box::new(request)))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         self.id_gen += 1;
-        let h = Z39Session { id: self.id_gen };
+        let h = Z39Session {
+            id: self.id_gen,
+            tcp_stream: None
+        };
         Box::new(h)
     }
 
@@ -155,7 +187,6 @@ impl mptc::RequestStream for Z39Server {
 }
 
 fn main() {
-
     let tcp_listener = eg::util::tcp_listener(
         "127.0.0.1",
         2210,
