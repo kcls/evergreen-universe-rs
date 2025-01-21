@@ -2,54 +2,48 @@ use rasn::AsnType;
 use rasn::prelude::*;
 use rasn::ber::de::DecodeErrorKind;
 
-/// Translate an ASN GeneralString into a Rust &str.
-///
-pub fn general_string_to_str(g: &GeneralString) -> Result<&str, String> {
-    std::str::from_utf8(g.as_bytes()).map_err(|e| e.to_string())
-}
-
 #[derive(Debug, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
 pub struct InitializeRequest {
-    #[rasn(tag(context, 2))]
+    #[rasn(tag(2))]
     pub reference_id: Option<OctetString>,
-    #[rasn(tag(context, 3))]
+    #[rasn(tag(3))]
     pub protocol_version: BitString,
-    #[rasn(tag(context, 4))]
+    #[rasn(tag(4))]
     pub options: BitString,
-    #[rasn(tag(context, 5))]
+    #[rasn(tag(5))]
     pub preferred_message_size: u32,
-    #[rasn(tag(context, 6))]
+    #[rasn(tag(6))]
     pub exceptional_record_size: u32,
-    #[rasn(tag(context, 110))]
-    pub implementation_id: Option<GeneralString>,
-    #[rasn(tag(context, 111))]
-    pub implementation_name: Option<GeneralString>,
-    #[rasn(tag(context, 112))]
-    pub implementation_version: Option<GeneralString>,
+    #[rasn(tag(110))]
+    pub implementation_id: Option<String>,
+    #[rasn(tag(111))]
+    pub implementation_name: Option<String>,
+    #[rasn(tag(112))]
+    pub implementation_version: Option<String>,
 }
 
 #[derive(Debug, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 21))]
 pub struct InitializeResponse {
-    #[rasn(tag(context, 2))]
+    #[rasn(tag(2))]
     pub reference_id: Option<OctetString>,
-    #[rasn(tag(context, 3))]
+    #[rasn(tag(3))]
     pub protocol_version: BitString,
-    #[rasn(tag(context, 4))]
+    #[rasn(tag(4))]
     pub options: BitString,
-    #[rasn(tag(context, 5))]
+    #[rasn(tag(5))]
     pub preferred_message_size: u32,
-    #[rasn(tag(context, 6))]
+    #[rasn(tag(6))]
     pub exceptional_record_size: u32,
     #[rasn(tag(12))]
     pub result: Option<bool>,
-    #[rasn(tag(context, 110))]
-    pub implementation_id: Option<GeneralString>,
-    #[rasn(tag(context, 111))]
-    pub implementation_name: Option<GeneralString>,
-    #[rasn(tag(context, 112))]
-    pub implementation_version: Option<GeneralString>,
+    #[rasn(tag(110))]
+    pub implementation_id: Option<String>,
+    #[rasn(tag(111))]
+    pub implementation_name: Option<String>,
+    #[rasn(tag(112))]
+    pub implementation_version: Option<String>,
 }
 
 #[derive(Debug)]
@@ -64,6 +58,10 @@ pub struct Message {
 }
 
 impl Message {
+    pub fn payload(&self) -> &MessagePayload {
+        &self.payload
+    }
+
     /// Parses a collection of bytes into a Message.
     ///
     /// Returns None if more bytes are needed to complete the message.
@@ -110,6 +108,10 @@ impl Message {
         Ok(Some(Message { payload }))
     }
 
+    pub fn from_payload(payload: MessagePayload) -> Self {
+        Message { payload }
+    }
+
     /// Translate a message into a collection of bytes suitable for delivery.
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
         let res = match &self.payload {
@@ -144,10 +146,7 @@ fn test_encode_decode() {
         panic!("Wrong message type parsed: {init_req_msg:?}");
     };
 
-    assert_eq!(
-        "YAZ", 
-        general_string_to_str(init_req.implementation_name.as_ref().unwrap()).unwrap()
-    );
+    assert_eq!("YAZ", init_req.implementation_name.as_ref().unwrap());
 
     assert_eq!(init_req_bytes, *init_req_msg.to_bytes().unwrap());
 
@@ -182,7 +181,7 @@ fn test_encode_decode() {
 
     assert_eq!(
         "Simple2ZOOM Universal Gateway/GFS/YAZ",
-        general_string_to_str(init_resp.implementation_name.as_ref().unwrap()).unwrap()
+        init_resp.implementation_name.as_ref().unwrap()
     );
 
     assert_eq!(init_resp_bytes, *init_resp_msg.to_bytes().unwrap());
