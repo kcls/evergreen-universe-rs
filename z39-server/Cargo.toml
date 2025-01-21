@@ -1,0 +1,10 @@
+[package]
+name = "z39-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mptc = { path = "../mptc" }
+evergreen = { path = "../evergreen" }
+rasn = "0.22.2"
+log = "0.4.25"
