@@ -1,43 +1,37 @@
 use crate::message::*;
 use crate::Z39ConnectRequest;
 
-use rasn::types::BitString;
-
+use std::fmt;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
 
-const BUFSIZE: usize = 1024;
+const NETWORK_BUFSIZE: usize = 1024;
 
-// Copy Yaz values here.
-const PREF_VALUE_SIZE: u32 = 67108864;
-
-const IMPLEMENTATION_ID: &str = "EG";
-const IMPLEMENTATION_NAME: &str = "Evergreen";
-const IMPLEMENTATION_VERSION: &str = "0.1.0";
-
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Z39Session {
-    id: u64,
     tcp_stream: Option<TcpStream>,
+    peer_addr: Option<String>,
+}
+
+impl fmt::Display for Z39Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(a) = self.peer_addr.as_ref() {
+            write!(f, "Z39Session [{a}]")
+        } else {
+            write!(f, "Z39Session")
+        }
+    }
 }
 
 impl Z39Session {
-    pub fn new(id: u64) -> Self {
-        Z39Session {
-            id,
-            tcp_stream: None,
-        }
-    }
-
     /// Panics if the stream is None.
     fn tcp_stream_mut(&mut self) -> &mut TcpStream {
         self.tcp_stream.as_mut().unwrap()
     }
 
     fn handle_message(&mut self, message: Message) -> Result<(), String> {
-        println!("REQ: {message:?}");
+        log::debug!("{self} processing message {message:?}");
 
         match message.payload() {
             MessagePayload::InitializeRequest(r) => self.handle_init_request(r),
@@ -46,47 +40,41 @@ impl Z39Session {
     }
 
     fn handle_init_request(&mut self, _req: &InitializeRequest) -> Result<(), String> {
+        let bytes = Message::from_payload(MessagePayload::InitializeResponse(
+            InitializeResponse::default(),
+        ))
+        .to_bytes()?;
 
-       let resp = InitializeResponse {
-            reference_id: None,
-            protocol_version: BitString::repeat(true, 3),
-            options: BitString::repeat(true, 16), // TODO
-            preferred_message_size: PREF_VALUE_SIZE,
-            exceptional_record_size: PREF_VALUE_SIZE,
-            result: Some(true),
-            implementation_id: Some(IMPLEMENTATION_ID.to_string()),
-            implementation_name: Some(IMPLEMENTATION_NAME.to_string()),
-            implementation_version: Some(IMPLEMENTATION_VERSION.to_string()),
-        };
+        self.reply(bytes.as_slice())
+    }
 
-        let bytes = Message::from_payload(MessagePayload::InitializeResponse(resp)).to_bytes()?;
-
-        self.tcp_stream_mut().write_all(bytes.as_slice()).map_err(|e| e.to_string())
+    fn reply(&mut self, bytes: &[u8]) -> Result<(), String> {
+        log::debug!("{self} replying with {bytes:?}");
+        self.tcp_stream_mut()
+            .write_all(bytes)
+            .map_err(|e| e.to_string())
     }
 }
 
 impl mptc::RequestHandler for Z39Session {
-    fn worker_start(&mut self) -> Result<(), String> {
-        println!("Z39Session::worker_start({})", self.id);
-        Ok(())
-    }
-
-    fn worker_end(&mut self) -> Result<(), String> {
-        println!("Z39Session::worker_end({})", self.id);
-        Ok(())
-    }
-
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
-        println!("Z39Session::process({})", self.id);
-
         // Turn the general mptc::Request into a type we can perform actions on.
         let request = Z39ConnectRequest::downcast(&mut request);
 
         // Z39ConnectRequest's only real job was to pass us the stream.
         self.tcp_stream = request.tcp_stream.take();
 
+        self.peer_addr = Some(
+            self.tcp_stream_mut()
+                .peer_addr()
+                .map_err(|e| e.to_string())?
+                .to_string(),
+        );
+
+        log::info!("{self} starting session");
+
         let mut bytes = Vec::new();
-        let mut buffer = [0u8; BUFSIZE];
+        let mut buffer = [0u8; NETWORK_BUFSIZE];
 
         // Read bytes from the TCP stream, feeding them into the BER
         // parser, until a complete object/message is formed.  Handle
@@ -99,33 +87,31 @@ impl mptc::RequestHandler for Z39Session {
 
             bytes.extend_from_slice(&buffer);
 
-            match Message::from_bytes(&bytes) {
-                Ok(op) => if let Some(msg) = op {
-                    self.handle_message(msg)?; // TODO
-                } else {
-                    // More bytes needed.
-                    continue;
-                }
+            let msg = match Message::from_bytes(&bytes) {
+                Ok(maybe) => match maybe {
+                    Some(m) => {
+                        bytes.clear();
+                        m
+                    }
+                    None => continue, // more bytes needed
+                },
                 Err(e) => {
-                    log::error!("Cannot parse message: {e} {bytes:?}");
+                    log::error!("cannot parse message: {e} {bytes:?}");
                     break;
                 }
+            };
+
+            if let Err(e) = self.handle_message(msg) {
+                log::error!("cannot handle message: {e} {bytes:?}");
+                break;
             }
         }
 
-        /*
-        request
-            .tcp_stream
-            .write_all(format!("Replying from {:?}: ", std::thread::current().id()).as_bytes())
-            .expect("Stream.write()");
+        log::info!("session exiting");
 
-        request
-            .tcp_stream
-            .write_all(&buffer[..count])
-            .expect("Stream.write()");
-        */
-
-        self.tcp_stream_mut().shutdown(std::net::Shutdown::Both).ok();
+        self.tcp_stream_mut()
+            .shutdown(std::net::Shutdown::Both)
+            .ok();
 
         Ok(())
     }

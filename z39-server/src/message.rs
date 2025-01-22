@@ -1,6 +1,13 @@
-use rasn::AsnType;
-use rasn::prelude::*;
 use rasn::ber::de::DecodeErrorKind;
+use rasn::prelude::*;
+use rasn::AsnType;
+
+/// Message/Record size values copied from Yaz.
+const PREF_VALUE_SIZE: u32 = 67108864;
+
+const IMPLEMENTATION_ID: &str = "EG";
+const IMPLEMENTATION_NAME: &str = "Evergreen Z39";
+const IMPLEMENTATION_VERSION: &str = "0.1.0";
 
 #[derive(Debug, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
@@ -23,7 +30,7 @@ pub struct InitializeRequest {
     pub implementation_version: Option<String>,
 }
 
-#[derive(Debug, Default, AsnType, Decode, Encode)]
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 21))]
 pub struct InitializeResponse {
     #[rasn(tag(2))]
@@ -46,6 +53,28 @@ pub struct InitializeResponse {
     pub implementation_version: Option<String>,
 }
 
+// InitializeResponse will always be a canned response.
+impl Default for InitializeResponse {
+    fn default() -> Self {
+        let mut options = BitString::repeat(false, 16);
+
+        options.set(0, true); // search
+        options.set(1, true); // present
+
+        InitializeResponse {
+            reference_id: None,
+            protocol_version: BitString::repeat(true, 3),
+            options,
+            preferred_message_size: PREF_VALUE_SIZE,
+            exceptional_record_size: PREF_VALUE_SIZE,
+            result: Some(true),
+            implementation_id: Some(IMPLEMENTATION_ID.to_string()),
+            implementation_name: Some(IMPLEMENTATION_NAME.to_string()),
+            implementation_version: Some(IMPLEMENTATION_VERSION.to_string()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum MessagePayload {
     InitializeRequest(InitializeRequest),
@@ -54,7 +83,7 @@ pub enum MessagePayload {
 
 #[derive(Debug)]
 pub struct Message {
-    payload: MessagePayload
+    payload: MessagePayload,
 }
 
 impl Message {
@@ -70,33 +99,30 @@ impl Message {
             return Ok(None);
         }
 
+        // TODO matching on the binary representation of the first byte
+        // is hacky.  Parse the bits for real into a Tag.
         let payload = match format!("{:b}", &bytes[0]).as_str() {
-            // TODO matching on the binary representation of the first byte
-            // is hacky.  Parse the bits for real.
-
             // The tag component are the final 5 bits, 10100=20 in this case.
-            "10110100" => { // Tag(20)
-                let msg: InitializeRequest = match rasn::ber::decode(&bytes) {
+            "10110100" => {
+                // Tag(20)
+                let msg: InitializeRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => {
-                        match *e.kind {
-                            DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                            _ => return Err(e.to_string()),
-                        }
-                    }
+                    Err(e) => match *e.kind {
+                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
+                        _ => return Err(e.to_string()),
+                    },
                 };
 
                 MessagePayload::InitializeRequest(msg)
             }
-            "10110101" => {  // Tag(21)
-                let msg: InitializeResponse = match rasn::ber::decode(&bytes) {
+            "10110101" => {
+                // Tag(21)
+                let msg: InitializeResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => {
-                        match *e.kind {
-                            DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                            _ => return Err(e.to_string()),
-                        }
-                    }
+                    Err(e) => match *e.kind {
+                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
+                        _ => return Err(e.to_string()),
+                    },
                 };
 
                 MessagePayload::InitializeResponse(msg)
@@ -123,21 +149,16 @@ impl Message {
     }
 }
 
-
 #[test]
 fn test_encode_decode() {
-
     // Example InitializeRequest from YAZ client.
     let init_req_bytes = [
-        0xb4, 0x52, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9,
-        0xa2, 0x85, 0x04, 0x04, 0x00, 0x00, 0x00, 0x86, 0x04, 0x04,
-        0x00, 0x00, 0x00, 0x9f, 0x6e, 0x02, 0x38, 0x31, 0x9f, 0x6f,
-        0x03, 0x59, 0x41, 0x5a, 0x9f, 0x70, 0x2f, 0x35, 0x2e, 0x33,
-        0x31, 0x2e, 0x31, 0x20, 0x63, 0x33, 0x63, 0x65, 0x61, 0x38,
-        0x38, 0x31, 0x65, 0x33, 0x65, 0x37, 0x65, 0x38, 0x30, 0x62,
-        0x30, 0x36, 0x39, 0x64, 0x64, 0x64, 0x31, 0x34, 0x32, 0x39,
-        0x39, 0x39, 0x34, 0x65, 0x35, 0x38, 0x38, 0x34, 0x31, 0x61,
-        0x63, 0x62, 0x31, 0x34
+        0xb4, 0x52, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9, 0xa2, 0x85, 0x04, 0x04, 0x00,
+        0x00, 0x00, 0x86, 0x04, 0x04, 0x00, 0x00, 0x00, 0x9f, 0x6e, 0x02, 0x38, 0x31, 0x9f, 0x6f,
+        0x03, 0x59, 0x41, 0x5a, 0x9f, 0x70, 0x2f, 0x35, 0x2e, 0x33, 0x31, 0x2e, 0x31, 0x20, 0x63,
+        0x33, 0x63, 0x65, 0x61, 0x38, 0x38, 0x31, 0x65, 0x33, 0x65, 0x37, 0x65, 0x38, 0x30, 0x62,
+        0x30, 0x36, 0x39, 0x64, 0x64, 0x64, 0x31, 0x34, 0x32, 0x39, 0x39, 0x39, 0x34, 0x65, 0x35,
+        0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34,
     ];
 
     let init_req_msg = Message::from_bytes(&init_req_bytes).unwrap().unwrap();
@@ -151,26 +172,144 @@ fn test_encode_decode() {
     assert_eq!(init_req_bytes, *init_req_msg.to_bytes().unwrap());
 
     // Test partial values.
-    assert!(Message::from_bytes(&init_req_bytes[0..10]).unwrap().is_none());
+    assert!(Message::from_bytes(&init_req_bytes[0..10])
+        .unwrap()
+        .is_none());
 
     // YAZ encodes true as 0x01, whereas rasn encodes it as 0xff.
     let tag_12_result = 0xff;
 
     // Bytes taking from a Yaz client init request
     let init_resp_bytes = [
-        0xb5, 0x7f, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9,
-        0x82, 0x85, 0x04, 0x04, 0x00, 0x00, 0x00, 0x86, 0x04, 0x04,
-        0x00, 0x00, 0x00, 0x8c, 0x01, tag_12_result, 0x9f, 0x6e, 0x05,
-        0x38, 0x31, 0x2f, 0x38, 0x31, 0x9f, 0x6f, 0x25, 0x53, 0x69,
-        0x6d, 0x70, 0x6c, 0x65, 0x32, 0x5a, 0x4f, 0x4f, 0x4d, 0x20,
-        0x55, 0x6e, 0x69, 0x76, 0x65, 0x72, 0x73, 0x61, 0x6c, 0x20,
-        0x47, 0x61, 0x74, 0x65, 0x77, 0x61, 0x79, 0x2f, 0x47, 0x46,
-        0x53, 0x2f, 0x59, 0x41, 0x5a, 0x9f, 0x70, 0x34, 0x31, 0x2e,
-        0x30, 0x34, 0x2f, 0x35, 0x2e, 0x33, 0x31, 0x2e, 0x31, 0x20,
-        0x63, 0x33, 0x63, 0x65, 0x61, 0x38, 0x38, 0x31, 0x65, 0x33,
-        0x65, 0x37, 0x65, 0x38, 0x30, 0x62, 0x30, 0x36, 0x39, 0x64,
-        0x64, 0x64, 0x31, 0x34, 0x32, 0x39, 0x39, 0x39, 0x34, 0x65,
-        0x35, 0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34
+        0xb5,
+        0x7f,
+        0x83,
+        0x02,
+        0x00,
+        0xe0,
+        0x84,
+        0x03,
+        0x00,
+        0xe9,
+        0x82,
+        0x85,
+        0x04,
+        0x04,
+        0x00,
+        0x00,
+        0x00,
+        0x86,
+        0x04,
+        0x04,
+        0x00,
+        0x00,
+        0x00,
+        0x8c,
+        0x01,
+        tag_12_result,
+        0x9f,
+        0x6e,
+        0x05,
+        0x38,
+        0x31,
+        0x2f,
+        0x38,
+        0x31,
+        0x9f,
+        0x6f,
+        0x25,
+        0x53,
+        0x69,
+        0x6d,
+        0x70,
+        0x6c,
+        0x65,
+        0x32,
+        0x5a,
+        0x4f,
+        0x4f,
+        0x4d,
+        0x20,
+        0x55,
+        0x6e,
+        0x69,
+        0x76,
+        0x65,
+        0x72,
+        0x73,
+        0x61,
+        0x6c,
+        0x20,
+        0x47,
+        0x61,
+        0x74,
+        0x65,
+        0x77,
+        0x61,
+        0x79,
+        0x2f,
+        0x47,
+        0x46,
+        0x53,
+        0x2f,
+        0x59,
+        0x41,
+        0x5a,
+        0x9f,
+        0x70,
+        0x34,
+        0x31,
+        0x2e,
+        0x30,
+        0x34,
+        0x2f,
+        0x35,
+        0x2e,
+        0x33,
+        0x31,
+        0x2e,
+        0x31,
+        0x20,
+        0x63,
+        0x33,
+        0x63,
+        0x65,
+        0x61,
+        0x38,
+        0x38,
+        0x31,
+        0x65,
+        0x33,
+        0x65,
+        0x37,
+        0x65,
+        0x38,
+        0x30,
+        0x62,
+        0x30,
+        0x36,
+        0x39,
+        0x64,
+        0x64,
+        0x64,
+        0x31,
+        0x34,
+        0x32,
+        0x39,
+        0x39,
+        0x39,
+        0x34,
+        0x65,
+        0x35,
+        0x38,
+        0x38,
+        0x34,
+        0x31,
+        0x61,
+        0x63,
+        0x62,
+        0x31,
+        0x34,
     ];
 
     let init_resp_msg = Message::from_bytes(&init_resp_bytes).unwrap().unwrap();
@@ -186,4 +325,3 @@ fn test_encode_decode() {
 
     assert_eq!(init_resp_bytes, *init_resp_msg.to_bytes().unwrap());
 }
-

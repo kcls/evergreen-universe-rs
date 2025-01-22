@@ -27,16 +27,12 @@ impl mptc::Request for Z39ConnectRequest {
 
 struct Z39Server {
     tcp_listener: TcpListener,
-    id_gen: u64,
 }
 
 impl mptc::RequestStream for Z39Server {
     fn next(&mut self) -> Result<Option<Box<dyn mptc::Request>>, String> {
         let tcp_stream = match self.tcp_listener.accept() {
-            Ok((stream, addr)) => {
-                println!("z39 connect from {addr}");
-                stream
-            }
+            Ok((stream, _addr)) => stream,
             Err(e) => {
                 match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
@@ -58,20 +54,16 @@ impl mptc::RequestStream for Z39Server {
             }
         };
 
-        let request = Z39ConnectRequest { tcp_stream: Some(tcp_stream) };
+        let request = Z39ConnectRequest {
+            tcp_stream: Some(tcp_stream),
+        };
+
         Ok(Some(Box::new(request)))
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
-        self.id_gen += 1;
-        Box::new(Z39Session::new(self.id_gen))
+        Box::new(Z39Session::default())
     }
-
-    fn reload(&mut self) -> Result<(), String> {
-        Ok(())
-    }
-
-    fn shutdown(&mut self) {}
 }
 
 fn main() {
@@ -79,16 +71,12 @@ fn main() {
         "127.0.0.1",
         2210,
         3, // TODO
-    ).unwrap(); //  todo
+    )
+    .unwrap(); //  todo
 
-    let server = Z39Server {
-        id_gen: 0,
-        tcp_listener,
-    };
+    let server = Z39Server { tcp_listener };
 
     let mut s = mptc::Server::new(Box::new(server));
 
     s.run();
 }
-
-
