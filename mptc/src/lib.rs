@@ -35,10 +35,14 @@ pub trait Request: Send + std::any::Any {
 /// Trait implemented by code that wishes to handle requests.
 pub trait RequestHandler: Send {
     /// Called from within each worker thread just after spawning.
-    fn worker_start(&mut self) -> Result<(), String>;
+    fn worker_start(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 
     /// Called from within each worker thread just before the thread exits.
-    fn worker_end(&mut self) -> Result<(), String>;
+    fn worker_end(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 
     /// Process a single request.
     ///
@@ -65,8 +69,10 @@ pub trait RequestStream {
     /// previous state and continue functioning.  It should only return
     /// an Err() if it cannot proceed.
     /// SIGHUP
-    fn reload(&mut self) -> Result<(), String>;
+    fn reload(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 
     /// Graceful shutdown request (SIGINT)
-    fn shutdown(&mut self);
+    fn shutdown(&mut self) {}
 }
