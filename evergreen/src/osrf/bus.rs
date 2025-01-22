@@ -4,7 +4,7 @@ use crate::osrf::logging::Logger;
 use crate::osrf::message::TransportMessage;
 use crate::util;
 use crate::EgResult;
-use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, ProtocolVersion};
+use redis::{Commands, ConnectionAddr, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 use std::fmt;
 
 /// Manages a Redis connection.
@@ -142,7 +142,7 @@ impl Bus {
         } else {
             let mut resp: Vec<String> = self
                 .connection()
-                .blpop(&recipient, timeout as f64) // TODO 
+                .blpop(&recipient, timeout as f64) // TODO
                 .map_err(|e| format!("Redis blpop error recipient={recipient}: {e}"))?;
 
             if resp.len() > 1 {
