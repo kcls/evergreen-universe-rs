@@ -501,7 +501,25 @@ fn test_encode_decode() {
 
     //println!("\n{search_req:?}\n");
 
-    // Extract the ISBN from within the query.
+    // Example extracting the ISBN from this query via pattern syntax.
+    // Included here for my own reference.
+    /*
+    let Query::Type1(
+        RpnQuery { 
+            rpn: RpnStructure::Op(Operand::AttrTerm(
+                AttributesPlusTerm {
+                    term: Term::General(ref isbn), 
+                    ..
+                }
+            )),
+            ..
+        }
+    ) = search_req.query else {
+        panic!("Search request has unexpected structure; no isbn found");
+    };
+    */
+
+    // Extract the ISBN from within the query one piece at a time.
     let Query::Type1(ref rpn_query) = search_req.query else {
         panic!();
     };
@@ -516,6 +534,8 @@ fn test_encode_decode() {
     };
 
     assert_eq!(*b"0879303727", **isbn);
+    // OR
+    assert_eq!("0879303727", std::str::from_utf8(&isbn.slice(..)).unwrap());
 
     assert_eq!(search_req_bytes, *search_req_msg.to_bytes().unwrap());
 }
