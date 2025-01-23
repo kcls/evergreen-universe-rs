@@ -122,13 +122,20 @@ pub struct ProximityOperator {
     proximity_unit_code: ProximityUnitCode,
 }
 
+// NOTE a single-item enum works where 'struct DatabaseName(String)' does not.
 #[derive(Debug, AsnType, Decode, Encode)]
-#[rasn(tag(context, 105))]
-pub struct DatabaseName(String);
+#[rasn(choice)]
+pub enum DatabaseName {
+    #[rasn(tag(105))]
+    Name(String),
+}
 
 #[derive(Debug, AsnType, Decode, Encode)]
-#[rasn(tag(context, 103))]
-pub struct ElementSetName(String);
+#[rasn(choice)]
+pub enum ElementSetName {
+    #[rasn(tag(103))]
+    Name(String),
+}
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct DatabaseSpecific {
@@ -315,7 +322,7 @@ pub struct SearchRequest {
     #[rasn(tag(17))]
     result_set_name: String,
     #[rasn(tag(18))]
-    database_names: SequenceOf<DatabaseName>,
+    database_names: Vec<DatabaseName>,
     #[rasn(tag(21))]
     query: Query,
     #[rasn(tag(100))]
@@ -476,7 +483,7 @@ fn test_encode_decode() {
 
     assert_eq!(init_resp_bytes, *init_resp_msg.to_bytes().unwrap());
 
-    // Byte 14 replaces 0x01 with 0xff for boolean value
+    // Byte 14 replaces 0x01 with 0xff for rasn-consistent boolean value
     let search_req_bytes = [
         0xb6, 0x4e, 0x8d, 0x01, 0x00, 0x8e, 0x01, 0x01, 0x8f, 0x01, 0x00, 0x90, 0x01, 0xff, 0x91,
         0x01, 0x31, 0xb2, 0x07, 0x9f, 0x69, 0x04, 0x6b, 0x63, 0x6c, 0x73, 0xb5, 0x34, 0xa1, 0x32,
@@ -488,11 +495,11 @@ fn test_encode_decode() {
 
     let search_req_msg = Message::from_bytes(&search_req_bytes).unwrap().unwrap();
 
-    //println!("{search_req_msg:?}");
-
     let MessagePayload::SearchRequest(search_req) = &search_req_msg.payload else {
         panic!("Wrong message type parsed: {search_req_msg:?}");
     };
+
+    //println!("\n{search_req:?}\n");
 
     // Extract the ISBN from within the query.
     let Query::Type1(ref rpn_query) = search_req.query else {
