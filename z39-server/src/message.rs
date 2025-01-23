@@ -87,19 +87,19 @@ pub enum KnownProximityUnit {
     Subelement = 9,
     ElementType = 10,
     // Version 3 only
-    Byte = 11 
+    Byte = 11,
 }
 
 pub enum RelationType {
-	LessThan = 1,
-	LessThanOrEqual = 2,
-	Equal = 3,
-	GreaterThanOrEqual = 4,
-	GreaterThan = 5,
-	NotEqual = 6,
+    LessThan = 1,
+    LessThanOrEqual = 2,
+    Equal = 3,
+    GreaterThanOrEqual = 4,
+    GreaterThan = 5,
+    NotEqual = 6,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ProximityUnitCode {
     #[rasn(tag(0))]
@@ -108,35 +108,35 @@ pub enum ProximityUnitCode {
     Private(u32),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct ProximityOperator {
-	#[rasn(tag(1))]                                                      
-	exclusion: bool,
-	#[rasn(tag(2))]                                                      
-	distance: u32,
-	#[rasn(tag(3))]                                                      
-	ordered: bool,
-	#[rasn(tag(4))]                                                      
-	relation_type: u32,
-	#[rasn(tag(5))]                                                      
-	proximity_unit_code: ProximityUnitCode,
+    #[rasn(tag(1))]
+    exclusion: bool,
+    #[rasn(tag(2))]
+    distance: u32,
+    #[rasn(tag(3))]
+    ordered: bool,
+    #[rasn(tag(4))]
+    relation_type: u32,
+    #[rasn(tag(5))]
+    proximity_unit_code: ProximityUnitCode,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
-#[rasn(tag(context, 105))]                                                      
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(tag(context, 105))]
 pub struct DatabaseName(String);
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
-#[rasn(tag(context, 103))]                                                      
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(tag(context, 103))]
 pub struct ElementSetName(String);
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct DatabaseSpecific {
     db_name: DatabaseName,
     esn: ElementSetName,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ElementSetNames {
     #[rasn(tag(0))]
@@ -145,10 +145,7 @@ pub enum ElementSetNames {
     DatabaseSpecific(SequenceOf<DatabaseSpecific>),
 }
 
-
-// TODO test implicit tags
-
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum StringOrNumeric {
     #[rasn(tag(1))]
@@ -157,7 +154,7 @@ pub enum StringOrNumeric {
     Numeric(u32),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct ComplexAttributeValue {
     #[rasn(tag(1))]
     list: SequenceOf<StringOrNumeric>,
@@ -165,25 +162,16 @@ pub struct ComplexAttributeValue {
     semantic_action: Option<SequenceOf<u32>>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum AttributeValue {
-    #[rasn(tag(112))]
+    #[rasn(tag(121))]
     Numeric(u32),
     #[rasn(tag(224))]
     Complex(ComplexAttributeValue),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
-pub struct AttributeElement {
-    #[rasn(tag(1))]
-	attribute_set: Option<ObjectIdentifier>,
-    #[rasn(tag(120))]
-    attribute_type: u32,
-    attribute_value: AttributeValue,
-}
-
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 #[rasn(tag(46))]
 pub enum Operator {
@@ -197,7 +185,7 @@ pub enum Operator {
     Prox(ProximityOperator),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct Unit {
     #[rasn(tag(1))]
     unit_system: Option<String>,
@@ -209,7 +197,7 @@ pub struct Unit {
     scale_factor: Option<u32>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct IntUnit {
     #[rasn(tag(1))]
     value: u32,
@@ -217,7 +205,7 @@ pub struct IntUnit {
     unit_used: Unit,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Term {
     #[rasn(tag(45))]
@@ -238,28 +226,30 @@ pub enum Term {
     Null,
 }
 
-
-//#[derive(Debug, AsnType, Decode, Encode)]                                      
-//pub struct AttributeList(SequenceOf<AttributeElement>);
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct AttributeElement {
+    #[rasn(tag(1))]
+    attribute_set: Option<ObjectIdentifier>,
+    #[rasn(tag(120))]
+    attribute_type: u32,
+    attribute_value: AttributeValue,
+}
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct ResultSetPlusAttributes {
     result_set: ObjectIdentifier,
-    //attributes: AttributeList,
-    //attributes: SequenceOf<AttributeElement>,
-    #[rasn(tag(44))]                                                      
+    #[rasn(tag(44))]
     attributes: Vec<AttributeElement>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct AttributesPlusTerm {
-    #[rasn(tag(44))]                                                      
+    #[rasn(tag(44))]
     attributes: Vec<AttributeElement>,
-    //attributes: SequenceOf<AttributeElement>,
     term: Term,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Operand {
     #[rasn(tag(102))]
@@ -270,14 +260,14 @@ pub enum Operand {
     ResultAttr(ResultSetPlusAttributes),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct RpnOp {
     rpn1: RpnStructure,
     rpn2: RpnStructure,
     op: Operator,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum RpnStructure {
     #[rasn(tag(0))]
@@ -286,13 +276,13 @@ pub enum RpnStructure {
     RpnOp(Box<RpnOp>),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct RpnQuery {
     attribute_set: ObjectIdentifier,
     rpn: RpnStructure,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Query {
     #[rasn(tag(0))]
@@ -309,35 +299,34 @@ pub enum Query {
     Type102(OctetString),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]                                      
-#[rasn(tag(context, 22))]                                                      
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(tag(context, 22))]
 pub struct SearchRequest {
     #[rasn(tag(2))]
     pub reference_id: Option<OctetString>,
-    #[rasn(tag(13))]   
+    #[rasn(tag(13))]
     small_set_upper_bound: u32,
-    #[rasn(tag(14))]   
+    #[rasn(tag(14))]
     large_set_lower_bound: u32,
-    #[rasn(tag(15))]   
+    #[rasn(tag(15))]
     medium_set_present_number: u32,
-    #[rasn(tag(16))]   
+    #[rasn(tag(16))]
     replace_indicator: bool,
-    #[rasn(tag(17))]   
+    #[rasn(tag(17))]
     result_set_name: String,
-    #[rasn(tag(18))]   
+    #[rasn(tag(18))]
     database_names: SequenceOf<DatabaseName>,
-    #[rasn(tag(21))]   
+    #[rasn(tag(21))]
     query: Query,
-    #[rasn(tag(100))]   
-    small_set_element_names: ElementSetNames,
-    #[rasn(tag(101))]   
-    medium_set_element_names: ElementSetNames,
-    #[rasn(tag(104))]   
-    preferred_record_syntax: ObjectIdentifier,
-    #[rasn(tag(203))]   
-    additional_search_info: Any, // TODO
+    #[rasn(tag(100))]
+    small_set_element_names: Option<ElementSetNames>,
+    #[rasn(tag(101))]
+    medium_set_element_names: Option<ElementSetNames>,
+    #[rasn(tag(104))]
+    preferred_record_syntax: Option<ObjectIdentifier>,
+    #[rasn(tag(203))]
+    additional_search_info: Option<Any>, // TODO
 }
-
 
 #[derive(Debug)]
 pub enum MessagePayload {
@@ -399,7 +388,10 @@ impl Message {
                     Ok(m) => m,
                     Err(e) => match *e.kind {
                         DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => return Err(e.to_string()),
+                        _ => {
+                            eprintln!("\n{e:?}\n");
+                            return Err(e.to_string());
+                        }
                     },
                 };
 
@@ -460,18 +452,14 @@ fn test_encode_decode() {
 
     // Bytes taking from a Yaz client init request
     let init_resp_bytes = [
-        0xb5, 0x7f, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9,
-        0x82, 0x85, 0x04, 0x04, 0x00, 0x00, 0x00, 0x86, 0x04, 0x04,
-        0x00, 0x00, 0x00, 0x8c, 0x01, 0xff, 0x9f, 0x6e, 0x05, 0x38, 
-        0x31, 0x2f, 0x38, 0x31, 0x9f, 0x6f, 0x25, 0x53, 0x69, 0x6d, 
-        0x70, 0x6c, 0x65, 0x32, 0x5a, 0x4f, 0x4f, 0x4d, 0x20, 0x55, 
-        0x6e, 0x69, 0x76, 0x65, 0x72, 0x73, 0x61, 0x6c, 0x20, 0x47, 
-        0x61, 0x74, 0x65, 0x77, 0x61, 0x79, 0x2f, 0x47, 0x46, 0x53, 
-        0x2f, 0x59, 0x41, 0x5a, 0x9f, 0x70, 0x34, 0x31, 0x2e, 0x30, 
-        0x34, 0x2f, 0x35, 0x2e, 0x33, 0x31, 0x2e, 0x31, 0x20, 0x63, 
-        0x33, 0x63, 0x65, 0x61, 0x38, 0x38, 0x31, 0x65, 0x33, 0x65, 
-        0x37, 0x65, 0x38, 0x30, 0x62, 0x30, 0x36, 0x39, 0x64, 0x64, 
-        0x64, 0x31, 0x34, 0x32, 0x39, 0x39, 0x39, 0x34, 0x65, 0x35, 
+        0xb5, 0x7f, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9, 0x82, 0x85, 0x04, 0x04, 0x00,
+        0x00, 0x00, 0x86, 0x04, 0x04, 0x00, 0x00, 0x00, 0x8c, 0x01, 0xff, 0x9f, 0x6e, 0x05, 0x38,
+        0x31, 0x2f, 0x38, 0x31, 0x9f, 0x6f, 0x25, 0x53, 0x69, 0x6d, 0x70, 0x6c, 0x65, 0x32, 0x5a,
+        0x4f, 0x4f, 0x4d, 0x20, 0x55, 0x6e, 0x69, 0x76, 0x65, 0x72, 0x73, 0x61, 0x6c, 0x20, 0x47,
+        0x61, 0x74, 0x65, 0x77, 0x61, 0x79, 0x2f, 0x47, 0x46, 0x53, 0x2f, 0x59, 0x41, 0x5a, 0x9f,
+        0x70, 0x34, 0x31, 0x2e, 0x30, 0x34, 0x2f, 0x35, 0x2e, 0x33, 0x31, 0x2e, 0x31, 0x20, 0x63,
+        0x33, 0x63, 0x65, 0x61, 0x38, 0x38, 0x31, 0x65, 0x33, 0x65, 0x37, 0x65, 0x38, 0x30, 0x62,
+        0x30, 0x36, 0x39, 0x64, 0x64, 0x64, 0x31, 0x34, 0x32, 0x39, 0x39, 0x39, 0x34, 0x65, 0x35,
         0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34,
     ];
 
@@ -488,19 +476,39 @@ fn test_encode_decode() {
 
     assert_eq!(init_resp_bytes, *init_resp_msg.to_bytes().unwrap());
 
-    let search_req_bytes = [                                                       
-        0xb6, 0x4e, 0x8d, 0x01, 0x00, 0x8e, 0x01, 0x01, 0x8f, 0x01,
-        0x00, 0x90, 0x01, 0x01, 0x91, 0x01, 0x31, 0xb2, 0x07, 0x9f,
-        0x69, 0x04, 0x6b, 0x63, 0x6c, 0x73, 0xb5, 0x34, 0xa1, 0x32,
-        0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x13, 0x03, 0x01, 0xa0,
-        0x27, 0xbf, 0x66, 0x24, 0xbf, 0x2c, 0x14, 0x30, 0x08, 0x9f,
-        0x78, 0x01, 0x01, 0x9f, 0x79, 0x01, 0x07, 0x30, 0x08, 0x9f,
-        0x78, 0x01, 0x05, 0x9f, 0x79, 0x01, 0x01, 0x9f, 0x2d, 0x0a,
-        0x30, 0x38, 0x37, 0x39, 0x33, 0x30, 0x33, 0x37, 0x32, 0x37 
+    // Byte 14 replaces 0x01 with 0xff for boolean value
+    let search_req_bytes = [
+        0xb6, 0x4e, 0x8d, 0x01, 0x00, 0x8e, 0x01, 0x01, 0x8f, 0x01, 0x00, 0x90, 0x01, 0xff, 0x91,
+        0x01, 0x31, 0xb2, 0x07, 0x9f, 0x69, 0x04, 0x6b, 0x63, 0x6c, 0x73, 0xb5, 0x34, 0xa1, 0x32,
+        0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x13, 0x03, 0x01, 0xa0, 0x27, 0xbf, 0x66, 0x24, 0xbf,
+        0x2c, 0x14, 0x30, 0x08, 0x9f, 0x78, 0x01, 0x01, 0x9f, 0x79, 0x01, 0x07, 0x30, 0x08, 0x9f,
+        0x78, 0x01, 0x05, 0x9f, 0x79, 0x01, 0x01, 0x9f, 0x2d, 0x0a, 0x30, 0x38, 0x37, 0x39, 0x33,
+        0x30, 0x33, 0x37, 0x32, 0x37,
     ];
-
 
     let search_req_msg = Message::from_bytes(&search_req_bytes).unwrap().unwrap();
 
-    println!("{search_req_msg:?}");
+    //println!("{search_req_msg:?}");
+
+    let MessagePayload::SearchRequest(search_req) = &search_req_msg.payload else {
+        panic!("Wrong message type parsed: {search_req_msg:?}");
+    };
+
+    // Extract the ISBN from within the query.
+    let Query::Type1(ref rpn_query) = search_req.query else {
+        panic!();
+    };
+    let RpnStructure::Op(ref operand) = rpn_query.rpn else {
+        panic!();
+    };
+    let Operand::AttrTerm(ref term) = operand else {
+        panic!();
+    };
+    let Term::General(ref isbn) = term.term else {
+        panic!();
+    };
+
+    assert_eq!(*b"0879303727", **isbn);
+
+    assert_eq!(search_req_bytes, *search_req_msg.to_bytes().unwrap());
 }
