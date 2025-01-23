@@ -335,11 +335,97 @@ pub struct SearchRequest {
     additional_search_info: Option<Any>, // TODO
 }
 
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum AddInfo {
+    V2AddInfo(VisibleString),
+    V3AddInfo(GeneralString),
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct DefaultDiagFormat {
+    diagnostic_set_id: ObjectIdentifier,
+    condition: u32,
+    addinfo: AddInfo,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum DiagRec {
+    DefaultFormat(DefaultDiagFormat),
+    ExternallyDefined(Any),
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum FragmentSyntax {
+    ExternallyTagged(Any),
+    NotExternallyTagged(OctetString),
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum Record {
+    #[rasn(tag(1))]
+    RetrievalRecord(Any),
+    #[rasn(tag(2))]
+    SurrogateDiagnostic(DiagRec),
+    #[rasn(tag(3))]
+    StartingFragment(FragmentSyntax),
+    #[rasn(tag(4))]
+    IntermediateFragment(FragmentSyntax),
+    #[rasn(tag(5))]
+    FinalFragment(FragmentSyntax),
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct NamePlusRecord {
+    #[rasn(tag(0))]
+    name: Option<DatabaseName>,
+    #[rasn(tag(1))]
+    record: Record,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum Records {
+    #[rasn(tag(28))]
+    ResponseRecords(Vec<NamePlusRecord>),
+    #[rasn(tag(130))]
+    NonSurrogateDiagnostic(DefaultDiagFormat),
+    #[rasn(tag(205))]
+    MultipleNonSurDiagnostics(Vec<DiagRec>),
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(tag(context, 23))]
+pub struct SearchResponse {
+    #[rasn(tag(2))]
+    pub reference_id: Option<OctetString>,
+    #[rasn(tag(23))]
+    pub result_count: u32,
+    #[rasn(tag(24))]
+    pub number_of_records_returned: u32,
+    #[rasn(tag(25))]
+    pub next_result_set_position: u32,
+    #[rasn(tag(22))]
+    pub search_status: bool,
+    #[rasn(tag(26))]
+    pub result_set_status: Option<u32>,  // TODO enum
+    #[rasn(tag(27))]
+    pub present_status: Option<u32>, // TODO enum
+    pub records: Option<Records>,
+    #[rasn(tag(203))]
+    additional_search_info: Option<Any>, // TODO
+    other_info: Option<Any>, // TODO
+}
+
 #[derive(Debug)]
 pub enum MessagePayload {
     InitializeRequest(InitializeRequest),
     InitializeResponse(InitializeResponse),
     SearchRequest(SearchRequest),
+    SearchResponse(SearchResponse),
 }
 
 #[derive(Debug)]
@@ -404,6 +490,21 @@ impl Message {
 
                 MessagePayload::SearchRequest(msg)
             }
+            "10110111" => {
+                // Tag(23)
+                let msg: SearchResponse = match rasn::ber::decode(bytes) {
+                    Ok(m) => m,
+                    Err(e) => match *e.kind {
+                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
+                        _ => {
+                            eprintln!("\n{e:?}\n");
+                            return Err(e.to_string());
+                        }
+                    },
+                };
+
+                MessagePayload::SearchResponse(msg)
+            }
 
             _ => todo!(),
         };
@@ -421,6 +522,7 @@ impl Message {
             MessagePayload::InitializeRequest(m) => rasn::ber::encode(&m),
             MessagePayload::InitializeResponse(m) => rasn::ber::encode(&m),
             MessagePayload::SearchRequest(m) => rasn::ber::encode(&m),
+            MessagePayload::SearchResponse(m) => rasn::ber::encode(&m),
         };
 
         res.map_err(|e| e.to_string())
@@ -538,4 +640,16 @@ fn test_encode_decode() {
     assert_eq!("0879303727", std::str::from_utf8(&isbn.slice(..)).unwrap());
 
     assert_eq!(search_req_bytes, *search_req_msg.to_bytes().unwrap());
+
+    // Final bool changed from 0x01 to 0xff
+    let search_resp_bytes = 
+        [0xb7, 0x0c, 0x97, 0x01, 0x01, 0x98, 0x01, 0x00, 0x99, 0x01, 0x01, 0x96, 0x01, 0xff];
+
+    let search_resp_msg = Message::from_bytes(&search_resp_bytes).unwrap().unwrap();
+
+    let MessagePayload::SearchResponse(search_resp) = &search_resp_msg.payload else {
+        panic!("Wrong message type parsed: {search_resp_msg:?}");
+    };
+
+    assert_eq!(search_resp_bytes, *search_resp_msg.to_bytes().unwrap());
 }
