@@ -8,6 +8,9 @@ use rasn::ber::de::DecodeErrorKind;
 use rasn::prelude::*;
 use rasn::AsnType;
 
+// https://oid-base.com/get/1.2.840.10003.5.10
+pub const OID_MARC21: [u32; 6] = [1, 2, 840, 10003, 5, 10];
+
 #[derive(Debug, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
 #[derive(Getters, Setters)]
@@ -425,12 +428,93 @@ pub struct SearchResponse {
     #[rasn(tag(22))]
     search_status: bool,
     #[rasn(tag(26))]
-    result_set_status: Option<u32>, // TODO enum
+    result_set_status: Option<u32>, // TODO will an enum work for an int value?
     #[rasn(tag(27))]
-    present_status: Option<u32>, // TODO enum
+    present_status: Option<u32>, // TODO enum?
     records: Option<Records>,
     #[rasn(tag(203))]
     additional_search_info: Option<Any>, // TODO
+    other_info: Option<Any>, // TODO
+}
+
+#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
+pub struct Range {
+    #[rasn(tag(1))]
+    starting_position: u32,
+    #[rasn(tag(2))]
+    number_of_records: u32,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct ElementSpec {
+    #[rasn(tag(1))]
+    element_set_name: String,
+    #[rasn(tag(2))]
+    external_spec: Option<Any>, // TODO
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct Specification {
+    #[rasn(tag(1))]
+    schema: Option<ObjectIdentifier>,
+    #[rasn(tag(2))]
+    element_spec: Option<ElementSpec>,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct CompSpecDatabaseSpecific {
+    #[rasn(tag(1))]
+    db: DatabaseName,
+    #[rasn(tag(2))]
+    spec: Specification,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct CompSpec {
+    #[rasn(tag(1))]
+    select_alternative_syntax: bool,
+    #[rasn(tag(2))]
+    generic: Option<Specification>,
+    #[rasn(tag(3))]
+    db_specific: Option<CompSpecDatabaseSpecific>,
+    #[rasn(tag(4))]
+    record_syntax: Option<Vec<ObjectIdentifier>>,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum RecordComposition {
+    #[rasn(tag(19))]
+    Simple(ElementSetNames),
+    #[rasn(tag(209))]
+    Complex(CompSpec),
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(tag(context, 24))]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
+pub struct PresentRequest {
+    #[rasn(tag(2))]
+    reference_id: Option<OctetString>,
+    #[rasn(tag(31))]
+    result_set_id: String,
+    #[rasn(tag(30))]
+    reset_set_start_point: u32,
+    #[rasn(tag(29))]
+    number_of_records_requested: u32,
+    #[rasn(tag(212))]
+    additional_ranges: Option<Vec<Range>>,
+    record_composition: Option<RecordComposition>,
+    #[rasn(tag(104))]
+    preferred_record_syntax: Option<ObjectIdentifier>,
+    #[rasn(tag(204))]
+    max_segment_count: Option<u32>,
+    #[rasn(tag(206))]
+    max_record_size: Option<u32>,
+    #[rasn(tag(207))]
+    max_segment_size: Option<u32>,
     other_info: Option<Any>, // TODO
 }
 
@@ -440,6 +524,7 @@ pub enum MessagePayload {
     InitializeResponse(InitializeResponse),
     SearchRequest(SearchRequest),
     SearchResponse(SearchResponse),
+    PresentRequest(PresentRequest),
 }
 
 #[derive(Debug, Getters, Setters)]
@@ -457,12 +542,20 @@ impl Message {
             return Ok(None);
         }
 
-        // TODO matching on the binary representation of the first byte
-        // is hacky.  Parse the bits for real into a Tag.
-        let payload = match format!("{:b}", &bytes[0]).as_str() {
-            // The tag component are the final 5 bits, 10100=20 in this case.
-            "10110100" => {
-                // Tag(20)
+        // The first byte of a Z39 ASN message is structed like so:
+        // [
+        //   76543210   - bit index
+        //   10         - class = context-specific
+        //     1        - structured data
+        //      nnnnn   - PDU / message tag.
+        //  ]
+        //
+        //  As such, the Initialize Request message, with tag 20, has a
+        //  first-byte value of 10110100 == 180 decimal, i.e. 160 + 20.
+        let tag = if bytes[0] >= 180 { bytes[0] - 160 } else { 0 };
+
+        let payload = match tag {
+            20 => {
                 let msg: InitializeRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
                     Err(e) => match *e.kind {
@@ -473,7 +566,7 @@ impl Message {
 
                 MessagePayload::InitializeRequest(msg)
             }
-            "10110101" => {
+            21 => {
                 // Tag(21)
                 let msg: InitializeResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
@@ -485,39 +578,48 @@ impl Message {
 
                 MessagePayload::InitializeResponse(msg)
             }
-
-            "10110110" => {
+            22 => {
                 // Tag(22)
                 let msg: SearchRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
                     Err(e) => match *e.kind {
                         DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => {
-                            eprintln!("\n{e:?}\n");
-                            return Err(e.to_string());
-                        }
+                        _ => return Err(e.to_string()),
                     },
                 };
 
                 MessagePayload::SearchRequest(msg)
             }
-            "10110111" => {
+            23 => {
                 // Tag(23)
                 let msg: SearchResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
                     Err(e) => match *e.kind {
                         DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => {
-                            eprintln!("\n{e:?}\n");
-                            return Err(e.to_string());
-                        }
+                        _ => return Err(e.to_string()),
                     },
                 };
 
                 MessagePayload::SearchResponse(msg)
             }
+            24 => {
+                // Tag(23)
+                let msg: PresentRequest = match rasn::ber::decode(bytes) {
+                    Ok(m) => m,
+                    Err(e) => match *e.kind {
+                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
+                        _ => return Err(e.to_string()),
+                    },
+                };
 
-            _ => todo!(),
+                MessagePayload::PresentRequest(msg)
+            }
+            _ => {
+                return Err(format!(
+                    "Cannot handle message with first byte: {}",
+                    bytes[0]
+                ))
+            }
         };
 
         Ok(Some(Message { payload }))
@@ -527,13 +629,15 @@ impl Message {
         Message { payload }
     }
 
-    /// Translate a message into a collection of bytes suitable for delivery.
+    /// Translate a message into a collection of bytes suitable for dropping
+    /// onto the wire.
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
-        let res = match &self.payload {
+        let res = match self.payload() {
             MessagePayload::InitializeRequest(m) => rasn::ber::encode(&m),
             MessagePayload::InitializeResponse(m) => rasn::ber::encode(&m),
             MessagePayload::SearchRequest(m) => rasn::ber::encode(&m),
             MessagePayload::SearchResponse(m) => rasn::ber::encode(&m),
+            MessagePayload::PresentRequest(m) => rasn::ber::encode(&m),
         };
 
         res.map_err(|e| e.to_string())

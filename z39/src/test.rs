@@ -1,11 +1,9 @@
 use crate::message::*;
 
-// TODO break these up
-
 #[test]
-fn test_encode_decode() {
+fn test_initialize_request() {
     // Example InitializeRequest from YAZ client.
-    let init_req_bytes = [
+    let bytes = [
         0xb4, 0x52, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9, 0xa2, 0x85, 0x04, 0x04, 0x00,
         0x00, 0x00, 0x86, 0x04, 0x04, 0x00, 0x00, 0x00, 0x9f, 0x6e, 0x02, 0x38, 0x31, 0x9f, 0x6f,
         0x03, 0x59, 0x41, 0x5a, 0x9f, 0x70, 0x2f, 0x35, 0x2e, 0x33, 0x31, 0x2e, 0x31, 0x20, 0x63,
@@ -14,26 +12,27 @@ fn test_encode_decode() {
         0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34,
     ];
 
-    let init_req_msg = Message::from_bytes(&init_req_bytes).unwrap().unwrap();
+    let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::InitializeRequest(init_req) = init_req_msg.payload() else {
-        panic!("Wrong message type parsed: {init_req_msg:?}");
+    let MessagePayload::InitializeRequest(payload) = msg.payload() else {
+        panic!("Wrong message type parsed: {msg:?}");
     };
 
-    assert_eq!(Some("YAZ"), init_req.implementation_name().as_deref());
+    assert_eq!(Some("YAZ"), payload.implementation_name().as_deref());
 
-    assert_eq!(init_req_bytes, *init_req_msg.to_bytes().unwrap());
+    assert_eq!(bytes, *msg.to_bytes().unwrap());
 
-    // Test partial values.
-    assert!(Message::from_bytes(&init_req_bytes[0..10])
-        .unwrap()
-        .is_none());
+    // Verify valid, partial messages return None instead of Err
+    assert!(Message::from_bytes(&bytes[0..10]).unwrap().is_none());
+}
 
+#[test]
+fn test_initialize_response() {
     // Note the 26h byte (a boolean value) in Yaz in 0x01, but it's
     // 0xff in rasn.  Changed here to allow the tests to pass.
 
     // Bytes taking from a Yaz client init request
-    let init_resp_bytes = [
+    let bytes = [
         0xb5, 0x7f, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9, 0x82, 0x85, 0x04, 0x04, 0x00,
         0x00, 0x00, 0x86, 0x04, 0x04, 0x00, 0x00, 0x00, 0x8c, 0x01, 0xff, 0x9f, 0x6e, 0x05, 0x38,
         0x31, 0x2f, 0x38, 0x31, 0x9f, 0x6f, 0x25, 0x53, 0x69, 0x6d, 0x70, 0x6c, 0x65, 0x32, 0x5a,
@@ -45,21 +44,24 @@ fn test_encode_decode() {
         0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34,
     ];
 
-    let init_resp_msg = Message::from_bytes(&init_resp_bytes).unwrap().unwrap();
+    let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::InitializeResponse(init_resp) = init_resp_msg.payload() else {
-        panic!("Wrong message type parsed: {init_resp_msg:?}");
+    let MessagePayload::InitializeResponse(payload) = msg.payload() else {
+        panic!("Wrong message type parsed: {msg:?}");
     };
 
     assert_eq!(
         Some("Simple2ZOOM Universal Gateway/GFS/YAZ"),
-        init_resp.implementation_name().as_deref()
+        payload.implementation_name().as_deref()
     );
 
-    assert_eq!(init_resp_bytes, *init_resp_msg.to_bytes().unwrap());
+    assert_eq!(bytes, *msg.to_bytes().unwrap());
+}
 
+#[test]
+fn test_payloaduest() {
     // Byte 14 replaces 0x01 with 0xff for rasn-consistent boolean value
-    let search_req_bytes = [
+    let bytes = [
         0xb6, 0x4e, 0x8d, 0x01, 0x00, 0x8e, 0x01, 0x01, 0x8f, 0x01, 0x00, 0x90, 0x01, 0xff, 0x91,
         0x01, 0x31, 0xb2, 0x07, 0x9f, 0x69, 0x04, 0x6b, 0x63, 0x6c, 0x73, 0xb5, 0x34, 0xa1, 0x32,
         0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x13, 0x03, 0x01, 0xa0, 0x27, 0xbf, 0x66, 0x24, 0xbf,
@@ -68,13 +70,11 @@ fn test_encode_decode() {
         0x30, 0x33, 0x37, 0x32, 0x37,
     ];
 
-    let search_req_msg = Message::from_bytes(&search_req_bytes).unwrap().unwrap();
+    let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::SearchRequest(search_req) = search_req_msg.payload() else {
-        panic!("Wrong message type parsed: {search_req_msg:?}");
+    let MessagePayload::SearchRequest(payload) = msg.payload() else {
+        panic!("Wrong message type parsed: {msg:?}");
     };
-
-    //println!("\n{search_req:?}\n");
 
     // Example extracting the ISBN from this query via pattern syntax.
     // Included here for my own reference.
@@ -89,13 +89,13 @@ fn test_encode_decode() {
             )),
             ..
         }
-    ) = search_req.query else {
-        panic!("Search request has unexpected structure; no isbn found");
+    ) = payload.query else {
+        panic!();
     };
     */
 
     // Extract the ISBN from within the query one piece at a time.
-    let Query::Type1(ref rpn_query) = search_req.query() else {
+    let Query::Type1(ref rpn_query) = payload.query() else {
         panic!();
     };
     let RpnStructure::Op(ref operand) = rpn_query.rpn() else {
@@ -108,24 +108,51 @@ fn test_encode_decode() {
         panic!();
     };
 
+    // Compare the bytes
     assert_eq!(*b"0879303727", **isbn);
-    // OR
+    // OR the String
     assert_eq!("0879303727", std::str::from_utf8(&isbn.slice(..)).unwrap());
 
-    assert_eq!(search_req_bytes, *search_req_msg.to_bytes().unwrap());
+    assert_eq!(bytes, *msg.to_bytes().unwrap());
+}
 
+#[test]
+fn test_search_response() {
     // Final bool changed from 0x01 to 0xff
-    let search_resp_bytes = [
+    let bytes = [
         0xb7, 0x0c, 0x97, 0x01, 0x01, 0x98, 0x01, 0x00, 0x99, 0x01, 0x01, 0x96, 0x01, 0xff,
     ];
 
-    let search_resp_msg = Message::from_bytes(&search_resp_bytes).unwrap().unwrap();
+    let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::SearchResponse(search_resp) = search_resp_msg.payload() else {
-        panic!("Wrong message type parsed: {search_resp_msg:?}");
+    let MessagePayload::SearchResponse(payload) = msg.payload() else {
+        panic!("Wrong message type parsed: {msg:?}");
     };
 
-    assert_eq!(search_resp.result_count(), &1);
+    assert_eq!(payload.result_count(), &1);
 
-    assert_eq!(search_resp_bytes, *search_resp_msg.to_bytes().unwrap());
+    assert_eq!(bytes, *msg.to_bytes().unwrap());
+}
+
+#[test]
+fn test_present_request() {
+    let bytes = [
+        0xb8, 0x14, 0x9f, 0x1f, 0x01, 0x31, 0x9e, 0x01, 0x01, 0x9d, 0x01, 0x01, 0x9f, 0x68, 0x07,
+        0x2a, 0x86, 0x48, 0xce, 0x13, 0x05, 0x0a,
+    ];
+
+    let msg = Message::from_bytes(&bytes).unwrap().unwrap();
+
+    let MessagePayload::PresentRequest(payload) = msg.payload() else {
+        panic!("Wrong message type parsed: {msg:?}");
+    };
+
+    println!("\n{payload:?}");
+
+    assert_eq!(
+        OID_MARC21,
+        payload.preferred_record_syntax().clone().unwrap()
+    );
+
+    assert_eq!(bytes, *msg.to_bytes().unwrap());
 }
