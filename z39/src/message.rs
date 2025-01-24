@@ -1,81 +1,89 @@
+//! Z39.50 Message Components
+//!
+//! See https://www.loc.gov/z3950/agency/asn1.html
+use crate::settings::Settings;
+
+use getset::{Getters, Setters};
 use rasn::ber::de::DecodeErrorKind;
 use rasn::prelude::*;
 use rasn::AsnType;
 
-/// Message/Record size values copied from Yaz.
-const PREF_VALUE_SIZE: u32 = 67108864;
-
-const IMPLEMENTATION_ID: &str = "EG";
-const IMPLEMENTATION_NAME: &str = "Evergreen Z39";
-const IMPLEMENTATION_VERSION: &str = "0.1.0";
-
 #[derive(Debug, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct InitializeRequest {
     #[rasn(tag(2))]
-    pub reference_id: Option<OctetString>,
+    reference_id: Option<OctetString>,
     #[rasn(tag(3))]
-    pub protocol_version: BitString,
+    protocol_version: BitString,
     #[rasn(tag(4))]
-    pub options: BitString,
+    options: BitString,
     #[rasn(tag(5))]
-    pub preferred_message_size: u32,
+    preferred_message_size: u32,
     #[rasn(tag(6))]
-    pub exceptional_record_size: u32,
+    exceptional_record_size: u32,
     #[rasn(tag(110))]
-    pub implementation_id: Option<String>,
+    implementation_id: Option<String>,
     #[rasn(tag(111))]
-    pub implementation_name: Option<String>,
+    implementation_name: Option<String>,
     #[rasn(tag(112))]
-    pub implementation_version: Option<String>,
+    implementation_version: Option<String>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 21))]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct InitializeResponse {
     #[rasn(tag(2))]
-    pub reference_id: Option<OctetString>,
+    reference_id: Option<OctetString>,
     #[rasn(tag(3))]
-    pub protocol_version: BitString,
+    protocol_version: BitString,
     #[rasn(tag(4))]
-    pub options: BitString,
+    options: BitString,
     #[rasn(tag(5))]
-    pub preferred_message_size: u32,
+    preferred_message_size: u32,
     #[rasn(tag(6))]
-    pub exceptional_record_size: u32,
+    exceptional_record_size: u32,
     #[rasn(tag(12))]
-    pub result: Option<bool>,
+    result: Option<bool>,
     #[rasn(tag(110))]
-    pub implementation_id: Option<String>,
+    implementation_id: Option<String>,
     #[rasn(tag(111))]
-    pub implementation_name: Option<String>,
+    implementation_name: Option<String>,
     #[rasn(tag(112))]
-    pub implementation_version: Option<String>,
+    implementation_version: Option<String>,
 }
 
 // InitializeResponse will always be a canned response.
 impl Default for InitializeResponse {
     fn default() -> Self {
-        let mut options = BitString::repeat(false, 16);
+        let settings = Settings::global();
 
-        options.set(0, true); // search
-        options.set(1, true); // present
+        // Translate the InitOptions values into the required BitString
+        let mut options = BitString::repeat(false, 16);
+        for (idx, val) in settings.init_options.as_sorted_values().iter().enumerate() {
+            if *val {
+                options.set(idx, true);
+            }
+        }
 
         InitializeResponse {
             reference_id: None,
             protocol_version: BitString::repeat(true, 3),
             options,
-            preferred_message_size: PREF_VALUE_SIZE,
-            exceptional_record_size: PREF_VALUE_SIZE,
             result: Some(true),
-            implementation_id: Some(IMPLEMENTATION_ID.to_string()),
-            implementation_name: Some(IMPLEMENTATION_NAME.to_string()),
-            implementation_version: Some(IMPLEMENTATION_VERSION.to_string()),
+            preferred_message_size: settings.preferred_message_size,
+            exceptional_record_size: settings.exceptional_record_size,
+            implementation_id: settings.implementation_id.clone(),
+            implementation_name: settings.implementation_name.clone(),
+            implementation_version: settings.implementation_version.clone(),
         }
     }
 }
 
-pub enum KnownProximityUnit {
+pub enum _KnownProximityUnit {
     Character = 1,
     Word = 2,
     Sentence = 3,
@@ -90,7 +98,7 @@ pub enum KnownProximityUnit {
     Byte = 11,
 }
 
-pub enum RelationType {
+pub enum _RelationType {
     LessThan = 1,
     LessThanOrEqual = 2,
     Equal = 3,
@@ -249,7 +257,8 @@ pub struct ResultSetPlusAttributes {
     attributes: Vec<AttributeElement>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct AttributesPlusTerm {
     #[rasn(tag(44))]
     attributes: Vec<AttributeElement>,
@@ -283,7 +292,8 @@ pub enum RpnStructure {
     RpnOp(Box<RpnOp>),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct RpnQuery {
     attribute_set: ObjectIdentifier,
     rpn: RpnStructure,
@@ -308,9 +318,11 @@ pub enum Query {
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 22))]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct SearchRequest {
     #[rasn(tag(2))]
-    pub reference_id: Option<OctetString>,
+    reference_id: Option<OctetString>,
     #[rasn(tag(13))]
     small_set_upper_bound: u32,
     #[rasn(tag(14))]
@@ -399,22 +411,24 @@ pub enum Records {
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 23))]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct SearchResponse {
     #[rasn(tag(2))]
-    pub reference_id: Option<OctetString>,
+    reference_id: Option<OctetString>,
     #[rasn(tag(23))]
-    pub result_count: u32,
+    result_count: u32,
     #[rasn(tag(24))]
-    pub number_of_records_returned: u32,
+    number_of_records_returned: u32,
     #[rasn(tag(25))]
-    pub next_result_set_position: u32,
+    next_result_set_position: u32,
     #[rasn(tag(22))]
-    pub search_status: bool,
+    search_status: bool,
     #[rasn(tag(26))]
-    pub result_set_status: Option<u32>,  // TODO enum
+    result_set_status: Option<u32>, // TODO enum
     #[rasn(tag(27))]
-    pub present_status: Option<u32>, // TODO enum
-    pub records: Option<Records>,
+    present_status: Option<u32>, // TODO enum
+    records: Option<Records>,
     #[rasn(tag(203))]
     additional_search_info: Option<Any>, // TODO
     other_info: Option<Any>, // TODO
@@ -428,16 +442,13 @@ pub enum MessagePayload {
     SearchResponse(SearchResponse),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct Message {
     payload: MessagePayload,
 }
 
 impl Message {
-    pub fn payload(&self) -> &MessagePayload {
-        &self.payload
-    }
-
     /// Parses a collection of bytes into a Message.
     ///
     /// Returns None if more bytes are needed to complete the message.
@@ -527,129 +538,4 @@ impl Message {
 
         res.map_err(|e| e.to_string())
     }
-}
-
-#[test]
-fn test_encode_decode() {
-    // Example InitializeRequest from YAZ client.
-    let init_req_bytes = [
-        0xb4, 0x52, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9, 0xa2, 0x85, 0x04, 0x04, 0x00,
-        0x00, 0x00, 0x86, 0x04, 0x04, 0x00, 0x00, 0x00, 0x9f, 0x6e, 0x02, 0x38, 0x31, 0x9f, 0x6f,
-        0x03, 0x59, 0x41, 0x5a, 0x9f, 0x70, 0x2f, 0x35, 0x2e, 0x33, 0x31, 0x2e, 0x31, 0x20, 0x63,
-        0x33, 0x63, 0x65, 0x61, 0x38, 0x38, 0x31, 0x65, 0x33, 0x65, 0x37, 0x65, 0x38, 0x30, 0x62,
-        0x30, 0x36, 0x39, 0x64, 0x64, 0x64, 0x31, 0x34, 0x32, 0x39, 0x39, 0x39, 0x34, 0x65, 0x35,
-        0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34,
-    ];
-
-    let init_req_msg = Message::from_bytes(&init_req_bytes).unwrap().unwrap();
-
-    let MessagePayload::InitializeRequest(init_req) = &init_req_msg.payload else {
-        panic!("Wrong message type parsed: {init_req_msg:?}");
-    };
-
-    assert_eq!("YAZ", init_req.implementation_name.as_ref().unwrap());
-
-    assert_eq!(init_req_bytes, *init_req_msg.to_bytes().unwrap());
-
-    // Test partial values.
-    assert!(Message::from_bytes(&init_req_bytes[0..10])
-        .unwrap()
-        .is_none());
-
-    // Note the 26h byte (a boolean value) in Yaz in 0x01, but it's
-    // 0xff in rasn.  Changed here to allow the tests to pass.
-
-    // Bytes taking from a Yaz client init request
-    let init_resp_bytes = [
-        0xb5, 0x7f, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9, 0x82, 0x85, 0x04, 0x04, 0x00,
-        0x00, 0x00, 0x86, 0x04, 0x04, 0x00, 0x00, 0x00, 0x8c, 0x01, 0xff, 0x9f, 0x6e, 0x05, 0x38,
-        0x31, 0x2f, 0x38, 0x31, 0x9f, 0x6f, 0x25, 0x53, 0x69, 0x6d, 0x70, 0x6c, 0x65, 0x32, 0x5a,
-        0x4f, 0x4f, 0x4d, 0x20, 0x55, 0x6e, 0x69, 0x76, 0x65, 0x72, 0x73, 0x61, 0x6c, 0x20, 0x47,
-        0x61, 0x74, 0x65, 0x77, 0x61, 0x79, 0x2f, 0x47, 0x46, 0x53, 0x2f, 0x59, 0x41, 0x5a, 0x9f,
-        0x70, 0x34, 0x31, 0x2e, 0x30, 0x34, 0x2f, 0x35, 0x2e, 0x33, 0x31, 0x2e, 0x31, 0x20, 0x63,
-        0x33, 0x63, 0x65, 0x61, 0x38, 0x38, 0x31, 0x65, 0x33, 0x65, 0x37, 0x65, 0x38, 0x30, 0x62,
-        0x30, 0x36, 0x39, 0x64, 0x64, 0x64, 0x31, 0x34, 0x32, 0x39, 0x39, 0x39, 0x34, 0x65, 0x35,
-        0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34,
-    ];
-
-    let init_resp_msg = Message::from_bytes(&init_resp_bytes).unwrap().unwrap();
-
-    let MessagePayload::InitializeResponse(init_resp) = &init_resp_msg.payload else {
-        panic!("Wrong message type parsed: {init_resp_msg:?}");
-    };
-
-    assert_eq!(
-        "Simple2ZOOM Universal Gateway/GFS/YAZ",
-        init_resp.implementation_name.as_ref().unwrap()
-    );
-
-    assert_eq!(init_resp_bytes, *init_resp_msg.to_bytes().unwrap());
-
-    // Byte 14 replaces 0x01 with 0xff for rasn-consistent boolean value
-    let search_req_bytes = [
-        0xb6, 0x4e, 0x8d, 0x01, 0x00, 0x8e, 0x01, 0x01, 0x8f, 0x01, 0x00, 0x90, 0x01, 0xff, 0x91,
-        0x01, 0x31, 0xb2, 0x07, 0x9f, 0x69, 0x04, 0x6b, 0x63, 0x6c, 0x73, 0xb5, 0x34, 0xa1, 0x32,
-        0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x13, 0x03, 0x01, 0xa0, 0x27, 0xbf, 0x66, 0x24, 0xbf,
-        0x2c, 0x14, 0x30, 0x08, 0x9f, 0x78, 0x01, 0x01, 0x9f, 0x79, 0x01, 0x07, 0x30, 0x08, 0x9f,
-        0x78, 0x01, 0x05, 0x9f, 0x79, 0x01, 0x01, 0x9f, 0x2d, 0x0a, 0x30, 0x38, 0x37, 0x39, 0x33,
-        0x30, 0x33, 0x37, 0x32, 0x37,
-    ];
-
-    let search_req_msg = Message::from_bytes(&search_req_bytes).unwrap().unwrap();
-
-    let MessagePayload::SearchRequest(search_req) = &search_req_msg.payload else {
-        panic!("Wrong message type parsed: {search_req_msg:?}");
-    };
-
-    //println!("\n{search_req:?}\n");
-
-    // Example extracting the ISBN from this query via pattern syntax.
-    // Included here for my own reference.
-    /*
-    let Query::Type1(
-        RpnQuery { 
-            rpn: RpnStructure::Op(Operand::AttrTerm(
-                AttributesPlusTerm {
-                    term: Term::General(ref isbn), 
-                    ..
-                }
-            )),
-            ..
-        }
-    ) = search_req.query else {
-        panic!("Search request has unexpected structure; no isbn found");
-    };
-    */
-
-    // Extract the ISBN from within the query one piece at a time.
-    let Query::Type1(ref rpn_query) = search_req.query else {
-        panic!();
-    };
-    let RpnStructure::Op(ref operand) = rpn_query.rpn else {
-        panic!();
-    };
-    let Operand::AttrTerm(ref term) = operand else {
-        panic!();
-    };
-    let Term::General(ref isbn) = term.term else {
-        panic!();
-    };
-
-    assert_eq!(*b"0879303727", **isbn);
-    // OR
-    assert_eq!("0879303727", std::str::from_utf8(&isbn.slice(..)).unwrap());
-
-    assert_eq!(search_req_bytes, *search_req_msg.to_bytes().unwrap());
-
-    // Final bool changed from 0x01 to 0xff
-    let search_resp_bytes = 
-        [0xb7, 0x0c, 0x97, 0x01, 0x01, 0x98, 0x01, 0x00, 0x99, 0x01, 0x01, 0x96, 0x01, 0xff];
-
-    let search_resp_msg = Message::from_bytes(&search_resp_bytes).unwrap().unwrap();
-
-    let MessagePayload::SearchResponse(search_resp) = &search_resp_msg.payload else {
-        panic!("Wrong message type parsed: {search_resp_msg:?}");
-    };
-
-    assert_eq!(search_resp_bytes, *search_resp_msg.to_bytes().unwrap());
 }

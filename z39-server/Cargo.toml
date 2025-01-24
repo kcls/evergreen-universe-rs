@@ -6,5 +6,5 @@ edition = "2021"
 [dependencies]
 mptc = { path = "../mptc" }
 evergreen = { path = "../evergreen" }
-rasn = "0.22.2"
+z39 = { path = "../z39" }
 log = "0.4.25"

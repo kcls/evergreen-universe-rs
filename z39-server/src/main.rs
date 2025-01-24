@@ -3,7 +3,6 @@ use evergreen as eg;
 use std::any::Any;
 use std::net::{TcpListener, TcpStream};
 
-mod message;
 mod session;
 use session::Z39Session;
 
