@@ -805,6 +805,16 @@ impl Session {
             }
         }
 
+        log::info!(
+            "{self} patron {} blocks are max_fines={} max_overdue={} card_active={} blocked={} block_tags={:?}",
+            patron.id,
+            patron.max_fines,
+            patron.max_overdue,
+            patron.card_active,
+            blocked,
+            block_tags
+        );
+
         if !blocked && block_tags.is_empty() {
             // No blocks, etc. left to inspect.  All done.
             return Ok(());
