@@ -37,6 +37,9 @@ Parameters:
         Sleeps occur after each request minus the opening Login and
         SC Status requests.
 
+    --print-raw-messages
+        Include the unformatted SIP message responses in the output.
+
     --quiet
         Print only summary information
 
@@ -88,6 +91,7 @@ fn main() {
         .unwrap_or(DEFAULT_HOST.to_string());
 
     let quiet = options.opt_present("quiet");
+    let print_raw = options.opt_present("print-raw-messages");
     let repeat = options.opt_get_default("repeat", 1).expect("Valid Repeat Option");
     let parallel = options.opt_get_default("parallel", 1).expect("Valid Parallel Option");
     let messages = Arc::new(options.opt_strs("message-type"));
@@ -101,7 +105,7 @@ fn main() {
         let h = host.clone();
         let m = messages.clone();
         let p = sip_params.clone();
-        handles.push(thread::spawn(move || run_one_thread(h, m, p, quiet, repeat, sleep)));
+        handles.push(thread::spawn(move || run_one_thread(h, m, p, quiet, print_raw, repeat, sleep)));
     }
 
     for h in handles {
@@ -121,6 +125,7 @@ fn run_one_thread(
     messages: Arc<Vec<String>>,
     sip_params: ParamSet,
     quiet: bool,
+    print_raw: bool,
     repeat: usize,
     sleep: u64,
 ) {
@@ -166,6 +171,10 @@ fn run_one_thread(
 
                 _ => panic!("Unsupported message type: {}", message),
             };
+
+            if print_raw {
+                println!("\n{}\n", resp.msg().to_sip());
+            }
 
             // Sort the message fields for consistent output.
             resp.msg_mut()
@@ -215,6 +224,7 @@ fn read_options() -> getopts::Matches {
 
     opts.optflag("h", "help", "");
     opts.optflag("q", "quiet", "");
+    opts.optflag("", "print-raw-messages", "");
 
     opts.optmulti("", "message-type", "Message Type", "");
 
