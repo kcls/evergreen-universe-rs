@@ -11,6 +11,9 @@ use rasn::AsnType;
 // https://oid-base.com/get/1.2.840.10003.5.10
 pub const OID_MARC21: [u32; 6] = [1, 2, 840, 10003, 5, 10];
 
+// https://oid-base.com/get/1.2.840.10003.3.1
+pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
+
 #[derive(Debug, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
 #[derive(Getters, Setters)]
@@ -66,7 +69,12 @@ impl Default for InitializeResponse {
 
         // Translate the InitOptions values into the required BitString
         let mut options = BitString::repeat(false, 16);
-        for (idx, val) in settings.init_options.as_sorted_values().iter().enumerate() {
+        for (idx, val) in settings
+            .init_options
+            .as_positioned_values()
+            .iter()
+            .enumerate()
+        {
             if *val {
                 options.set(idx, true);
             }
@@ -133,7 +141,8 @@ pub struct ProximityOperator {
     proximity_unit_code: ProximityUnitCode,
 }
 
-// NOTE a single-item enum works where 'struct DatabaseName(String)' does not.
+// NOTE a single-item enum Encodes/Decodes as expected, whereas a
+// 'struct DatabaseName(String)' does not.
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum DatabaseName {
@@ -320,6 +329,38 @@ pub enum Query {
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum Information {
+    #[rasn(tag(2))]
+    CharacterInfo(String),
+    #[rasn(tag(3))]
+    BinaryInfo(OctetString),
+    #[rasn(tag(4))]
+    ExternallyDefinedInfo(Any),
+    #[rasn(tag(5))]
+    Oid(ObjectIdentifier),
+}
+
+#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
+pub struct InfoCategory {
+    #[rasn(tag(1))]
+    category_type_id: Option<ObjectIdentifier>,
+    #[rasn(tag(2))]
+    category_value: Option<u32>,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(tag(201))]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
+pub struct OtherInformation {
+    #[rasn(tag(1))]
+    category: Option<InfoCategory>,
+    information: Information,
+}
+
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 22))]
 #[derive(Getters, Setters)]
 #[getset(set = "pub", get = "pub")]
@@ -347,7 +388,7 @@ pub struct SearchRequest {
     #[rasn(tag(104))]
     preferred_record_syntax: Option<ObjectIdentifier>,
     #[rasn(tag(203))]
-    additional_search_info: Option<Any>, // TODO
+    additional_search_info: Option<OtherInformation>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -433,8 +474,8 @@ pub struct SearchResponse {
     present_status: Option<u32>, // TODO enum?
     records: Option<Records>,
     #[rasn(tag(203))]
-    additional_search_info: Option<Any>, // TODO
-    other_info: Option<Any>, // TODO
+    additional_search_info: Option<OtherInformation>,
+    other_info: Option<OtherInformation>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
@@ -451,7 +492,7 @@ pub struct ElementSpec {
     #[rasn(tag(1))]
     element_set_name: String,
     #[rasn(tag(2))]
-    external_spec: Option<Any>, // TODO
+    external_espec: Option<Any>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -515,7 +556,7 @@ pub struct PresentRequest {
     max_record_size: Option<u32>,
     #[rasn(tag(207))]
     max_segment_size: Option<u32>,
-    other_info: Option<Any>, // TODO
+    other_info: Option<OtherInformation>,
 }
 
 #[derive(Debug)]
@@ -567,7 +608,6 @@ impl Message {
                 MessagePayload::InitializeRequest(msg)
             }
             21 => {
-                // Tag(21)
                 let msg: InitializeResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
                     Err(e) => match *e.kind {
@@ -579,7 +619,6 @@ impl Message {
                 MessagePayload::InitializeResponse(msg)
             }
             22 => {
-                // Tag(22)
                 let msg: SearchRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
                     Err(e) => match *e.kind {
@@ -591,7 +630,6 @@ impl Message {
                 MessagePayload::SearchRequest(msg)
             }
             23 => {
-                // Tag(23)
                 let msg: SearchResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
                     Err(e) => match *e.kind {
@@ -603,7 +641,6 @@ impl Message {
                 MessagePayload::SearchResponse(msg)
             }
             24 => {
-                // Tag(23)
                 let msg: PresentRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
                     Err(e) => match *e.kind {

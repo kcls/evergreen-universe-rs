@@ -108,6 +108,14 @@ fn test_payloaduest() {
         panic!();
     };
 
+    assert_eq!(&OID_ATTR_SET_BIB1, rpn_query.attribute_set());
+
+    /*
+    let s = rpn_query.attribute_set().to_string();
+    println!("{s}");
+    println!("{payload:?}");
+    */
+
     // Compare the bytes
     assert_eq!(*b"0879303727", **isbn);
     // OR the String
@@ -150,8 +158,8 @@ fn test_present_request() {
     println!("\n{payload:?}");
 
     assert_eq!(
-        OID_MARC21,
-        payload.preferred_record_syntax().clone().unwrap()
+        &OID_MARC21,
+        payload.preferred_record_syntax().as_ref().unwrap()
     );
 
     assert_eq!(bytes, *msg.to_bytes().unwrap());

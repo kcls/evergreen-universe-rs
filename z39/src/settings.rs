@@ -1,12 +1,17 @@
 //! Global Settings
 use std::sync::OnceLock;
 
+// Copied from YAZ
 static DEFAULT_PREFERRED_MESSAGE_SIZE: u32 = 67108864;
 static DEFAULT_EXCEPTIONAL_RECORD_SIZE: u32 = 67108864;
 
 static SETTINGS: OnceLock<Settings> = OnceLock::new();
 
-/// https://www.loc.gov/z3950/agency/asn1.html#Options
+/// Initialization options
+///
+/// # References
+///
+/// * <https://www.loc.gov/z3950/agency/asn1.html#Options>
 #[derive(Debug, Default)]
 pub struct InitOptions {
     pub search: bool,
@@ -27,7 +32,7 @@ pub struct InitOptions {
 
 impl InitOptions {
     /// Returns the option values sorted/positioned for building a BitString.
-    pub fn as_sorted_values(&self) -> [bool; 15] {
+    pub fn as_positioned_values(&self) -> [bool; 15] {
         [
             self.search,
             self.presen,
@@ -48,6 +53,10 @@ impl InitOptions {
     }
 }
 
+/// Settings specific to each implemenation.
+///
+/// Call Settings.apply() to store a collection of settings for use.  The
+/// apply() method may only be called once.
 #[derive(Debug)]
 pub struct Settings {
     pub implementation_id: Option<String>,
@@ -72,6 +81,7 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Returns a reference to the globally applied Settings value.
     pub fn global() -> &'static Settings {
         if SETTINGS.get().is_none() {
             SETTINGS.set(Settings::default()).unwrap();
