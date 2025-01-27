@@ -419,11 +419,69 @@ pub enum FragmentSyntax {
     NotExternallyTagged(OctetString),
 }
 
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum Encoding {
+    #[rasn(tag(0))]
+    SingleAsn1Type(Any),
+    #[rasn(tag(1))]
+    OctetAligned(OctetString),
+    #[rasn(tag(2))]
+    Arbitrary(BitString),
+}
+
+// rasn has no External type
+#[derive(Debug, AsnType, Encode)]
+#[rasn(tag(universal, 8))]
+pub struct External {
+    direct_reference: Option<ObjectIdentifier>,
+    indirect_reference: Option<Integer>,
+    data_value_descriptor: Option<String>,
+    encoding: Encoding
+}
+
+impl Decode for External {
+    fn decode_with_tag_and_constraints<D: Decoder>(
+    	decoder: &mut D, 
+        tag: Tag, 
+        _constraints: Constraints
+    ) -> Result<Self, D::Error> {
+        // Accepts a closure that decodes the contents of the sequence.
+        decoder.decode_sequence(tag, None::<fn () -> Self>, |decoder| {
+
+            // HACK KLUDGE FIXME TODO
+            // For reasons that I cannot determine after much gnashing
+            // of teeth, the External type defined above is not decoded
+            // correctly with derive(Decode).  It's acting like it's
+            // not seeing the tag=8 or other unexpected data is getting
+            // in the way.  Wireshark and dumpasn1 decode it just fine,
+            // though, so I suspect it's an error on my part.  Manually
+            // parsing a boolean value with tag8 forces the decoder
+            // past the trouble spot and allows us to pick up at the
+            // direct reference object identifier value.  From there, it
+            // decodes fine.
+            let t = Tag {class: Class::Universal, value: 8};
+            let _ = decoder.decode_bool(t).ok();
+            
+            let oid = ObjectIdentifier::decode(decoder).ok();
+
+            Ok(External {
+                direct_reference: oid,
+                indirect_reference: None,
+                data_value_descriptor: None,
+                encoding: Encoding::decode(decoder)?,
+            })
+        })
+    }
+}
+
+
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Record {
     #[rasn(tag(1))]
-    RetrievalRecord(Any),
+    RetrievalRecord(External),
     #[rasn(tag(2))]
     SurrogateDiagnostic(DiagRec),
     #[rasn(tag(3))]
@@ -559,6 +617,25 @@ pub struct PresentRequest {
     other_info: Option<OtherInformation>,
 }
 
+
+
+#[derive(Debug, AsnType, Decode, Encode)]
+#[rasn(tag(context, 25))]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
+pub struct PresentResponse {
+    #[rasn(tag(2))]
+    reference_id: Option<OctetString>,
+    #[rasn(tag(24))]
+    number_of_records_returned: u32,
+    #[rasn(tag(25))]
+    next_result_set_position: u32,
+    #[rasn(tag(27))]
+    present_status: u32, // TODO try enum
+    records: Option<Records>,
+    other_info: Option<OtherInformation>,
+}
+
 #[derive(Debug)]
 pub enum MessagePayload {
     InitializeRequest(InitializeRequest),
@@ -566,6 +643,7 @@ pub enum MessagePayload {
     SearchRequest(SearchRequest),
     SearchResponse(SearchResponse),
     PresentRequest(PresentRequest),
+    PresentResponse(PresentResponse),
 }
 
 #[derive(Debug, Getters, Setters)]
@@ -651,6 +729,18 @@ impl Message {
 
                 MessagePayload::PresentRequest(msg)
             }
+            25 => {
+                let msg: PresentResponse = match rasn::ber::decode(bytes) {
+                    Ok(m) => m,
+                    Err(e) => match *e.kind {
+                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
+                        _ => return Err(e.to_string()),
+                    },
+                };
+
+                MessagePayload::PresentResponse(msg)
+            }
+
             _ => {
                 return Err(format!(
                     "Cannot handle message with first byte: {}",
@@ -675,6 +765,7 @@ impl Message {
             MessagePayload::SearchRequest(m) => rasn::ber::encode(&m),
             MessagePayload::SearchResponse(m) => rasn::ber::encode(&m),
             MessagePayload::PresentRequest(m) => rasn::ber::encode(&m),
+            MessagePayload::PresentResponse(m) => rasn::ber::encode(&m),
         };
 
         res.map_err(|e| e.to_string())
