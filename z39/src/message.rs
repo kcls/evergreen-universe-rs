@@ -436,7 +436,7 @@ pub enum Encoding {
 #[rasn(tag(universal, 8))]
 pub struct External {
     direct_reference: Option<ObjectIdentifier>,
-    indirect_reference: Option<Integer>,
+    indirect_reference: Option<u32>,
     data_value_descriptor: Option<String>,
     encoding: Encoding
 }
@@ -447,7 +447,6 @@ impl Decode for External {
         tag: Tag, 
         _constraints: Constraints
     ) -> Result<Self, D::Error> {
-        // Accepts a closure that decodes the contents of the sequence.
         decoder.decode_sequence(tag, None::<fn () -> Self>, |decoder| {
 
             // HACK KLUDGE FIXME TODO
@@ -462,14 +461,16 @@ impl Decode for External {
             // direct reference object identifier value.  From there, it
             // decodes fine.
             let t = Tag {class: Class::Universal, value: 8};
-            let _ = decoder.decode_bool(t).ok();
+            let _ = decoder.decode_bool(t).ok(); // fails
             
-            let oid = ObjectIdentifier::decode(decoder).ok();
+            let direct_reference = ObjectIdentifier::decode(decoder).ok();
+            let indirect_reference = u32::decode(decoder).ok();
+            let data_value_descriptor = String::decode(decoder).ok();
 
             Ok(External {
-                direct_reference: oid,
-                indirect_reference: None,
-                data_value_descriptor: None,
+                direct_reference,
+                indirect_reference,
+                data_value_descriptor,
                 encoding: Encoding::decode(decoder)?,
             })
         })
