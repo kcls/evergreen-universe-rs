@@ -150,7 +150,7 @@ impl Patron {
             recall_overdue: false,
             max_bills: false,
             valid: false,
-            card_active: false,
+            card_active: true,
             balance_owed: 0.0,
             password_verified: false,
             recall_count: 0,
