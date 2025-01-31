@@ -431,14 +431,27 @@ pub enum Encoding {
     Arbitrary(BitString),
 }
 
+
 // rasn has no External type
-#[derive(Debug, AsnType, Encode)]
-#[rasn(tag(universal, 8))]
+#[derive(Debug, AsnType)]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct External {
     direct_reference: Option<ObjectIdentifier>,
     indirect_reference: Option<u32>,
     data_value_descriptor: Option<String>,
     encoding: Encoding
+}
+
+impl External {
+    pub fn new(encoding: Encoding) -> Self {
+        Self {
+            direct_reference: None,
+            indirect_reference: None,
+            data_value_descriptor: None,
+            encoding,
+        }
+    }
 }
 
 impl Decode for External {
@@ -447,42 +460,51 @@ impl Decode for External {
         tag: Tag, 
         _constraints: Constraints
     ) -> Result<Self, D::Error> {
-        decoder.decode_sequence(tag, None::<fn () -> Self>, |decoder| {
-
-            // HACK KLUDGE FIXME TODO
-            // For reasons that I cannot determine after much gnashing
-            // of teeth, the External type defined above is not decoded
-            // correctly with derive(Decode).  It's acting like it's
-            // not seeing the tag=8 or other unexpected data is getting
-            // in the way.  Wireshark and dumpasn1 decode it just fine,
-            // though, so I suspect it's an error on my part.  Manually
-            // parsing a boolean value with tag8 forces the decoder
-            // past the trouble spot and allows us to pick up at the
-            // direct reference object identifier value.  From there, it
-            // decodes fine.
-            let t = Tag {class: Class::Universal, value: 8};
-            let _ = decoder.decode_bool(t).ok(); // fails
-            
-            let direct_reference = ObjectIdentifier::decode(decoder).ok();
-            let indirect_reference = u32::decode(decoder).ok();
-            let data_value_descriptor = String::decode(decoder).ok();
-
+        decoder.decode_sequence(Tag::EXTERNAL, None::<fn () -> Self>, |decoder| {
             Ok(External {
-                direct_reference,
-                indirect_reference,
-                data_value_descriptor,
+                direct_reference: ObjectIdentifier::decode(decoder).ok(),
+                indirect_reference: u32::decode(decoder).ok(),
+                data_value_descriptor: String::decode(decoder).ok(),
                 encoding: Encoding::decode(decoder)?,
             })
         })
     }
 }
 
+impl Encode for External {
+    fn encode_with_tag_and_constraints<'encoder, E: Encoder<'encoder>>(        
+        &self,                                                                 
+        encoder: &mut E,                                                       
+        tag: Tag,                                                              
+        _constraints: Constraints                                              
+    ) -> Result<(), E::Error> {                                                
+        encoder.encode_sequence::<4, 0, Self, _>(Tag::EXTERNAL, |encoder| {                                                        
+            self.direct_reference.encode(encoder)?;
+            self.indirect_reference.encode(encoder)?;
+            self.data_value_descriptor.encode(encoder)?;
+            self.encoding.encode(encoder)?;
+            Ok(())                                                         
+        })?;                                                                    
+                                                                               
+        Ok(())                                                                 
+    } 
+}
+
+// NOTE wrapper needed so the External::Decode manual implementation
+// does not strip the tag-1 from the Record enum below.
+// TODO Try using stock encode/decode on External with the wrapper
+// in place... maybe that's all that was needed.
+#[derive(Debug, AsnType, Decode, Encode)]
+pub struct ExtWrapper {
+    pub ext: External
+}
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Record {
     #[rasn(tag(1))]
-    RetrievalRecord(External),
+    //RetrievalRecord(External),
+    RetrievalRecord(ExtWrapper),
     #[rasn(tag(2))]
     SurrogateDiagnostic(DiagRec),
     #[rasn(tag(3))]
@@ -494,11 +516,22 @@ pub enum Record {
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Getters, Setters)]
+#[getset(set = "pub", get = "pub")]
 pub struct NamePlusRecord {
     #[rasn(tag(0))]
     name: Option<DatabaseName>,
     #[rasn(tag(1))]
     record: Record,
+}
+
+impl NamePlusRecord {
+    pub fn new(record: Record) -> Self {
+        Self {
+            name: None,
+            record,
+        }
+    }
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -620,7 +653,7 @@ pub struct PresentRequest {
 
 
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, AsnType, Decode, Encode, Default)]
 #[rasn(tag(context, 25))]
 #[derive(Getters, Setters)]
 #[getset(set = "pub", get = "pub")]

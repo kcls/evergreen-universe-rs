@@ -1,5 +1,9 @@
 use crate::message::*;
 
+fn hexdump(bytes: &[u8]) {
+    println!("{:?}", bytes.iter().map(|b| format!("{b:04X?}")).collect::<Vec<String>>().join(","));
+}
+
 #[test]
 fn test_initialize_request() {
     // Example InitializeRequest from YAZ client.
@@ -168,6 +172,50 @@ fn test_present_request() {
 
 #[test]
 fn test_present_response() {
+
+/* 
+ *  Trying to debug why the messages::External fails to parse
+    0xb9 10111001 // tag 25
+    0x80 10000000 // indefinite length
+    0x98 10011000 // tag 24
+    0x01 00000001 // length 1
+    0x01 00000001 // value 1
+    0x99 10011001 // tag 25
+    0x01 00000001 // length 1
+    0x02 00000010 // value 2
+    0x9b 10011011 // tag 27
+    0x01 00000001 // length 1
+    0x00 00000000 // value 0
+    0xbc 10111100 // tag 28 
+    0x80 10000000 // length indefinite
+    0x30 00110000 // tag 16, universal, (Sequence Of)
+    0x80 10000000 // length indefinite
+    0x80 10000000 // tag 0 (name)
+    0x00 00000000 // length 0
+    0xa1 10100001 // tag 1 "record"
+    0x80 10000000 // length, indefinite (of Record)
+    0xa1 10100001 // tag 1 RetrievalRecord(External)
+    0x80 10000000 // length, indefinite
+    0x28 00101000 // tag 8, universal (External)
+    0x80 10000000 // length, indefinite
+    0x06 00000110 // tag 6, object identifier ("1.2.840.10003.5.10")
+    0x07 00000111 // length 7
+    0x2a 00101010 // data
+    0x86 10000110 // data
+    0x48 01001000 // data
+    0xce 11001110 // data
+    0x13 00010011 // data
+    0x05 00000101 // data
+    0x0a 00001010 // data
+    0x81 10000001 // tag 1 / OctetAligned(OctetString)
+    0x82 10000010 // length / long form / size 3
+    0x0a 00001010 // length part 1
+    0xe8          // length part 2
+    0x30          // length part 3
+    0x32          // MARC data 1st byte
+    */
+
+
     let bytes = [
         0xb9, 0x80, 0x98, 0x01, 0x01, 0x99, 0x01, 0x02, 0x9b, 0x01, 0x00, 0xbc, 0x80, 0x30, 0x80, 0x80,
         0x00, 0xa1, 0x80, 0xa1, 0x80, 0x28, 0x80, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x13, 0x05, 0x0a,
@@ -357,5 +405,40 @@ fn test_present_response() {
 
     println!("\n{payload:?}");
 
+    let rec_bytes = msg.to_bytes().unwrap();
+
+    let msg2 = Message::from_bytes(&rec_bytes).unwrap();
+
+    println!("\nREPARSED: {msg2:?}");
+
     //assert_eq!(bytes, *msg.to_bytes().unwrap());
+
+    let oc = rasn::types::OctetString::from_static(b"XXXXX");
+    let mut external = External::new(Encoding::OctetAligned(oc));
+
+    external.set_direct_reference(Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap()));
+
+    //let mut npr = NamePlusRecord::new(Record::Testing("ZZZZZZZ".to_string()));
+    let mut npr = NamePlusRecord::new(Record::RetrievalRecord(ExtWrapper { ext: external }));
+    //let mut npr = NamePlusRecord::new(Record::RetrievalRecord(external));
+    //npr.set_name(Some(DatabaseName::Name("YYYYY".to_string())));
+
+    let records = Records::ResponseRecords(vec![npr]);
+
+    let mut pr = PresentResponse::default();
+    pr.set_records(Some(records));
+    pr.set_number_of_records_returned(12);
+
+    let m2 = Message::from_payload(MessagePayload::PresentResponse(pr));
+
+    println!("START WITH: {m2:?}");
+
+    let bytes2 = m2.to_bytes().unwrap();
+
+    println!("{:#04x?}", bytes2);
+
+    let m3 = Message::from_bytes(&bytes2).unwrap().unwrap();
+
+    println!("TRY AGAIN: {m3:?}");
 }
+
