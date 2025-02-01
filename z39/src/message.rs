@@ -461,11 +461,10 @@ impl ExternalBody {
 // to make rasn honor the struct-level UNIVERSAL tag on our ExternalBody
 // type.  Otherwise, it either ignores the tag or, if explicit is used,
 // it adds the tag and an unnecessary SEQUENCE tag.  *shrug*.  This 
-// fixes it, and gives us the EXTERNAL tag without the SEQUENCE.
+// fixes it, and gives us the EXTERNAL tag without the SEQUENCE, without
+// having to maually implement Encode/Decode.
 #[derive(Debug, AsnType, Decode, Encode)]
-pub struct External {
-    pub ext: ExternalBody
-}
+pub struct External(pub ExternalBody);
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]

@@ -418,7 +418,8 @@ fn test_present_response() {
 
     external.set_direct_reference(Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap()));
 
-    let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External { ext: external }));
+    //let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External { ext: external }));
+    let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
     npr.set_name(Some(DatabaseName::Name("YYYYY".to_string())));
 
     let records = Records::ResponseRecords(vec![npr]);
