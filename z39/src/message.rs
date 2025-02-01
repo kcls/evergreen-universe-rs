@@ -89,7 +89,8 @@ impl Default for InitializeResponse {
     }
 }
 
-#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, AsnType, Decode, Encode)]
+#[rasn(enumerated)]
 pub enum KnownProximityUnit {
     Character = 1,
     Word,
@@ -102,10 +103,10 @@ pub enum KnownProximityUnit {
     Subelement,
     ElementType,
     Byte,
-    Unknown(u32),
 }
 
-#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, AsnType, Decode, Encode)]
+#[rasn(enumerated)]
 pub enum RelationType {
     LessThan = 1,
     LessThanOrEqual,
@@ -113,14 +114,22 @@ pub enum RelationType {
     GreaterThanOrEqual,
     GreaterThan,
     NotEqual,
-    Unknown(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, AsnType, Decode, Encode)]
+#[rasn(enumerated)]
+pub enum ResultSetStatus {
+    Empty = 1,
+    Interim,
+    Unchanged,
+    None,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ProximityUnitCode {
     #[rasn(tag(0))]
-    Known(u32), // KnownProximityUnit
+    Known(KnownProximityUnit),
     #[rasn(tag(1))]
     Private(u32),
 }
@@ -134,7 +143,7 @@ pub struct ProximityOperator {
     #[rasn(tag(3))]
     pub ordered: bool,
     #[rasn(tag(4))]
-    pub relation_type: u32,
+    pub relation_type: RelationType,
     #[rasn(tag(5))]
     pub proximity_unit_code: ProximityUnitCode,
 }
@@ -410,7 +419,6 @@ pub enum FragmentSyntax {
     NotExternallyTagged(OctetString),
 }
 
-
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Encoding {
@@ -422,17 +430,16 @@ pub enum Encoding {
     Arbitrary(BitString),
 }
 
-
 #[derive(Debug, AsnType, Encode, Decode)]
 #[rasn(tag(universal, 8))]
-pub struct ExternalBody {
+pub struct ExternalMessage {
     pub direct_reference: Option<ObjectIdentifier>,
     pub indirect_reference: Option<u32>,
     pub data_value_descriptor: Option<String>,
-    pub encoding: Encoding
+    pub encoding: Encoding,
 }
 
-impl ExternalBody {
+impl ExternalMessage {
     pub fn new(encoding: Encoding) -> Self {
         Self {
             direct_reference: None,
@@ -443,14 +450,14 @@ impl ExternalBody {
     }
 }
 
-// Wrapper around our ExternalBody type, which seems to be required
-// to make rasn honor the struct-level UNIVERSAL tag on our ExternalBody
+// Wrapper around our ExternalMessage type, which seems to be required
+// to make rasn honor the struct-level UNIVERSAL tag on our ExternalMessage
 // type.  Otherwise, it either ignores the tag or, if explicit is used,
-// it adds the tag and an unnecessary SEQUENCE tag.  *shrug*.  This 
+// it adds the tag and an unnecessary SEQUENCE tag.  *shrug*.  This
 // fixes it, and gives us the EXTERNAL tag without the SEQUENCE, without
 // having to maually implement Encode/Decode.
 #[derive(Debug, AsnType, Decode, Encode)]
-pub struct External(pub ExternalBody);
+pub struct External(pub ExternalMessage);
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
@@ -477,10 +484,7 @@ pub struct NamePlusRecord {
 
 impl NamePlusRecord {
     pub fn new(record: Record) -> Self {
-        Self {
-            name: None,
-            record,
-        }
+        Self { name: None, record }
     }
 }
 
@@ -509,9 +513,9 @@ pub struct SearchResponse {
     #[rasn(tag(22))]
     pub search_status: bool,
     #[rasn(tag(26))]
-    pub result_set_status: Option<u32>, // TODO will an enum work for an int value?
+    pub result_set_status: Option<ResultSetStatus>,
     #[rasn(tag(27))]
-    pub present_status: Option<u32>, // TODO enum?
+    pub present_status: Option<PresentStatus>,
     pub records: Option<Records>,
     #[rasn(tag(203))]
     pub additional_search_info: Option<OtherInformation>,
@@ -596,9 +600,18 @@ pub struct PresentRequest {
     pub other_info: Option<OtherInformation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, AsnType, Decode, Encode)]
+#[rasn(enumerated)]
+pub enum PresentStatus {
+    Success = 0,
+    Partial1,
+    Partial2,
+    Partial3,
+    Partial4,
+    Failure,
+}
 
-
-#[derive(Debug, AsnType, Decode, Encode, Default)]
+#[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 25))]
 pub struct PresentResponse {
     #[rasn(tag(2))]
@@ -608,9 +621,22 @@ pub struct PresentResponse {
     #[rasn(tag(25))]
     pub next_result_set_position: u32,
     #[rasn(tag(27))]
-    pub present_status: u32, // TODO try enum
+    pub present_status: PresentStatus,
     pub records: Option<Records>,
     pub other_info: Option<OtherInformation>,
+}
+
+impl Default for PresentResponse {
+    fn default() -> Self {
+        PresentResponse {
+            reference_id: None,
+            number_of_records_returned: 0,
+            next_result_set_position: 0,
+            present_status: PresentStatus::Success,
+            records: None,
+            other_info: None,
+        }
+    }
 }
 
 #[derive(Debug)]

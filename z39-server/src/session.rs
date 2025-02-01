@@ -33,7 +33,7 @@ impl Z39Session {
     fn handle_message(&mut self, message: Message) -> Result<(), String> {
         log::debug!("{self} processing message {message:?}");
 
-        match message.payload() {
+        match &message.payload {
             MessagePayload::InitializeRequest(r) => self.handle_init_request(r),
             _ => todo!(),
         }
