@@ -94,28 +94,31 @@ impl Default for InitializeResponse {
     }
 }
 
-pub enum _KnownProximityUnit {
+#[repr(u32)]
+pub enum KnownProximityUnit {
     Character = 1,
-    Word = 2,
-    Sentence = 3,
-    Paragraph = 4,
-    Section = 5,
-    Chapter = 6,
-    Document = 7,
-    Element = 8,
-    Subelement = 9,
-    ElementType = 10,
-    // Version 3 only
-    Byte = 11,
+    Word,
+    Sentence,
+    Paragraph,
+    Section,
+    Chapter,
+    Document,
+    Element,
+    Subelement,
+    ElementType,
+    Byte,
+    Unknown(u32),
 }
 
-pub enum _RelationType {
+#[repr(u32)]
+pub enum RelationType {
     LessThan = 1,
-    LessThanOrEqual = 2,
-    Equal = 3,
-    GreaterThanOrEqual = 4,
-    GreaterThan = 5,
-    NotEqual = 6,
+    LessThanOrEqual,
+    Equal,
+    GreaterThanOrEqual,
+    GreaterThan,
+    NotEqual,
+    Unknown(u32),
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -432,18 +435,18 @@ pub enum Encoding {
 }
 
 
-// rasn has no External type
-#[derive(Debug, AsnType)]
+#[derive(Debug, AsnType, Encode, Decode)]
 #[derive(Getters, Setters)]
 #[getset(set = "pub", get = "pub")]
-pub struct External {
+#[rasn(tag(universal, 8))]
+pub struct ExternalBody {
     direct_reference: Option<ObjectIdentifier>,
     indirect_reference: Option<u32>,
     data_value_descriptor: Option<String>,
     encoding: Encoding
 }
 
-impl External {
+impl ExternalBody {
     pub fn new(encoding: Encoding) -> Self {
         Self {
             direct_reference: None,
@@ -454,57 +457,21 @@ impl External {
     }
 }
 
-impl Decode for External {
-    fn decode_with_tag_and_constraints<D: Decoder>(
-    	decoder: &mut D, 
-        tag: Tag, 
-        _constraints: Constraints
-    ) -> Result<Self, D::Error> {
-        decoder.decode_sequence(Tag::EXTERNAL, None::<fn () -> Self>, |decoder| {
-            Ok(External {
-                direct_reference: ObjectIdentifier::decode(decoder).ok(),
-                indirect_reference: u32::decode(decoder).ok(),
-                data_value_descriptor: String::decode(decoder).ok(),
-                encoding: Encoding::decode(decoder)?,
-            })
-        })
-    }
-}
-
-impl Encode for External {
-    fn encode_with_tag_and_constraints<'encoder, E: Encoder<'encoder>>(        
-        &self,                                                                 
-        encoder: &mut E,                                                       
-        tag: Tag,                                                              
-        _constraints: Constraints                                              
-    ) -> Result<(), E::Error> {                                                
-        encoder.encode_sequence::<4, 0, Self, _>(Tag::EXTERNAL, |encoder| {                                                        
-            self.direct_reference.encode(encoder)?;
-            self.indirect_reference.encode(encoder)?;
-            self.data_value_descriptor.encode(encoder)?;
-            self.encoding.encode(encoder)?;
-            Ok(())                                                         
-        })?;                                                                    
-                                                                               
-        Ok(())                                                                 
-    } 
-}
-
-// NOTE wrapper needed so the External::Decode manual implementation
-// does not strip the tag-1 from the Record enum below.
-// TODO Try using stock encode/decode on External with the wrapper
-// in place... maybe that's all that was needed.
+// Wrapper around our ExternalBody type, which seems to be required
+// to make rasn honor the struct-level UNIVERSAL tag on our ExternalBody
+// type.  Otherwise, it either ignores the tag or, if explicit is used,
+// it adds the tag and an unnecessary SEQUENCE tag.  *shrug*.  This 
+// fixes it, and gives us the EXTERNAL tag without the SEQUENCE.
 #[derive(Debug, AsnType, Decode, Encode)]
-pub struct ExtWrapper {
-    pub ext: External
+pub struct External {
+    pub ext: ExternalBody
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Record {
     #[rasn(tag(1))]
-    //RetrievalRecord(External),
-    RetrievalRecord(ExtWrapper),
+    RetrievalRecord(External),
     #[rasn(tag(2))]
     SurrogateDiagnostic(DiagRec),
     #[rasn(tag(3))]

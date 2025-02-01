@@ -414,14 +414,12 @@ fn test_present_response() {
     //assert_eq!(bytes, *msg.to_bytes().unwrap());
 
     let oc = rasn::types::OctetString::from_static(b"XXXXX");
-    let mut external = External::new(Encoding::OctetAligned(oc));
+    let mut external = ExternalBody::new(Encoding::OctetAligned(oc));
 
     external.set_direct_reference(Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap()));
 
-    //let mut npr = NamePlusRecord::new(Record::Testing("ZZZZZZZ".to_string()));
-    let mut npr = NamePlusRecord::new(Record::RetrievalRecord(ExtWrapper { ext: external }));
-    //let mut npr = NamePlusRecord::new(Record::RetrievalRecord(external));
-    //npr.set_name(Some(DatabaseName::Name("YYYYY".to_string())));
+    let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External { ext: external }));
+    npr.set_name(Some(DatabaseName::Name("YYYYY".to_string())));
 
     let records = Records::ResponseRecords(vec![npr]);
 
