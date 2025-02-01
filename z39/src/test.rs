@@ -1,7 +1,7 @@
 use crate::message::*;
 
 fn hexdump(bytes: &[u8]) {
-    println!("{:?}", bytes.iter().map(|b| format!("{b:04X?}")).collect::<Vec<String>>().join(","));
+    println!("\n{}\n", bytes.iter().map(|b| format!("{b:#04x?}")).collect::<Vec<String>>().join(", "));
 }
 
 #[test]
@@ -18,11 +18,11 @@ fn test_initialize_request() {
 
     let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::InitializeRequest(payload) = msg.payload() else {
+    let MessagePayload::InitializeRequest(ref payload) = msg.payload else {
         panic!("Wrong message type parsed: {msg:?}");
     };
 
-    assert_eq!(Some("YAZ"), payload.implementation_name().as_deref());
+    assert_eq!(Some("YAZ"), payload.implementation_name.as_deref());
 
     assert_eq!(bytes, *msg.to_bytes().unwrap());
 
@@ -50,13 +50,13 @@ fn test_initialize_response() {
 
     let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::InitializeResponse(payload) = msg.payload() else {
+    let MessagePayload::InitializeResponse(ref payload) = msg.payload else {
         panic!("Wrong message type parsed: {msg:?}");
     };
 
     assert_eq!(
         Some("Simple2ZOOM Universal Gateway/GFS/YAZ"),
-        payload.implementation_name().as_deref()
+        payload.implementation_name.as_deref()
     );
 
     assert_eq!(bytes, *msg.to_bytes().unwrap());
@@ -76,7 +76,7 @@ fn test_payloaduest() {
 
     let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::SearchRequest(payload) = msg.payload() else {
+    let MessagePayload::SearchRequest(ref payload) = msg.payload else {
         panic!("Wrong message type parsed: {msg:?}");
     };
 
@@ -99,20 +99,20 @@ fn test_payloaduest() {
     */
 
     // Extract the ISBN from within the query one piece at a time.
-    let Query::Type1(ref rpn_query) = payload.query() else {
+    let Query::Type1(ref rpn_query) = payload.query else {
         panic!();
     };
-    let RpnStructure::Op(ref operand) = rpn_query.rpn() else {
+    let RpnStructure::Op(ref operand) = rpn_query.rpn else {
         panic!();
     };
     let Operand::AttrTerm(ref term) = operand else {
         panic!();
     };
-    let Term::General(ref isbn) = term.term() else {
+    let Term::General(ref isbn) = term.term else {
         panic!();
     };
 
-    assert_eq!(&OID_ATTR_SET_BIB1, rpn_query.attribute_set());
+    assert_eq!(OID_ATTR_SET_BIB1, rpn_query.attribute_set);
 
     /*
     let s = rpn_query.attribute_set().to_string();
@@ -137,11 +137,11 @@ fn test_search_response() {
 
     let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::SearchResponse(payload) = msg.payload() else {
+    let MessagePayload::SearchResponse(ref payload) = msg.payload else {
         panic!("Wrong message type parsed: {msg:?}");
     };
 
-    assert_eq!(payload.result_count(), &1);
+    assert_eq!(payload.result_count, 1);
 
     assert_eq!(bytes, *msg.to_bytes().unwrap());
 }
@@ -155,7 +155,7 @@ fn test_present_request() {
 
     let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::PresentRequest(payload) = msg.payload() else {
+    let MessagePayload::PresentRequest(ref payload) = msg.payload else {
         panic!("Wrong message type parsed: {msg:?}");
     };
 
@@ -163,7 +163,7 @@ fn test_present_request() {
 
     assert_eq!(
         &OID_MARC21,
-        payload.preferred_record_syntax().as_ref().unwrap()
+        payload.preferred_record_syntax.as_ref().unwrap()
     );
 
     assert_eq!(bytes, *msg.to_bytes().unwrap());
@@ -399,7 +399,7 @@ fn test_present_response() {
 
     let msg = Message::from_bytes(&bytes).unwrap().unwrap();
 
-    let MessagePayload::PresentResponse(payload) = msg.payload() else {
+    let MessagePayload::PresentResponse(ref payload) = msg.payload else {
         panic!("Wrong message type parsed: {msg:?}");
     };
 
@@ -416,17 +416,17 @@ fn test_present_response() {
     let oc = rasn::types::OctetString::from_static(b"XXXXX");
     let mut external = ExternalBody::new(Encoding::OctetAligned(oc));
 
-    external.set_direct_reference(Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap()));
+    external.direct_reference = Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap());
 
     //let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External { ext: external }));
     let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
-    npr.set_name(Some(DatabaseName::Name("YYYYY".to_string())));
+    npr.name = Some(DatabaseName::Name("YYYYY".to_string()));
 
     let records = Records::ResponseRecords(vec![npr]);
 
     let mut pr = PresentResponse::default();
-    pr.set_records(Some(records));
-    pr.set_number_of_records_returned(12);
+    pr.records = Some(records);
+    pr.number_of_records_returned = 12;
 
     let m2 = Message::from_payload(MessagePayload::PresentResponse(pr));
 
@@ -434,7 +434,8 @@ fn test_present_response() {
 
     let bytes2 = m2.to_bytes().unwrap();
 
-    println!("{:#04x?}", bytes2);
+    hexdump(&bytes2);
+    //println!("{:#04x?}", bytes2);
 
     let m3 = Message::from_bytes(&bytes2).unwrap().unwrap();
 

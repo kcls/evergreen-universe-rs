@@ -3,7 +3,6 @@
 //! See https://www.loc.gov/z3950/agency/asn1.html
 use crate::settings::Settings;
 
-use getset::{Getters, Setters};
 use rasn::ber::de::DecodeErrorKind;
 use rasn::prelude::*;
 use rasn::AsnType;
@@ -16,50 +15,46 @@ pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
 
 #[derive(Debug, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct InitializeRequest {
     #[rasn(tag(2))]
-    reference_id: Option<OctetString>,
+    pub reference_id: Option<OctetString>,
     #[rasn(tag(3))]
-    protocol_version: BitString,
+    pub protocol_version: BitString,
     #[rasn(tag(4))]
-    options: BitString,
+    pub options: BitString,
     #[rasn(tag(5))]
-    preferred_message_size: u32,
+    pub preferred_message_size: u32,
     #[rasn(tag(6))]
-    exceptional_record_size: u32,
+    pub exceptional_record_size: u32,
     #[rasn(tag(110))]
-    implementation_id: Option<String>,
+    pub implementation_id: Option<String>,
     #[rasn(tag(111))]
-    implementation_name: Option<String>,
+    pub implementation_name: Option<String>,
     #[rasn(tag(112))]
-    implementation_version: Option<String>,
+    pub implementation_version: Option<String>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 21))]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct InitializeResponse {
     #[rasn(tag(2))]
-    reference_id: Option<OctetString>,
+    pub reference_id: Option<OctetString>,
     #[rasn(tag(3))]
-    protocol_version: BitString,
+    pub protocol_version: BitString,
     #[rasn(tag(4))]
-    options: BitString,
+    pub options: BitString,
     #[rasn(tag(5))]
-    preferred_message_size: u32,
+    pub preferred_message_size: u32,
     #[rasn(tag(6))]
-    exceptional_record_size: u32,
+    pub exceptional_record_size: u32,
     #[rasn(tag(12))]
-    result: Option<bool>,
+    pub result: Option<bool>,
     #[rasn(tag(110))]
-    implementation_id: Option<String>,
+    pub implementation_id: Option<String>,
     #[rasn(tag(111))]
-    implementation_name: Option<String>,
+    pub implementation_name: Option<String>,
     #[rasn(tag(112))]
-    implementation_version: Option<String>,
+    pub implementation_version: Option<String>,
 }
 
 // InitializeResponse will always be a canned response.
@@ -133,15 +128,15 @@ pub enum ProximityUnitCode {
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct ProximityOperator {
     #[rasn(tag(1))]
-    exclusion: bool,
+    pub exclusion: bool,
     #[rasn(tag(2))]
-    distance: u32,
+    pub distance: u32,
     #[rasn(tag(3))]
-    ordered: bool,
+    pub ordered: bool,
     #[rasn(tag(4))]
-    relation_type: u32,
+    pub relation_type: u32,
     #[rasn(tag(5))]
-    proximity_unit_code: ProximityUnitCode,
+    pub proximity_unit_code: ProximityUnitCode,
 }
 
 // NOTE a single-item enum Encodes/Decodes as expected, whereas a
@@ -162,8 +157,8 @@ pub enum ElementSetName {
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct DatabaseSpecific {
-    db_name: DatabaseName,
-    esn: ElementSetName,
+    pub db_name: DatabaseName,
+    pub esn: ElementSetName,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -187,9 +182,9 @@ pub enum StringOrNumeric {
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct ComplexAttributeValue {
     #[rasn(tag(1))]
-    list: SequenceOf<StringOrNumeric>,
+    pub list: SequenceOf<StringOrNumeric>,
     #[rasn(tag(2))]
-    semantic_action: Option<SequenceOf<u32>>,
+    pub semantic_action: Option<SequenceOf<u32>>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -218,21 +213,21 @@ pub enum Operator {
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct Unit {
     #[rasn(tag(1))]
-    unit_system: Option<String>,
+    pub unit_system: Option<String>,
     #[rasn(tag(2))]
-    unit_type: Option<StringOrNumeric>,
+    pub unit_type: Option<StringOrNumeric>,
     #[rasn(tag(3))]
-    unit: Option<StringOrNumeric>,
+    pub unit: Option<StringOrNumeric>,
     #[rasn(tag(4))]
-    scale_factor: Option<u32>,
+    pub scale_factor: Option<u32>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct IntUnit {
     #[rasn(tag(1))]
-    value: u32,
+    pub value: u32,
     #[rasn(tag(2))]
-    unit_used: Unit,
+    pub unit_used: Unit,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -259,25 +254,24 @@ pub enum Term {
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct AttributeElement {
     #[rasn(tag(1))]
-    attribute_set: Option<ObjectIdentifier>,
+    pub attribute_set: Option<ObjectIdentifier>,
     #[rasn(tag(120))]
-    attribute_type: u32,
-    attribute_value: AttributeValue,
+    pub attribute_type: u32,
+    pub attribute_value: AttributeValue,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct ResultSetPlusAttributes {
-    result_set: ObjectIdentifier,
+    pub result_set: ObjectIdentifier,
     #[rasn(tag(44))]
-    attributes: Vec<AttributeElement>,
+    pub attributes: Vec<AttributeElement>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct AttributesPlusTerm {
     #[rasn(tag(44))]
-    attributes: Vec<AttributeElement>,
-    term: Term,
+    pub attributes: Vec<AttributeElement>,
+    pub term: Term,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -293,9 +287,9 @@ pub enum Operand {
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct RpnOp {
-    rpn1: RpnStructure,
-    rpn2: RpnStructure,
-    op: Operator,
+    pub rpn1: RpnStructure,
+    pub rpn2: RpnStructure,
+    pub op: Operator,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -307,11 +301,10 @@ pub enum RpnStructure {
     RpnOp(Box<RpnOp>),
 }
 
-#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct RpnQuery {
-    attribute_set: ObjectIdentifier,
-    rpn: RpnStructure,
+    pub attribute_set: ObjectIdentifier,
+    pub rpn: RpnStructure,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -344,54 +337,49 @@ pub enum Information {
     Oid(ObjectIdentifier),
 }
 
-#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct InfoCategory {
     #[rasn(tag(1))]
-    category_type_id: Option<ObjectIdentifier>,
+    pub category_type_id: Option<ObjectIdentifier>,
     #[rasn(tag(2))]
-    category_value: Option<u32>,
+    pub category_value: Option<u32>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(201))]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct OtherInformation {
     #[rasn(tag(1))]
-    category: Option<InfoCategory>,
-    information: Information,
+    pub category: Option<InfoCategory>,
+    pub information: Information,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 22))]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct SearchRequest {
     #[rasn(tag(2))]
-    reference_id: Option<OctetString>,
+    pub reference_id: Option<OctetString>,
     #[rasn(tag(13))]
-    small_set_upper_bound: u32,
+    pub small_set_upper_bound: u32,
     #[rasn(tag(14))]
-    large_set_lower_bound: u32,
+    pub large_set_lower_bound: u32,
     #[rasn(tag(15))]
-    medium_set_present_number: u32,
+    pub medium_set_present_number: u32,
     #[rasn(tag(16))]
-    replace_indicator: bool,
+    pub replace_indicator: bool,
     #[rasn(tag(17))]
-    result_set_name: String,
+    pub result_set_name: String,
     #[rasn(tag(18))]
-    database_names: Vec<DatabaseName>,
+    pub database_names: Vec<DatabaseName>,
     #[rasn(tag(21))]
-    query: Query,
+    pub query: Query,
     #[rasn(tag(100))]
-    small_set_element_names: Option<ElementSetNames>,
+    pub small_set_element_names: Option<ElementSetNames>,
     #[rasn(tag(101))]
-    medium_set_element_names: Option<ElementSetNames>,
+    pub medium_set_element_names: Option<ElementSetNames>,
     #[rasn(tag(104))]
-    preferred_record_syntax: Option<ObjectIdentifier>,
+    pub preferred_record_syntax: Option<ObjectIdentifier>,
     #[rasn(tag(203))]
-    additional_search_info: Option<OtherInformation>,
+    pub additional_search_info: Option<OtherInformation>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -403,9 +391,9 @@ pub enum AddInfo {
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct DefaultDiagFormat {
-    diagnostic_set_id: ObjectIdentifier,
-    condition: u32,
-    addinfo: AddInfo,
+    pub diagnostic_set_id: ObjectIdentifier,
+    pub condition: u32,
+    pub addinfo: AddInfo,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -436,14 +424,12 @@ pub enum Encoding {
 
 
 #[derive(Debug, AsnType, Encode, Decode)]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 #[rasn(tag(universal, 8))]
 pub struct ExternalBody {
-    direct_reference: Option<ObjectIdentifier>,
-    indirect_reference: Option<u32>,
-    data_value_descriptor: Option<String>,
-    encoding: Encoding
+    pub direct_reference: Option<ObjectIdentifier>,
+    pub indirect_reference: Option<u32>,
+    pub data_value_descriptor: Option<String>,
+    pub encoding: Encoding
 }
 
 impl ExternalBody {
@@ -482,13 +468,11 @@ pub enum Record {
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct NamePlusRecord {
     #[rasn(tag(0))]
-    name: Option<DatabaseName>,
+    pub name: Option<DatabaseName>,
     #[rasn(tag(1))]
-    record: Record,
+    pub record: Record,
 }
 
 impl NamePlusRecord {
@@ -513,72 +497,69 @@ pub enum Records {
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 23))]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct SearchResponse {
     #[rasn(tag(2))]
-    reference_id: Option<OctetString>,
+    pub reference_id: Option<OctetString>,
     #[rasn(tag(23))]
-    result_count: u32,
+    pub result_count: u32,
     #[rasn(tag(24))]
-    number_of_records_returned: u32,
+    pub number_of_records_returned: u32,
     #[rasn(tag(25))]
-    next_result_set_position: u32,
+    pub next_result_set_position: u32,
     #[rasn(tag(22))]
-    search_status: bool,
+    pub search_status: bool,
     #[rasn(tag(26))]
-    result_set_status: Option<u32>, // TODO will an enum work for an int value?
+    pub result_set_status: Option<u32>, // TODO will an enum work for an int value?
     #[rasn(tag(27))]
-    present_status: Option<u32>, // TODO enum?
-    records: Option<Records>,
+    pub present_status: Option<u32>, // TODO enum?
+    pub records: Option<Records>,
     #[rasn(tag(203))]
-    additional_search_info: Option<OtherInformation>,
-    other_info: Option<OtherInformation>,
+    pub additional_search_info: Option<OtherInformation>,
+    pub other_info: Option<OtherInformation>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode, Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
+#[derive(Debug, AsnType, Decode, Encode)]
 pub struct Range {
     #[rasn(tag(1))]
-    starting_position: u32,
+    pub starting_position: u32,
     #[rasn(tag(2))]
-    number_of_records: u32,
+    pub number_of_records: u32,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct ElementSpec {
     #[rasn(tag(1))]
-    element_set_name: String,
+    pub element_set_name: String,
     #[rasn(tag(2))]
-    external_espec: Option<Any>,
+    pub external_espec: Option<Any>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct Specification {
     #[rasn(tag(1))]
-    schema: Option<ObjectIdentifier>,
+    pub schema: Option<ObjectIdentifier>,
     #[rasn(tag(2))]
-    element_spec: Option<ElementSpec>,
+    pub element_spec: Option<ElementSpec>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct CompSpecDatabaseSpecific {
     #[rasn(tag(1))]
-    db: DatabaseName,
+    pub db: DatabaseName,
     #[rasn(tag(2))]
-    spec: Specification,
+    pub spec: Specification,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
 pub struct CompSpec {
     #[rasn(tag(1))]
-    select_alternative_syntax: bool,
+    pub select_alternative_syntax: bool,
     #[rasn(tag(2))]
-    generic: Option<Specification>,
+    pub generic: Option<Specification>,
     #[rasn(tag(3))]
-    db_specific: Option<CompSpecDatabaseSpecific>,
+    pub db_specific: Option<CompSpecDatabaseSpecific>,
     #[rasn(tag(4))]
-    record_syntax: Option<Vec<ObjectIdentifier>>,
+    pub record_syntax: Option<Vec<ObjectIdentifier>>,
 }
 
 #[derive(Debug, AsnType, Decode, Encode)]
@@ -592,48 +573,44 @@ pub enum RecordComposition {
 
 #[derive(Debug, AsnType, Decode, Encode)]
 #[rasn(tag(context, 24))]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct PresentRequest {
     #[rasn(tag(2))]
-    reference_id: Option<OctetString>,
+    pub reference_id: Option<OctetString>,
     #[rasn(tag(31))]
-    result_set_id: String,
+    pub result_set_id: String,
     #[rasn(tag(30))]
-    reset_set_start_point: u32,
+    pub reset_set_start_point: u32,
     #[rasn(tag(29))]
-    number_of_records_requested: u32,
+    pub number_of_records_requested: u32,
     #[rasn(tag(212))]
-    additional_ranges: Option<Vec<Range>>,
-    record_composition: Option<RecordComposition>,
+    pub additional_ranges: Option<Vec<Range>>,
+    pub record_composition: Option<RecordComposition>,
     #[rasn(tag(104))]
-    preferred_record_syntax: Option<ObjectIdentifier>,
+    pub preferred_record_syntax: Option<ObjectIdentifier>,
     #[rasn(tag(204))]
-    max_segment_count: Option<u32>,
+    pub max_segment_count: Option<u32>,
     #[rasn(tag(206))]
-    max_record_size: Option<u32>,
+    pub max_record_size: Option<u32>,
     #[rasn(tag(207))]
-    max_segment_size: Option<u32>,
-    other_info: Option<OtherInformation>,
+    pub max_segment_size: Option<u32>,
+    pub other_info: Option<OtherInformation>,
 }
 
 
 
 #[derive(Debug, AsnType, Decode, Encode, Default)]
 #[rasn(tag(context, 25))]
-#[derive(Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
 pub struct PresentResponse {
     #[rasn(tag(2))]
-    reference_id: Option<OctetString>,
+    pub reference_id: Option<OctetString>,
     #[rasn(tag(24))]
-    number_of_records_returned: u32,
+    pub number_of_records_returned: u32,
     #[rasn(tag(25))]
-    next_result_set_position: u32,
+    pub next_result_set_position: u32,
     #[rasn(tag(27))]
-    present_status: u32, // TODO try enum
-    records: Option<Records>,
-    other_info: Option<OtherInformation>,
+    pub present_status: u32, // TODO try enum
+    pub records: Option<Records>,
+    pub other_info: Option<OtherInformation>,
 }
 
 #[derive(Debug)]
@@ -646,10 +623,9 @@ pub enum MessagePayload {
     PresentResponse(PresentResponse),
 }
 
-#[derive(Debug, Getters, Setters)]
-#[getset(set = "pub", get = "pub")]
+#[derive(Debug)]
 pub struct Message {
-    payload: MessagePayload,
+    pub payload: MessagePayload,
 }
 
 impl Message {
@@ -759,7 +735,7 @@ impl Message {
     /// Translate a message into a collection of bytes suitable for dropping
     /// onto the wire.
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
-        let res = match self.payload() {
+        let res = match &self.payload {
             MessagePayload::InitializeRequest(m) => rasn::ber::encode(&m),
             MessagePayload::InitializeResponse(m) => rasn::ber::encode(&m),
             MessagePayload::SearchRequest(m) => rasn::ber::encode(&m),

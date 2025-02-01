@@ -6,4 +6,3 @@ edition = "2021"
 [dependencies]
 rasn = "0.22.2"
 log = "0.4.25"
-getset = "0.1.4"
