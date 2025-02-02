@@ -13,7 +13,7 @@ pub const OID_MARC21: [u32; 6] = [1, 2, 840, 10003, 5, 10];
 // https://oid-base.com/get/1.2.840.10003.3.1
 pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
 
-#[derive(Debug, Default, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
 pub struct InitializeRequest {
     #[rasn(tag(2))]
@@ -34,7 +34,7 @@ pub struct InitializeRequest {
     pub implementation_version: Option<String>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 21))]
 pub struct InitializeResponse {
     #[rasn(tag(2))]
@@ -125,7 +125,7 @@ pub enum ResultSetStatus {
     None,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ProximityUnitCode {
     #[rasn(tag(0))]
@@ -134,7 +134,7 @@ pub enum ProximityUnitCode {
     Private(u32),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct ProximityOperator {
     #[rasn(tag(1))]
     pub exclusion: bool,
@@ -150,27 +150,27 @@ pub struct ProximityOperator {
 
 // NOTE a single-item enum Encodes/Decodes as expected, whereas a
 // 'struct DatabaseName(String)' does not.
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum DatabaseName {
     #[rasn(tag(105))]
     Name(String),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ElementSetName {
     #[rasn(tag(103))]
     Name(String),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct DatabaseSpecific {
     pub db_name: DatabaseName,
     pub esn: ElementSetName,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ElementSetNames {
     #[rasn(tag(0))]
@@ -179,7 +179,7 @@ pub enum ElementSetNames {
     DatabaseSpecific(SequenceOf<DatabaseSpecific>),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum StringOrNumeric {
     #[rasn(tag(1))]
@@ -188,7 +188,7 @@ pub enum StringOrNumeric {
     Numeric(u32),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct ComplexAttributeValue {
     #[rasn(tag(1))]
     pub list: SequenceOf<StringOrNumeric>,
@@ -196,7 +196,7 @@ pub struct ComplexAttributeValue {
     pub semantic_action: Option<SequenceOf<u32>>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum AttributeValue {
     #[rasn(tag(121))]
@@ -205,7 +205,7 @@ pub enum AttributeValue {
     Complex(ComplexAttributeValue),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 #[rasn(tag(46))]
 pub enum Operator {
@@ -219,7 +219,7 @@ pub enum Operator {
     Prox(ProximityOperator),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct Unit {
     #[rasn(tag(1))]
     pub unit_system: Option<String>,
@@ -231,7 +231,7 @@ pub struct Unit {
     pub scale_factor: Option<u32>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct IntUnit {
     #[rasn(tag(1))]
     pub value: u32,
@@ -239,7 +239,7 @@ pub struct IntUnit {
     pub unit_used: Unit,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Term {
     #[rasn(tag(45))]
@@ -260,7 +260,7 @@ pub enum Term {
     Null,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct AttributeElement {
     #[rasn(tag(1))]
     pub attribute_set: Option<ObjectIdentifier>,
@@ -269,21 +269,21 @@ pub struct AttributeElement {
     pub attribute_value: AttributeValue,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct ResultSetPlusAttributes {
     pub result_set: ObjectIdentifier,
     #[rasn(tag(44))]
     pub attributes: Vec<AttributeElement>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct AttributesPlusTerm {
     #[rasn(tag(44))]
     pub attributes: Vec<AttributeElement>,
     pub term: Term,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Operand {
     #[rasn(tag(102))]
@@ -294,14 +294,14 @@ pub enum Operand {
     ResultAttr(ResultSetPlusAttributes),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct RpnOp {
     pub rpn1: RpnStructure,
     pub rpn2: RpnStructure,
     pub op: Operator,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum RpnStructure {
     #[rasn(tag(0))]
@@ -310,13 +310,13 @@ pub enum RpnStructure {
     RpnOp(Box<RpnOp>),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct RpnQuery {
     pub attribute_set: ObjectIdentifier,
     pub rpn: RpnStructure,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Query {
     #[rasn(tag(0))]
@@ -333,7 +333,7 @@ pub enum Query {
     Type102(OctetString),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Information {
     #[rasn(tag(2))]
@@ -346,7 +346,7 @@ pub enum Information {
     Oid(ObjectIdentifier),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct InfoCategory {
     #[rasn(tag(1))]
     pub category_type_id: Option<ObjectIdentifier>,
@@ -354,7 +354,7 @@ pub struct InfoCategory {
     pub category_value: Option<u32>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(201))]
 pub struct OtherInformation {
     #[rasn(tag(1))]
@@ -362,7 +362,7 @@ pub struct OtherInformation {
     pub information: Information,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 22))]
 pub struct SearchRequest {
     #[rasn(tag(2))]
@@ -391,35 +391,35 @@ pub struct SearchRequest {
     pub additional_search_info: Option<OtherInformation>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum AddInfo {
     V2AddInfo(VisibleString),
     V3AddInfo(GeneralString),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct DefaultDiagFormat {
     pub diagnostic_set_id: ObjectIdentifier,
     pub condition: u32,
     pub addinfo: AddInfo,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum DiagRec {
     DefaultFormat(DefaultDiagFormat),
     ExternallyDefined(Any),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum FragmentSyntax {
     ExternallyTagged(Any),
     NotExternallyTagged(OctetString),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Encoding {
     #[rasn(tag(0))]
@@ -430,7 +430,7 @@ pub enum Encoding {
     Arbitrary(BitString),
 }
 
-#[derive(Debug, AsnType, Encode, Decode)]
+#[derive(Debug, PartialEq, AsnType, Encode, Decode)]
 #[rasn(tag(universal, 8))]
 pub struct ExternalMessage {
     pub direct_reference: Option<ObjectIdentifier>,
@@ -450,16 +450,16 @@ impl ExternalMessage {
     }
 }
 
-// Wrapper around our ExternalMessage type, which seems to be required
-// to make rasn honor the struct-level UNIVERSAL tag on our ExternalMessage
-// type.  Otherwise, it either ignores the tag or, if explicit is used,
-// it adds the tag and an unnecessary SEQUENCE tag.  *shrug*.  This
-// fixes it, and gives us the EXTERNAL tag without the SEQUENCE, without
-// having to maually implement Encode/Decode.
-#[derive(Debug, AsnType, Decode, Encode)]
+// Wrapper around our ExternalMessage type, which seems to be
+// required to make rasn honor the struct-level UNIVERSAL tag on our
+// ExternalMessage.  Otherwise, it either ignores the tag or, if
+// `explicit` is used, it adds the tag and an unwanted SEQUENCE tag.
+// This gives us the EXTERNAL tag without the SEQUENCE, without having
+// to maually implement Encode/Decode.
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct External(pub ExternalMessage);
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Record {
     #[rasn(tag(1))]
@@ -474,7 +474,7 @@ pub enum Record {
     FinalFragment(FragmentSyntax),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct NamePlusRecord {
     #[rasn(tag(0))]
     pub name: Option<DatabaseName>,
@@ -488,7 +488,7 @@ impl NamePlusRecord {
     }
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Records {
     #[rasn(tag(28))]
@@ -499,7 +499,7 @@ pub enum Records {
     MultipleNonSurDiagnostics(Vec<DiagRec>),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 23))]
 pub struct SearchResponse {
     #[rasn(tag(2))]
@@ -522,7 +522,7 @@ pub struct SearchResponse {
     pub other_info: Option<OtherInformation>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct Range {
     #[rasn(tag(1))]
     pub starting_position: u32,
@@ -530,7 +530,7 @@ pub struct Range {
     pub number_of_records: u32,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct ElementSpec {
     #[rasn(tag(1))]
     pub element_set_name: String,
@@ -538,7 +538,7 @@ pub struct ElementSpec {
     pub external_espec: Option<Any>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct Specification {
     #[rasn(tag(1))]
     pub schema: Option<ObjectIdentifier>,
@@ -546,7 +546,7 @@ pub struct Specification {
     pub element_spec: Option<ElementSpec>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct CompSpecDatabaseSpecific {
     #[rasn(tag(1))]
     pub db: DatabaseName,
@@ -554,7 +554,7 @@ pub struct CompSpecDatabaseSpecific {
     pub spec: Specification,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct CompSpec {
     #[rasn(tag(1))]
     pub select_alternative_syntax: bool,
@@ -566,7 +566,7 @@ pub struct CompSpec {
     pub record_syntax: Option<Vec<ObjectIdentifier>>,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum RecordComposition {
     #[rasn(tag(19))]
@@ -575,7 +575,7 @@ pub enum RecordComposition {
     Complex(CompSpec),
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 24))]
 pub struct PresentRequest {
     #[rasn(tag(2))]
@@ -611,7 +611,7 @@ pub enum PresentStatus {
     Failure,
 }
 
-#[derive(Debug, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 25))]
 pub struct PresentResponse {
     #[rasn(tag(2))]
@@ -639,7 +639,7 @@ impl Default for PresentResponse {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MessagePayload {
     InitializeRequest(InitializeRequest),
     InitializeResponse(InitializeResponse),
@@ -649,7 +649,7 @@ pub enum MessagePayload {
     PresentResponse(PresentResponse),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Message {
     pub payload: MessagePayload,
 }
@@ -663,10 +663,19 @@ impl Message {
             return Ok(None);
         }
 
-        // The first byte of a Z39 ASN message is structed like so:
+        // Parse error handler.
+        // Return None if more bytes are needed, Err(String) otherwise.
+        let handle_error = |e: rasn::error::DecodeError| {
+            match *e.kind {
+                DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
+                _ => return Err(e.to_string()),
+            }
+        };
+
+        // The first byte of a Z39 ASN1 BER message is structed like so:
         // [
         //   76543210   - bit index
-        //   10         - class = context-specific
+        //   10         - context-specific tag class
         //     1        - structured data
         //      nnnnn   - PDU / message tag.
         //  ]
@@ -679,10 +688,7 @@ impl Message {
             20 => {
                 let msg: InitializeRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => match *e.kind {
-                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => return Err(e.to_string()),
-                    },
+                    Err(e) => return handle_error(e),
                 };
 
                 MessagePayload::InitializeRequest(msg)
@@ -690,10 +696,7 @@ impl Message {
             21 => {
                 let msg: InitializeResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => match *e.kind {
-                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => return Err(e.to_string()),
-                    },
+                    Err(e) => return handle_error(e),
                 };
 
                 MessagePayload::InitializeResponse(msg)
@@ -701,10 +704,7 @@ impl Message {
             22 => {
                 let msg: SearchRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => match *e.kind {
-                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => return Err(e.to_string()),
-                    },
+                    Err(e) => return handle_error(e),
                 };
 
                 MessagePayload::SearchRequest(msg)
@@ -712,10 +712,7 @@ impl Message {
             23 => {
                 let msg: SearchResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => match *e.kind {
-                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => return Err(e.to_string()),
-                    },
+                    Err(e) => return handle_error(e),
                 };
 
                 MessagePayload::SearchResponse(msg)
@@ -723,10 +720,7 @@ impl Message {
             24 => {
                 let msg: PresentRequest = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => match *e.kind {
-                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => return Err(e.to_string()),
-                    },
+                    Err(e) => return handle_error(e),
                 };
 
                 MessagePayload::PresentRequest(msg)
@@ -734,15 +728,11 @@ impl Message {
             25 => {
                 let msg: PresentResponse = match rasn::ber::decode(bytes) {
                     Ok(m) => m,
-                    Err(e) => match *e.kind {
-                        DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                        _ => return Err(e.to_string()),
-                    },
+                    Err(e) => return handle_error(e),
                 };
 
                 MessagePayload::PresentResponse(msg)
             }
-
             _ => {
                 return Err(format!(
                     "Cannot handle message with first byte: {}",
