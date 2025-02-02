@@ -1,38 +1,29 @@
-use crate::Z39ConnectRequest;
 use z39::message::*;
 use evergreen as eg;
-use eg::osrf::bus::Bus;
-
 
 use std::fmt;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 const NETWORK_BUFSIZE: usize = 1024;
 
-#[derive(Debug, Default)]
-pub(crate) struct Z39Session {
-    tcp_stream: Option<TcpStream>,
-    peer_addr: Option<String>,
+pub struct Z39Session {
+    pub tcp_stream: TcpStream,
+    pub peer_addr: String,
+    pub shutdown: Arc<AtomicBool>,
+    pub client: eg::Client,
 }
 
 impl fmt::Display for Z39Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(a) = self.peer_addr.as_ref() {
-            write!(f, "Z39Session [{a}]")
-        } else {
-            write!(f, "Z39Session")
-        }
+        write!(f, "Z39Session [{}]", self.peer_addr)
     }
 }
 
 impl Z39Session {
-    /// Panics if the stream is None.
-    fn tcp_stream_mut(&mut self) -> &mut TcpStream {
-        self.tcp_stream.as_mut().unwrap()
-    }
-
     fn handle_message(&mut self, message: Message) -> Result<(), String> {
         log::debug!("{self} processing message {message:?}");
 
@@ -52,11 +43,12 @@ impl Z39Session {
         self.reply(bytes.as_slice())
     }
 
-    fn handle_search_request(&mut self, req: &SearchRequest) -> Result<(), String> {
+    fn handle_search_request(&mut self, _req: &SearchRequest) -> Result<(), String> {
         let mut resp = SearchResponse::default();
 
         // TODO
         resp.result_count = 1;
+        resp.search_status = true;
 
         let bytes = Message::from_payload(MessagePayload::SearchResponse(resp)).to_bytes()?;
 
@@ -64,29 +56,14 @@ impl Z39Session {
     }
 
 
+    /// Drop a set of bytes onto the wire.
     fn reply(&mut self, bytes: &[u8]) -> Result<(), String> {
         log::debug!("{self} replying with {bytes:?}");
-        self.tcp_stream_mut()
-            .write_all(bytes)
-            .map_err(|e| e.to_string())
+
+        self.tcp_stream.write_all(bytes).map_err(|e| e.to_string())
     }
-}
 
-impl mptc::RequestHandler for Z39Session {
-    fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
-        // Turn the general mptc::Request into a type we can perform actions on.
-        let request = Z39ConnectRequest::downcast(&mut request);
-
-        // Z39ConnectRequest's only real job was to pass us the stream.
-        self.tcp_stream = request.tcp_stream.take();
-
-        self.peer_addr = Some(
-            self.tcp_stream_mut()
-                .peer_addr()
-                .map_err(|e| e.to_string())?
-                .to_string(),
-        );
-
+    pub fn listen(&mut self) -> Result<(), String> {
         log::info!("{self} starting session");
 
         let mut bytes = Vec::new();
@@ -97,10 +74,16 @@ impl mptc::RequestHandler for Z39Session {
         // the message, rinse and repeat.
         loop {
 
-            let count = match self.tcp_stream_mut().read(&mut buffer) {
+            let _count = match self.tcp_stream.read(&mut buffer) {
                 Ok(c) => c,
                 Err(e) => match e.kind() {
-                    std::io::ErrorKind::WouldBlock => continue,
+                    std::io::ErrorKind::WouldBlock => {
+                        if self.shutdown.load(Ordering::Relaxed) {
+                            log::debug!("Shutdown signal received, exiting listen loop");
+                            break;
+                        }
+                        continue;
+                    }
                     _ => {
                         log::info!("Socket closed: {e}");
                         break;
@@ -132,9 +115,7 @@ impl mptc::RequestHandler for Z39Session {
 
         log::info!("session exiting");
 
-        self.tcp_stream_mut()
-            .shutdown(std::net::Shutdown::Both)
-            .ok();
+        self.tcp_stream.shutdown(std::net::Shutdown::Both).ok();
 
         Ok(())
     }

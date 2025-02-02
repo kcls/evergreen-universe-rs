@@ -2,11 +2,13 @@ use evergreen as eg;
 
 use std::any::Any;
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 mod session;
 use session::Z39Session;
 
-pub(crate) struct Z39ConnectRequest {
+struct Z39ConnectRequest {
     tcp_stream: Option<TcpStream>,
 }
 
@@ -24,8 +26,53 @@ impl mptc::Request for Z39ConnectRequest {
     }
 }
 
+struct Z39SessionBroker {
+    shutdown: Arc<AtomicBool>,
+    bus: Option<eg::osrf::bus::Bus>,
+}
+
+impl mptc::RequestHandler for Z39SessionBroker {
+
+    /// Connect to the Evergreen bus
+    fn worker_start(&mut self) -> Result<(), String> {
+        let bus = eg::osrf::bus::Bus::new(eg::osrf::conf::config().client())?;
+        self.bus = Some(bus);
+        Ok(())
+    }
+
+    /// Create a Z session to handle the connection and let it run.
+    fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
+        let request = Z39ConnectRequest::downcast(&mut request);
+        
+        // Temporarily give our bus to the zsession
+        let bus = self.bus.take().unwrap();
+
+        // Give the stream to the zsession
+        let tcp_stream = request.tcp_stream.take().unwrap();
+
+        let peer_addr = tcp_stream.peer_addr().map_err(|e| e.to_string())?.to_string();
+
+        let mut session = Z39Session {
+            tcp_stream,
+            peer_addr,
+            client: eg::Client::from_bus(bus),
+            shutdown: self.shutdown.clone(),
+        };
+
+        let result = session.listen()
+            .inspect_err(|e| log::error!("{session} exited unexpectedly: {e}"));
+
+        // Take the bus connection back so we can reuse it.
+        self.bus = Some(session.client.take_bus());
+
+        result
+    }
+}
+
+
 struct Z39Server {
     tcp_listener: TcpListener,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl mptc::RequestStream for Z39Server {
@@ -56,7 +103,15 @@ impl mptc::RequestStream for Z39Server {
     }
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
-        Box::new(Z39Session::default())
+        Box::new(Z39SessionBroker {
+            shutdown: self.shutdown.clone(),
+            bus: None,
+        })
+    }
+
+    fn shutdown(&mut self) {
+        // Tell our active workers to stop listening for requests.
+        self.shutdown.store(true, Ordering::Relaxed);
     }
 }
 
@@ -90,7 +145,10 @@ fn main() {
     )
     .unwrap(); // todo error reporting
 
-    let server = Z39Server { tcp_listener };
+    let server = Z39Server { 
+        tcp_listener,
+        shutdown: Arc::new(AtomicBool::new(false)),
+    };
 
     let mut s = mptc::Server::new(Box::new(server));
 
