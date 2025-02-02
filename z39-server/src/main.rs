@@ -35,18 +35,13 @@ impl mptc::RequestStream for Z39Server {
             Err(e) => {
                 match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
-                        // See if we need to to into/out of ready mode.
-
-                        // TODO
-                        //self.check_heartbeat_signals();
-
                         // No connection received within the timeout.
                         // Return None to the mptc::Server so it can
                         // perform housekeeping.
                         return Ok(None);
                     }
                     _ => {
-                        log::error!("SIPServer accept() failed {e}");
+                        log::error!("Z39Server accept() failed {e}");
                         return Ok(None);
                     }
                 }
@@ -66,12 +61,34 @@ impl mptc::RequestStream for Z39Server {
 }
 
 fn main() {
+    let options = eg::init::InitOptions {
+        skip_logging: false,
+        skip_host_settings: true,
+        appname: Some("z39-server".to_string()),
+    };
+
+    // Connect, parse the IDL, setup logging, etc.
+    let client = eg::init::with_options(&options).unwrap();
+
+    // No need to keep this connection open.  Each thread will
+    // have its own connection.
+    drop(client);
+
+    let mut settings = z39::Settings::default();
+
+    settings.implementation_id = Some("EG".to_string());
+    settings.implementation_name = Some("Evergreen".to_string());
+    settings.implementation_version = Some("0.1.0".to_string());
+
+    settings.apply();
+
+    // TODO command line, etc.
     let tcp_listener = eg::util::tcp_listener(
         "127.0.0.1",
         2210,
-        3, // TODO
+        3,
     )
-    .unwrap(); //  todo
+    .unwrap(); // todo error reporting
 
     let server = Z39Server { tcp_listener };
 

@@ -1,4 +1,4 @@
-//! Z39.50 Message Components
+//! Z39.50 Messages
 //!
 //! See https://www.loc.gov/z3950/agency/asn1.html
 use crate::settings::Settings;
@@ -499,7 +499,7 @@ pub enum Records {
     MultipleNonSurDiagnostics(Vec<DiagRec>),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, PartialEq, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 23))]
 pub struct SearchResponse {
     #[rasn(tag(2))]

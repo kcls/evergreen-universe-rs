@@ -1,5 +1,8 @@
 use crate::Z39ConnectRequest;
 use z39::message::*;
+use evergreen as eg;
+use eg::osrf::bus::Bus;
+
 
 use std::fmt;
 use std::io::Read;
@@ -35,7 +38,8 @@ impl Z39Session {
 
         match &message.payload {
             MessagePayload::InitializeRequest(r) => self.handle_init_request(r),
-            _ => todo!(),
+            MessagePayload::SearchRequest(r) => self.handle_search_request(r),
+            _ => todo!("handle_message() unsupported message type"),
         }
     }
 
@@ -47,6 +51,18 @@ impl Z39Session {
 
         self.reply(bytes.as_slice())
     }
+
+    fn handle_search_request(&mut self, req: &SearchRequest) -> Result<(), String> {
+        let mut resp = SearchResponse::default();
+
+        // TODO
+        resp.result_count = 1;
+
+        let bytes = Message::from_payload(MessagePayload::SearchResponse(resp)).to_bytes()?;
+
+        self.reply(bytes.as_slice())
+    }
+
 
     fn reply(&mut self, bytes: &[u8]) -> Result<(), String> {
         log::debug!("{self} replying with {bytes:?}");
@@ -79,11 +95,18 @@ impl mptc::RequestHandler for Z39Session {
         // Read bytes from the TCP stream, feeding them into the BER
         // parser, until a complete object/message is formed.  Handle
         // the message, rinse and repeat.
-        while let Ok(count) = self.tcp_stream_mut().read(&mut buffer) {
-            if count == 0 {
-                log::debug!("client socket shutdown.  exiting");
-                break;
-            }
+        loop {
+
+            let count = match self.tcp_stream_mut().read(&mut buffer) {
+                Ok(c) => c,
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock => continue,
+                    _ => {
+                        log::info!("Socket closed: {e}");
+                        break;
+                    }
+                }
+            };
 
             bytes.extend_from_slice(&buffer);
 
