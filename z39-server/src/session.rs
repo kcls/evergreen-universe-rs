@@ -43,8 +43,10 @@ impl Z39Session {
         self.reply(bytes.as_slice())
     }
 
-    fn handle_search_request(&mut self, _req: &SearchRequest) -> Result<(), String> {
+    fn handle_search_request(&mut self, req: &SearchRequest) -> Result<(), String> {
         let mut resp = SearchResponse::default();
+
+        log::info!("{self} search query: {:?}", req.query);
 
         // TODO
         resp.result_count = 1;
@@ -70,8 +72,8 @@ impl Z39Session {
         let mut buffer = [0u8; NETWORK_BUFSIZE];
 
         // Read bytes from the TCP stream, feeding them into the BER
-        // parser, until a complete object/message is formed.  Handle
-        // the message, rinse and repeat.
+        // parser, until a complete message is formed.  Handle the
+        // message, rinse and repeat.
         loop {
 
             let _count = match self.tcp_stream.read(&mut buffer) {
@@ -82,9 +84,11 @@ impl Z39Session {
                             log::debug!("Shutdown signal received, exiting listen loop");
                             break;
                         }
+                        // Go back and wait for reqeusts to arrive.
                         continue;
                     }
                     _ => {
+                        // Connection severed.  Likely the caller disconnected.
                         log::info!("Socket closed: {e}");
                         break;
                     }

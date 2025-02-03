@@ -5,6 +5,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+mod query;
 mod session;
 use session::Z39Session;
 

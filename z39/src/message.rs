@@ -207,7 +207,9 @@ pub enum AttributeValue {
 
 #[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
-#[rasn(tag(46))]
+// #[rasn(tag(46))]
+// Uses tag 46 but that's best encoded in the containing struct, instead
+// of attached to the Operator struct, to make rasn happy.
 pub enum Operator {
     #[rasn(tag(0))]
     And,
@@ -260,6 +262,12 @@ pub enum Term {
     Null,
 }
 
+impl Term {
+    pub fn general_from_str(s: &str) -> Term {
+        Term::General(OctetString::copy_from_slice(s.as_bytes()))
+    }
+}
+
 #[derive(Debug, PartialEq, AsnType, Decode, Encode)]
 pub struct AttributeElement {
     #[rasn(tag(1))]
@@ -298,6 +306,7 @@ pub enum Operand {
 pub struct RpnOp {
     pub rpn1: RpnStructure,
     pub rpn2: RpnStructure,
+    #[rasn(tag(46))]
     pub op: Operator,
 }
 
