@@ -126,15 +126,15 @@ fn main() {
     // Connect, parse the IDL, setup logging, etc.
     let client = eg::init::with_options(&options).unwrap();
 
-    // No need to keep this connection open.  Each thread will
-    // have its own connection.
+    // No need to keep this connection open.  Drop it to force disconnect.
     drop(client);
 
-    let mut settings = z39::Settings::default();
-
-    settings.implementation_id = Some("EG".to_string());
-    settings.implementation_name = Some("Evergreen".to_string());
-    settings.implementation_version = Some("0.1.0".to_string());
+    let settings = z39::Settings {
+        implementation_id: Some("EG".to_string()),
+        implementation_name: Some("Evergreen".to_string()),
+        implementation_version: Some("0.1.0".to_string()),
+        ..Default::default()
+    };
 
     settings.apply();
 

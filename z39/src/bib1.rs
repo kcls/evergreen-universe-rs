@@ -1,9 +1,11 @@
 //! Bib1 Attribute Set Types
 //!
 //! https://www.loc.gov/z3950/agency/defns/bib1.html
+use crate::message::*;
+use strum::IntoEnumIterator; // 0.17.1
+use strum_macros::EnumIter; // 0.17.1
 
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Attribute {
     Use = 1,
     Relation = 2,
@@ -18,20 +20,13 @@ impl TryFrom<u32> for Attribute {
     type Error = String;
 
     fn try_from(n: u32) -> Result<Self, Self::Error> {
-        match n {
-            1 => Ok(Self::Use),
-            2 => Ok(Self::Relation),
-            3 => Ok(Self::Position),
-            4 => Ok(Self::Structure),
-            5 => Ok(Self::Truncation),
-            6 => Ok(Self::Completeness),
-            7 => Ok(Self::Sorting),
-            _ => Err(format!("Unsupported Attribute: {n}")),
-        }
+        Self::iter()
+            .find(|a| *a as u32 == n)
+            .ok_or_else(|| format!("No Attribute '{n}'"))
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Use {
     PersonalName = 1,
     CorporateName = 2,
@@ -138,65 +133,113 @@ pub enum Use {
 */
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl TryFrom<u32> for Use {
+    type Error = String;
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        Self::iter()
+            .find(|a| *a as u32 == n)
+            .ok_or_else(|| format!("No bib1::Use '{n}'"))
+    }
+}
+
+impl Use {
+    pub fn as_z39_attribute_element(&self) -> AttributeElement {
+        AttributeElement {
+            attribute_set: None, // bib1 is implicit
+            attribute_type: Attribute::Use as u32, 
+            attribute_value: AttributeValue::Numeric(*self as u32), 
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Relation {
-/*
-    1 Less than
-    2 Less than or equal
-    3 Equal
-    4 Greater or equal
-    5 Greater than
-    6 Not equal
-    100 Phonetic
-    101 Stem
-    102 Relevance
-    103 AlwaysMatches
-*/
+    LessThan = 1,
+    LessThanOrEqual = 2,
+    Equal = 3,
+    GreaterOrEqual = 4,
+    GreaterThan = 5,
+    NotEqual = 6,
+    Phonetic = 100,
+    Stem = 101,
+    Relevance = 102,
+    AlwaysMatches = 103
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl TryFrom<u32> for Relation {
+    type Error = String;
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        Self::iter()
+            .find(|a| *a as u32 == n)
+            .ok_or_else(|| format!("No bib1::Relation '{n}'"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Position {
-/*
-    1 First in field
-    2 First in subfield
-    3 Any position in field
-*/
+    FirstInField = 1,
+    FirstInSsubfield = 2,
+    AnyPositionInFfield = 3,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl TryFrom<u32> for Position {
+    type Error = String;
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        Self::iter()
+            .find(|a| *a as u32 == n)
+            .ok_or_else(|| format!("No bib1::Position '{n}'"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Structure {
-/*
-    1 Phrase
-    2 Word
-    3 Key
-    4 Year
-    5 Date (normalized)
-    6 Word list
-    100 Date (un-normalized)
-    101 Name (normalized)
-    102 Name (un-normalized)
-    103 Structure
-    104 Urx
-    105 Free-form-text
-    106 Document-text
-    107 Local-number
-    108 String
-    109 Numeric-string
-*/
+    Phrase = 1,
+    Word = 2,
+    Key = 3,
+    Year = 4,
+    DateNormalized = 5,
+    WordList = 6,
+    DateUnNormalized = 100,
+    NameNormalized = 101,
+    NameUnNormalized = 102,
+    Structure = 103,
+    Urx = 104,
+    FreeFormText = 105,
+    DocumentText = 106,
+    LocalNumber = 107,
+    String = 108,
+    NumericString = 109,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl TryFrom<u32> for Structure {
+    type Error = String;
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        Self::iter()
+            .find(|a| *a as u32 == n)
+            .ok_or_else(|| format!("No bib1::Structure '{n}'"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Truncation {
-/*
-    1 Right truncation
-    2 Left truncation
-    3 Left and right truncation
-    100 Do not truncate
-    101 Process # in search term  . regular #=.*
-    102 RegExpr-1
-    103 RegExpr-2
-    104 Process # ?n . regular: #=., ?n=.{0,n} or ?=.* Z39.58
-*/
+    RightTruncation = 1,
+    LeftTruncation = 2,
+    LeftAndRightTruncation = 3,
+    DoNotTruncate = 100,
+    Process = 101,
+    RegExpr1 = 102,
+    RegExpr2 = 103,
+    ProcessAlt = 104, // ??
+}
+
+impl TryFrom<u32> for Truncation {
+    type Error = String;
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        Self::iter()
+            .find(|a| *a as u32 == n)
+            .ok_or_else(|| format!("No bib1::Truncation '{n}'"))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -211,5 +254,15 @@ pub enum Sorting {
     Ascending = 1,
     Descending = 2,
 }
-   
+
+impl TryFrom<u32> for Sorting {
+    type Error = String;
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        match n {
+            1 => Ok(Self::Ascending),
+            2 => Ok(Self::Descending),
+            _ => Err(format!("No bib1::Sorting '{n}'"))
+        }
+    }
+}  
 

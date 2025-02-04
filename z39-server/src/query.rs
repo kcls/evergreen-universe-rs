@@ -3,6 +3,7 @@ use evergreen as eg;
 use eg::EgResult;
 
 use z39::message::*;
+use z39::bib1;
 
 // TODO move most/all of this into the z39::bib1 mod and let it generate
 // generic query stuctures (json?) that we can turn into ILS queries.
@@ -38,8 +39,8 @@ impl Z39QueryCompiler {
     fn compile_rpn_operand(&self, op: &Operand) -> EgResult<String> {
         match op {
             Operand::AttrTerm(ref attr_term) => self.compile_attributes_plus_term(attr_term),
-            Operand::ResultSet(_) => todo!(),
-            Operand::ResultAttr(_) => todo!(),
+            Operand::ResultSet(_) => Err("Unsupported operation".into()),
+            Operand::ResultAttr(_) => Err("Unsupported operation".into()),
         }
     }
 
@@ -58,7 +59,7 @@ impl Z39QueryCompiler {
 
     fn compile_attributes_plus_term(&self, attr_term: &AttributesPlusTerm) -> EgResult<String> {
         if attr_term.attributes.is_empty() {
-            return Err(format!("AttributesPlusTerm.attribute required").into());
+            return Err("AttributesPlusTerm.attribute required".into());
         }
 
         // This needs more thought re: integrating attributes.
@@ -66,10 +67,10 @@ impl Z39QueryCompiler {
         let mut s = "".to_string();
 
         for attr in &attr_term.attributes {
-            let attr_type: z39::bib1::Attribute = attr.attribute_type.try_into()?;
+            let attr_type: bib1::Attribute = attr.attribute_type.try_into()?;
 
             match attr_type {
-                z39::bib1::Attribute::Use => s += &self.compile_use_attribute(&attr, &attr_term.term)?,
+                bib1::Attribute::Use => s += &self.compile_use_attribute(attr, &attr_term.term)?,
                 _ => todo!("compile_attributes_plus_term() attr_type"),
             }
         }
@@ -78,30 +79,24 @@ impl Z39QueryCompiler {
     }
 
     fn compile_use_attribute(&self, attr: &AttributeElement, term: &Term) -> EgResult<String> {
+
         let field = match attr.attribute_value {
             AttributeValue::Numeric(n) => {
-                if let Some((_code, field)) = BIB1_ATTR_QUERY_MAP.iter().filter(|(c, _)| c == &n).next() {
+                if let Some((_code, field)) = BIB1_ATTR_QUERY_MAP.iter().find(|(c, _)| c == &n) {
                     field
                 } else {
+                    // Default to keyword when no mapping is found.  todo.
                     "keyword"
                 }
             }
-            _ => todo!("attr.attribute_value"),
+            _ => return Err("Unsupported operation".into()),
         };
 
-        // TODO maybe a stringify for Term in the bib1 mod?
         let value = match term {
             Term::General(ref v) => std::str::from_utf8(v).map_err(|e| e.to_string())?.to_string(),
             Term::Numeric(n) => format!("{n}"),
             Term::CharacterString(ref v) => v.to_string(),
-            _ => todo!("compile_use_attribute() term"),
-            /*
-            Term::Oid(ObjectIdentifier),
-            Term::DateTime(GeneralizedTime),
-            Term::External(Any),
-            Term::IntegerAndUnit(IntUnit),
-            Term::Null,
-            */
+            _ => return Err("Unsupported operation".into()),
         };
 
         Ok(format!("{field}:{value}"))
@@ -116,13 +111,7 @@ fn test_compile_rpn_structure() {
             rpn1: RpnStructure::Op(
                 Operand::AttrTerm(
                     AttributesPlusTerm {
-                        attributes: vec![
-                            AttributeElement {
-                                attribute_set: None, 
-                                attribute_type: 1, 
-                                attribute_value: AttributeValue::Numeric(1003) 
-                            }
-                        ],
+                        attributes: vec![bib1::Use::Author.as_z39_attribute_element()],
                         term: Term::General("martin".as_bytes().into()) 
                     }
                 )
@@ -130,13 +119,7 @@ fn test_compile_rpn_structure() {
             rpn2: RpnStructure::Op(
                 Operand::AttrTerm(
                     AttributesPlusTerm {
-                        attributes: vec![
-                            AttributeElement {
-                                attribute_set: None, 
-                                attribute_type: 1, 
-                                attribute_value: AttributeValue::Numeric(4) 
-                            }
-                        ],
+                        attributes: vec![bib1::Use::Title.as_z39_attribute_element()],
                         term: Term::General("thrones".as_bytes().into()) 
                     }
                 )
@@ -148,7 +131,7 @@ fn test_compile_rpn_structure() {
     let compiler = Z39QueryCompiler::default();
     let s = compiler.compile_rpn_structure(&rpn_struct).unwrap();
 
-    println!("query: {s}");
+    assert_eq!(s, "(author:martin AND title:thrones)");
 }
 
 

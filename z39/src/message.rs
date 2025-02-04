@@ -676,8 +676,8 @@ impl Message {
         // Return None if more bytes are needed, Err(String) otherwise.
         let handle_error = |e: rasn::error::DecodeError| {
             match *e.kind {
-                DecodeErrorKind::Incomplete { needed: _ } => return Ok(None),
-                _ => return Err(e.to_string()),
+                DecodeErrorKind::Incomplete { needed: _ } => Ok(None),
+                _ => Err(e.to_string())
             }
         };
 
