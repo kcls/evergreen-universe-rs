@@ -13,6 +13,10 @@ pub const OID_MARC21: [u32; 6] = [1, 2, 840, 10003, 5, 10];
 // https://oid-base.com/get/1.2.840.10003.3.1
 pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
 
+pub fn octet_string(bytes: Vec<u8>) -> OctetString {
+    OctetString::from(bytes)
+}
+
 #[derive(Debug, PartialEq, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
 pub struct InitializeRequest {

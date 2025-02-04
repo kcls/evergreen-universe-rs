@@ -111,7 +111,7 @@ impl mptc::RequestStream for Z39Server {
     }
 
     fn shutdown(&mut self) {
-        // Tell our active workers to stop listening for requests.
+        // Tell our active workers to stop exit their listen loops.
         self.shutdown.store(true, Ordering::Relaxed);
     }
 }

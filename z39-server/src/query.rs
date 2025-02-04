@@ -5,6 +5,8 @@ use eg::EgResult;
 use z39::message::*;
 use z39::bib1;
 
+const OP_NOT_SUPPORTED: &str = "Operation not supported";
+
 // TODO move most/all of this into the z39::bib1 mod and let it generate
 // generic query stuctures (json?) that we can turn into ILS queries.
 
@@ -26,7 +28,10 @@ pub struct Z39QueryCompiler;
 impl Z39QueryCompiler {
     /// Translate a Z39 Query into a query string that can be sent to Evergreen
 	pub fn compile(&self, query: &z39::message::Query) -> EgResult<String> {
-        todo!()
+        match query {
+            Query::Type1(ref rpn_query) => self.compile_rpn_structure(&rpn_query.rpn),
+            _ => Err(OP_NOT_SUPPORTED.into()),
+        }
 	}
 
     fn compile_rpn_structure(&self, structure: &RpnStructure) -> EgResult<String> {
@@ -39,8 +44,8 @@ impl Z39QueryCompiler {
     fn compile_rpn_operand(&self, op: &Operand) -> EgResult<String> {
         match op {
             Operand::AttrTerm(ref attr_term) => self.compile_attributes_plus_term(attr_term),
-            Operand::ResultSet(_) => Err("Unsupported operation".into()),
-            Operand::ResultAttr(_) => Err("Unsupported operation".into()),
+            Operand::ResultSet(_) => Err(OP_NOT_SUPPORTED.into()),
+            Operand::ResultAttr(_) => Err(OP_NOT_SUPPORTED.into()),
         }
     }
 
@@ -71,7 +76,7 @@ impl Z39QueryCompiler {
 
             match attr_type {
                 bib1::Attribute::Use => s += &self.compile_use_attribute(attr, &attr_term.term)?,
-                _ => todo!("compile_attributes_plus_term() attr_type"),
+                _ => return Err(OP_NOT_SUPPORTED.into()),
             }
         }
 
@@ -89,14 +94,14 @@ impl Z39QueryCompiler {
                     "keyword"
                 }
             }
-            _ => return Err("Unsupported operation".into()),
+            _ => return Err(OP_NOT_SUPPORTED.into()),
         };
 
         let value = match term {
             Term::General(ref v) => std::str::from_utf8(v).map_err(|e| e.to_string())?.to_string(),
             Term::Numeric(n) => format!("{n}"),
             Term::CharacterString(ref v) => v.to_string(),
-            _ => return Err("Unsupported operation".into()),
+            _ => return Err(OP_NOT_SUPPORTED.into()),
         };
 
         Ok(format!("{field}:{value}"))
