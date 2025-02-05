@@ -13,11 +13,18 @@ pub const OID_MARC21: [u32; 6] = [1, 2, 840, 10003, 5, 10];
 // https://oid-base.com/get/1.2.840.10003.3.1
 pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
 
+
+// Some useful functions that mean the caller does not have to
+// explicitly import rasn::types.
 pub fn octet_string(bytes: Vec<u8>) -> OctetString {
     OctetString::from(bytes)
 }
 
-#[derive(Debug, PartialEq, Default, AsnType, Decode, Encode)]
+pub fn marc21_identifier() -> ObjectIdentifier {
+    ObjectIdentifier::new(&OID_MARC21).unwrap()
+}
+
+#[derive(Debug, Clone, PartialEq, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
 pub struct InitializeRequest {
     #[rasn(tag(2))]
@@ -38,7 +45,7 @@ pub struct InitializeRequest {
     pub implementation_version: Option<String>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 21))]
 pub struct InitializeResponse {
     #[rasn(tag(2))]
@@ -129,7 +136,7 @@ pub enum ResultSetStatus {
     None,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ProximityUnitCode {
     #[rasn(tag(0))]
@@ -138,7 +145,7 @@ pub enum ProximityUnitCode {
     Private(u32),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct ProximityOperator {
     #[rasn(tag(1))]
     pub exclusion: bool,
@@ -154,27 +161,27 @@ pub struct ProximityOperator {
 
 // NOTE a single-item enum Encodes/Decodes as expected, whereas a
 // 'struct DatabaseName(String)' does not.
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum DatabaseName {
     #[rasn(tag(105))]
     Name(String),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ElementSetName {
     #[rasn(tag(103))]
     Name(String),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct DatabaseSpecific {
     pub db_name: DatabaseName,
     pub esn: ElementSetName,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum ElementSetNames {
     #[rasn(tag(0))]
@@ -183,7 +190,7 @@ pub enum ElementSetNames {
     DatabaseSpecific(SequenceOf<DatabaseSpecific>),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum StringOrNumeric {
     #[rasn(tag(1))]
@@ -192,7 +199,7 @@ pub enum StringOrNumeric {
     Numeric(u32),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct ComplexAttributeValue {
     #[rasn(tag(1))]
     pub list: SequenceOf<StringOrNumeric>,
@@ -200,7 +207,7 @@ pub struct ComplexAttributeValue {
     pub semantic_action: Option<SequenceOf<u32>>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum AttributeValue {
     #[rasn(tag(121))]
@@ -209,7 +216,7 @@ pub enum AttributeValue {
     Complex(ComplexAttributeValue),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 // #[rasn(tag(46))]
 // Uses tag 46 but that's best encoded in the containing struct, instead
@@ -225,7 +232,7 @@ pub enum Operator {
     Prox(ProximityOperator),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct Unit {
     #[rasn(tag(1))]
     pub unit_system: Option<String>,
@@ -237,7 +244,7 @@ pub struct Unit {
     pub scale_factor: Option<u32>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct IntUnit {
     #[rasn(tag(1))]
     pub value: u32,
@@ -245,7 +252,7 @@ pub struct IntUnit {
     pub unit_used: Unit,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Term {
     #[rasn(tag(45))]
@@ -272,7 +279,7 @@ impl Term {
     }
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct AttributeElement {
     #[rasn(tag(1))]
     pub attribute_set: Option<ObjectIdentifier>,
@@ -281,21 +288,21 @@ pub struct AttributeElement {
     pub attribute_value: AttributeValue,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct ResultSetPlusAttributes {
     pub result_set: ObjectIdentifier,
     #[rasn(tag(44))]
     pub attributes: Vec<AttributeElement>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct AttributesPlusTerm {
     #[rasn(tag(44))]
     pub attributes: Vec<AttributeElement>,
     pub term: Term,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Operand {
     #[rasn(tag(102))]
@@ -306,7 +313,7 @@ pub enum Operand {
     ResultAttr(ResultSetPlusAttributes),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct RpnOp {
     pub rpn1: RpnStructure,
     pub rpn2: RpnStructure,
@@ -314,7 +321,7 @@ pub struct RpnOp {
     pub op: Operator,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum RpnStructure {
     #[rasn(tag(0))]
@@ -323,13 +330,13 @@ pub enum RpnStructure {
     RpnOp(Box<RpnOp>),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct RpnQuery {
     pub attribute_set: ObjectIdentifier,
     pub rpn: RpnStructure,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Query {
     #[rasn(tag(0))]
@@ -346,7 +353,7 @@ pub enum Query {
     Type102(OctetString),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Information {
     #[rasn(tag(2))]
@@ -359,7 +366,7 @@ pub enum Information {
     Oid(ObjectIdentifier),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct InfoCategory {
     #[rasn(tag(1))]
     pub category_type_id: Option<ObjectIdentifier>,
@@ -367,7 +374,7 @@ pub struct InfoCategory {
     pub category_value: Option<u32>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(201))]
 pub struct OtherInformation {
     #[rasn(tag(1))]
@@ -375,7 +382,7 @@ pub struct OtherInformation {
     pub information: Information,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 22))]
 pub struct SearchRequest {
     #[rasn(tag(2))]
@@ -404,35 +411,35 @@ pub struct SearchRequest {
     pub additional_search_info: Option<OtherInformation>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum AddInfo {
     V2AddInfo(VisibleString),
     V3AddInfo(GeneralString),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct DefaultDiagFormat {
     pub diagnostic_set_id: ObjectIdentifier,
     pub condition: u32,
     pub addinfo: AddInfo,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum DiagRec {
     DefaultFormat(DefaultDiagFormat),
     ExternallyDefined(Any),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum FragmentSyntax {
     ExternallyTagged(Any),
     NotExternallyTagged(OctetString),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Encoding {
     #[rasn(tag(0))]
@@ -443,7 +450,7 @@ pub enum Encoding {
     Arbitrary(BitString),
 }
 
-#[derive(Debug, PartialEq, AsnType, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Encode, Decode)]
 #[rasn(tag(universal, 8))]
 pub struct ExternalMessage {
     pub direct_reference: Option<ObjectIdentifier>,
@@ -469,10 +476,10 @@ impl ExternalMessage {
 // `explicit` is used, it adds the tag and an unwanted SEQUENCE tag.
 // This gives us the EXTERNAL tag without the SEQUENCE, without having
 // to maually implement Encode/Decode.
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct External(pub ExternalMessage);
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Record {
     #[rasn(tag(1))]
@@ -487,7 +494,7 @@ pub enum Record {
     FinalFragment(FragmentSyntax),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct NamePlusRecord {
     #[rasn(tag(0))]
     pub name: Option<DatabaseName>,
@@ -501,7 +508,7 @@ impl NamePlusRecord {
     }
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum Records {
     #[rasn(tag(28))]
@@ -512,7 +519,7 @@ pub enum Records {
     MultipleNonSurDiagnostics(Vec<DiagRec>),
 }
 
-#[derive(Debug, PartialEq, Default, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 23))]
 pub struct SearchResponse {
     #[rasn(tag(2))]
@@ -535,7 +542,7 @@ pub struct SearchResponse {
     pub other_info: Option<OtherInformation>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct Range {
     #[rasn(tag(1))]
     pub starting_position: u32,
@@ -543,7 +550,7 @@ pub struct Range {
     pub number_of_records: u32,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct ElementSpec {
     #[rasn(tag(1))]
     pub element_set_name: String,
@@ -551,7 +558,7 @@ pub struct ElementSpec {
     pub external_espec: Option<Any>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct Specification {
     #[rasn(tag(1))]
     pub schema: Option<ObjectIdentifier>,
@@ -559,7 +566,7 @@ pub struct Specification {
     pub element_spec: Option<ElementSpec>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct CompSpecDatabaseSpecific {
     #[rasn(tag(1))]
     pub db: DatabaseName,
@@ -567,7 +574,7 @@ pub struct CompSpecDatabaseSpecific {
     pub spec: Specification,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct CompSpec {
     #[rasn(tag(1))]
     pub select_alternative_syntax: bool,
@@ -579,7 +586,7 @@ pub struct CompSpec {
     pub record_syntax: Option<Vec<ObjectIdentifier>>,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(choice)]
 pub enum RecordComposition {
     #[rasn(tag(19))]
@@ -588,7 +595,7 @@ pub enum RecordComposition {
     Complex(CompSpec),
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 24))]
 pub struct PresentRequest {
     #[rasn(tag(2))]
@@ -624,7 +631,7 @@ pub enum PresentStatus {
     Failure,
 }
 
-#[derive(Debug, PartialEq, AsnType, Decode, Encode)]
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 25))]
 pub struct PresentResponse {
     #[rasn(tag(2))]
@@ -652,7 +659,7 @@ impl Default for PresentResponse {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MessagePayload {
     InitializeRequest(InitializeRequest),
     InitializeResponse(InitializeResponse),
@@ -662,7 +669,7 @@ pub enum MessagePayload {
     PresentResponse(PresentResponse),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Message {
     pub payload: MessagePayload,
 }

@@ -12,11 +12,21 @@ use std::sync::Arc;
 
 const NETWORK_BUFSIZE: usize = 1024;
 
+/// Retain info on the most recently executed search so we can
+/// reply with result across subsequent PresentRequest messages.
+pub struct BibSearch {
+    search_request: SearchRequest,
+    bib_record_ids: Vec<i64>,
+    limit: usize,
+    offset: usize,
+}
+
 pub struct Z39Session {
     pub tcp_stream: TcpStream,
     pub peer_addr: String,
     pub shutdown: Arc<AtomicBool>,
     pub client: eg::Client,
+    pub last_search: Option<BibSearch>,
 }
 
 impl fmt::Display for Z39Session {
@@ -26,17 +36,34 @@ impl fmt::Display for Z39Session {
 }
 
 impl Z39Session {
+    pub fn new(
+        tcp_stream: TcpStream,
+        peer_addr: String,
+        shutdown: Arc<AtomicBool>,
+        client: eg::Client
+    ) -> Self {
+        Self {
+            tcp_stream,
+            peer_addr,
+            shutdown,
+            client,
+            last_search: None,
+        }
+    }
+
     fn handle_message(&mut self, message: Message) -> Result<(), String> {
         log::debug!("{self} processing message {message:?}");
 
         match &message.payload {
             MessagePayload::InitializeRequest(r) => self.handle_init_request(r),
             MessagePayload::SearchRequest(r) => self.handle_search_request(r),
-            _ => todo!("handle_message() unsupported message type"),
+            MessagePayload::PresentRequest(r) => self.handle_present_request(r),
+            _ => Err(format!("handle_message() unsupported message type: {message:?}")),
         }
     }
 
     fn handle_init_request(&mut self, _req: &InitializeRequest) -> Result<(), String> {
+        // Canned "what we support" reply
         self.reply(MessagePayload::InitializeResponse(InitializeResponse::default()))
     }
 
@@ -71,18 +98,60 @@ impl Z39Session {
 
         log::info!("Search returned IDs {bib_ids:?}");
 
-        // TODO
         resp.result_count = bib_ids.len() as u32;
         resp.search_status = true;
 
-        // XXX this is blending search response with present response; fix.
-    
-        let records = self.collect_bib_records(&bib_ids)?;
+        self.last_search = Some(
+            BibSearch {
+                search_request: req.clone(),
+                bib_record_ids: bib_ids,
+                limit: 10, // TODO
+                offset: 0,
+            }
+        );
 
         self.reply(MessagePayload::SearchResponse(resp))
     }
 
+
+    fn handle_present_request(&mut self, req: &PresentRequest) -> Result<(), String> {
+        let mut resp = PresentResponse::default();
+        // TODO result offset
+
+        let Some(search) = self.last_search.as_ref() else {
+            log::warn!("{self} PresentRequest called with no search in progress");
+            return self.reply(MessagePayload::PresentResponse(resp));
+        };
+
+        let num_requested = req.number_of_records_requested as usize;
+        let mut start_point = req.reset_set_start_point as usize;
+
+        if start_point > 0 {
+            // Start point is 1-based.
+            start_point -= 1;
+        }
+
+        if num_requested == 0 || start_point >= search.bib_record_ids.len() {
+            log::warn!("{self} PresentRequest requested 0 records");
+            return self.reply(MessagePayload::PresentResponse(resp));
+        }
+
+        let max = if start_point + num_requested <= search.bib_record_ids.len() {
+            start_point + num_requested
+        } else {
+            search.bib_record_ids.len()
+        };
+            
+        let bib_ids = &search.bib_record_ids[start_point..max];
+
+        resp.records = Some(self.collect_bib_records(bib_ids)?);
+
+        self.reply(MessagePayload::PresentResponse(resp))
+    }
+
     fn collect_bib_records(&self, bib_ids: &[i64]) -> Result<Records, String> {
+        log::info!("{self} collecting bib records {bib_ids:?}");
+
         let mut records = Vec::new();
         let mut editor = eg::Editor::new(&self.client);
 
@@ -91,13 +160,12 @@ impl Z39Session {
             let rec = marctk::Record::from_xml(bre["marc"].str()?).next().unwrap().unwrap(); // TODO
             let bytes = rec.to_binary()?;
 
-            //let oc = rasn::types::OctetString::new(bytes.into());
             let oc = octet_string(bytes); // from z39; reconsider
 
-            let external = ExternalMessage::new(Encoding::OctetAligned(oc));
-            //external.direct_reference = Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap());
+            let mut external = ExternalMessage::new(Encoding::OctetAligned(oc));
+            external.direct_reference = Some(marc21_identifier());
 
-            let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
+            let npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
             records.push(npr);
         }
 
@@ -109,7 +177,7 @@ impl Z39Session {
     fn reply(&mut self, payload: MessagePayload) -> Result<(), String> {
         let bytes = Message::from_payload(payload).to_bytes()?;
 
-        log::debug!("{self} replying with {bytes:?}");
+        log::trace!("{self} replying with {bytes:?}");
 
         self.tcp_stream.write_all(bytes.as_slice()).map_err(|e| e.to_string())
     }

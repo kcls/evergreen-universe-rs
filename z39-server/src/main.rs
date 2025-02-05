@@ -53,12 +53,12 @@ impl mptc::RequestHandler for Z39SessionBroker {
 
         let peer_addr = tcp_stream.peer_addr().map_err(|e| e.to_string())?.to_string();
 
-        let mut session = Z39Session {
+        let mut session = Z39Session::new(
             tcp_stream,
             peer_addr,
-            client: eg::Client::from_bus(bus),
-            shutdown: self.shutdown.clone(),
-        };
+            self.shutdown.clone(),
+            eg::Client::from_bus(bus),
+        );
 
         let result = session.listen()
             .inspect_err(|e| log::error!("{session} exited unexpectedly: {e}"));
