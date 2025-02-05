@@ -13,7 +13,7 @@ use std::sync::Arc;
 const NETWORK_BUFSIZE: usize = 1024;
 
 /// Retain info on the most recently executed search so we can
-/// reply with result across subsequent PresentRequest messages.
+/// reply with result data across subsequent PresentRequest messages.
 pub struct BibSearch {
     search_request: SearchRequest,
     bib_record_ids: Vec<i64>,
@@ -144,12 +144,12 @@ impl Z39Session {
             
         let bib_ids = &search.bib_record_ids[start_point..max];
 
-        resp.records = Some(self.collect_bib_records(bib_ids)?);
+        resp.records = Some(self.collect_bib_records(req, bib_ids)?);
 
         self.reply(MessagePayload::PresentResponse(resp))
     }
 
-    fn collect_bib_records(&self, bib_ids: &[i64]) -> Result<Records, String> {
+    fn collect_bib_records(&self, req: &PresentRequest, bib_ids: &[i64]) -> Result<Records, String> {
         log::info!("{self} collecting bib records {bib_ids:?}");
 
         let mut records = Vec::new();
@@ -158,12 +158,27 @@ impl Z39Session {
         for bib_id in bib_ids {
             let bre = editor.retrieve("bre", *bib_id)?.unwrap(); // todo
             let rec = marctk::Record::from_xml(bre["marc"].str()?).next().unwrap().unwrap(); // TODO
-            let bytes = rec.to_binary()?;
+
+            let mut wants_xml = false;
+
+            if let Some(syntax) = req.preferred_record_syntax.as_ref() {
+                wants_xml = **syntax == OID_MARCXML; // TODO make this easier
+            }
+
+            let bytes = if wants_xml {
+                rec.to_xml().into_bytes()
+            } else {
+                rec.to_binary()?
+            };
 
             let oc = octet_string(bytes); // from z39; reconsider
 
             let mut external = ExternalMessage::new(Encoding::OctetAligned(oc));
-            external.direct_reference = Some(marc21_identifier());
+            external.direct_reference = if wants_xml {
+                Some(marcxml_identifier())
+            } else {
+                Some(marc21_identifier())
+            };
 
             let npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
             records.push(npr);
@@ -193,7 +208,7 @@ impl Z39Session {
         // message, rinse and repeat.
         loop {
 
-            let _count = match self.tcp_stream.read(&mut buffer) {
+            let count = match self.tcp_stream.read(&mut buffer) {
                 Ok(c) => c,
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
@@ -201,7 +216,7 @@ impl Z39Session {
                             log::debug!("Shutdown signal received, exiting listen loop");
                             break;
                         }
-                        // Go back and wait for reqeusts to arrive.
+                        // Go back and wait for requests to arrive.
                         continue;
                     }
                     _ => {
@@ -212,7 +227,7 @@ impl Z39Session {
                 }
             };
 
-            bytes.extend_from_slice(&buffer);
+            bytes.extend_from_slice(&buffer[0..count]);
 
             let msg = match Message::from_bytes(&bytes) {
                 Ok(maybe) => match maybe {

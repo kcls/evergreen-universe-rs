@@ -457,4 +457,6 @@ fn test_present_response() {
 
     // We can compare bytes from 
     assert_eq!(bytes2, m3.to_bytes().unwrap());
+
+    println!("{}", marcxml_identifier().to_string());
 }

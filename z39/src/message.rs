@@ -10,8 +10,12 @@ use rasn::AsnType;
 // https://oid-base.com/get/1.2.840.10003.5.10
 pub const OID_MARC21: [u32; 6] = [1, 2, 840, 10003, 5, 10];
 
+// https://software.indexdata.com/yaz/doc/list-oids.html
+pub const OID_MARCXML: [u32; 7] = [1, 2, 840, 10003, 5, 109, 10];
+
 // https://oid-base.com/get/1.2.840.10003.3.1
 pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
+
 
 
 // Some useful functions that mean the caller does not have to
@@ -22,6 +26,10 @@ pub fn octet_string(bytes: Vec<u8>) -> OctetString {
 
 pub fn marc21_identifier() -> ObjectIdentifier {
     ObjectIdentifier::new(&OID_MARC21).unwrap()
+}
+
+pub fn marcxml_identifier() -> ObjectIdentifier {
+    ObjectIdentifier::new(&OID_MARCXML).unwrap()
 }
 
 #[derive(Debug, Clone, PartialEq, Default, AsnType, Decode, Encode)]
