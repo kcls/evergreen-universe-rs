@@ -763,7 +763,7 @@ impl Message {
             }
             _ => {
                 return Err(format!(
-                    "Cannot handle message with first byte: {}",
+                    "Cannot process message with first byte: {}",
                     bytes[0]
                 ))
             }

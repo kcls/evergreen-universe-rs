@@ -166,7 +166,7 @@ impl Z39Session {
             }
 
             let bytes = if wants_xml {
-                rec.to_xml().into_bytes()
+                rec.to_xml_string().into_bytes()
             } else {
                 rec.to_binary()?
             };
@@ -213,7 +213,7 @@ impl Z39Session {
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
                         if self.shutdown.load(Ordering::Relaxed) {
-                            log::debug!("Shutdown signal received, exiting listen loop");
+                            log::debug!("{self} Shutdown signal received, exiting listen loop");
                             break;
                         }
                         // Go back and wait for requests to arrive.
@@ -221,11 +221,18 @@ impl Z39Session {
                     }
                     _ => {
                         // Connection severed.  Likely the caller disconnected.
-                        log::info!("Socket closed: {e}");
+                        log::info!("{self} Socket closed: {e}");
                         break;
                     }
                 }
             };
+
+            if count == 0 {
+                // Returning Ok(0) from read for a TcpStream indicates the
+                // remote end was shut down correctly.
+                log::debug!("{self} socket shut down by remote endpoint");
+                break;
+            }
 
             bytes.extend_from_slice(&buffer[0..count]);
 
@@ -235,21 +242,24 @@ impl Z39Session {
                         bytes.clear();
                         m
                     }
-                    None => continue, // more bytes needed
+                    None => {
+                        log::debug!("{self} partial message read; more bytes needed");
+                        continue
+                    }
                 },
                 Err(e) => {
-                    log::error!("cannot parse message: {e} {bytes:?}");
-                    break;
+                    log::error!("{self} cannot parse message: {e} {bytes:?}");
+                    break
                 }
             };
 
             if let Err(e) = self.handle_message(msg) {
-                log::error!("cannot handle message: {e} {bytes:?}");
-                break;
+                log::error!("{self} cannot handle message: {e} {bytes:?}");
+                break
             }
         }
 
-        log::info!("session exiting");
+        log::info!("{self} session exiting");
 
         self.tcp_stream.shutdown(std::net::Shutdown::Both).ok();
 
