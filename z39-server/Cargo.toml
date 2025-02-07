@@ -1,9 +1,0 @@
-[package]
-name = "z39-server"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-mptc = { path = "../mptc" }
-z39 = { path = "../z39" }
-log = "0.4.25"

@@ -3,8 +3,8 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::Z39WorkerGenerator;
-use crate::session::Z39Session;
+use crate::server::Z39WorkerGenerator;
+use crate::server::session::Z39Session;
 
 struct Z39ConnectRequest {
     tcp_stream: Option<TcpStream>,

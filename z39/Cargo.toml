@@ -2,9 +2,20 @@
 name = "z39"
 version = "0.1.0"
 edition = "2021"
+authors = ["Bill Erickson <berickxx@gmail.com>"]
+license-file = "../LICENSE"
+description = "Z39.50 Library and Server"
+readme = "README.md"
+keywords = ["z39", "z39.50", "library"]
+categories = ["development-tools", "network-programming", "parser-implementations"]
+repository = "https://github.com/kcls/evergreen-universe-rs"
 
 [dependencies]
 rasn = "0.22.2"
 log = "0.4.25"
 strum = "0.26.3"
 strum_macros = "0.26.3"
+mptc = { path = "../mptc", optional = true }
+
+[features]
+server = ["dep:mptc"]

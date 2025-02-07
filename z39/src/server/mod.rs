@@ -2,8 +2,7 @@ mod server;
 mod session;
 
 pub use server::Z39Server;
-
-use z39::message::Message;
+use crate::message::Message;
 
 /// That which handles [`Message`] requests.
 pub trait Z39Worker {

@@ -8,8 +8,7 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 mptc = { path = "../mptc" }
 marctk = { path = "../marctk" }
 sip2 = { path = "../sip2", features = ["json"] }
-z39 = { path = "../z39" }
-z39-server = { path = "../z39-server" }
+z39 = { path = "../z39", features = ["server"] }
 rand = "0.8.5"
 log = "0.4.22"
 syslog = "7.0.0"

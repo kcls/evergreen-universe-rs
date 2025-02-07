@@ -3,9 +3,10 @@ use eg::EgResult;
 
 use z39::message::*;
 use z39::bib1;
-use z39_server::Z39Server;
-use z39_server::Z39Worker;
-use z39_server::Z39WorkerGenerator;
+use z39::server::Z39Server;
+use z39::server::Z39Worker;
+
+use std::fmt;
 
 const OP_NOT_SUPPORTED: &str = "Operation not supported";
 
@@ -148,9 +149,167 @@ fn test_compile_rpn_structure() {
 
 struct EgZ39Worker;
 
+impl fmt::Display for EgZ39Worker {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO we want to log the IP addresses as well.
+        write!(f, "Z39")
+    }
+}
+
 impl Z39Worker for EgZ39Worker {
+
     fn handle_message(&mut self, msg: Message) -> Result<Message, String> {
-        todo!()
+        log::debug!("{self} processing message {msg:?}");
+
+        let payload = match &msg.payload {
+            MessagePayload::InitializeRequest(r) => self.handle_init_request(r)?,
+            MessagePayload::SearchRequest(r) => self.handle_search_request(r)?,
+            MessagePayload::PresentRequest(r) => self.handle_present_request(r)?,
+            _ => return Err(format!("handle_message() unsupported message type: {msg:?}")),
+        };
+
+        Ok(Message::from_payload(payload))
+    }
+}
+
+impl EgZ39Worker {
+
+    fn handle_init_request(&mut self, _req: &InitializeRequest) -> Result<MessagePayload, String> {
+        Ok(MessagePayload::InitializeResponse(InitializeResponse::default()))
+    }
+
+    fn handle_search_request(&mut self, req: &SearchRequest) -> Result<MessagePayload, String> {
+        todo!();
+
+        /*
+        let mut resp = SearchResponse::default();
+
+        log::info!("{self} search query: {:?}", req.query);
+
+        let compiler = Z39QueryCompiler::default();
+
+        // TODO put all the data collection in separate function so we can
+        // simply respond with search success yes/no on Err's instead of
+        // exiting this function ungracefully.
+        let query = compiler.compile(&req.query)?;
+
+        // Quick and dirty!
+        let mut options = eg::EgValue::new_object();
+        options["limit"] = 10.into();
+
+        let Ok(Some(search_result)) = self.client.send_recv_one(
+            "open-ils.search",
+            "open-ils.search.biblio.multiclass.query.staff",
+            vec![options, eg::EgValue::from(query)]
+        ) else {
+            return self.reply(MessagePayload::SearchResponse(resp));
+        };
+
+        let bib_ids: Vec<i64> = search_result["ids"]
+            .members()
+            .map(|arr| arr[0].int_required())
+            .collect();
+
+        log::info!("Search returned IDs {bib_ids:?}");
+
+        resp.result_count = bib_ids.len() as u32;
+        resp.search_status = true;
+
+        self.last_search = Some(
+            BibSearch {
+                search_request: req.clone(),
+                bib_record_ids: bib_ids,
+                limit: 10, // TODO
+                offset: 0,
+            }
+        );
+
+        self.reply(MessagePayload::SearchResponse(resp))
+        */
+    }
+
+
+    fn handle_present_request(&mut self, req: &PresentRequest) -> Result<MessagePayload, String> {
+        todo!();
+
+        /*
+        let mut resp = PresentResponse::default();
+        // TODO result offset
+
+        let Some(search) = self.last_search.as_ref() else {
+            log::warn!("{self} PresentRequest called with no search in progress");
+            return self.reply(MessagePayload::PresentResponse(resp));
+        };
+
+        let num_requested = req.number_of_records_requested as usize;
+        let mut start_point = req.reset_set_start_point as usize;
+
+        if start_point > 0 {
+            // Start point is 1-based.
+            start_point -= 1;
+        }
+
+        if num_requested == 0 || start_point >= search.bib_record_ids.len() {
+            log::warn!("{self} PresentRequest requested 0 records");
+            return self.reply(MessagePayload::PresentResponse(resp));
+        }
+
+        let max = if start_point + num_requested <= search.bib_record_ids.len() {
+            start_point + num_requested
+        } else {
+            search.bib_record_ids.len()
+        };
+            
+        let bib_ids = &search.bib_record_ids[start_point..max];
+
+        resp.records = Some(self.collect_bib_records(req, bib_ids)?);
+
+        self.reply(MessagePayload::PresentResponse(resp))
+        */
+    }
+
+    fn collect_bib_records(&self, req: &PresentRequest, bib_ids: &[i64]) -> Result<Records, String> {
+
+        todo!();
+    
+
+    /*
+        log::info!("{self} collecting bib records {bib_ids:?}");
+
+        let mut records = Vec::new();
+        let mut editor = eg::Editor::new(&self.client);
+
+        for bib_id in bib_ids {
+            let bre = editor.retrieve("bre", *bib_id)?.unwrap(); // todo
+            let rec = marctk::Record::from_xml(bre["marc"].str()?).next().unwrap().unwrap(); // TODO
+
+            let mut wants_xml = false;
+
+            if let Some(syntax) = req.preferred_record_syntax.as_ref() {
+                wants_xml = **syntax == OID_MARCXML; // TODO make this easier
+            }
+
+            let bytes = if wants_xml {
+                rec.to_xml_string().into_bytes()
+            } else {
+                rec.to_binary()?
+            };
+
+            let oc = octet_string(bytes); // from z39; reconsider
+
+            let mut external = ExternalMessage::new(Encoding::OctetAligned(oc));
+            external.direct_reference = if wants_xml {
+                Some(marcxml_identifier())
+            } else {
+                Some(marc21_identifier())
+            };
+
+            let npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
+            records.push(npr);
+        }
+
+        Ok(Records::ResponseRecords(records))
+        */
     }
 }
 
@@ -164,8 +323,6 @@ fn main() {
     };
 
     settings.apply();
-
-    let worker = EgZ39Worker {};
 
     // TODO command line, etc.
     let tcp_listener = eg::util::tcp_listener(

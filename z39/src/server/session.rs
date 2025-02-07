@@ -1,5 +1,5 @@
-use z39::message::Message;
-use crate::Z39Worker;
+use crate::message::Message;
+use crate::server::Z39Worker;
 
 use std::fmt;
 use std::io::Read;
