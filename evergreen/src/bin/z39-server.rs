@@ -1,14 +1,13 @@
-//! Translate Z39 RPN queries into Evergreen search API queries.
 use evergreen as eg;
 use eg::EgResult;
 
 use z39::message::*;
 use z39::bib1;
+use z39_server::Z39Server;
+use z39_server::Z39Worker;
+use z39_server::Z39WorkerGenerator;
 
 const OP_NOT_SUPPORTED: &str = "Operation not supported";
-
-// TODO move most/all of this into the z39::bib1 mod and let it generate
-// generic query stuctures (json?) that we can turn into ILS queries.
 
 // TODO move this into a config file.
 // See /openils/conf/dgo.conf for example
@@ -22,6 +21,12 @@ const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
 	(1018, "keyword|publisher"),
 ];
 
+/// Compiler for Z39 queries.
+///
+/// The z39-server module creates z39::message's which we then have to handle,
+/// the most complicated of whic is the SearchRequest message, which contains
+/// the actual search queries.  This mod translates those into queries
+/// that can be used by Evergreen.
 #[derive(Debug, Default)]
 pub struct Z39QueryCompiler;
 
@@ -137,6 +142,40 @@ fn test_compile_rpn_structure() {
     let s = compiler.compile_rpn_structure(&rpn_struct).unwrap();
 
     assert_eq!(s, "(author:martin AND title:thrones)");
+}
+
+/// Z39 Message handler
+
+struct EgZ39Worker;
+
+impl Z39Worker for EgZ39Worker {
+    fn handle_message(&mut self, msg: Message) -> Result<Message, String> {
+        todo!()
+    }
+}
+
+fn main() {
+
+    let settings = z39::Settings {
+        implementation_id: Some("EG".to_string()),
+        implementation_name: Some("Evergreen".to_string()),
+        implementation_version: Some("0.1.0".to_string()),
+        ..Default::default()
+    };
+
+    settings.apply();
+
+    let worker = EgZ39Worker {};
+
+    // TODO command line, etc.
+    let tcp_listener = eg::util::tcp_listener(
+        "127.0.0.1",
+        2210,
+        3,
+    )
+    .unwrap(); // todo error reporting
+
+    Z39Server::start(tcp_listener, || Box::new(EgZ39Worker {}));
 }
 
 
