@@ -41,24 +41,30 @@ impl mptc::RequestHandler for Z39SessionBroker {
     /// Create a Z session to handle the connection and let it run.
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let request = Z39ConnectRequest::downcast(&mut request);
-        
+
         // Give the stream to the zsession
         let tcp_stream = request.tcp_stream.take().unwrap();
 
-        let peer_addr = tcp_stream.peer_addr().map_err(|e| e.to_string())?.to_string();
+        let peer_addr = tcp_stream
+            .peer_addr()
+            .map_err(|e| e.to_string())?
+            .to_string();
 
-        // Give the bus to the session while it needs it.
+        // Give the bus to the session while it's active
         let bus = self.bus.take().unwrap();
 
-        // TODO avoid raising Err here so we can be sure our
-        // 'bus' is recovered!
-        let mut session = Z39Session::new(tcp_stream, bus, self.shutdown.clone())?;
+        let mut session = Z39Session::new(tcp_stream, peer_addr, bus, self.shutdown.clone());
 
-        let result = session.listen()
+        let result = session
+            .listen()
             .inspect_err(|e| log::error!("{session} exited unexpectedly: {e}"));
 
+        // Attempt to shut down the TCP stream regardless of how
+        // the conversation ended.
+        session.shutdown();
+
         // Take our bus back so we don't have to reconnect in between
-        // SIP clients.  This SIP Session is done with it.
+        // z39 clients.  This z39 Session is done with it.
         let mut bus = session.take_bus();
 
         // Remove any trailing data on the Bus.
@@ -68,11 +74,6 @@ impl mptc::RequestHandler for Z39SessionBroker {
         // trailing message cross-talk.  (Note, it wouldn't do anything,
         // since messages would refer to unknown sessions, but still).
         bus.generate_address();
-
-
-        // Attempt to shut down the TCP stream regardless of how
-        // the conversation ended.
-        session.shutdown();
 
         result.map_err(|e| e.to_string())
     }
@@ -85,7 +86,7 @@ pub struct Z39Server {
 
 impl Z39Server {
     pub fn start(tcp_listener: TcpListener) {
-        let mut server = Z39Server {
+        let server = Z39Server {
             tcp_listener,
             shutdown: Arc::new(AtomicBool::new(false)),
         };
@@ -135,4 +136,3 @@ impl mptc::RequestStream for Z39Server {
         self.shutdown.store(true, Ordering::Relaxed);
     }
 }
-

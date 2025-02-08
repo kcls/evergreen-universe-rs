@@ -16,8 +16,6 @@ pub const OID_MARCXML: [u32; 7] = [1, 2, 840, 10003, 5, 109, 10];
 // https://oid-base.com/get/1.2.840.10003.3.1
 pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
 
-
-
 // Some useful functions that mean the caller does not have to
 // explicitly import rasn::types.
 pub fn octet_string(bytes: Vec<u8>) -> OctetString {
@@ -693,11 +691,9 @@ impl Message {
 
         // Parse error handler.
         // Return None if more bytes are needed, Err(String) otherwise.
-        let handle_error = |e: rasn::error::DecodeError| {
-            match *e.kind {
-                DecodeErrorKind::Incomplete { needed: _ } => Ok(None),
-                _ => Err(e.to_string())
-            }
+        let handle_error = |e: rasn::error::DecodeError| match *e.kind {
+            DecodeErrorKind::Incomplete { needed: _ } => Ok(None),
+            _ => Err(e.to_string()),
         };
 
         // The first byte of a Z39 ASN1 BER message is structed like so:

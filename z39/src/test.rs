@@ -174,7 +174,6 @@ fn test_present_request() {
 
 #[test]
 fn test_present_response() {
-
     /*
     *  Breakdown of the bytes up to the MARC record.  From debugging why
     *  messages::External failed to parse.
@@ -455,7 +454,7 @@ fn test_present_response() {
 
     assert_eq!(m2, m3);
 
-    // We can compare bytes from 
+    // We can compare bytes from
     assert_eq!(bytes2, m3.to_bytes().unwrap());
 
     println!("{}", marcxml_identifier().to_string());

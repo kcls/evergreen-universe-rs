@@ -142,12 +142,11 @@ impl Use {
     pub fn as_z39_attribute_element(&self) -> AttributeElement {
         AttributeElement {
             attribute_set: None, // bib1 is implicit
-            attribute_type: Attribute::Use as u32, 
-            attribute_value: AttributeValue::Numeric(*self as u32), 
+            attribute_type: Attribute::Use as u32,
+            attribute_value: AttributeValue::Numeric(*self as u32),
         }
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Relation {
@@ -268,5 +267,3 @@ impl TryFrom<u32> for Sorting {
             .ok_or_else(|| format!("No bib1::Sorting '{n}'"))
     }
 }
-  
-

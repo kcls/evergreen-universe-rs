@@ -1,7 +1,7 @@
 use crate::query::Z39QueryCompiler;
-use evergreen as eg;
 use eg::EgResult;
 use eg::EgValue;
+use evergreen as eg;
 
 use z39::message::*;
 
@@ -11,12 +11,10 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 const NETWORK_BUFSIZE: usize = 1024;
 
 struct BibSearch {
-    search_request: SearchRequest,
     bib_record_ids: Vec<i64>,
 }
 
@@ -37,24 +35,19 @@ impl fmt::Display for Z39Session {
 impl Z39Session {
     pub fn new(
         tcp_stream: TcpStream,
+        peer_addr: String,
         bus: eg::osrf::bus::Bus,
         shutdown: Arc<AtomicBool>,
-    ) -> Result<Self, String> {
-
-        let peer_addr = tcp_stream
-            .peer_addr()
-            .map_err(|e| e.to_string())?
-            .to_string();
-
+    ) -> Self {
         let client = eg::Client::from_bus(bus);
 
-        Ok(Self {
+        Self {
             tcp_stream,
             peer_addr,
             shutdown,
-            client, 
+            client,
             last_search: None,
-        })
+        }
     }
 
     /// Main listen loop
@@ -85,7 +78,7 @@ impl Z39Session {
                         log::info!("{self} Socket closed: {e}");
                         break;
                     }
-                }
+                },
             };
 
             if count == 0 {
@@ -114,7 +107,9 @@ impl Z39Session {
 
             log::trace!("{self} replying with {bytes:?}");
 
-            self.tcp_stream.write_all(bytes.as_slice()).map_err(|e| e.to_string())?;
+            self.tcp_stream
+                .write_all(bytes.as_slice())
+                .map_err(|e| e.to_string())?;
         }
 
         log::info!("{self} session exiting");
@@ -146,7 +141,9 @@ impl Z39Session {
     }
 
     fn handle_init_request(&mut self, _req: &InitializeRequest) -> EgResult<MessagePayload> {
-        Ok(MessagePayload::InitializeResponse(InitializeResponse::default()))
+        Ok(MessagePayload::InitializeResponse(
+            InitializeResponse::default(),
+        ))
     }
 
     fn handle_search_request(&mut self, req: &SearchRequest) -> EgResult<MessagePayload> {
@@ -154,18 +151,18 @@ impl Z39Session {
 
         log::info!("{self} search query: {:?}", req.query);
 
-        let compiler = Z39QueryCompiler::default();
+        let compiler = Z39QueryCompiler;
 
         let query = compiler.compile(&req.query)?;
 
         // Quick and dirty!
-        let mut options = eg::EgValue::new_object();
+        let mut options = EgValue::new_object();
         options["limit"] = 10.into();
 
         let Ok(Some(search_result)) = self.client.send_recv_one(
             "open-ils.search",
             "open-ils.search.biblio.multiclass.query.staff",
-            vec![options, eg::EgValue::from(query)]
+            vec![options, EgValue::from(query)],
         ) else {
             return Ok(MessagePayload::SearchResponse(resp));
         };
@@ -180,16 +177,12 @@ impl Z39Session {
         resp.result_count = bib_ids.len() as u32;
         resp.search_status = true;
 
-        self.last_search = Some(
-            BibSearch {
-                search_request: req.clone(),
-                bib_record_ids: bib_ids,
-            }
-        );
+        self.last_search = Some(BibSearch {
+            bib_record_ids: bib_ids,
+        });
 
         Ok(MessagePayload::SearchResponse(resp))
     }
-
 
     fn handle_present_request(&mut self, req: &PresentRequest) -> EgResult<MessagePayload> {
         let mut resp = PresentResponse::default();
@@ -203,10 +196,8 @@ impl Z39Session {
         let num_requested = req.number_of_records_requested as usize;
         let mut start_point = req.reset_set_start_point as usize;
 
-        if start_point > 0 {
-            // Start point is 1-based.
-            start_point -= 1;
-        }
+        // subtract 1 without overflowing
+        start_point = start_point.saturating_sub(1);
 
         if num_requested == 0 || start_point >= search.bib_record_ids.len() {
             log::warn!("{self} PresentRequest requested 0 records");
@@ -218,7 +209,7 @@ impl Z39Session {
         } else {
             search.bib_record_ids.len()
         };
-            
+
         let bib_ids = &search.bib_record_ids[start_point..max];
 
         resp.records = Some(self.collect_bib_records(req, bib_ids)?);
@@ -234,7 +225,10 @@ impl Z39Session {
 
         for bib_id in bib_ids {
             let bre = editor.retrieve("bre", *bib_id)?.unwrap(); // todo
-            let rec = marctk::Record::from_xml(bre["marc"].str()?).next().unwrap().unwrap(); // TODO
+            let rec = marctk::Record::from_xml(bre["marc"].str()?)
+                .next()
+                .unwrap()
+                .unwrap(); // TODO
 
             let mut wants_xml = false;
 
@@ -264,4 +258,3 @@ impl Z39Session {
         Ok(Records::ResponseRecords(records))
     }
 }
-
