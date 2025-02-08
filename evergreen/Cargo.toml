@@ -8,7 +8,6 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 mptc = { path = "../mptc" }
 marctk = { path = "../marctk" }
 sip2 = { path = "../sip2", features = ["json"] }
-z39 = { path = "../z39", features = ["server"] }
 rand = "0.8.5"
 log = "0.4.22"
 syslog = "7.0.0"
@@ -16,10 +15,8 @@ json = "0.12.4"
 roxmltree = "0.20.0"
 redis = "0.28.0"
 gethostname = "0.5.0"
-signal-hook = "0.3.17"
 chrono = "0.4.39"
 chrono-tz = "0.10.0"
-yaml-rust = "0.4.5"
 postgres = { version = "0.19.9", features = ["with-chrono-0_4"] }
 rust_decimal = { version = "1.36.0", features = ["db-postgres"] }
 pg_interval = "0.4.2"

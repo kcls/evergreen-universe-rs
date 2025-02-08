@@ -1,10 +1,11 @@
+use evergreen as eg;
+
 use std::any::Any;
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::server::Z39WorkerGenerator;
-use crate::server::session::Z39Session;
+use crate::session::Z39Session;
 
 struct Z39ConnectRequest {
     tcp_stream: Option<TcpStream>,
@@ -26,11 +27,17 @@ impl mptc::Request for Z39ConnectRequest {
 
 /// Intermediary for relaying Send'able pieces to the Z39Session.
 struct Z39SessionBroker {
+    bus: Option<eg::osrf::bus::Bus>,
     shutdown: Arc<AtomicBool>,
-    worker_generator: Z39WorkerGenerator,
 }
 
 impl mptc::RequestHandler for Z39SessionBroker {
+    fn worker_start(&mut self) -> Result<(), String> {
+        let conf = eg::osrf::conf::config().client();
+        self.bus = Some(eg::osrf::bus::Bus::new(conf)?);
+        Ok(())
+    }
+
     /// Create a Z session to handle the connection and let it run.
     fn process(&mut self, mut request: Box<dyn mptc::Request>) -> Result<(), String> {
         let request = Z39ConnectRequest::downcast(&mut request);
@@ -40,35 +47,46 @@ impl mptc::RequestHandler for Z39SessionBroker {
 
         let peer_addr = tcp_stream.peer_addr().map_err(|e| e.to_string())?.to_string();
 
-        let mut session = Z39Session::new(
-            tcp_stream,
-            peer_addr,
-            self.shutdown.clone(),
-            (self.worker_generator)(),
-        );
+        // Give the bus to the session while it needs it.
+        let bus = self.bus.take().unwrap();
+
+        // TODO avoid raising Err here so we can be sure our
+        // 'bus' is recovered!
+        let mut session = Z39Session::new(tcp_stream, bus, self.shutdown.clone())?;
 
         let result = session.listen()
             .inspect_err(|e| log::error!("{session} exited unexpectedly: {e}"));
+
+        // Take our bus back so we don't have to reconnect in between
+        // SIP clients.  This SIP Session is done with it.
+        let mut bus = session.take_bus();
+
+        // Remove any trailing data on the Bus.
+        bus.clear_bus()?;
+
+        // Apply a new Bus address to prevent any possibility of
+        // trailing message cross-talk.  (Note, it wouldn't do anything,
+        // since messages would refer to unknown sessions, but still).
+        bus.generate_address();
+
 
         // Attempt to shut down the TCP stream regardless of how
         // the conversation ended.
         session.shutdown();
 
-        result
+        result.map_err(|e| e.to_string())
     }
 }
 
 pub struct Z39Server {
     tcp_listener: TcpListener,
     shutdown: Arc<AtomicBool>,
-    worker_generator: Z39WorkerGenerator,
 }
 
 impl Z39Server {
-    pub fn start(tcp_listener: TcpListener, worker_generator:Z39WorkerGenerator) {
+    pub fn start(tcp_listener: TcpListener) {
         let mut server = Z39Server {
             tcp_listener,
-            worker_generator,
             shutdown: Arc::new(AtomicBool::new(false)),
         };
 
@@ -107,8 +125,8 @@ impl mptc::RequestStream for Z39Server {
 
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         Box::new(Z39SessionBroker {
+            bus: None,
             shutdown: self.shutdown.clone(),
-            worker_generator: self.worker_generator.clone(),
         })
     }
 

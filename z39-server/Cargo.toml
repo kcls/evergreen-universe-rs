@@ -1,0 +1,18 @@
+[package]
+name = "z39-server"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bill Erickson <berickxx@gmail.com>"]
+
+[dependencies]
+z39 = { path = "../z39" }
+mptc = { path = "../mptc" }
+marctk = { path = "../marctk" }
+log = "0.4.22"
+reqwest = { version = "0.12.12", features = ["blocking"] }                        
+evergreen = { path = "../evergreen" }
+
+[[bin]]
+name = "eg-z39-server"
+path = "src/main.rs"
+
