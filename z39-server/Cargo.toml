@@ -8,8 +8,9 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 z39 = { path = "../z39" }
 mptc = { path = "../mptc" }
 marctk = { path = "../marctk" }
-log = "0.4.22"
 evergreen = { path = "../evergreen" }
+log = "0.4.22"
+getopts = "0.2.21"
 
 [[bin]]
 name = "eg-z39-server"

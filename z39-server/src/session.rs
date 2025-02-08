@@ -224,27 +224,31 @@ impl Z39Session {
         let mut editor = eg::Editor::new(&self.client);
 
         for bib_id in bib_ids {
-            let bre = editor.retrieve("bre", *bib_id)?.unwrap(); // todo
-            let rec = marctk::Record::from_xml(bre["marc"].str()?)
-                .next()
-                .unwrap()
-                .unwrap(); // TODO
-
             let mut wants_xml = false;
 
             if let Some(syntax) = req.preferred_record_syntax.as_ref() {
                 wants_xml = **syntax == OID_MARCXML; // TODO make this easier
             }
 
+            let mut bre = editor.retrieve("bre", *bib_id)?.ok_or_else(|| editor.die_event())?;
+            let marc_xml = bre["marc"].take_string().ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
+
             let bytes = if wants_xml {
-                rec.to_xml_string().into_bytes()
+                marc_xml.into_bytes()
             } else {
+                // Translate the native MARC XML into MARC binary.
+
+                let rec = marctk::Record::from_xml(&marc_xml)
+                    .next() // Option
+                    .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
+
                 rec.to_binary()?
             };
 
             let oc = octet_string(bytes); // from z39; reconsider
 
             let mut external = ExternalMessage::new(Encoding::OctetAligned(oc));
+
             external.direct_reference = if wants_xml {
                 Some(marcxml_identifier())
             } else {
