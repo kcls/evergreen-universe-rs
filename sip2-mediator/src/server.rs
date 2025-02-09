@@ -216,8 +216,7 @@ impl Server {
     /// Setup our TCP server socket and create our Server instance.
     pub fn setup(config: Config) -> Result<Server, String> {
         let tcp_listener = eg::util::tcp_listener(
-            &config.sip_address,
-            config.sip_port,
+            &format!("{}:{}", config.sip_address, config.sip_port),
             SIP_SHUTDOWN_POLL_INTERVAL,
         )?;
 

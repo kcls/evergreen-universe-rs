@@ -521,7 +521,7 @@ impl GatewayStream {
     fn new(address: &str, port: u16) -> EgResult<Self> {
         log::info!("EG Gateway listening at {address}:{port}");
 
-        let listener = eg::util::tcp_listener(address, port, GATEWAY_POLL_TIMEOUT)
+        let listener = eg::util::tcp_listener(&format!("{address}:{port}"), GATEWAY_POLL_TIMEOUT)
             .map_err(|e| format!("Cannot listen for connections on {address}:{port} {e}"))?;
 
         let stream = GatewayStream { listener };

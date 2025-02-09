@@ -840,7 +840,7 @@ impl WebsocketStream {
     fn new(address: &str, port: u16, max_parallel: usize) -> Result<Self, String> {
         log::info!("EG Websocket listening at {address}:{port}");
 
-        let listener = eg::util::tcp_listener(address, port, SIG_POLL_INTERVAL)
+        let listener = eg::util::tcp_listener(&format!("{address}:{port}"), SIG_POLL_INTERVAL)
             .map_err(|e| format!("Cannot listen for connections at {address}:{port} {e}"))?;
 
         let stream = WebsocketStream {
