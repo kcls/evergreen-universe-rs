@@ -6,8 +6,7 @@ use yaml_rust::YamlLoader;
 /// Z39 configuration
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub host: String,
-    pub port: u16,
+    pub bind: String,
     pub max_workers: usize,
     pub min_workers: usize,
     pub min_idle_workers: usize,
@@ -16,12 +15,10 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            host: String::from("localhost"),
-            port: 2210,
+            bind: String::from("localhost:2210"),
             max_workers: 64,
             min_workers: 1,
             min_idle_workers: 1,
-            ascii: true,
         }
     }
 }
@@ -50,13 +47,9 @@ impl Config {
             None => return Err("Invalid Z39 config".into()),
         };
 
-        if let Some(v) = root["host"].as_str() {
-            conf.host = String::from(v);
+        if let Some(v) = root["bind"].as_str() {
+            conf.bind = String::from(v);
         };
-
-        if let Some(v) = root["port"].as_i64() {
-            conf.port = v as u16;
-        }
 
         if let Some(v) = root["max-workers"].as_i64() {
             conf.max_workers = v as usize;

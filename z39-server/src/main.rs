@@ -1,10 +1,12 @@
 use evergreen as eg;
 use std::path::Path;
 
+mod conf;
 mod query;
 mod server;
 mod session;
 
+/// How often we wake and check for shutdown, etc. signals.
 const DEFAULT_SIG_INTERVAL: u64 = 5;
 
 const IMPLEMENTATION_ID: &str = "EG";
@@ -14,8 +16,8 @@ const IMPLEMENTATION_VERSION: &str = "0.1.0";
 const DEFAULT_CONFIG_1: &str = "/usr/local/etc/eg-z39-server.yml";
 const DEFAULT_CONFIG_2: &str = "./z39-server/conf/eg-z39-server.yml";
 
-fn load_config() -> EgResult<conf::Config> {
-    if let Ok(ref file) = env::var("EG_Z39_SERVER_CONFIG") {
+fn load_config() -> eg::EgResult<conf::Config> {
+    if let Ok(ref file) = std::env::var("EG_Z39_SERVER_CONFIG") {
         conf::Config::from_yaml(file)
     } else if Path::new(DEFAULT_CONFIG_1).exists() {
         conf::Config::from_yaml(DEFAULT_CONFIG_1)
@@ -56,10 +58,10 @@ fn main() {
     }
     .apply();
 
-    let tcp_listener = match eg::util::tcp_listener(&host, port, sig_interval) {
+    let tcp_listener = match eg::util::tcp_listener(&conf.bind, DEFAULT_SIG_INTERVAL) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("Cannot listen for connections at {host}:{port}: {e}");
+            eprintln!("Cannot listen for connections at {}: {e}", conf.bind);
             return;
         }
     };
