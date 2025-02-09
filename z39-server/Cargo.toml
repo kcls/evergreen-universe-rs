@@ -5,12 +5,12 @@ edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
-z39 = { path = "../z39" }
 mptc = { path = "../mptc" }
+z39 = { path = "../z39" }
 marctk = { path = "../marctk" }
 evergreen = { path = "../evergreen" }
 log = "0.4.22"
-getopts = "0.2.21"
+yaml-rust = "0.4.5"
 
 [[bin]]
 name = "eg-z39-server"

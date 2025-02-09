@@ -1,47 +1,57 @@
 use evergreen as eg;
+use std::path::Path;
 
 mod query;
 mod server;
 mod session;
 
-const DEFAULT_HOST: &str = "127.0.0.1";
-const DEFAULT_PORT: u16 = 2210;
 const DEFAULT_SIG_INTERVAL: u64 = 5;
 
-fn load_options() -> (String, u16, u64) {
-    let mut ops = getopts::Options::new();
+const IMPLEMENTATION_ID: &str = "EG";
+const IMPLEMENTATION_NAME: &str = "Evergreen";
+const IMPLEMENTATION_VERSION: &str = "0.1.0";
 
-    ops.optflag("h", "help", "");
-    ops.optopt("", "host", "", "");
-    ops.optopt("", "port", "", "");
+const DEFAULT_CONFIG_1: &str = "/usr/local/etc/eg-z39-server.yml";
+const DEFAULT_CONFIG_2: &str = "./z39-server/conf/eg-z39-server.yml";
 
-    let args: Vec<String> = std::env::args().collect();
-
-    let params = match ops.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => panic!("Cannot parse options: {}", e),
-    };
-
-    let host = params.opt_str("host").unwrap_or(DEFAULT_HOST.to_string());
-    let port = if let Some(p) = params.opt_str("port") {
-        p.parse::<u16>().expect("Invalid port value: {p}")
+fn load_config() -> EgResult<conf::Config> {
+    if let Ok(ref file) = env::var("EG_Z39_SERVER_CONFIG") {
+        conf::Config::from_yaml(file)
+    } else if Path::new(DEFAULT_CONFIG_1).exists() {
+        conf::Config::from_yaml(DEFAULT_CONFIG_1)
+    } else if Path::new(DEFAULT_CONFIG_2).exists() {
+        conf::Config::from_yaml(DEFAULT_CONFIG_2)
     } else {
-        DEFAULT_PORT
-    };
-
-    let sig_interval = DEFAULT_SIG_INTERVAL; // todo
-
-    (host, port, sig_interval)
+        Err("sip2-mediator requires a configuration file".into())
+    }
 }
 
 fn main() {
-    let (host, port, sig_interval) = load_options();
+    let Ok(conf) = load_config().inspect_err(|e| eprintln!("Config error: {e}")) else {
+        return;
+    };
+
+    let options = eg::init::InitOptions {
+        skip_logging: false,
+        skip_host_settings: true,
+        appname: Some("z39-server".to_string()),
+    };
+
+    let Ok(client) = eg::init::with_options(&options)
+        .inspect_err(|e| eprintln!("Cannot connect to Evergreen: {e}")) else {
+        return;
+    };
+
+    // The main server thread doesn't need a bus connection, but we
+    // do want the other init() pieces.  Drop the client to force a
+    // disconnect.
+    drop(client);
 
     // Some responses have canned values that we can set up front.
     z39::Settings {
-        implementation_id: Some("EG".to_string()),
-        implementation_name: Some("Evergreen".to_string()),
-        implementation_version: Some("0.1.0".to_string()),
+        implementation_id: Some(IMPLEMENTATION_ID.to_string()),
+        implementation_name: Some(IMPLEMENTATION_NAME.to_string()),
+        implementation_version: Some(IMPLEMENTATION_VERSION.to_string()),
         ..Default::default()
     }
     .apply();

@@ -1,0 +1,19 @@
+# Z39 Server Configuration File
+z39-server:
+
+    # z39-server listens for clients on this address and port.
+    # This value is passed directly to 
+    # https://doc.rust-lang.org/std/net/struct.TcpListener.html#method.bind
+    bind: 127.0.0.1:2210
+
+    # Maximum number of allowed Z39 client connections.  Once reached,
+    # new connection attempts are rejected.
+    max-workers: 64 
+
+    # Mumber of worker threads to launch at start and the minimum
+    # bare number to maintain throughout.
+    min-workers: 4
+
+    # Maintain this many idle workers at all times, up to max-workers.
+    min-idle-workers: 2
+
