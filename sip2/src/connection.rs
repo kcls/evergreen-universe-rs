@@ -86,7 +86,7 @@ impl Connection {
             Ok(_) => Ok(()),
             Err(s) => {
                 // Disconnect will fail if the other end already disconnected.
-                log::info!("{self}disconnect() failed: {s}");
+                log::debug!("{self}disconnect() failed: {s}");
                 Err(Error::NetworkError(s.to_string()))
             }
         }
