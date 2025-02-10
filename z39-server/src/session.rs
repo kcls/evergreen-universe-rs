@@ -153,7 +153,13 @@ impl Z39Session {
 
         let compiler = Z39QueryCompiler;
 
-        let query = compiler.compile(&req.query)?;
+        let query = match compiler.compile(&req.query) {
+            Ok(q) => q,
+            Err(e) => {
+                log::error!("Could not compile search query: {e}");
+                return Ok(MessagePayload::SearchResponse(resp));
+            }
+        };
 
         // Quick and dirty!
         let mut options = EgValue::new_object();
@@ -186,7 +192,6 @@ impl Z39Session {
 
     fn handle_present_request(&mut self, req: &PresentRequest) -> EgResult<MessagePayload> {
         let mut resp = PresentResponse::default();
-        // TODO result offset
 
         let Some(search) = self.last_search.as_ref() else {
             log::warn!("{self} PresentRequest called with no search in progress");
@@ -196,7 +201,7 @@ impl Z39Session {
         let num_requested = req.number_of_records_requested as usize;
         let mut start_point = req.reset_set_start_point as usize;
 
-        // subtract 1 without overflowing
+        // subtract 1 without overflowing; neat.
         start_point = start_point.saturating_sub(1);
 
         if num_requested == 0 || start_point >= search.bib_record_ids.len() {
@@ -220,16 +225,21 @@ impl Z39Session {
     fn collect_bib_records(&self, req: &PresentRequest, bib_ids: &[i64]) -> EgResult<Records> {
         log::info!("{self} collecting bib records {bib_ids:?}");
 
+        // For now we only support binary and XML.
+        let mut wants_xml = false;
+        let mut response_syntax = z39::message::marc21_identifier();
+
+        if let Some(syntax) = req.preferred_record_syntax.as_ref() {
+            if z39::message::is_marcxml_identifier(syntax) {
+                wants_xml = true;
+                response_syntax = syntax.clone();
+            }
+        }
+
         let mut records = Vec::new();
         let mut editor = eg::Editor::new(&self.client);
 
         for bib_id in bib_ids {
-            let mut wants_xml = false;
-
-            if let Some(syntax) = req.preferred_record_syntax.as_ref() {
-                wants_xml = **syntax == OID_MARCXML; // TODO make this easier
-            }
-
             let mut bre = editor.retrieve("bre", *bib_id)?.ok_or_else(|| editor.die_event())?;
             let marc_xml = bre["marc"].take_string().ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
 
@@ -245,17 +255,17 @@ impl Z39Session {
                 rec.to_binary()?
             };
 
-            let oc = octet_string(bytes); // from z39; reconsider
+            // Z39 PresentResponse messages include bib records packaged
+            // in an ASN.1 External element
+
+            let oc = z39::message::octet_string(bytes);
 
             let mut external = ExternalMessage::new(Encoding::OctetAligned(oc));
 
-            external.direct_reference = if wants_xml {
-                Some(marcxml_identifier())
-            } else {
-                Some(marc21_identifier())
-            };
+            external.direct_reference = Some(response_syntax.clone());
 
             let npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
+
             records.push(npr);
         }
 

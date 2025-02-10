@@ -33,6 +33,13 @@ fn main() {
         return;
     };
 
+    // Give the user something if -h/--help are used.
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && (args[1] == "-h" || args[1] == "--help") {
+        println!("See {}", conf.filename);
+        return;
+    }
+
     let options = eg::init::InitOptions {
         skip_logging: false,
         skip_host_settings: true,
@@ -44,9 +51,8 @@ fn main() {
         return;
     };
 
-    // The main server thread doesn't need a bus connection, but we
-    // do want the other init() pieces.  Drop the client to force a
-    // disconnect.
+    // The main server thread doesn't need a bus connection.
+    // Drop the client to force a disconnect.
     drop(client);
 
     // Some responses have canned values that we can set up front.
@@ -54,6 +60,12 @@ fn main() {
         implementation_id: Some(IMPLEMENTATION_ID.to_string()),
         implementation_name: Some(IMPLEMENTATION_NAME.to_string()),
         implementation_version: Some(IMPLEMENTATION_VERSION.to_string()),
+        // Supported operations
+        init_options: z39::settings::InitOptions  {
+            search: true,
+            presen: true,
+            ..Default::default()
+        },
         ..Default::default()
     }
     .apply();
@@ -65,6 +77,8 @@ fn main() {
             return;
         }
     };
+
+    log::info!("Z39 server starting at {}", conf.bind);
 
     server::Z39Server::start(tcp_listener);
 }

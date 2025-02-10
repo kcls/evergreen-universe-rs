@@ -26,6 +26,18 @@ pub fn marc21_identifier() -> ObjectIdentifier {
     ObjectIdentifier::new(&OID_MARC21).unwrap()
 }
 
+pub fn is_marc21_identifier(oid: &ObjectIdentifier) -> bool {
+    **oid == OID_MARC21
+}
+
+pub fn is_marcxml_identifier(oid: &ObjectIdentifier) -> bool {
+    **oid == OID_MARCXML
+}
+
+pub fn is_bib1_identifier(oid: &ObjectIdentifier) -> bool {
+    **oid == OID_ATTR_SET_BIB1
+}
+
 pub fn marcxml_identifier() -> ObjectIdentifier {
     ObjectIdentifier::new(&OID_MARCXML).unwrap()
 }

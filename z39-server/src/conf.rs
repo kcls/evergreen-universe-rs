@@ -6,31 +6,27 @@ use yaml_rust::YamlLoader;
 /// Z39 configuration
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub filename: String,
     pub bind: String,
     pub max_workers: usize,
     pub min_workers: usize,
     pub min_idle_workers: usize,
 }
 
-impl Default for Config {
-    fn default() -> Config {
+impl Config {
+    pub fn new(filename: &str) -> Config {
         Config {
+            filename: filename.to_string(),
             bind: String::from("localhost:2210"),
             max_workers: 64,
             min_workers: 1,
             min_idle_workers: 1,
         }
     }
-}
-
-impl Config {
-    pub fn new() -> Config {
-        Config::default()
-    }
 
     /// Parse a YAML configuration file.
     pub fn from_yaml(filename: &str) -> EgResult<Self> {
-        let mut conf = Config::new();
+        let mut conf = Config::new(filename);
 
         let yaml_text = match fs::read_to_string(filename) {
             Ok(y) => y,

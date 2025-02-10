@@ -65,15 +65,34 @@ impl Z39QueryCompiler {
         &self,
         attr_term: &AttributesPlusTerm,
     ) -> Result<String, String> {
-        if attr_term.attributes.is_empty() {
-            return Err("AttributesPlusTerm.attribute required".into());
-        }
-
         // This needs more thought re: integrating attributes.
+
+        let mut search_attr_term = attr_term;
+        let alt_attr_term: Option<AttributesPlusTerm>;
+
+        if attr_term.attributes.is_empty() {
+            // If no use attributes are provided by the caller, treat it
+            // like a generic keyword search.  This may not be strictly
+            // correct but it's certainly friendlier.
+            let attr = AttributeElement {
+                attribute_set: None,
+                attribute_type: bib1::Attribute::Use as u32,
+                attribute_value: AttributeValue::Numeric(bib1::Use::Anywhere as u32),
+            };
+
+            alt_attr_term = Some(
+                AttributesPlusTerm {
+                    attributes: vec![attr],
+                    term: attr_term.term.clone(),
+                }
+            );
+
+            search_attr_term = alt_attr_term.as_ref().unwrap();
+        }
 
         let mut s = "".to_string();
 
-        for attr in &attr_term.attributes {
+        for attr in &search_attr_term.attributes {
             let attr_type: bib1::Attribute = attr.attribute_type.try_into()?;
 
             match attr_type {
