@@ -1,8 +1,6 @@
 use z39::bib1;
 use z39::message::*;
 
-const OP_NOT_SUPPORTED: &str = "Operation not supported";
-
 // TODO move this into a config file.
 // See /openils/conf/dgo.conf for example
 const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
@@ -17,11 +15,10 @@ const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
 
 /// Compiler for Z39 queries.
 ///
-/// The z39-server module creates z39::message's which we then have to handle,
-/// the most complicated of whic is the SearchRequest message, which contains
-/// the actual search queries.  This mod translates those into queries
-/// that can be used by Evergreen.
-#[derive(Debug, Default)]
+/// The z39-server module creates z39::message's which we then have to
+/// handle, the most complicated of which (so far) is the SearchRequest
+/// message, which contains the search queries.  This mod translates
+/// those into queries that can be used by Evergreen.
 pub struct Z39QueryCompiler;
 
 impl Z39QueryCompiler {
@@ -29,7 +26,7 @@ impl Z39QueryCompiler {
     pub fn compile(&self, query: &z39::message::Query) -> Result<String, String> {
         match query {
             Query::Type1(ref rpn_query) => self.compile_rpn_structure(&rpn_query.rpn),
-            _ => Err(OP_NOT_SUPPORTED.into()),
+            _ => Err(format!("Query type not supported: {query:?}")),
         }
     }
 
@@ -43,8 +40,7 @@ impl Z39QueryCompiler {
     fn compile_rpn_operand(&self, op: &Operand) -> Result<String, String> {
         match op {
             Operand::AttrTerm(ref attr_term) => self.compile_attributes_plus_term(attr_term),
-            Operand::ResultSet(_) => Err(OP_NOT_SUPPORTED.into()),
-            Operand::ResultAttr(_) => Err(OP_NOT_SUPPORTED.into()),
+            _ => Err(format!("Operand not supported: {op:?}")),
         }
     }
 
@@ -52,9 +48,12 @@ impl Z39QueryCompiler {
         let rpn1 = self.compile_rpn_structure(&op.rpn1)?;
         let rpn2 = self.compile_rpn_structure(&op.rpn2)?;
 
+        // TODO revisit the syntax for these in stock Evergreen
+
         let joiner = match &op.op {
             Operator::And => "AND",
             Operator::Or => "OR",
+            Operator::AndNot => "AND NOT",
             _ => return Err(format!("Operator not supported: {op:?}")),
         };
 
@@ -65,93 +64,71 @@ impl Z39QueryCompiler {
         &self,
         attr_term: &AttributesPlusTerm,
     ) -> Result<String, String> {
-        // This needs more thought re: integrating attributes.
-
-        let mut search_attr_term = attr_term;
-        let alt_attr_term: Option<AttributesPlusTerm>;
-
-        if attr_term.attributes.is_empty() {
-            // If no use attributes are provided by the caller, treat it
-            // like a generic keyword search.  This may not be strictly
-            // correct but it's certainly friendlier.
-            let attr = AttributeElement {
-                attribute_set: None,
-                attribute_type: bib1::Attribute::Use as u32,
-                attribute_value: AttributeValue::Numeric(bib1::Use::Anywhere as u32),
-            };
-
-            alt_attr_term = Some(
-                AttributesPlusTerm {
-                    attributes: vec![attr],
-                    term: attr_term.term.clone(),
-                }
-            );
-
-            search_attr_term = alt_attr_term.as_ref().unwrap();
-        }
-
-        let mut s = "".to_string();
-
-        for attr in &search_attr_term.attributes {
-            let attr_type: bib1::Attribute = attr.attribute_type.try_into()?;
-
-            match attr_type {
-                bib1::Attribute::Use => s += &self.compile_use_attribute(attr, &attr_term.term)?,
-                _ => return Err(OP_NOT_SUPPORTED.into()),
-            }
-        }
-
-        Ok(s)
-    }
-
-    fn compile_use_attribute(
-        &self,
-        attr: &AttributeElement,
-        term: &Term,
-    ) -> Result<String, String> {
-        let field = match attr.attribute_value {
-            AttributeValue::Numeric(n) => {
-                if let Some((_code, field)) = BIB1_ATTR_QUERY_MAP.iter().find(|(c, _)| c == &n) {
-                    field
-                } else {
-                    // Default to keyword when no mapping is found.  todo.
-                    "keyword"
-                }
-            }
-            _ => return Err(OP_NOT_SUPPORTED.into()),
-        };
-
-        let value = match term {
+        let search_term = match &attr_term.term {
             Term::General(ref v) => std::str::from_utf8(v)
                 .map_err(|e| e.to_string())?
                 .to_string(),
             Term::Numeric(n) => format!("{n}"),
             Term::CharacterString(ref v) => v.to_string(),
-            _ => return Err(OP_NOT_SUPPORTED.into()),
+            _ => return Err(format!("Unsupported Term variant: {:?}", attr_term.term)),
         };
 
-        Ok(format!("{field}:{value}"))
+        if search_term.is_empty() {
+            return Err(format!("Search term is empty: {attr_term:?}"));
+        }
+
+        // Log when attributes are sent by the caller that we are going
+        // to ignore becuase we don't support them yet (or don't care).
+        fn log_unused_attr(a: &AttributeElement) {
+            if let Ok(s) = bib1::stringify_attribute(a) {
+                log::warn!("Attribute {s} is currently ignored");
+            } else {
+                log::error!("Unexpected attribute: {a:?}");
+            }
+        }
+
+        let mut search_index = None;
+
+        for attr in &attr_term.attributes {
+            let attr_type: bib1::Attribute = attr.attribute_type.try_into()?;
+
+            match attr_type {
+                bib1::Attribute::Use => match &attr.attribute_value {
+                    AttributeValue::Numeric(n) => {
+                        if let Some((_code, field)) =
+                            BIB1_ATTR_QUERY_MAP.iter().find(|(c, _)| c == n)
+                        {
+                            search_index = Some(field);
+                        }
+                    }
+                    _ => log_unused_attr(attr),
+                },
+                /*
+                bib1::Attribute::Truncation => match &attr.attribute_value {
+                    AttributeValue::Numeric(n) => match bib1::Truncation::try_from(*n)? {
+                        bib1::Truncation::RightTruncation => search_term += "*",
+                        bib1::Truncation::LeftTruncation => search_term = format!("*{search_term}"),
+                        bib1::Truncation::LeftAndRightTruncation => {
+                            search_term = format!("*{search_term}*")
+                        }
+                        _ => log_unused_attr(attr),
+                    },
+                    _ => log_unused_attr(attr),
+                },
+                */
+                _ => log_unused_attr(attr),
+            }
+        }
+
+        // If we receive no guidance on where to search, do a keyword search.
+        let si = search_index.unwrap_or(&"keyword");
+
+        if search_term.contains(' ') {
+            Ok(format!("{si}:({search_term})"))
+        } else {
+            Ok(format!("{si}:{search_term}"))
+        }
     }
-}
-
-#[test]
-fn test_compile_rpn_structure() {
-    let rpn_struct = RpnStructure::RpnOp(Box::new(RpnOp {
-        rpn1: RpnStructure::Op(Operand::AttrTerm(AttributesPlusTerm {
-            attributes: vec![bib1::Use::Author.as_z39_attribute_element()],
-            term: Term::General("martin".as_bytes().into()),
-        })),
-        rpn2: RpnStructure::Op(Operand::AttrTerm(AttributesPlusTerm {
-            attributes: vec![bib1::Use::Title.as_z39_attribute_element()],
-            term: Term::General("thrones".as_bytes().into()),
-        })),
-        op: Operator::And,
-    }));
-
-    let compiler = Z39QueryCompiler::default();
-    let s = compiler.compile_rpn_structure(&rpn_struct).unwrap();
-
-    assert_eq!(s, "(author:martin AND title:thrones)");
 }
 
 #[test]

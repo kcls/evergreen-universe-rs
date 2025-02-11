@@ -156,10 +156,16 @@ impl Z39Session {
         let query = match compiler.compile(&req.query) {
             Ok(q) => q,
             Err(e) => {
-                log::error!("Could not compile search query: {e}");
+                log::error!("{self} cxuld not compile search query: {e}");
                 return Ok(MessagePayload::SearchResponse(resp));
             }
         };
+
+        log::info!("{self} compiled search query: {query}");
+
+        if query.is_empty() {
+            return Ok(MessagePayload::SearchResponse(resp));
+        }
 
         // Quick and dirty!
         let mut options = EgValue::new_object();
@@ -240,8 +246,12 @@ impl Z39Session {
         let mut editor = eg::Editor::new(&self.client);
 
         for bib_id in bib_ids {
-            let mut bre = editor.retrieve("bre", *bib_id)?.ok_or_else(|| editor.die_event())?;
-            let marc_xml = bre["marc"].take_string().ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
+            let mut bre = editor
+                .retrieve("bre", *bib_id)?
+                .ok_or_else(|| editor.die_event())?;
+            let marc_xml = bre["marc"]
+                .take_string()
+                .ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
 
             let bytes = if wants_xml {
                 marc_xml.into_bytes()

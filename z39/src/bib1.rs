@@ -3,8 +3,49 @@
 //! https://www.loc.gov/z3950/agency/defns/bib1.html
 use crate::message::*;
 
+// Make working with these large enums easier.
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+
+/// Turn a z39 AttributeElement into a string of the form AttributeType=AttributeValue,
+/// where type and value are derived from the enum labels.
+///
+/// Complex attribute values are debug-stringified in place.
+///
+/// ```
+/// use z39::bib1::*;
+/// use z39::message::*;
+///
+/// let attr = AttributeElement {
+///     attribute_set: None,
+///     attribute_type: Attribute::Structure as u32,
+///     attribute_value: AttributeValue::Numeric(Structure::WordList as u32),
+/// };
+///
+/// assert_eq!(stringify_attribute(&attr).unwrap(), "Structure=WordList");
+/// ```
+pub fn stringify_attribute(a: &AttributeElement) -> Result<String, String> {
+    let attr_type = Attribute::try_from(a.attribute_type)?;
+
+    let numeric_value = match &a.attribute_value {
+        AttributeValue::Numeric(n) => *n,
+        AttributeValue::Complex(c) => return Ok(format!("{attr_type:?}={c:?}")),
+    };
+
+    Ok(match attr_type {
+        Attribute::Use => format!("{attr_type:?}={:?}", Use::try_from(numeric_value)?),
+        Attribute::Relation => format!("{attr_type:?}={:?}", Relation::try_from(numeric_value)?),
+        Attribute::Position => format!("{attr_type:?}={:?}", Position::try_from(numeric_value)?),
+        Attribute::Structure => format!("{attr_type:?}={:?}", Structure::try_from(numeric_value)?),
+        Attribute::Truncation => {
+            format!("{attr_type:?}={:?}", Truncation::try_from(numeric_value)?)
+        }
+        Attribute::Completeness => {
+            format!("{attr_type:?}={:?}", Completeness::try_from(numeric_value)?)
+        }
+        Attribute::Sorting => format!("{attr_type:?}={:?}", Sorting::try_from(numeric_value)?),
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Attribute {
@@ -135,16 +176,6 @@ impl TryFrom<u32> for Use {
         Self::iter()
             .find(|a| *a as u32 == n)
             .ok_or_else(|| format!("No bib1::Use '{n}'"))
-    }
-}
-
-impl Use {
-    pub fn as_z39_attribute_element(&self) -> AttributeElement {
-        AttributeElement {
-            attribute_set: None, // bib1 is implicit
-            attribute_type: Attribute::Use as u32,
-            attribute_value: AttributeValue::Numeric(*self as u32),
-        }
     }
 }
 

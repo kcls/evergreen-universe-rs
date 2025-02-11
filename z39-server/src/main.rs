@@ -46,9 +46,12 @@ fn main() {
         appname: Some("z39-server".to_string()),
     };
 
-    let Ok(client) = eg::init::with_options(&options)
-        .inspect_err(|e| eprintln!("Cannot connect to Evergreen: {e}")) else {
-        return;
+    let client = match eg::init::with_options(&options) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Cannot connect to Evergreen: {e}");
+            return;
+        }
     };
 
     // The main server thread doesn't need a bus connection.
@@ -61,7 +64,7 @@ fn main() {
         implementation_name: Some(IMPLEMENTATION_NAME.to_string()),
         implementation_version: Some(IMPLEMENTATION_VERSION.to_string()),
         // Supported operations
-        init_options: z39::settings::InitOptions  {
+        init_options: z39::settings::InitOptions {
             search: true,
             presen: true,
             ..Default::default()
