@@ -1,3 +1,4 @@
+use crate::conf;
 use crate::query::Z39QueryCompiler;
 use eg::EgResult;
 use eg::EgValue;
@@ -15,6 +16,7 @@ use std::sync::Arc;
 const NETWORK_BUFSIZE: usize = 1024;
 
 struct BibSearch {
+    database: Option<String>,
     bib_record_ids: Vec<i64>,
 }
 
@@ -99,8 +101,26 @@ impl Z39Session {
             // Reset the byte array for the next message cycle.
             bytes.clear();
 
-            // Let the worker do its thing
-            let resp = self.handle_message(msg)?;
+            // Handle the message
+            let resp = match self.handle_message(msg) {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("handle_message() exited with {e}");
+
+                    // For now, errors produced by the session are
+                    // simple strings, so we have no way to differentiate
+                    // protocol issues, vs internal server errors, etc.
+                    // Just return a generic SystemProblem response.
+                    // TODO granular Err types or is that overkill?
+
+                    let close = Close {
+                        close_reason: CloseReason::SystemProblem,
+                        ..Default::default()
+                    };
+
+                    Message::from_payload(MessagePayload::Close(close))
+                }
+            };
 
             // Turn the response into bytes
             let bytes = resp.to_bytes()?;
@@ -151,6 +171,12 @@ impl Z39Session {
 
         log::info!("{self} search query: {:?}", req.query);
 
+        let mut database = None;
+        if let Some(dbn) = req.database_names.first() {
+            let DatabaseName::Name(s) = dbn;
+            database = Some(s.to_string());
+        }
+
         let compiler = Z39QueryCompiler;
 
         let query = match compiler.compile(&req.query) {
@@ -190,6 +216,7 @@ impl Z39Session {
         resp.search_status = true;
 
         self.last_search = Some(BibSearch {
+            database,
             bib_record_ids: bib_ids,
         });
 
@@ -203,6 +230,14 @@ impl Z39Session {
             log::warn!("{self} PresentRequest called with no search in progress");
             return Ok(MessagePayload::PresentResponse(resp));
         };
+
+        let mut wants_holdings = false;
+
+        if let Some(db_name) = search.database.as_ref() {
+            if let Some(database) = conf::global().find_database(db_name) {
+                wants_holdings = database.include_holdings;
+            }
+        }
 
         let num_requested = req.number_of_records_requested as usize;
         let mut start_point = req.reset_set_start_point as usize;
@@ -223,12 +258,17 @@ impl Z39Session {
 
         let bib_ids = &search.bib_record_ids[start_point..max];
 
-        resp.records = Some(self.collect_bib_records(req, bib_ids)?);
+        resp.records = Some(self.collect_bib_records(req, bib_ids, wants_holdings)?);
 
         Ok(MessagePayload::PresentResponse(resp))
     }
 
-    fn collect_bib_records(&self, req: &PresentRequest, bib_ids: &[i64]) -> EgResult<Records> {
+    fn collect_bib_records(
+        &self,
+        req: &PresentRequest,
+        bib_ids: &[i64],
+        wants_holdings: bool,
+    ) -> EgResult<Records> {
         log::info!("{self} collecting bib records {bib_ids:?}");
 
         // For now we only support binary and XML.
@@ -249,11 +289,13 @@ impl Z39Session {
             let mut bre = editor
                 .retrieve("bre", *bib_id)?
                 .ok_or_else(|| editor.die_event())?;
+
             let marc_xml = bre["marc"]
                 .take_string()
                 .ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
 
-            let bytes = if wants_xml {
+            let bytes = if wants_xml && !wants_holdings {
+                // Return the XML directly from the database
                 marc_xml.into_bytes()
             } else {
                 // Translate the native MARC XML into MARC binary.
@@ -262,7 +304,13 @@ impl Z39Session {
                     .next() // Option
                     .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
 
-                rec.to_binary()?
+                // TODO insert holdings
+
+                if wants_xml {
+                    rec.to_xml_string().into_bytes()
+                } else {
+                    rec.to_binary()?
+                }
             };
 
             // Z39 PresentResponse messages include bib records packaged

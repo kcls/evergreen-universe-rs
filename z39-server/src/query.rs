@@ -73,7 +73,6 @@ impl Z39QueryCompiler {
         &self,
         attr_term: &AttributesPlusTerm,
     ) -> Result<String, String> {
-
         let search_term = match &attr_term.term {
             Term::General(ref v) => std::str::from_utf8(v)
                 .map_err(|e| e.to_string())?

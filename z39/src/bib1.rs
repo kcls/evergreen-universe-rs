@@ -67,7 +67,7 @@ impl TryFrom<u32> for Attribute {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
 pub enum Use {
     PersonalName = 1,
     CorporateName,

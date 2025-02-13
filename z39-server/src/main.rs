@@ -83,5 +83,7 @@ fn main() {
 
     log::info!("Z39 server starting at {}", conf.bind);
 
+    conf.apply();
+
     server::Z39Server::start(tcp_listener);
 }

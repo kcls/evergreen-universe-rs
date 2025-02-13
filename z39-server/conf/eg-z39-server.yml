@@ -17,3 +17,37 @@ z39-server:
     # Maintain this many idle workers at all times, up to max-workers.
     min-idle-workers: 2
 
+    databases:
+      - name: kcls
+        include-holdings: false
+
+        # If true, unmapped Use attributes will default to searching
+        # the "keyword" index.
+        bib1-use-keyword-default: true
+
+        # Maps Bib1 Use attributes to search indexes.
+        # https://software.indexdata.com/yaz/doc/bib1.html
+        bib1-use-map:
+          - attr: 4
+            index: title
+          - attr: 7
+            index: identifier|isbn
+          - attr: 8
+            index: keyword
+          - attr: 21
+            index: subject
+          - attr: 1003
+            index: author
+          - attr: 1007
+            index: identifier|ctrlno
+          - attr: 1018
+            index: keyword|publisher
+          - attr: 1121
+            index: identifier|ctrlxref
+
+      - name: kcls-holdings-oclc
+        include-holdings: true
+        bib1-use-keyword-default: false
+        # Trim this set to only those needed by OCLC.
+        bib1-use-map: 
+

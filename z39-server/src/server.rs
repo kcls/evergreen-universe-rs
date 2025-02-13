@@ -5,6 +5,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::conf;
 use crate::session::Z39Session;
 
 struct Z39ConnectRequest {
@@ -79,6 +80,7 @@ impl mptc::RequestHandler for Z39SessionBroker {
     }
 }
 
+/// MPTC-based Z39 server
 pub struct Z39Server {
     tcp_listener: TcpListener,
     shutdown: Arc<AtomicBool>,
@@ -92,6 +94,10 @@ impl Z39Server {
         };
 
         let mut s = mptc::Server::new(Box::new(server));
+
+        s.set_max_workers(conf::global().max_workers);
+        s.set_min_workers(conf::global().min_workers);
+        s.set_min_idle_workers(conf::global().min_idle_workers);
 
         s.run();
     }
