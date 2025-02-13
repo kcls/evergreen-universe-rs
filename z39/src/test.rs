@@ -465,6 +465,7 @@ fn test_close() {
     let mut close = Close::default();
 
     close.close_reason = CloseReason::ProtocolError;
+    // who doesn't want reports as MARC?
     close.resource_report_format = Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap());
 
     let msg = Message::from_payload(MessagePayload::Close(close));

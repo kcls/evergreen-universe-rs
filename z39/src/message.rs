@@ -692,7 +692,6 @@ pub enum CloseReason {
     Unspecified,
 }
 
-
 #[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 #[rasn(tag(context, 48))]
 pub struct Close {
@@ -767,58 +766,44 @@ impl Message {
         //  However, if the last 5 bits of the first byte are all 1's,
         //  the tag value is stored in the second byte (to accommodate
         //  larger tag values, for 31 <= tag <= 127).
-        let tag = if bytes[0] == 191 { // 10111111
+        let tag = if bytes[0] == 191 {
+            // bytes[0] == 10111111
             bytes[1]
-        } else if  bytes[0] >= 180 {
+        } else if bytes[0] >= 180 {
             bytes[0] - 160
         } else {
             0
         };
 
         let payload = match tag {
-            20 => {
-                match rasn::ber::decode(bytes) {
-                    Ok(m) => MessagePayload::InitializeRequest(m),
-                    Err(e) => return handle_error(e),
-                }
-            }
-            21 => {
-                match rasn::ber::decode(bytes) {
-                    Ok(m) => MessagePayload::InitializeResponse(m),
-                    Err(e) => return handle_error(e),
-                }
-            }
-            22 => {
-                match rasn::ber::decode(bytes) {
-                    Ok(m) => MessagePayload::SearchRequest(m),
-                    Err(e) => return handle_error(e),
-                }
-            }
-            23 => {
-                match rasn::ber::decode(bytes) {
-                    Ok(m) => MessagePayload::SearchResponse(m),
-                    Err(e) => return handle_error(e),
-                }
-
-            }
-            24 => {
-                match rasn::ber::decode(bytes) {
-                    Ok(m) => MessagePayload::PresentRequest(m),
-                    Err(e) => return handle_error(e),
-                }
-            }
-            25 => {
-                match rasn::ber::decode(bytes) {
-                    Ok(m) => MessagePayload::PresentResponse(m),
-                    Err(e) => return handle_error(e),
-                }
-            }
-            48 => {
-                match rasn::ber::decode(bytes) {
-                    Ok(m) => MessagePayload::Close(m),
-                    Err(e) => return handle_error(e),
-                }
-            }
+            20 => match rasn::ber::decode(bytes) {
+                Ok(m) => MessagePayload::InitializeRequest(m),
+                Err(e) => return handle_error(e),
+            },
+            21 => match rasn::ber::decode(bytes) {
+                Ok(m) => MessagePayload::InitializeResponse(m),
+                Err(e) => return handle_error(e),
+            },
+            22 => match rasn::ber::decode(bytes) {
+                Ok(m) => MessagePayload::SearchRequest(m),
+                Err(e) => return handle_error(e),
+            },
+            23 => match rasn::ber::decode(bytes) {
+                Ok(m) => MessagePayload::SearchResponse(m),
+                Err(e) => return handle_error(e),
+            },
+            24 => match rasn::ber::decode(bytes) {
+                Ok(m) => MessagePayload::PresentRequest(m),
+                Err(e) => return handle_error(e),
+            },
+            25 => match rasn::ber::decode(bytes) {
+                Ok(m) => MessagePayload::PresentResponse(m),
+                Err(e) => return handle_error(e),
+            },
+            48 => match rasn::ber::decode(bytes) {
+                Ok(m) => MessagePayload::Close(m),
+                Err(e) => return handle_error(e),
+            },
             _ => {
                 return Err(format!(
                     "Cannot process message with first byte: {}",
