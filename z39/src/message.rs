@@ -677,6 +677,51 @@ impl Default for PresentResponse {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, AsnType, Decode, Encode)]
+#[rasn(enumerated)]
+pub enum CloseReason {
+    Finished = 0,
+    Shutdown,
+    SystemProblem,
+    CostLimit,
+    Resources,
+    SecurityViolation,
+    ProtocolError,
+    LackOfActivity,
+    PeerAbort,
+    Unspecified,
+}
+
+
+#[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
+#[rasn(tag(context, 48))]
+pub struct Close {
+    #[rasn(tag(2))]
+    pub reference_id: Option<OctetString>,
+    #[rasn(tag(211))]
+    pub close_reason: CloseReason,
+    #[rasn(tag(3))]
+    pub diagnostic_information: Option<String>,
+    #[rasn(tag(4))]
+    pub resource_report_format: Option<ObjectIdentifier>,
+    #[rasn(tag(5))]
+    pub resource_report: Option<External>,
+    pub other_info: Option<OtherInformation>,
+}
+
+impl Default for Close {
+    fn default() -> Self {
+        Self {
+            reference_id: None,
+            close_reason: CloseReason::Finished,
+            diagnostic_information: None,
+            resource_report_format: None,
+            resource_report: None,
+            other_info: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessagePayload {
     InitializeRequest(InitializeRequest),
@@ -685,6 +730,7 @@ pub enum MessagePayload {
     SearchResponse(SearchResponse),
     PresentRequest(PresentRequest),
     PresentResponse(PresentResponse),
+    Close(Close),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -710,64 +756,68 @@ impl Message {
 
         // The first byte of a Z39 ASN1 BER message is structed like so:
         // [
-        //   76543210   - bit index
-        //   10         - context-specific tag class
-        //     1        - structured data
-        //      nnnnn   - PDU / message tag.
+        //   10......   - context-specific tag class
+        //   ..1.....   - structured data
+        //   ...nnnnn   - PDU / message tag.
         //  ]
         //
-        //  As such, the Initialize Request message, with tag 20, has a
-        //  first-byte value of 10110100 == 180 decimal, i.e. 160 + 20.
-        let tag = if bytes[0] >= 180 { bytes[0] - 160 } else { 0 };
+        //  The Initialize Request message, with tag 20, has a
+        //  first-byte value of 10110100 == 180 decimal, IOW 20 + 160.
+        //
+        //  However, if the last 5 bits of the first byte are all 1's,
+        //  the tag value is stored in the second byte (to accommodate
+        //  larger tag values, for 31 <= tag <= 127).
+        let tag = if bytes[0] == 191 { // 10111111
+            bytes[1]
+        } else if  bytes[0] >= 180 {
+            bytes[0] - 160
+        } else {
+            0
+        };
 
         let payload = match tag {
             20 => {
-                let msg: InitializeRequest = match rasn::ber::decode(bytes) {
-                    Ok(m) => m,
+                match rasn::ber::decode(bytes) {
+                    Ok(m) => MessagePayload::InitializeRequest(m),
                     Err(e) => return handle_error(e),
-                };
-
-                MessagePayload::InitializeRequest(msg)
+                }
             }
             21 => {
-                let msg: InitializeResponse = match rasn::ber::decode(bytes) {
-                    Ok(m) => m,
+                match rasn::ber::decode(bytes) {
+                    Ok(m) => MessagePayload::InitializeResponse(m),
                     Err(e) => return handle_error(e),
-                };
-
-                MessagePayload::InitializeResponse(msg)
+                }
             }
             22 => {
-                let msg: SearchRequest = match rasn::ber::decode(bytes) {
-                    Ok(m) => m,
+                match rasn::ber::decode(bytes) {
+                    Ok(m) => MessagePayload::SearchRequest(m),
                     Err(e) => return handle_error(e),
-                };
-
-                MessagePayload::SearchRequest(msg)
+                }
             }
             23 => {
-                let msg: SearchResponse = match rasn::ber::decode(bytes) {
-                    Ok(m) => m,
+                match rasn::ber::decode(bytes) {
+                    Ok(m) => MessagePayload::SearchResponse(m),
                     Err(e) => return handle_error(e),
-                };
+                }
 
-                MessagePayload::SearchResponse(msg)
             }
             24 => {
-                let msg: PresentRequest = match rasn::ber::decode(bytes) {
-                    Ok(m) => m,
+                match rasn::ber::decode(bytes) {
+                    Ok(m) => MessagePayload::PresentRequest(m),
                     Err(e) => return handle_error(e),
-                };
-
-                MessagePayload::PresentRequest(msg)
+                }
             }
             25 => {
-                let msg: PresentResponse = match rasn::ber::decode(bytes) {
-                    Ok(m) => m,
+                match rasn::ber::decode(bytes) {
+                    Ok(m) => MessagePayload::PresentResponse(m),
                     Err(e) => return handle_error(e),
-                };
-
-                MessagePayload::PresentResponse(msg)
+                }
+            }
+            48 => {
+                match rasn::ber::decode(bytes) {
+                    Ok(m) => MessagePayload::Close(m),
+                    Err(e) => return handle_error(e),
+                }
             }
             _ => {
                 return Err(format!(
@@ -794,6 +844,7 @@ impl Message {
             MessagePayload::SearchResponse(m) => rasn::ber::encode(&m),
             MessagePayload::PresentRequest(m) => rasn::ber::encode(&m),
             MessagePayload::PresentResponse(m) => rasn::ber::encode(&m),
+            MessagePayload::Close(m) => rasn::ber::encode(&m),
         };
 
         res.map_err(|e| e.to_string())

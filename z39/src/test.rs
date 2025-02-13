@@ -459,3 +459,28 @@ fn test_present_response() {
 
     println!("{}", marcxml_identifier().to_string());
 }
+
+#[test]
+fn test_close() {
+    let mut close = Close::default();
+
+    close.close_reason = CloseReason::ProtocolError;
+    close.resource_report_format = Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap());
+
+    let msg = Message::from_payload(MessagePayload::Close(close));
+
+    let bytes = msg.to_bytes().unwrap();
+
+    let msg = Message::from_bytes(&bytes).unwrap().unwrap();
+
+    let MessagePayload::Close(ref payload) = msg.payload else {
+        panic!("Wrong message type parsed: {msg:?}");
+    };
+
+    assert_eq!(
+        &OID_MARC21,
+        payload.resource_report_format.as_ref().unwrap()
+    );
+
+    assert_eq!(bytes, *msg.to_bytes().unwrap());
+}
