@@ -13,6 +13,11 @@ const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
     (1018, "keyword|publisher"),
 ];
 
+// TODO setting
+fn use_elastic_search() -> bool {
+    true
+}
+
 /// Compiler for Z39 queries.
 ///
 /// The z39-server module creates z39::message's which we then have to
@@ -48,22 +53,27 @@ impl Z39QueryCompiler {
         let rpn1 = self.compile_rpn_structure(&op.rpn1)?;
         let rpn2 = self.compile_rpn_structure(&op.rpn2)?;
 
-        // TODO revisit the syntax for these in stock Evergreen
-
-        let joiner = match &op.op {
-            Operator::And => "AND",
-            Operator::Or => "OR",
-            Operator::AndNot => "AND NOT",
-            _ => return Err(format!("Operator not supported: {op:?}")),
+        let joiner = if use_elastic_search() {
+            match &op.op {
+                Operator::And => "AND",
+                Operator::Or => "OR",
+                Operator::AndNot => "AND NOT",
+                _ => return Err(format!("Operator not supported: {op:?}")),
+            }
+        } else {
+            todo!("Native Evergreen support needed");
         };
 
         Ok(format!("({rpn1} {joiner} {rpn2})"))
     }
 
+    /// Collect the search term, search index, and related attributes
+    /// into a search component, e.g. id|isbn:1231231231231
     fn compile_attributes_plus_term(
         &self,
         attr_term: &AttributesPlusTerm,
     ) -> Result<String, String> {
+
         let search_term = match &attr_term.term {
             Term::General(ref v) => std::str::from_utf8(v)
                 .map_err(|e| e.to_string())?
