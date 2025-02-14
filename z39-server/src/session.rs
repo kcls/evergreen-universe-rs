@@ -174,10 +174,10 @@ impl Z39Session {
         let mut database = None;
         if let Some(dbn) = req.database_names.first() {
             let DatabaseName::Name(s) = dbn;
-            database = Some(s.to_string());
+            database = conf::global().find_database(s);
         }
 
-        let compiler = Z39QueryCompiler;
+        let compiler = Z39QueryCompiler::new(database);
 
         let query = match compiler.compile(&req.query) {
             Ok(q) => q,
@@ -216,7 +216,7 @@ impl Z39Session {
         resp.search_status = true;
 
         self.last_search = Some(BibSearch {
-            database,
+            database: database.map(|d| d.name.to_string()),
             bib_record_ids: bib_ids,
         });
 
@@ -328,5 +328,79 @@ impl Z39Session {
         }
 
         Ok(Records::ResponseRecords(records))
+    }
+
+    /// Append holdings data to a bib record.
+    fn append_record_holdings(
+        &self,
+        bib_id: i64,
+        database: &conf::Z39Database,
+        rec: &mut marctk::Record
+    ) -> EgResult<()> {
+
+        // Where should this live?
+        let mut query = eg::hash! {
+			"select": {
+				"acp":["id", "barcode", "price", "ref", "holdable", "opac_visible", "copy_number"],
+				"ccm": [{"column": "name", "alias": "circ_modifier"}],
+				"ccs": [{"column": "name", "alias": "status"}],
+				"acpl": [{"column": "name", "alias": "location"}],
+				"circ_lib": [{"column": "name", "alias": "circ_lib"}],
+				"owning_lib": [{"column": "name", "alias": "owning_lib"}],
+				"acn": ["label"],
+				"acnp": ["label"],
+				"acns": ["label"]
+			},
+			"from": {
+				"acp": {
+					"acn": {
+						"join": {
+							"bre": {},
+							"owning_lib": {
+								"class": "aou",
+								"fkey": "owning_lib",
+								"field": "id"
+							},
+							"acnp": {},
+							"acns": {}
+						}
+					},
+					"ccm": {},
+					"acpl": {},
+					"ccs": {},
+					"circ_lib": {
+						"class": "aou",
+						"fkey": "circ_lib",
+						"field": "id"
+					}
+				}
+			},
+			"where": {
+				"+acp": {"deleted": "f", "opac_visible": "t"},
+				"+acpl": {"deleted": "f", "opac_visible": "t"},
+				"+ccs": {"opac_visible": "t"},
+				"+acn": {"deleted": "f"},
+				"+bre": {"deleted": "f", "id": bib_id},
+				"+circ_lib": {"opac_visible": "t"}
+			},
+            "order_by": [{
+                "class": "acp",
+                "field": "create_date",
+                "direction": "asc"
+            }],
+        };
+
+        if let Some(limit) = database.max_item_count {
+            query["limit"] = limit.into();
+        }
+
+        let mut ses = self.client.session("open-ils.cstore");
+        let mut req = ses.request("open-ils.cstore.json_query", vec![query])?;
+
+        while let Some(copy) = req.recv()? {
+            println!("GOT COPY: {}", copy.dump());
+        }
+
+        Ok(())
     }
 }

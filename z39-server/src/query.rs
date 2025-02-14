@@ -1,5 +1,6 @@
 use z39::bib1;
 use z39::message::*;
+use crate::conf;
 
 // TODO move this into a config file.
 // See /openils/conf/dgo.conf for example
@@ -24,9 +25,15 @@ fn use_elastic_search() -> bool {
 /// handle, the most complicated of which (so far) is the SearchRequest
 /// message, which contains the search queries.  This mod translates
 /// those into queries that can be used by Evergreen.
-pub struct Z39QueryCompiler;
+pub struct Z39QueryCompiler<'a> {
+    database: Option<&'a conf::Z39Database>
+}
 
-impl Z39QueryCompiler {
+impl<'a> Z39QueryCompiler<'a> {
+    pub fn new(database: Option<&'a conf::Z39Database>) -> Self {
+        Self { database }
+    }
+
     /// Translate a Z39 Query into a query string that can be sent to Evergreen
     pub fn compile(&self, query: &z39::message::Query) -> Result<String, String> {
         match query {

@@ -222,33 +222,36 @@ impl JsonQueryCompiler {
             .ok_or("No bass class has been set".into())
     }
 
-    /// Returns option of IDL field if the field is valid exists on the
-    /// class, isn't virtual, and may be viewed by this module.
-    fn field_may_be_selected(&self, name: &str, class: &str) -> bool {
+    /// Returns true if the field is valid and not suppressed.
+    ///
+    /// Returns false if suppressed.
+    ///
+    /// Returns Err if the field cannot be found or is virtual.
+    fn field_may_be_selected(&self, name: &str, class: &str) -> EgResult<bool> {
         let idl_class = match idl::get_class(class) {
             Ok(c) => c,
-            Err(_) => return false,
+            Err(_) => return Err(format!("Invalid IDL class: {class}").into()),
         };
 
         let idl_field = match idl_class.fields().get(name) {
             Some(f) => f,
-            None => return false,
+            None => return Err(format!("Class {class} has no field '{name}'").into()),
         };
 
         if idl_field.is_virtual() {
-            return false;
+            return Err(format!("Field {name} on {class} is virtual").into());
         }
 
         if let Some(suppress) = idl_field.suppress_controller() {
             if let Some(module) = self.controllername.as_ref() {
                 if suppress.contains(module) {
                     // Field is not visible to this module.
-                    return false;
+                    return Ok(false);
                 }
             }
         }
 
-        true
+        Ok(true)
     }
 
     /// Entry point for compiling the JSON-Query.
@@ -348,7 +351,7 @@ impl JsonQueryCompiler {
 
             let classname = self.get_alias_classname(class_alias)?;
 
-            if !self.field_may_be_selected(field_name, classname) {
+            if !self.field_may_be_selected(field_name, classname)? {
                 return Err(format!("Field '{field_name}' is not valid in ORDER BY").into());
             }
 
@@ -495,7 +498,7 @@ impl JsonQueryCompiler {
             } else {
                 // Selecting a single column by name.
 
-                if self.field_may_be_selected(col, classname) {
+                if self.field_may_be_selected(col, classname)? {
                     return self.select_one_field(class_alias, None, col, None, true);
                 }
             }
@@ -532,7 +535,7 @@ impl JsonQueryCompiler {
             if let Some(column) = field_struct.as_str() {
                 // Field entry is a string field name.
 
-                if self.field_may_be_selected(column, classname) {
+                if self.field_may_be_selected(column, classname)? {
                     fields.push(self.select_one_field(class_alias, None, column, None, true)?);
                 }
 
@@ -543,7 +546,7 @@ impl JsonQueryCompiler {
                 .as_str()
                 .ok_or_else(|| format!("SELECT hash requires a 'column': {field_struct}"))?;
 
-            if !self.field_may_be_selected(column, classname) {
+            if !self.field_may_be_selected(column, classname)? {
                 continue;
             }
 
@@ -572,7 +575,7 @@ impl JsonQueryCompiler {
 
         let mut fields = Vec::new();
         for field in idl_class.real_fields_sorted().iter() {
-            if self.field_may_be_selected(field.name(), classname) {
+            if self.field_may_be_selected(field.name(), classname)? {
                 if let Some(list) = exclude {
                     if list.contains(&field.name()) {
                         continue;

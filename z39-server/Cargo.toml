@@ -9,6 +9,7 @@ mptc = { path = "../mptc" }
 z39 = { path = "../z39" }
 marctk = { path = "../marctk" }
 evergreen = { path = "../evergreen" }
+json = "0.12.4"
 log = "0.4.22"
 yaml-rust = "0.4.5"
 

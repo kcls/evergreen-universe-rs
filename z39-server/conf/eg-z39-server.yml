@@ -47,7 +47,28 @@ z39-server:
 
       - name: kcls-holdings-oclc
         include-holdings: true
+
+        # searches that include holdings data can get bulky if there are
+        # thousands of items.  This is a hard limit.
+        max-item-count: 500
+
         bib1-use-keyword-default: false
         # Trim this set to only those needed by OCLC.
         bib1-use-map: 
+          - attr: 4
+            index: title
+          - attr: 7
+            index: identifier|isbn
+          - attr: 8
+            index: keyword
+          - attr: 21
+            index: subject
+          - attr: 1003
+            index: author
+          - attr: 1007
+            index: identifier|ctrlno
+          - attr: 1018
+            index: keyword|publisher
+          - attr: 1121
+            index: identifier|ctrlxref
 

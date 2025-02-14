@@ -5,7 +5,6 @@ use std::fs;
 use std::sync::OnceLock;
 use yaml_rust::Yaml;
 use yaml_rust::YamlLoader;
-use z39::bib1;
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
@@ -21,7 +20,9 @@ pub struct Z39Database {
     pub name: String,
     pub include_holdings: bool,
     pub bib1_use_keyword_default: bool,
-    pub bib1_use_map: HashMap<bib1::Use, String>,
+    /// Maps Bib1 Use attribute numeric values to search indexes.
+    pub bib1_use_map: HashMap<u32, String>,
+    pub max_item_count: Option<i64>,
 }
 
 /// Z39 configuration
@@ -105,6 +106,8 @@ impl Config {
             let include_holdings = db["include-holdings"].as_bool().unwrap_or(false);
             let bib1_use_keyword_default =
                 db["bib1-use-keyword-default"].as_bool().unwrap_or(false);
+            let max_item_count = db["max-item-count"].as_i64();
+
             let mut bib1_use_map = HashMap::new();
 
             if let Yaml::Array(ref maps) = db["bib1-use-map"] {
@@ -117,14 +120,13 @@ impl Config {
                         .as_str()
                         .ok_or_else(|| format!("Map {map:?} requires an 'index' value"))?;
 
-                    let bib1_attr = bib1::Use::try_from(attr_num as u32)?;
-
-                    bib1_use_map.insert(bib1_attr, index.to_string());
+                    bib1_use_map.insert(attr_num as u32, index.to_string());
                 }
             }
 
             let zdb = Z39Database {
                 name,
+                max_item_count,
                 include_holdings,
                 bib1_use_keyword_default,
                 bib1_use_map,
