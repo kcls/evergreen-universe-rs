@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 const NETWORK_BUFSIZE: usize = 1024;
 const DEFAULT_HOLDINGS_TAG: &str = "852";
+const DEFAULT_MAX_BIB_COUNT: i64 = 1000;
 
 struct BibSearch {
     database: Option<String>,
@@ -108,11 +109,12 @@ impl Z39Session {
                 Err(e) => {
                     log::error!("handle_message() exited with {e}");
 
-                    // For now, errors produced by the session are
-                    // simple strings, so we have no way to differentiate
-                    // protocol issues, vs internal server errors, etc.
-                    // Just return a generic SystemProblem response.
-                    // TODO granular Err types or is that overkill?
+                    // For now, errors produced by the session
+                    // are simple strings, so we have no way to
+                    // differentiate client protocol issues, vs internal
+                    // server errors, etc.  Just return a generic
+                    // SystemProblem response.  TODO granular Err types
+                    // or is that overkill?
 
                     let close = Close {
                         close_reason: CloseReason::SystemProblem,
@@ -123,7 +125,6 @@ impl Z39Session {
                 }
             };
 
-            // Turn the response into bytes
             let bytes = resp.to_bytes()?;
 
             log::trace!("{self} replying with {bytes:?}");
@@ -173,9 +174,16 @@ impl Z39Session {
         log::info!("{self} search query: {:?}", req.query);
 
         let mut database = None;
+        let mut limit = DEFAULT_MAX_BIB_COUNT;
+
         if let Some(dbn) = req.database_names.first() {
             let DatabaseName::Name(s) = dbn;
             database = conf::global().find_database(s);
+            if let Some(db) = database {
+                if let Some(max) = db.max_bib_count {
+                    limit = max;
+                }
+            }
         }
 
         let compiler = Z39QueryCompiler::new(database);
@@ -183,7 +191,7 @@ impl Z39Session {
         let query = match compiler.compile(&req.query) {
             Ok(q) => q,
             Err(e) => {
-                log::error!("{self} cxuld not compile search query: {e}");
+                log::error!("{self} could not compile search query: {e}");
                 return Ok(MessagePayload::SearchResponse(resp));
             }
         };
@@ -196,7 +204,7 @@ impl Z39Session {
 
         // Quick and dirty!
         let mut options = EgValue::new_object();
-        options["limit"] = 10.into();
+        options["limit"] = limit.into();
 
         let Ok(Some(search_result)) = self.client.send_recv_one(
             "open-ils.search",
@@ -232,11 +240,11 @@ impl Z39Session {
             return Ok(MessagePayload::PresentResponse(resp));
         };
 
-        let database = if let Some(name) = search.database.as_ref() {
-            conf::global().find_database(name)
-        } else {
-            None
-        };
+        let database = search
+            .database
+            .as_ref()
+            .map(|n| conf::global().find_database(n))
+            .unwrap_or(None);
 
         let num_requested = req.number_of_records_requested as usize;
         let mut start_point = req.reset_set_start_point as usize;
@@ -271,51 +279,24 @@ impl Z39Session {
         log::info!("{self} collecting bib records {bib_ids:?}");
 
         // For now we only support binary and XML.
-        let mut wants_xml = false;
+        let mut as_xml = false;
         let mut response_syntax = z39::message::marc21_identifier();
 
         if let Some(syntax) = req.preferred_record_syntax.as_ref() {
             if z39::message::is_marcxml_identifier(syntax) {
-                wants_xml = true;
+                as_xml = true;
                 response_syntax = syntax.clone();
             }
         }
 
-        let wants_holdings = database.map(|d| d.include_holdings).unwrap_or(false);
+        let with_holdings = database.map(|d| d.include_holdings).unwrap_or(false);
 
         let mut records = Vec::new();
         let mut editor = eg::Editor::new(&self.client);
 
         for bib_id in bib_ids {
-            let mut bre = editor
-                .retrieve("bre", *bib_id)?
-                .ok_or_else(|| editor.die_event())?;
-
-            let marc_xml = bre["marc"]
-                .take_string()
-                .ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
-
-            let bytes = if wants_xml && !wants_holdings {
-                // Return the XML directly from the database
-                marc_xml.into_bytes()
-            } else {
-                // Translate the native MARC XML into MARC binary.
-
-                let mut rec = marctk::Record::from_xml(&marc_xml)
-                    .next() // Option
-                    .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
-
-                // TODO insert holdings
-                if wants_holdings {
-                    self.append_record_holdings(*bib_id, database, &mut rec)?;
-                }
-
-                if wants_xml {
-                    rec.to_xml_string().into_bytes()
-                } else {
-                    rec.to_binary()?
-                }
-            };
+            let bytes =
+                self.get_one_record(&mut editor, *bib_id, as_xml, with_holdings, database)?;
 
             // Z39 PresentResponse messages include bib records packaged
             // in an ASN.1 External element
@@ -332,6 +313,49 @@ impl Z39Session {
         }
 
         Ok(Records::ResponseRecords(records))
+    }
+
+    // TODO clean up all this database business; require; maybe provide a default.
+
+    fn get_one_record(
+        &self,
+        editor: &mut eg::Editor,
+        bib_id: i64,
+        as_xml: bool,
+        with_holdings: bool,
+        database: Option<&conf::Z39Database>,
+    ) -> EgResult<Vec<u8>> {
+        let mut bre = editor
+            .retrieve("bre", bib_id)?
+            .ok_or_else(|| editor.die_event())?;
+
+        let marc_xml = bre["marc"]
+            .take_string()
+            .ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
+
+        let bytes = if as_xml && !with_holdings {
+            // Return the XML directly from the database
+            marc_xml.into_bytes()
+        } else {
+            // Translate the native MARC XML into MARC binary.
+
+            let mut rec = marctk::Record::from_xml(&marc_xml)
+                .next() // Option
+                .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
+
+            // TODO insert holdings
+            if with_holdings {
+                self.append_record_holdings(bib_id, database, &mut rec)?;
+            }
+
+            if as_xml {
+                rec.to_xml_string().into_bytes()
+            } else {
+                rec.to_binary()?
+            }
+        };
+
+        Ok(bytes)
     }
 
     /// Append holdings data to a bib record.

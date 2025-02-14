@@ -22,6 +22,7 @@ pub struct Z39Database {
     pub bib1_use_keyword_default: bool,
     /// Maps Bib1 Use attribute numeric values to search indexes.
     pub bib1_use_map: HashMap<u32, String>,
+    pub max_bib_count: Option<i64>,
     pub max_item_count: Option<i64>,
     pub holdings_tag: Option<String>,
 }
@@ -105,6 +106,7 @@ impl Config {
                 .ok_or_else(|| "Database name required".to_string())?;
 
             let max_item_count = db["max-item-count"].as_i64();
+            let max_bib_count = db["max-bib-count"].as_i64();
             let include_holdings = db["include-holdings"].as_bool().unwrap_or(false);
             let holdings_tag = db["holdings-tag"].as_str().map(|s| s.to_string());
 
@@ -131,6 +133,7 @@ impl Config {
                 name,
                 holdings_tag,
                 max_item_count,
+                max_bib_count,
                 include_holdings,
                 bib1_use_keyword_default,
                 bib1_use_map,

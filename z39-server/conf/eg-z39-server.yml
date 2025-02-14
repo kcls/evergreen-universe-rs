@@ -19,6 +19,11 @@ z39-server:
 
     databases:
       - name: kcls
+
+        # Limit search requests to this may records just so we
+        # have some kind of backstop.
+        max-bib-count: 100
+
         include-holdings: false
 
         # If true, unmapped Use attributes will default to searching
@@ -46,6 +51,7 @@ z39-server:
             index: identifier|ctrlxref
 
       - name: kcls-holdings-oclc
+        max-bib-count: 100
         include-holdings: true
 
         # searches that include holdings data can get bulky if there are
