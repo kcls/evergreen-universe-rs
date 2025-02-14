@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 const NETWORK_BUFSIZE: usize = 1024;
+const DEFAULT_HOLDINGS_TAG: &str = "852";
 
 struct BibSearch {
     database: Option<String>,
@@ -231,13 +232,11 @@ impl Z39Session {
             return Ok(MessagePayload::PresentResponse(resp));
         };
 
-        let mut wants_holdings = false;
-
-        if let Some(db_name) = search.database.as_ref() {
-            if let Some(database) = conf::global().find_database(db_name) {
-                wants_holdings = database.include_holdings;
-            }
-        }
+        let database = if let Some(name) = search.database.as_ref() {
+            conf::global().find_database(name)
+        } else {
+            None
+        };
 
         let num_requested = req.number_of_records_requested as usize;
         let mut start_point = req.reset_set_start_point as usize;
@@ -258,7 +257,7 @@ impl Z39Session {
 
         let bib_ids = &search.bib_record_ids[start_point..max];
 
-        resp.records = Some(self.collect_bib_records(req, bib_ids, wants_holdings)?);
+        resp.records = Some(self.collect_bib_records(req, bib_ids, database)?);
 
         Ok(MessagePayload::PresentResponse(resp))
     }
@@ -267,7 +266,7 @@ impl Z39Session {
         &self,
         req: &PresentRequest,
         bib_ids: &[i64],
-        wants_holdings: bool,
+        database: Option<&conf::Z39Database>,
     ) -> EgResult<Records> {
         log::info!("{self} collecting bib records {bib_ids:?}");
 
@@ -281,6 +280,8 @@ impl Z39Session {
                 response_syntax = syntax.clone();
             }
         }
+
+        let wants_holdings = database.map(|d| d.include_holdings).unwrap_or(false);
 
         let mut records = Vec::new();
         let mut editor = eg::Editor::new(&self.client);
@@ -300,11 +301,14 @@ impl Z39Session {
             } else {
                 // Translate the native MARC XML into MARC binary.
 
-                let rec = marctk::Record::from_xml(&marc_xml)
+                let mut rec = marctk::Record::from_xml(&marc_xml)
                     .next() // Option
                     .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
 
                 // TODO insert holdings
+                if wants_holdings {
+                    self.append_record_holdings(*bib_id, database, &mut rec)?;
+                }
 
                 if wants_xml {
                     rec.to_xml_string().into_bytes()
@@ -334,55 +338,54 @@ impl Z39Session {
     fn append_record_holdings(
         &self,
         bib_id: i64,
-        database: &conf::Z39Database,
-        rec: &mut marctk::Record
+        database: Option<&conf::Z39Database>,
+        rec: &mut marctk::Record,
     ) -> EgResult<()> {
-
         // Where should this live?
         let mut query = eg::hash! {
-			"select": {
-				"acp":["id", "barcode", "price", "ref", "holdable", "opac_visible", "copy_number"],
-				"ccm": [{"column": "name", "alias": "circ_modifier"}],
-				"ccs": [{"column": "name", "alias": "status"}],
-				"acpl": [{"column": "name", "alias": "location"}],
-				"circ_lib": [{"column": "name", "alias": "circ_lib"}],
-				"owning_lib": [{"column": "name", "alias": "owning_lib"}],
-				"acn": ["label"],
-				"acnp": ["label"],
-				"acns": ["label"]
-			},
-			"from": {
-				"acp": {
-					"acn": {
-						"join": {
-							"bre": {},
-							"owning_lib": {
-								"class": "aou",
-								"fkey": "owning_lib",
-								"field": "id"
-							},
-							"acnp": {},
-							"acns": {}
-						}
-					},
-					"ccm": {},
-					"acpl": {},
-					"ccs": {},
-					"circ_lib": {
-						"class": "aou",
-						"fkey": "circ_lib",
-						"field": "id"
-					}
-				}
-			},
-			"where": {
-				"+acp": {"deleted": "f", "opac_visible": "t"},
-				"+acpl": {"deleted": "f", "opac_visible": "t"},
-				"+ccs": {"opac_visible": "t"},
-				"+acn": {"deleted": "f"},
-				"+bre": {"deleted": "f", "id": bib_id},
-				"+circ_lib": {"opac_visible": "t"}
-			},
+            "select": {
+                "acp":["id", "barcode", "price", "ref", "holdable", "opac_visible", "copy_number"],
+                "ccm": [{"column": "name", "alias": "circ_modifier"}],
+                "ccs": [{"column": "name", "alias": "status"}],
+                "acpl": [{"column": "name", "alias": "location"}],
+                "circ_lib": [{"column": "name", "alias": "circ_lib"}],
+                "owning_lib": [{"column": "name", "alias": "owning_lib"}],
+                "acn": [{"column": "label", "alias": "call_number"}],
+                "acnp": [{"column": "label", "alias": "call_number_prefix"}],
+                "acns": [{"column": "label", "alias": "call_number_suffix"}]
+            },
+            "from": {
+                "acp": {
+                    "acn": {
+                        "join": {
+                            "bre": {},
+                            "owning_lib": {
+                                "class": "aou",
+                                "fkey": "owning_lib",
+                                "field": "id"
+                            },
+                            "acnp": {},
+                            "acns": {}
+                        }
+                    },
+                    "ccm": {},
+                    "acpl": {},
+                    "ccs": {},
+                    "circ_lib": {
+                        "class": "aou",
+                        "fkey": "circ_lib",
+                        "field": "id"
+                    }
+                }
+            },
+            "where": {
+                "+acp": {"deleted": "f", "opac_visible": "t"},
+                "+acpl": {"deleted": "f", "opac_visible": "t"},
+                "+ccs": {"opac_visible": "t"},
+                "+acn": {"deleted": "f"},
+                "+bre": {"deleted": "f", "id": bib_id},
+                "+circ_lib": {"opac_visible": "t"}
+            },
             "order_by": [{
                 "class": "acp",
                 "field": "create_date",
@@ -390,15 +393,54 @@ impl Z39Session {
             }],
         };
 
-        if let Some(limit) = database.max_item_count {
-            query["limit"] = limit.into();
+        let mut holdings_tag = DEFAULT_HOLDINGS_TAG;
+
+        if let Some(db) = database {
+            if let Some(tag) = db.holdings_tag.as_deref() {
+                holdings_tag = tag;
+            }
+            if let Some(limit) = db.max_item_count {
+                query["limit"] = limit.into();
+            }
         }
 
         let mut ses = self.client.session("open-ils.cstore");
         let mut req = ses.request("open-ils.cstore.json_query", vec![query])?;
 
+        /*
+        {"price":"17.00",
+        "opac_visible":"t",
+        "circ_lib":"Sammamish",
+        "owning_lib":"Sammamish",
+        "id":7618543,
+        "ref":"f",
+        "holdable":"t",
+        "location":"Easy Reader",
+        "label":"",
+        "status":"Available",
+        "copy_number":null,
+        "circ_modifier":"Book",
+        "barcode":"30000017112669"}
+        */
+
+        // TODO need to confirm these fields.
         while let Some(copy) = req.recv()? {
-            println!("GOT COPY: {}", copy.dump());
+            let call_number = format!(
+                "{}{}{}",
+                copy["call_number_prefix"].as_str().unwrap_or(""),
+                copy["call_number"].str()?,
+                copy["call_number_suffix"].as_str().unwrap_or("")
+            );
+
+            let mut field = marctk::Field::new(holdings_tag)?;
+            let _ = field.add_subfield("a", copy["circ_lib"].str()?);
+            let _ = field.add_subfield("b", copy["location"].str()?);
+            let _ = field.add_subfield("h", call_number);
+            let _ = field.add_subfield("p", copy["barcode"].str()?);
+            let _ = field.add_subfield("r", copy["status"].str()?);
+            let _ = field.add_subfield("w", copy["circ_modifier"].str()?);
+
+            rec.insert_data_field(field);
         }
 
         Ok(())

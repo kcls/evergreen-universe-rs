@@ -82,9 +82,13 @@ fn main() {
     };
 
     log::info!(
-        "Z39 server starting at {} with databases {}", 
+        "Z39 server starting at {} with databases {}",
         conf.bind,
-        conf.databases.iter().map(|d| d.name.clone()).collect::<Vec<String>>().join(",")
+        conf.databases
+            .iter()
+            .map(|d| d.name.clone())
+            .collect::<Vec<String>>()
+            .join(",")
     );
 
     conf.apply();

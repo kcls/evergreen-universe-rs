@@ -52,6 +52,8 @@ z39-server:
         # thousands of items.  This is a hard limit.
         max-item-count: 500
 
+        holdings-tag: 852
+
         bib1-use-keyword-default: false
         # Trim this set to only those needed by OCLC.
         bib1-use-map: 

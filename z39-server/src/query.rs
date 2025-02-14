@@ -1,9 +1,8 @@
+use crate::conf;
 use z39::bib1;
 use z39::message::*;
-use crate::conf;
 
-// TODO move this into a config file.
-// See /openils/conf/dgo.conf for example
+// Default maps
 const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
     (4, "title"),
     (7, "identifier|isbn"),
@@ -26,7 +25,7 @@ fn use_elastic_search() -> bool {
 /// message, which contains the search queries.  This mod translates
 /// those into queries that can be used by Evergreen.
 pub struct Z39QueryCompiler<'a> {
-    database: Option<&'a conf::Z39Database>
+    database: Option<&'a conf::Z39Database>,
 }
 
 impl<'a> Z39QueryCompiler<'a> {
@@ -111,7 +110,19 @@ impl<'a> Z39QueryCompiler<'a> {
             match attr_type {
                 bib1::Attribute::Use => match &attr.attribute_value {
                     AttributeValue::Numeric(n) => {
-                        if let Some((_code, field)) =
+                        if let Some(database) = self.database {
+                            search_index = database.bib1_use_map.get(n).map(|s| s.as_str());
+
+                            if search_index.is_none() {
+                                if database.bib1_use_keyword_default {
+                                    search_index = Some("keyword");
+                                } else {
+                                    return Err(format!(
+                                        "No search index configured for bib1::Use={n}"
+                                    ));
+                                }
+                            }
+                        } else if let Some((_code, field)) =
                             BIB1_ATTR_QUERY_MAP.iter().find(|(c, _)| c == n)
                         {
                             search_index = Some(field);
@@ -137,7 +148,7 @@ impl<'a> Z39QueryCompiler<'a> {
         }
 
         // If we receive no guidance on where to search, do a keyword search.
-        let si = search_index.unwrap_or(&"keyword");
+        let si = search_index.unwrap_or("keyword");
 
         if search_term.contains(' ') {
             Ok(format!("{si}:({search_term})"))
