@@ -2,22 +2,6 @@ use crate::conf;
 use z39::bib1;
 use z39::message::*;
 
-// Default maps
-const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
-    (4, "title"),
-    (7, "identifier|isbn"),
-    (8, "keyword"),
-    (21, "subject"),
-    (1003, "author"),
-    (1007, "identifier"),
-    (1018, "keyword|publisher"),
-];
-
-// TODO setting
-fn use_elastic_search() -> bool {
-    true
-}
-
 /// Compiler for Z39 queries.
 ///
 /// The z39-server module creates z39::message's which we then have to
@@ -25,11 +9,11 @@ fn use_elastic_search() -> bool {
 /// message, which contains the search queries.  This mod translates
 /// those into queries that can be used by Evergreen.
 pub struct Z39QueryCompiler<'a> {
-    database: Option<&'a conf::Z39Database>,
+    database: &'a conf::Z39Database,
 }
 
 impl<'a> Z39QueryCompiler<'a> {
-    pub fn new(database: Option<&'a conf::Z39Database>) -> Self {
+    pub fn new(database: &'a conf::Z39Database) -> Self {
         Self { database }
     }
 
@@ -59,7 +43,7 @@ impl<'a> Z39QueryCompiler<'a> {
         let rpn1 = self.compile_rpn_structure(&op.rpn1)?;
         let rpn2 = self.compile_rpn_structure(&op.rpn2)?;
 
-        let joiner = if use_elastic_search() {
+        let joiner = if self.database.use_elasticsearch() {
             match &op.op {
                 Operator::And => "AND",
                 Operator::Or => "OR",
@@ -103,6 +87,7 @@ impl<'a> Z39QueryCompiler<'a> {
         }
 
         let mut search_index = None;
+        let mut bib1_use_value = None;
 
         for attr in &attr_term.attributes {
             let attr_type: bib1::Attribute = attr.attribute_type.try_into()?;
@@ -110,23 +95,8 @@ impl<'a> Z39QueryCompiler<'a> {
             match attr_type {
                 bib1::Attribute::Use => match &attr.attribute_value {
                     AttributeValue::Numeric(n) => {
-                        if let Some(database) = self.database {
-                            search_index = database.bib1_use_map.get(n).map(|s| s.as_str());
-
-                            if search_index.is_none() {
-                                if database.bib1_use_keyword_default {
-                                    search_index = Some("keyword");
-                                } else {
-                                    return Err(format!(
-                                        "No search index configured for bib1::Use={n}"
-                                    ));
-                                }
-                            }
-                        } else if let Some((_code, field)) =
-                            BIB1_ATTR_QUERY_MAP.iter().find(|(c, _)| c == n)
-                        {
-                            search_index = Some(field);
-                        }
+                        bib1_use_value = Some(n);
+                        search_index = self.database.bib1_use_map_index(*n);
                     }
                     _ => log_unused_attr(attr),
                 },
@@ -148,12 +118,16 @@ impl<'a> Z39QueryCompiler<'a> {
         }
 
         // If we receive no guidance on where to search, do a keyword search.
-        let si = search_index.unwrap_or("keyword");
+        let Some(index) = search_index else {
+            return Err(format!(
+                "No search index configured for Use attribute={bib1_use_value:?}"
+            ));
+        };
 
         if search_term.contains(' ') {
-            Ok(format!("{si}:({search_term})"))
+            Ok(format!("{index}:({search_term})"))
         } else {
-            Ok(format!("{si}:{search_term}"))
+            Ok(format!("{index}:{search_term}"))
         }
     }
 }

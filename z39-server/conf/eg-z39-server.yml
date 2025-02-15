@@ -20,8 +20,11 @@ z39-server:
     databases:
       - name: kcls
 
+        use-elasticsearch: true
+
         # Limit search requests to this may records just so we
-        # have some kind of backstop.
+        # have some kind of backstop.  If no value is applied,
+        # a default max value will be applied.
         max-bib-count: 100
 
         include-holdings: false
@@ -51,6 +54,7 @@ z39-server:
             index: identifier|ctrlxref
 
       - name: kcls-holdings-oclc
+        use-elasticsearch: true
         max-bib-count: 100
         include-holdings: true
 

@@ -1,3 +1,4 @@
+//! Handles a single Z39 connected session.
 use crate::conf;
 use crate::query::Z39QueryCompiler;
 use eg::EgResult;
@@ -14,11 +15,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 const NETWORK_BUFSIZE: usize = 1024;
-const DEFAULT_HOLDINGS_TAG: &str = "852";
-const DEFAULT_MAX_BIB_COUNT: i64 = 1000;
 
 struct BibSearch {
-    database: Option<String>,
+    database_name: Option<String>,
     bib_record_ids: Vec<i64>,
 }
 
@@ -173,18 +172,15 @@ impl Z39Session {
 
         log::info!("{self} search query: {:?}", req.query);
 
-        let mut database = None;
-        let mut limit = DEFAULT_MAX_BIB_COUNT;
-
-        if let Some(dbn) = req.database_names.first() {
+        // See if the caller requested a specific database by name.
+        let db_name = if let Some(dbn) = req.database_names.first() {
             let DatabaseName::Name(s) = dbn;
-            database = conf::global().find_database(s);
-            if let Some(db) = database {
-                if let Some(max) = db.max_bib_count {
-                    limit = max;
-                }
-            }
-        }
+            Some(s.as_str())
+        } else {
+            None
+        };
+
+        let database = conf::global().find_database(db_name)?;
 
         let compiler = Z39QueryCompiler::new(database);
 
@@ -204,7 +200,7 @@ impl Z39Session {
 
         // Quick and dirty!
         let mut options = EgValue::new_object();
-        options["limit"] = limit.into();
+        options["limit"] = database.max_bib_count().into();
 
         let Ok(Some(search_result)) = self.client.send_recv_one(
             "open-ils.search",
@@ -225,7 +221,7 @@ impl Z39Session {
         resp.search_status = true;
 
         self.last_search = Some(BibSearch {
-            database: database.map(|d| d.name.to_string()),
+            database_name: db_name.map(|s| s.to_string()),
             bib_record_ids: bib_ids,
         });
 
@@ -240,11 +236,7 @@ impl Z39Session {
             return Ok(MessagePayload::PresentResponse(resp));
         };
 
-        let database = search
-            .database
-            .as_ref()
-            .map(|n| conf::global().find_database(n))
-            .unwrap_or(None);
+        let database = conf::global().find_database(search.database_name.as_deref())?;
 
         let num_requested = req.number_of_records_requested as usize;
         let mut start_point = req.reset_set_start_point as usize;
@@ -274,7 +266,7 @@ impl Z39Session {
         &self,
         req: &PresentRequest,
         bib_ids: &[i64],
-        database: Option<&conf::Z39Database>,
+        database: &conf::Z39Database,
     ) -> EgResult<Records> {
         log::info!("{self} collecting bib records {bib_ids:?}");
 
@@ -289,14 +281,11 @@ impl Z39Session {
             }
         }
 
-        let with_holdings = database.map(|d| d.include_holdings).unwrap_or(false);
-
         let mut records = Vec::new();
         let mut editor = eg::Editor::new(&self.client);
 
         for bib_id in bib_ids {
-            let bytes =
-                self.get_one_record(&mut editor, *bib_id, as_xml, with_holdings, database)?;
+            let bytes = self.get_one_record(&mut editor, *bib_id, as_xml, database)?;
 
             // Z39 PresentResponse messages include bib records packaged
             // in an ASN.1 External element
@@ -315,15 +304,12 @@ impl Z39Session {
         Ok(Records::ResponseRecords(records))
     }
 
-    // TODO clean up all this database business; require; maybe provide a default.
-
     fn get_one_record(
         &self,
         editor: &mut eg::Editor,
         bib_id: i64,
         as_xml: bool,
-        with_holdings: bool,
-        database: Option<&conf::Z39Database>,
+        database: &conf::Z39Database,
     ) -> EgResult<Vec<u8>> {
         let mut bre = editor
             .retrieve("bre", bib_id)?
@@ -333,7 +319,7 @@ impl Z39Session {
             .take_string()
             .ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
 
-        let bytes = if as_xml && !with_holdings {
+        let bytes = if as_xml && !database.include_holdings() {
             // Return the XML directly from the database
             marc_xml.into_bytes()
         } else {
@@ -343,8 +329,7 @@ impl Z39Session {
                 .next() // Option
                 .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
 
-            // TODO insert holdings
-            if with_holdings {
+            if database.include_holdings() {
                 self.append_record_holdings(bib_id, database, &mut rec)?;
             }
 
@@ -362,11 +347,10 @@ impl Z39Session {
     fn append_record_holdings(
         &self,
         bib_id: i64,
-        database: Option<&conf::Z39Database>,
+        database: &conf::Z39Database,
         rec: &mut marctk::Record,
     ) -> EgResult<()> {
-        // Where should this live?
-        let mut query = eg::hash! {
+        let query = eg::hash! {
             "select": {
                 "acp":["id", "barcode", "price", "ref", "holdable", "opac_visible", "copy_number"],
                 "ccm": [{"column": "name", "alias": "circ_modifier"}],
@@ -415,18 +399,8 @@ impl Z39Session {
                 "field": "create_date",
                 "direction": "asc"
             }],
+            "limit": database.max_item_count()
         };
-
-        let mut holdings_tag = DEFAULT_HOLDINGS_TAG;
-
-        if let Some(db) = database {
-            if let Some(tag) = db.holdings_tag.as_deref() {
-                holdings_tag = tag;
-            }
-            if let Some(limit) = db.max_item_count {
-                query["limit"] = limit.into();
-            }
-        }
 
         let mut ses = self.client.session("open-ils.cstore");
         let mut req = ses.request("open-ils.cstore.json_query", vec![query])?;
@@ -456,7 +430,7 @@ impl Z39Session {
                 copy["call_number_suffix"].as_str().unwrap_or("")
             );
 
-            let mut field = marctk::Field::new(holdings_tag)?;
+            let mut field = marctk::Field::new(database.holdings_tag())?;
             let _ = field.add_subfield("a", copy["circ_lib"].str()?);
             let _ = field.add_subfield("b", copy["location"].str()?);
             let _ = field.add_subfield("h", call_number);

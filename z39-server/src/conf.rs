@@ -8,6 +8,21 @@ use yaml_rust::YamlLoader;
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
+const DEFAULT_HOLDINGS_TAG: &str = "852";
+const DEFAULT_MAX_BIB_COUNT: u32 = 1000;
+const DEFAULT_MAX_ITEM_COUNT: u32 = 1000;
+
+/// Default Bib1 Use attribute maps
+const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
+    (4, "title"),
+    (7, "identifier|isbn"),
+    (8, "keyword"),
+    (21, "subject"),
+    (1003, "author"),
+    (1007, "identifier"),
+    (1018, "keyword|publisher"),
+];
+
 pub fn global() -> &'static Config {
     CONFIG
         .get()
@@ -17,14 +32,70 @@ pub fn global() -> &'static Config {
 /// Entry point for a bibliographic search
 #[derive(Debug, Clone)]
 pub struct Z39Database {
-    pub name: String,
-    pub include_holdings: bool,
-    pub bib1_use_keyword_default: bool,
-    /// Maps Bib1 Use attribute numeric values to search indexes.
-    pub bib1_use_map: HashMap<u32, String>,
-    pub max_bib_count: Option<i64>,
-    pub max_item_count: Option<i64>,
-    pub holdings_tag: Option<String>,
+    name: Option<String>,
+    include_holdings: bool,
+    // TODO allow for a default index name instead of just a true/false
+    bib1_use_keyword_default: bool,
+    bib1_use_map: Option<HashMap<u32, String>>,
+    max_bib_count: Option<u32>,
+    max_item_count: Option<u32>,
+    holdings_tag: Option<String>,
+    use_elasticsearch: bool,
+}
+
+impl Default for Z39Database {
+    fn default() -> Self {
+        Self {
+            name: None,
+            include_holdings: false,
+            bib1_use_keyword_default: true,
+            bib1_use_map: None,
+            max_bib_count: None,
+            max_item_count: None,
+            holdings_tag: None,
+            use_elasticsearch: false,
+        }
+    }
+}
+
+impl Z39Database {
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or("")
+    }
+    pub fn use_elasticsearch(&self) -> bool {
+        self.use_elasticsearch
+    }
+    pub fn include_holdings(&self) -> bool {
+        self.include_holdings
+    }
+    /// Returns the index name mapped to the bib1 Use attribute numeric
+    /// value.  
+    ///
+    /// Returns None if no mapping exists and self.bib1_use_keyword_default is false.
+    pub fn bib1_use_map_index(&self, bib1_value: u32) -> Option<&str> {
+        if let Some(ref map) = self.bib1_use_map {
+            let index = map.get(&bib1_value);
+            if index.is_none() && self.bib1_use_keyword_default {
+                Some("keyword")
+            } else {
+                index.map(|i| i.as_str())
+            }
+        } else {
+            BIB1_ATTR_QUERY_MAP
+                .iter()
+                .find(|(attr, _)| *attr == bib1_value)
+                .map(|(_, index)| *index)
+        }
+    }
+    pub fn max_bib_count(&self) -> u32 {
+        self.max_bib_count.unwrap_or(DEFAULT_MAX_BIB_COUNT)
+    }
+    pub fn max_item_count(&self) -> u32 {
+        self.max_item_count.unwrap_or(DEFAULT_MAX_ITEM_COUNT)
+    }
+    pub fn holdings_tag(&self) -> &str {
+        self.holdings_tag.as_deref().unwrap_or(DEFAULT_HOLDINGS_TAG)
+    }
 }
 
 /// Z39 configuration
@@ -35,7 +106,14 @@ pub struct Config {
     pub max_workers: usize,
     pub min_workers: usize,
     pub min_idle_workers: usize,
-    pub databases: Vec<Z39Database>,
+
+    // TODO config file
+    /// If no database name is provided OR the provided database is
+    /// not found, use the default.
+    pub use_default_database: bool,
+
+    default_database: Z39Database,
+    databases: Vec<Z39Database>,
 }
 
 impl Config {
@@ -46,12 +124,34 @@ impl Config {
             max_workers: 64,
             min_workers: 1,
             min_idle_workers: 1,
+            use_default_database: true,
             databases: Vec::new(),
+            default_database: Z39Database::default(),
         }
     }
 
-    pub fn find_database(&self, name: &str) -> Option<&Z39Database> {
-        self.databases.iter().find(|d| d.name.as_str() == name)
+    pub fn database_names(&self) -> Vec<&str> {
+        self.databases
+            .iter()
+            .map(|d| d.name())
+            .collect::<Vec<&str>>()
+    }
+
+    /// Returns Err if the provided database is not found and this
+    /// server instance does not support failling back to the default.
+    pub fn find_database(&self, database_name: Option<&str>) -> EgResult<&Z39Database> {
+        let mut db = None;
+        if let Some(name) = database_name {
+            db = self.databases.iter().find(|d| d.name() == name);
+        }
+
+        if let Some(d) = db {
+            Ok(d)
+        } else if self.use_default_database {
+            Ok(&self.default_database)
+        } else {
+            Err(format!("No such database: '{}'", database_name.unwrap_or("")).into())
+        }
     }
 
     pub fn apply(self) {
@@ -100,48 +200,62 @@ impl Config {
         };
 
         for db in databases {
-            let name = db["name"]
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| "Database name required".to_string())?;
-
-            let max_item_count = db["max-item-count"].as_i64();
-            let max_bib_count = db["max-bib-count"].as_i64();
-            let include_holdings = db["include-holdings"].as_bool().unwrap_or(false);
-            let holdings_tag = db["holdings-tag"].as_str().map(|s| s.to_string());
-
-            let bib1_use_keyword_default =
-                db["bib1-use-keyword-default"].as_bool().unwrap_or(false);
-
-            let mut bib1_use_map = HashMap::new();
-
-            if let Yaml::Array(ref maps) = db["bib1-use-map"] {
-                for map in maps {
-                    let attr_num = map["attr"]
-                        .as_i64()
-                        .ok_or_else(|| format!("Map {map:?} requires an 'attr' value"))?;
-
-                    let index = map["index"]
-                        .as_str()
-                        .ok_or_else(|| format!("Map {map:?} requires an 'index' value"))?;
-
-                    bib1_use_map.insert(attr_num as u32, index.to_string());
-                }
-            }
-
-            let zdb = Z39Database {
-                name,
-                holdings_tag,
-                max_item_count,
-                max_bib_count,
-                include_holdings,
-                bib1_use_keyword_default,
-                bib1_use_map,
-            };
-
-            conf.databases.push(zdb);
+            conf.add_database(db)?;
         }
 
         Ok(conf)
+    }
+
+    /// Unpack settings for a single Z39Database in the config.
+    fn add_database(&mut self, db: &Yaml) -> EgResult<()> {
+        let name = db["name"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| "Database name required".to_string())?;
+
+        let max_item_count = db["max-item-count"].as_i64().map(|n| n as u32);
+        let max_bib_count = db["max-bib-count"].as_i64().map(|n| n as u32);
+        let include_holdings = db["include-holdings"].as_bool().unwrap_or(false);
+        let use_elasticsearch = db["use-elasticsearch"].as_bool().unwrap_or(false);
+        let holdings_tag = db["holdings-tag"].as_str().map(|s| s.to_string());
+
+        let bib1_use_keyword_default = db["bib1-use-keyword-default"].as_bool().unwrap_or(false);
+
+        let mut bib1_use_map = None;
+
+        if let Yaml::Array(ref maps) = db["bib1-use-map"] {
+            let mut hashmap = HashMap::new();
+
+            for map in maps {
+                let attr_num = map["attr"]
+                    .as_i64()
+                    .ok_or_else(|| format!("Map {map:?} requires an 'attr' value"))?;
+
+                let index = map["index"]
+                    .as_str()
+                    .ok_or_else(|| format!("Map {map:?} requires an 'index' value"))?;
+
+                hashmap.insert(attr_num as u32, index.to_string());
+            }
+
+            bib1_use_map = Some(hashmap);
+        }
+
+        let zdb = Z39Database {
+            name: Some(name),
+            holdings_tag,
+            max_item_count,
+            max_bib_count,
+            include_holdings,
+            use_elasticsearch,
+            bib1_use_keyword_default,
+            bib1_use_map,
+        };
+
+        log::debug!("Adding database {zdb:?}");
+
+        self.databases.push(zdb);
+
+        Ok(())
     }
 }

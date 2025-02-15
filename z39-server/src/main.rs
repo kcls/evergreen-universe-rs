@@ -7,7 +7,9 @@ mod server;
 mod session;
 
 /// How often we wake and check for shutdown, etc. signals.
-const DEFAULT_SIG_INTERVAL: u64 = 5;
+///
+/// Keep is shorter for dev/debugging.
+const DEFAULT_SIG_INTERVAL: u64 = 3;
 
 const IMPLEMENTATION_ID: &str = "EG";
 const IMPLEMENTATION_NAME: &str = "Evergreen";
@@ -29,8 +31,12 @@ fn load_config() -> eg::EgResult<conf::Config> {
 }
 
 fn main() {
-    let Ok(conf) = load_config().inspect_err(|e| eprintln!("Config error: {e}")) else {
-        return;
+    let conf = match load_config() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error loading config file: {e}");
+            return;
+        }
     };
 
     // Give the user something if -h/--help are used.
@@ -40,23 +46,19 @@ fn main() {
         return;
     }
 
+    // We want logging and IDL parsing.
     let options = eg::init::InitOptions {
         skip_logging: false,
         skip_host_settings: true,
         appname: Some("z39-server".to_string()),
     };
 
-    let client = match eg::init::with_options(&options) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Cannot connect to Evergreen: {e}");
-            return;
-        }
+    // We don't need the client retrurned by this call (or its
+    // long-lived connection).  Let it drop.
+    if let Err(e) = eg::init::with_options(&options) {
+        eprintln!("Cannot connect to Evergreen: {e}");
+        return;
     };
-
-    // The main server thread doesn't need a bus connection.
-    // Drop the client to force a disconnect.
-    drop(client);
 
     // Some responses have canned values that we can set up front.
     z39::Settings {
@@ -82,13 +84,9 @@ fn main() {
     };
 
     log::info!(
-        "Z39 server starting at {} with databases {}",
+        "Z39 server starting at {} with databases [{}]",
         conf.bind,
-        conf.databases
-            .iter()
-            .map(|d| d.name.clone())
-            .collect::<Vec<String>>()
-            .join(",")
+        conf.database_names().join(", ")
     );
 
     conf.apply();
