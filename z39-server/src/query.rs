@@ -101,6 +101,12 @@ impl<'a> Z39QueryCompiler<'a> {
                     _ => log_unused_attr(attr),
                 },
                 /*
+                // Opting to avoid supporting truncation, unless
+                // we learn later that it's needed, since it's not
+                // generally required to get reasonable results, and a
+                // Z39 server is not expected to be the primary source
+                // for nuanced database querying.  Keeping sample code
+                // in place in case it's useful later.
                 bib1::Attribute::Truncation => match &attr.attribute_value {
                     AttributeValue::Numeric(n) => match bib1::Truncation::try_from(*n)? {
                         bib1::Truncation::RightTruncation => search_term += "*",
@@ -117,7 +123,7 @@ impl<'a> Z39QueryCompiler<'a> {
             }
         }
 
-        // If we receive no guidance on where to search, do a keyword search.
+        // We need somewhere to search.
         let Some(index) = search_index else {
             return Err(format!(
                 "No search index configured for Use attribute={bib1_use_value:?}"
@@ -136,17 +142,21 @@ impl<'a> Z39QueryCompiler<'a> {
 fn test_compile_rpn_structure() {
     let rpn_struct = RpnStructure::RpnOp(Box::new(RpnOp {
         rpn1: RpnStructure::Op(Operand::AttrTerm(AttributesPlusTerm {
-            attributes: vec![bib1::Use::Author.as_z39_attribute_element()],
+            attributes: vec![bib1::Use::Author.into()],
             term: Term::General("martin".as_bytes().into()),
         })),
         rpn2: RpnStructure::Op(Operand::AttrTerm(AttributesPlusTerm {
-            attributes: vec![bib1::Use::Title.as_z39_attribute_element()],
+            attributes: vec![bib1::Use::Title.into()],
             term: Term::General("thrones".as_bytes().into()),
         })),
         op: Operator::And,
     }));
 
-    let compiler = Z39QueryCompiler::default();
+    let mut db = conf::Z39Database::default();
+    db.set_use_elasticsearch(true);
+
+    let compiler = Z39QueryCompiler {database: &db};
+
     let s = compiler.compile_rpn_structure(&rpn_struct).unwrap();
 
     assert_eq!(s, "(author:martin AND title:thrones)");
