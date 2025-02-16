@@ -65,9 +65,15 @@ impl Z39Database {
     pub fn use_elasticsearch(&self) -> bool {
         self.use_elasticsearch
     }
+
+    /// Set the use_elasticsearch flag.  
+    ///
+    /// Currently used only in test code.
+    #[cfg(test)]
     pub fn set_use_elasticsearch(&mut self, set: bool) {
         self.use_elasticsearch = set;
     }
+
     pub fn include_holdings(&self) -> bool {
         self.include_holdings
     }

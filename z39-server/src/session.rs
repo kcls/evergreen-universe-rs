@@ -16,9 +16,10 @@ use std::sync::Arc;
 
 const NETWORK_BUFSIZE: usize = 1024;
 
+#[derive(Debug, Default)]
 struct BibSearch {
     database_name: Option<String>,
-    bib_record_ids: Vec<i64>,
+    bib_record_ids: Option<Vec<i64>>,
 }
 
 pub(crate) struct Z39Session {
@@ -138,16 +139,21 @@ impl Z39Session {
         Ok(())
     }
 
-    /// Shut down the sesion's TcpStrean.
+    /// Shut down the session's TcpStrean.
     pub fn shutdown(&mut self) {
         self.tcp_stream.shutdown(std::net::Shutdown::Both).ok();
     }
 
+    /// Take the underyling bus from our Evergreen client.
+    ///
     /// Panics if self.client has no Bus.
     pub fn take_bus(&mut self) -> eg::osrf::bus::Bus {
         self.client.take_bus()
     }
 
+    /// Z39 message handler.
+    ///
+    /// Dispatches each message to its handler.
     fn handle_message(&mut self, msg: Message) -> EgResult<Message> {
         log::debug!("{self} processing message {msg:?}");
 
@@ -161,16 +167,21 @@ impl Z39Session {
         Ok(Message::from_payload(payload))
     }
 
+    /// Handle the InitializeResponse
+    ///
+    /// Canned response.
     fn handle_init_request(&mut self, _req: &InitializeRequest) -> EgResult<MessagePayload> {
         Ok(MessagePayload::InitializeResponse(
             InitializeResponse::default(),
         ))
     }
 
+    /// Perform a bib record search and retain the results in a 
+    /// BibSearch for subsequent bib retrievals via PresentRequest.
     fn handle_search_request(&mut self, req: &SearchRequest) -> EgResult<MessagePayload> {
-        let mut resp = SearchResponse::default();
-
         log::info!("{self} search query: {:?}", req.query);
+
+        let mut resp = SearchResponse::default();
 
         // See if the caller requested a specific database by name.
         let db_name = if let Some(dbn) = req.database_names.first() {
@@ -182,50 +193,70 @@ impl Z39Session {
 
         let database = conf::global().find_database(db_name)?;
 
+        let result = self.bib_search(req, &database);
+
+        let result = if let Err(e) = result {
+            log::error!("{self} bib search failed: {e}");
+            return Err(e);
+        } else {
+            result.unwrap()
+        };
+
+        let mut bib_search = BibSearch::default();
+
+        // Search succeeded, even if no results were found.
+        resp.search_status = true;
+
+        let bib_ids = if result.is_none() {
+            self.last_search = Some(bib_search);
+            return Ok(MessagePayload::SearchResponse(resp));
+        } else {
+            result.unwrap()
+        };
+
+        log::info!("Search returned IDs {bib_ids:?}");
+        
+        resp.result_count = bib_ids.len() as u32;
+
+        bib_search.database_name = db_name.map(|s| s.to_string());
+        bib_search.bib_record_ids = Some(bib_ids);
+
+        self.last_search = Some(bib_search);
+
+        Ok(MessagePayload::SearchResponse(resp))
+    }
+
+    /// Search for bib records
+    fn bib_search(&mut self, req: &SearchRequest, database: &conf::Z39Database) -> EgResult<Option<Vec<i64>>> {
         let compiler = Z39QueryCompiler::new(database);
 
-        let query = match compiler.compile(&req.query) {
-            Ok(q) => q,
-            Err(e) => {
-                log::error!("{self} could not compile search query: {e}");
-                return Ok(MessagePayload::SearchResponse(resp));
-            }
-        };
+        let query = compiler.compile(&req.query)?;
 
         log::info!("{self} compiled search query: {query}");
 
         if query.is_empty() {
-            return Ok(MessagePayload::SearchResponse(resp));
+            return Ok(None);
         }
 
-        // Quick and dirty!
-        let mut options = EgValue::new_object();
-        options["limit"] = database.max_bib_count().into();
+        let options = eg::hash! { "limit": database.max_bib_count() };
 
-        let Ok(Some(search_result)) = self.client.send_recv_one(
+        let Some(search_result) = self.client.send_recv_one(
             "open-ils.search",
             "open-ils.search.biblio.multiclass.query.staff",
             vec![options, EgValue::from(query)],
-        ) else {
-            return Ok(MessagePayload::SearchResponse(resp));
+        )? else {
+            // Search can return None if the request times out.
+            // Treat it as 0 results.
+            return Ok(None);
         };
 
+        // Panics if the database returns a non-integer bib ID.
         let bib_ids: Vec<i64> = search_result["ids"]
             .members()
             .map(|arr| arr[0].int_required())
             .collect();
 
-        log::info!("Search returned IDs {bib_ids:?}");
-
-        resp.result_count = bib_ids.len() as u32;
-        resp.search_status = true;
-
-        self.last_search = Some(BibSearch {
-            database_name: db_name.map(|s| s.to_string()),
-            bib_record_ids: bib_ids,
-        });
-
-        Ok(MessagePayload::SearchResponse(resp))
+        Ok(Some(bib_ids))
     }
 
     fn handle_present_request(&mut self, req: &PresentRequest) -> EgResult<MessagePayload> {
@@ -241,21 +272,26 @@ impl Z39Session {
         let num_requested = req.number_of_records_requested as usize;
         let mut start_point = req.reset_set_start_point as usize;
 
-        // subtract 1 without overflowing; neat.
+        // subtract 1 without underflowing; neat.
         start_point = start_point.saturating_sub(1);
 
-        if num_requested == 0 || start_point >= search.bib_record_ids.len() {
+        let bib_record_ids = match search.bib_record_ids.as_ref() {
+            Some(ids) => ids,
+            None => return Ok(MessagePayload::PresentResponse(resp)),
+        };
+
+        if num_requested == 0 || start_point >= bib_record_ids.len() {
             log::warn!("{self} PresentRequest requested 0 records");
             return Ok(MessagePayload::PresentResponse(resp));
         }
 
-        let max = if start_point + num_requested <= search.bib_record_ids.len() {
+        let max = if start_point + num_requested <= bib_record_ids.len() {
             start_point + num_requested
         } else {
-            search.bib_record_ids.len()
+            bib_record_ids.len()
         };
 
-        let bib_ids = &search.bib_record_ids[start_point..max];
+        let bib_ids = &bib_record_ids[start_point..max];
 
         resp.records = Some(self.collect_bib_records(req, bib_ids, database)?);
 
