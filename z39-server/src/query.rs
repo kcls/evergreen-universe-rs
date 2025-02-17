@@ -94,7 +94,10 @@ impl<'a> Z39QueryCompiler<'a> {
 
         let mut search_index = None;
         let mut bib1_use_value = None;
+        let mut is_not_equal = false;
 
+        // Handle the no-op/default attributes explicitly so we can
+        // avoid logging that they are ignored.
         for attr in &attr_term.attributes {
             let attr_type: bib1::Attribute = attr.attribute_type.try_into()?;
 
@@ -106,43 +109,76 @@ impl<'a> Z39QueryCompiler<'a> {
                     }
                     _ => log_unused_attr(attr),
                 },
-                /*
-                // Opting to avoid supporting truncation, unless
-                // we learn later that it's needed, since it's not
-                // generally required to get reasonable results, and a
-                // Z39 server is not expected to be the primary source
-                // for nuanced database querying.  Keeping sample code
-                // in place in case it's useful later.
-                bib1::Attribute::Truncation => match &attr.attribute_value {
-                    AttributeValue::Numeric(n) => match bib1::Truncation::try_from(*n)? {
-                        bib1::Truncation::RightTruncation => search_term += "*",
-                        bib1::Truncation::LeftTruncation => search_term = format!("*{search_term}"),
-                        bib1::Truncation::LeftAndRightTruncation => {
-                            search_term = format!("*{search_term}*")
-                        }
+
+                bib1::Attribute::Relation => match &attr.attribute_value {
+                    AttributeValue::Numeric(n) => match bib1::Relation::try_from(*n)? {
+                        bib1::Relation::Equal => {} // no-op
+                        bib1::Relation::NotEqual => is_not_equal = true,
                         _ => log_unused_attr(attr),
                     },
                     _ => log_unused_attr(attr),
                 },
-                */
+
+                bib1::Attribute::Structure => match &attr.attribute_value {
+                    AttributeValue::Numeric(n) => match bib1::Structure::try_from(*n)? {
+                        bib1::Structure::WordList => {} // no-op
+                        _ => log_unused_attr(attr),
+                    },
+                    _ => log_unused_attr(attr),
+                },
+
+                bib1::Attribute::Position => match &attr.attribute_value {
+                    AttributeValue::Numeric(n) => match bib1::Position::try_from(*n)? {
+                        bib1::Position::AnyPositionInField => {} // no-op
+                        _ => log_unused_attr(attr),
+                    },
+                    _ => log_unused_attr(attr),
+                },
+
+                bib1::Attribute::Completeness => match &attr.attribute_value {
+                    AttributeValue::Numeric(n) => match bib1::Completeness::try_from(*n)? {
+                        bib1::Completeness::IncompleteSubfield => {} // no-op
+                        _ => log_unused_attr(attr),
+                    },
+                    _ => log_unused_attr(attr),
+                },
+
+                // Largely avoiding truncation support, unless we learn
+                // later that it's needed, since it's not generally
+                // required to get reasonable results, and a Z39 server
+                // is not expected to be the primary source for nuanced
+                // querying.  Keeping sample code in place in case it's
+                // useful later.
+                bib1::Attribute::Truncation => match &attr.attribute_value {
+                    AttributeValue::Numeric(n) => match bib1::Truncation::try_from(*n)? {
+                        bib1::Truncation::DoNotTruncate => {} // no-op
+                        _ => log_unused_attr(attr),
+                    },
+                    _ => log_unused_attr(attr),
+                },
                 _ => log_unused_attr(attr),
             }
         }
 
-        let index = match search_index.or(self.database.default_index()) {
-            Some(i) => i,
-            None => {
-                return Err(LocalError::NoSuchSearchIndex(format!(
+        let index = search_index
+            .or(self.database.default_index())
+            .ok_or_else(|| {
+                LocalError::NoSuchSearchIndex(format!(
                     "No search index configured for Use attribute={bib1_use_value:?}"
-                )));
-            }
+                ))
+            })?;
+
+        let mut search = if search_term.contains(' ') {
+            format!("{index}:({search_term})")
+        } else {
+            format!("{index}:{search_term}")
         };
 
-        if search_term.contains(' ') {
-            Ok(format!("{index}:({search_term})"))
-        } else {
-            Ok(format!("{index}:{search_term}"))
+        if is_not_equal {
+            search = format!("NOT ({search})");
         }
+
+        Ok(search)
     }
 }
 

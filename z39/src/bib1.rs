@@ -176,8 +176,8 @@ impl TryFrom<u32> for Relation {
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Position {
     FirstInField = 1,
-    FirstInSsubfield,
-    AnyPositionInFfield,
+    FirstInSubfield,
+    AnyPositionInField,
 }
 
 impl TryFrom<u32> for Position {

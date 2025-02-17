@@ -21,7 +21,7 @@ z39-server:
       - name: kcls
 
         # Use this database if no other is specified by the client.
-        id_default: true
+        is-default: true
 
         use-elasticsearch: true
 

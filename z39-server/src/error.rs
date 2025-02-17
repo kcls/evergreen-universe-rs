@@ -26,7 +26,7 @@ impl error::Error for LocalError {
             Self::DecodeError(ref e) => Some(e),
             Self::EncodeError(ref e) => Some(e),
             Self::ProtocolError(ref e) => Some(e),
-            _ => None
+            _ => None,
         }
     }
 }

@@ -833,6 +833,6 @@ impl Message {
             MessagePayload::Close(m) => rasn::ber::encode(&m),
         };
 
-        res.map_err(|e| LocalError::EncodeError(e))
+        res.map_err(LocalError::EncodeError)
     }
 }
