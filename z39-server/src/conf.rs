@@ -1,5 +1,5 @@
-use eg::EgResult;
-use evergreen as eg;
+use crate::error::LocalResult;
+
 use std::collections::HashMap;
 use std::fs;
 use std::sync::OnceLock;
@@ -12,17 +12,6 @@ const DEFAULT_HOLDINGS_TAG: &str = "852";
 const DEFAULT_MAX_BIB_COUNT: u32 = 1000;
 const DEFAULT_MAX_ITEM_COUNT: u32 = 1000;
 
-/// Default Bib1 Use attribute maps
-const BIB1_ATTR_QUERY_MAP: &[(u32, &str)] = &[
-    (4, "title"),
-    (7, "identifier|isbn"),
-    (8, "keyword"),
-    (21, "subject"),
-    (1003, "author"),
-    (1007, "identifier"),
-    (1018, "keyword|publisher"),
-];
-
 pub fn global() -> &'static Config {
     CONFIG
         .get()
@@ -30,33 +19,34 @@ pub fn global() -> &'static Config {
 }
 
 /// Entry point for a bibliographic search
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Z39Database {
+    is_default: bool,
     name: Option<String>,
     include_holdings: bool,
-    // TODO allow for a default index name instead of just a true/false
-    bib1_use_keyword_default: bool,
-    bib1_use_map: Option<HashMap<u32, String>>,
+    default_index: Option<String>,
+    bib1_use_map: HashMap<u32, String>,
     max_bib_count: Option<u32>,
     max_item_count: Option<u32>,
     holdings_tag: Option<String>,
     use_elasticsearch: bool,
 }
 
+/*
 impl Default for Z39Database {
     fn default() -> Self {
-        Self {
-            name: None,
-            include_holdings: false,
-            bib1_use_keyword_default: true,
-            bib1_use_map: None,
-            max_bib_count: None,
-            max_item_count: None,
-            holdings_tag: None,
-            use_elasticsearch: false,
-        }
+        is_default: false,
+        name: None
+        include_holdings: bool,
+        default_index: Option<String>,
+        bib1_use_map: HashMap<u32, String>,
+        max_bib_count: Option<u32>,
+        max_item_count: Option<u32>,
+        holdings_tag: Option<String>,
+        use_elasticsearch: bool,
     }
 }
+*/
 
 impl Z39Database {
     pub fn name(&self) -> &str {
@@ -77,31 +67,30 @@ impl Z39Database {
     pub fn include_holdings(&self) -> bool {
         self.include_holdings
     }
+
     /// Returns the index name mapped to the bib1 Use attribute numeric
-    /// value.  
+    /// value.
     ///
-    /// Returns None if no mapping exists and self.bib1_use_keyword_default is false.
+    /// If no map is found and a default is provided, return that instead.
     pub fn bib1_use_map_index(&self, bib1_value: u32) -> Option<&str> {
-        if let Some(ref map) = self.bib1_use_map {
-            let index = map.get(&bib1_value);
-            if index.is_none() && self.bib1_use_keyword_default {
-                Some("keyword")
-            } else {
-                index.map(|i| i.as_str())
-            }
-        } else {
-            BIB1_ATTR_QUERY_MAP
-                .iter()
-                .find(|(attr, _)| *attr == bib1_value)
-                .map(|(_, index)| *index)
-        }
+        self.bib1_use_map
+            .get(&bib1_value)
+            .map(|s| s.as_str())
+            .or(self.default_index())
     }
+
+    pub fn default_index(&self) -> Option<&str> {
+        self.default_index.as_deref()
+    }
+
     pub fn max_bib_count(&self) -> u32 {
         self.max_bib_count.unwrap_or(DEFAULT_MAX_BIB_COUNT)
     }
+
     pub fn max_item_count(&self) -> u32 {
         self.max_item_count.unwrap_or(DEFAULT_MAX_ITEM_COUNT)
     }
+
     pub fn holdings_tag(&self) -> &str {
         self.holdings_tag.as_deref().unwrap_or(DEFAULT_HOLDINGS_TAG)
     }
@@ -115,13 +104,6 @@ pub struct Config {
     pub max_workers: usize,
     pub min_workers: usize,
     pub min_idle_workers: usize,
-
-    // TODO config file
-    /// If no database name is provided OR the provided database is
-    /// not found, use the default.
-    pub use_default_database: bool,
-
-    default_database: Z39Database,
     databases: Vec<Z39Database>,
 }
 
@@ -133,9 +115,7 @@ impl Config {
             max_workers: 64,
             min_workers: 1,
             min_idle_workers: 1,
-            use_default_database: true,
             databases: Vec::new(),
-            default_database: Z39Database::default(),
         }
     }
 
@@ -146,18 +126,18 @@ impl Config {
             .collect::<Vec<&str>>()
     }
 
-    /// Returns Err if the provided database is not found and this
-    /// server instance does not support failling back to the default.
-    pub fn find_database(&self, database_name: Option<&str>) -> EgResult<&Z39Database> {
-        let mut db = None;
+    /// Returns the named database, or a default if provided.
+    ///
+    /// Returns Err if no database can be found.
+    pub fn find_database(&self, database_name: Option<&str>) -> LocalResult<&Z39Database> {
         if let Some(name) = database_name {
-            db = self.databases.iter().find(|d| d.name() == name);
+            if let Some(db) = self.databases.iter().find(|d| d.name() == name) {
+                return Ok(db);
+            }
         }
 
-        if let Some(d) = db {
-            Ok(d)
-        } else if self.use_default_database {
-            Ok(&self.default_database)
+        if let Some(db) = self.databases.iter().find(|d| d.is_default) {
+            Ok(db)
         } else {
             Err(format!("No such database: '{}'", database_name.unwrap_or("")).into())
         }
@@ -170,7 +150,7 @@ impl Config {
     }
 
     /// Parse a YAML configuration file.
-    pub fn from_yaml(filename: &str) -> EgResult<Self> {
+    pub fn from_yaml(filename: &str) -> LocalResult<Self> {
         let mut conf = Config::new(filename);
 
         let yaml_text = match fs::read_to_string(filename) {
@@ -216,7 +196,7 @@ impl Config {
     }
 
     /// Unpack settings for a single Z39Database in the config.
-    fn add_database(&mut self, db: &Yaml) -> EgResult<()> {
+    fn add_database(&mut self, db: &Yaml) -> LocalResult<()> {
         let name = db["name"]
             .as_str()
             .map(|s| s.to_string())
@@ -225,16 +205,15 @@ impl Config {
         let max_item_count = db["max-item-count"].as_i64().map(|n| n as u32);
         let max_bib_count = db["max-bib-count"].as_i64().map(|n| n as u32);
         let include_holdings = db["include-holdings"].as_bool().unwrap_or(false);
+        let is_default = db["is-default"].as_bool().unwrap_or(false);
         let use_elasticsearch = db["use-elasticsearch"].as_bool().unwrap_or(false);
         let holdings_tag = db["holdings-tag"].as_str().map(|s| s.to_string());
 
-        let bib1_use_keyword_default = db["bib1-use-keyword-default"].as_bool().unwrap_or(false);
+        let default_index = db["default-index"].as_str().map(|s| s.to_string());
 
-        let mut bib1_use_map = None;
+        let mut bib1_use_map = HashMap::new();
 
         if let Yaml::Array(ref maps) = db["bib1-use-map"] {
-            let mut hashmap = HashMap::new();
-
             for map in maps {
                 let attr_num = map["attr"]
                     .as_i64()
@@ -244,20 +223,19 @@ impl Config {
                     .as_str()
                     .ok_or_else(|| format!("Map {map:?} requires an 'index' value"))?;
 
-                hashmap.insert(attr_num as u32, index.to_string());
+                bib1_use_map.insert(attr_num as u32, index.to_string());
             }
-
-            bib1_use_map = Some(hashmap);
         }
 
         let zdb = Z39Database {
             name: Some(name),
+            is_default,
             holdings_tag,
             max_item_count,
             max_bib_count,
             include_holdings,
             use_elasticsearch,
-            bib1_use_keyword_default,
+            default_index,
             bib1_use_map,
         };
 

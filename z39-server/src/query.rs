@@ -1,4 +1,6 @@
 use crate::conf;
+use crate::error::LocalError;
+use crate::error::LocalResult;
 use z39::bib1;
 use z39::message::*;
 
@@ -18,28 +20,28 @@ impl<'a> Z39QueryCompiler<'a> {
     }
 
     /// Translate a Z39 Query into a query string that can be sent to Evergreen
-    pub fn compile(&self, query: &z39::message::Query) -> Result<String, String> {
+    pub fn compile(&self, query: &z39::message::Query) -> LocalResult<String> {
         match query {
             Query::Type1(ref rpn_query) => self.compile_rpn_structure(&rpn_query.rpn),
-            _ => Err(format!("Query type not supported: {query:?}")),
+            _ => Err(LocalError::NotSupported(format!("Query type: {query:?}"))),
         }
     }
 
-    fn compile_rpn_structure(&self, structure: &RpnStructure) -> Result<String, String> {
+    fn compile_rpn_structure(&self, structure: &RpnStructure) -> LocalResult<String> {
         match structure {
             RpnStructure::Op(ref op) => self.compile_rpn_operand(op),
             RpnStructure::RpnOp(ref op) => self.compile_rpn_op(op),
         }
     }
 
-    fn compile_rpn_operand(&self, op: &Operand) -> Result<String, String> {
+    fn compile_rpn_operand(&self, op: &Operand) -> LocalResult<String> {
         match op {
             Operand::AttrTerm(ref attr_term) => self.compile_attributes_plus_term(attr_term),
-            _ => Err(format!("Operand not supported: {op:?}")),
+            _ => Err(LocalError::NotSupported(format!("Operand: {op:?}"))),
         }
     }
 
-    fn compile_rpn_op(&self, op: &RpnOp) -> Result<String, String> {
+    fn compile_rpn_op(&self, op: &RpnOp) -> LocalResult<String> {
         let rpn1 = self.compile_rpn_structure(&op.rpn1)?;
         let rpn2 = self.compile_rpn_structure(&op.rpn2)?;
 
@@ -48,7 +50,7 @@ impl<'a> Z39QueryCompiler<'a> {
                 Operator::And => "AND",
                 Operator::Or => "OR",
                 Operator::AndNot => "AND NOT",
-                _ => return Err(format!("Operator not supported: {op:?}")),
+                _ => return Err(LocalError::NotSupported(format!("Operator: {op:?}"))),
             }
         } else {
             todo!("Native Evergreen support needed");
@@ -59,21 +61,25 @@ impl<'a> Z39QueryCompiler<'a> {
 
     /// Collect the search term, search index, and related attributes
     /// into a search component, e.g. id|isbn:1231231231231
-    fn compile_attributes_plus_term(
-        &self,
-        attr_term: &AttributesPlusTerm,
-    ) -> Result<String, String> {
+    fn compile_attributes_plus_term(&self, attr_term: &AttributesPlusTerm) -> LocalResult<String> {
         let search_term = match &attr_term.term {
             Term::General(ref v) => std::str::from_utf8(v)
                 .map_err(|e| e.to_string())?
                 .to_string(),
             Term::Numeric(n) => format!("{n}"),
             Term::CharacterString(ref v) => v.to_string(),
-            _ => return Err(format!("Unsupported Term variant: {:?}", attr_term.term)),
+            _ => {
+                return Err(LocalError::NotSupported(format!(
+                    "Term variant: {:?}",
+                    attr_term.term
+                )));
+            }
         };
 
         if search_term.is_empty() {
-            return Err(format!("Search term is empty: {attr_term:?}"));
+            return Err(LocalError::NoSearchTerm(format!(
+                "Search term is empty: {attr_term:?}"
+            )));
         }
 
         // Log when attributes are sent by the caller that we are going
@@ -123,11 +129,13 @@ impl<'a> Z39QueryCompiler<'a> {
             }
         }
 
-        // We need somewhere to search.
-        let Some(index) = search_index else {
-            return Err(format!(
-                "No search index configured for Use attribute={bib1_use_value:?}"
-            ));
+        let index = match search_index.or(self.database.default_index()) {
+            Some(i) => i,
+            None => {
+                return Err(LocalError::NoSuchSearchIndex(format!(
+                    "No search index configured for Use attribute={bib1_use_value:?}"
+                )));
+            }
         };
 
         if search_term.contains(' ') {
@@ -155,7 +163,7 @@ fn test_compile_rpn_structure() {
     let mut db = conf::Z39Database::default();
     db.set_use_elasticsearch(true);
 
-    let compiler = Z39QueryCompiler {database: &db};
+    let compiler = Z39QueryCompiler { database: &db };
 
     let s = compiler.compile_rpn_structure(&rpn_struct).unwrap();
 

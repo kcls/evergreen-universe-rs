@@ -2,9 +2,12 @@ use evergreen as eg;
 use std::path::Path;
 
 mod conf;
+mod error;
 mod query;
 mod server;
 mod session;
+
+use error::LocalResult;
 
 /// How often we wake and check for shutdown, etc. signals.
 ///
@@ -18,7 +21,7 @@ const IMPLEMENTATION_VERSION: &str = "0.1.0";
 const DEFAULT_CONFIG_1: &str = "/usr/local/etc/eg-z39-server.yml";
 const DEFAULT_CONFIG_2: &str = "./z39-server/conf/eg-z39-server.yml";
 
-fn load_config() -> eg::EgResult<conf::Config> {
+fn load_config() -> LocalResult<conf::Config> {
     if let Ok(ref file) = std::env::var("EG_Z39_SERVER_CONFIG") {
         conf::Config::from_yaml(file)
     } else if Path::new(DEFAULT_CONFIG_1).exists() {
@@ -26,7 +29,7 @@ fn load_config() -> eg::EgResult<conf::Config> {
     } else if Path::new(DEFAULT_CONFIG_2).exists() {
         conf::Config::from_yaml(DEFAULT_CONFIG_2)
     } else {
-        Err("sip2-mediator requires a configuration file".into())
+        Err("z39-server requires a configuration file".into())
     }
 }
 

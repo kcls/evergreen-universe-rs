@@ -1,10 +1,11 @@
 //! Handles a single Z39 connected session.
 use crate::conf;
+use crate::error::LocalError;
+use crate::error::LocalResult;
 use crate::query::Z39QueryCompiler;
-use eg::EgResult;
+
 use eg::EgValue;
 use evergreen as eg;
-
 use z39::message::*;
 
 use std::fmt;
@@ -55,7 +56,7 @@ impl Z39Session {
     }
 
     /// Main listen loop
-    pub fn listen(&mut self) -> EgResult<()> {
+    pub fn listen(&mut self) -> LocalResult<()> {
         log::info!("{self} starting session");
 
         let mut bytes = Vec::new();
@@ -109,17 +110,19 @@ impl Z39Session {
                 Err(e) => {
                     log::error!("handle_message() exited with {e}");
 
-                    // For now, errors produced by the session
-                    // are simple strings, so we have no way to
-                    // differentiate client protocol issues, vs internal
-                    // server errors, etc.  Just return a generic
-                    // SystemProblem response.  TODO granular Err types
-                    // or is that overkill?
-
-                    let close = Close {
+                    let mut close = Close {
                         close_reason: CloseReason::SystemProblem,
                         ..Default::default()
                     };
+
+                    match e {
+                        // Avoid sending internal debug info to the client.
+                        LocalError::Internal(_) => {}
+                        _ => {
+                            close.close_reason = CloseReason::ProtocolError;
+                            close.diagnostic_information = Some(e.to_string());
+                        }
+                    }
 
                     Message::from_payload(MessagePayload::Close(close))
                 }
@@ -154,7 +157,7 @@ impl Z39Session {
     /// Z39 message handler.
     ///
     /// Dispatches each message to its handler.
-    fn handle_message(&mut self, msg: Message) -> EgResult<Message> {
+    fn handle_message(&mut self, msg: Message) -> LocalResult<Message> {
         log::debug!("{self} processing message {msg:?}");
 
         let payload = match &msg.payload {
@@ -170,15 +173,15 @@ impl Z39Session {
     /// Handle the InitializeResponse
     ///
     /// Canned response.
-    fn handle_init_request(&mut self, _req: &InitializeRequest) -> EgResult<MessagePayload> {
+    fn handle_init_request(&mut self, _req: &InitializeRequest) -> LocalResult<MessagePayload> {
         Ok(MessagePayload::InitializeResponse(
             InitializeResponse::default(),
         ))
     }
 
-    /// Perform a bib record search and retain the results in a 
+    /// Perform a bib record search and retain the results in a
     /// BibSearch for subsequent bib retrievals via PresentRequest.
-    fn handle_search_request(&mut self, req: &SearchRequest) -> EgResult<MessagePayload> {
+    fn handle_search_request(&mut self, req: &SearchRequest) -> LocalResult<MessagePayload> {
         log::info!("{self} search query: {:?}", req.query);
 
         let mut resp = SearchResponse::default();
@@ -193,13 +196,12 @@ impl Z39Session {
 
         let database = conf::global().find_database(db_name)?;
 
-        let result = self.bib_search(req, &database);
-
-        let result = if let Err(e) = result {
-            log::error!("{self} bib search failed: {e}");
-            return Err(e);
-        } else {
-            result.unwrap()
+        let result = match self.bib_search(req, database) {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("{self} bib search failed: {e}");
+                return Err(e);
+            }
         };
 
         let mut bib_search = BibSearch::default();
@@ -207,15 +209,16 @@ impl Z39Session {
         // Search succeeded, even if no results were found.
         resp.search_status = true;
 
-        let bib_ids = if result.is_none() {
-            self.last_search = Some(bib_search);
-            return Ok(MessagePayload::SearchResponse(resp));
-        } else {
-            result.unwrap()
+        let bib_ids = match result {
+            Some(ids) => ids,
+            None => {
+                self.last_search = Some(bib_search);
+                return Ok(MessagePayload::SearchResponse(resp));
+            }
         };
 
         log::info!("Search returned IDs {bib_ids:?}");
-        
+
         resp.result_count = bib_ids.len() as u32;
 
         bib_search.database_name = db_name.map(|s| s.to_string());
@@ -227,7 +230,11 @@ impl Z39Session {
     }
 
     /// Search for bib records
-    fn bib_search(&mut self, req: &SearchRequest, database: &conf::Z39Database) -> EgResult<Option<Vec<i64>>> {
+    fn bib_search(
+        &mut self,
+        req: &SearchRequest,
+        database: &conf::Z39Database,
+    ) -> LocalResult<Option<Vec<i64>>> {
         let compiler = Z39QueryCompiler::new(database);
 
         let query = compiler.compile(&req.query)?;
@@ -244,7 +251,8 @@ impl Z39Session {
             "open-ils.search",
             "open-ils.search.biblio.multiclass.query.staff",
             vec![options, EgValue::from(query)],
-        )? else {
+        )?
+        else {
             // Search can return None if the request times out.
             // Treat it as 0 results.
             return Ok(None);
@@ -259,7 +267,8 @@ impl Z39Session {
         Ok(Some(bib_ids))
     }
 
-    fn handle_present_request(&mut self, req: &PresentRequest) -> EgResult<MessagePayload> {
+    /// Collect and return the requests bib records from the preceding SearchRequest.
+    fn handle_present_request(&mut self, req: &PresentRequest) -> LocalResult<MessagePayload> {
         let mut resp = PresentResponse::default();
 
         let Some(search) = self.last_search.as_ref() else {
@@ -303,7 +312,7 @@ impl Z39Session {
         req: &PresentRequest,
         bib_ids: &[i64],
         database: &conf::Z39Database,
-    ) -> EgResult<Records> {
+    ) -> LocalResult<Records> {
         log::info!("{self} collecting bib records {bib_ids:?}");
 
         // For now we only support binary and XML.
@@ -340,52 +349,45 @@ impl Z39Session {
         Ok(Records::ResponseRecords(records))
     }
 
+    /// Retrieve one bib record from the database, format it, optionally
+    /// add holdings, and return its bytes.
     fn get_one_record(
         &self,
         editor: &mut eg::Editor,
         bib_id: i64,
         as_xml: bool,
         database: &conf::Z39Database,
-    ) -> EgResult<Vec<u8>> {
+    ) -> LocalResult<Vec<u8>> {
         let mut bre = editor
             .retrieve("bre", bib_id)?
             .ok_or_else(|| editor.die_event())?;
 
-        let marc_xml = bre["marc"]
-            .take_string()
-            .ok_or_else(|| format!("Invalid bib record: {bib_id}"))?;
+        let marc_xml = bre["marc"].take_string().unwrap();
 
-        let bytes = if as_xml && !database.include_holdings() {
-            // Return the XML directly from the database
-            marc_xml.into_bytes()
+        // For consistency in responses, first translate all records into
+        // a marc Record, before migrating them to their final form.
+        let mut rec = marctk::Record::from_xml(&marc_xml)
+            .next() // Option
+            .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
+
+        if database.include_holdings() {
+            self.append_record_holdings(bib_id, database, &mut rec)?;
+        }
+
+        if as_xml {
+            Ok(rec.to_xml_string().into_bytes())
         } else {
-            // Translate the native MARC XML into MARC binary.
-
-            let mut rec = marctk::Record::from_xml(&marc_xml)
-                .next() // Option
-                .ok_or_else(|| format!("Could not parse MARC xml for record {bib_id}"))??;
-
-            if database.include_holdings() {
-                self.append_record_holdings(bib_id, database, &mut rec)?;
-            }
-
-            if as_xml {
-                rec.to_xml_string().into_bytes()
-            } else {
-                rec.to_binary()?
-            }
-        };
-
-        Ok(bytes)
+            Ok(rec.to_binary()?)
+        }
     }
 
-    /// Append holdings data to a bib record.
+    /// Append holdings fields to a bib record.
     fn append_record_holdings(
         &self,
         bib_id: i64,
         database: &conf::Z39Database,
         rec: &mut marctk::Record,
-    ) -> EgResult<()> {
+    ) -> LocalResult<()> {
         let query = eg::hash! {
             "select": {
                 "acp":["id", "barcode", "price", "ref", "holdable", "opac_visible", "copy_number"],

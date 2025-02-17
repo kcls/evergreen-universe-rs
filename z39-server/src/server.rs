@@ -69,7 +69,7 @@ impl mptc::RequestHandler for Z39SessionBroker {
         let mut bus = session.take_bus();
 
         // Remove any trailing data on the Bus.
-        bus.clear_bus()?;
+        bus.clear_bus().ok();
 
         // Apply a new Bus address to prevent any possibility of
         // trailing message cross-talk.  (Note, it wouldn't do anything,

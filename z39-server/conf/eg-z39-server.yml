@@ -20,6 +20,9 @@ z39-server:
     databases:
       - name: kcls
 
+        # Use this database if no other is specified by the client.
+        id_default: true
+
         use-elasticsearch: true
 
         # Limit search requests to this may records just so we
@@ -29,9 +32,10 @@ z39-server:
 
         include-holdings: false
 
-        # If true, unmapped Use attributes will default to searching
-        # the "keyword" index.
-        bib1-use-keyword-default: true
+        # Used if no index is provided or the provided Bib1 Use attribute
+        # has no mapping (below).  If empty, such searches will return 
+        # no results.
+        default-index: keyword
 
         # Maps Bib1 Use attributes to search indexes.
         # https://software.indexdata.com/yaz/doc/bib1.html
@@ -64,7 +68,8 @@ z39-server:
 
         holdings-tag: 852
 
-        bib1-use-keyword-default: false
+        default-index: keyword
+
         # Trim this set to only those needed by OCLC.
         bib1-use-map: 
           - attr: 4
