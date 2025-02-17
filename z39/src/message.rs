@@ -1,6 +1,7 @@
 //! Z39.50 Messages
 //!
 //! See https://www.loc.gov/z3950/agency/asn1.html
+use crate::error::{LocalError, LocalResult};
 use crate::settings::Settings;
 
 use rasn::ber::de::DecodeErrorKind;
@@ -741,7 +742,7 @@ impl Message {
     /// Parses a collection of bytes into a Message.
     ///
     /// Returns None if more bytes are needed to complete the message.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Option<Self>, String> {
+    pub fn from_bytes(bytes: &[u8]) -> LocalResult<Option<Self>> {
         if bytes.is_empty() {
             return Ok(None);
         }
@@ -750,7 +751,7 @@ impl Message {
         // Return None if more bytes are needed, Err(String) otherwise.
         let handle_error = |e: rasn::error::DecodeError| match *e.kind {
             DecodeErrorKind::Incomplete { needed: _ } => Ok(None),
-            _ => Err(e.to_string()),
+            _ => Err(LocalError::DecodeError(e)),
         };
 
         // The first byte of a Z39 ASN1 BER message is structed like so:
@@ -805,10 +806,10 @@ impl Message {
                 Err(e) => return handle_error(e),
             },
             _ => {
-                return Err(format!(
+                return Err(LocalError::ProtocolError(format!(
                     "Cannot process message with first byte: {}",
                     bytes[0]
-                ))
+                )))
             }
         };
 
@@ -821,7 +822,7 @@ impl Message {
 
     /// Translate a message into a collection of bytes suitable for dropping
     /// onto the wire.
-    pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
+    pub fn to_bytes(&self) -> LocalResult<Vec<u8>> {
         let res = match &self.payload {
             MessagePayload::InitializeRequest(m) => rasn::ber::encode(&m),
             MessagePayload::InitializeResponse(m) => rasn::ber::encode(&m),
@@ -832,6 +833,6 @@ impl Message {
             MessagePayload::Close(m) => rasn::ber::encode(&m),
         };
 
-        res.map_err(|e| e.to_string())
+        res.map_err(|e| LocalError::EncodeError(e))
     }
 }

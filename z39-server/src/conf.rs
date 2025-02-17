@@ -1,4 +1,4 @@
-use crate::error::LocalResult;
+use crate::error::{LocalResult, LocalError};
 
 use std::collections::HashMap;
 use std::fs;
@@ -139,7 +139,7 @@ impl Config {
         if let Some(db) = self.databases.iter().find(|d| d.is_default) {
             Ok(db)
         } else {
-            Err(format!("No such database: '{}'", database_name.unwrap_or("")).into())
+            Err(LocalError::NoSuchDatabase(format!("{}", database_name.unwrap_or(""))))
         }
     }
 

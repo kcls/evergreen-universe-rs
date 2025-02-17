@@ -1,6 +1,7 @@
 //! Bib1 Attribute Set Types
 //!
 //! https://www.loc.gov/z3950/agency/defns/bib1.html
+use crate::error::{LocalError, LocalResult};
 use crate::message::*;
 
 // Make working with these large enums easier.
@@ -19,11 +20,11 @@ pub enum Attribute {
 }
 
 impl TryFrom<u32> for Attribute {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Attribute '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Attribute '{n}'")))
     }
 }
 
@@ -141,11 +142,11 @@ impl From<Use> for AttributeElement {
 }
 
 impl TryFrom<u32> for Use {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Use '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Use '{n}'")))
     }
 }
 
@@ -164,11 +165,11 @@ pub enum Relation {
 }
 
 impl TryFrom<u32> for Relation {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Relation '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Relation '{n}'")))
     }
 }
 
@@ -180,11 +181,11 @@ pub enum Position {
 }
 
 impl TryFrom<u32> for Position {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Position '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Position '{n}'")))
     }
 }
 
@@ -209,11 +210,11 @@ pub enum Structure {
 }
 
 impl TryFrom<u32> for Structure {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Structure '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Structure '{n}'")))
     }
 }
 
@@ -230,11 +231,11 @@ pub enum Truncation {
 }
 
 impl TryFrom<u32> for Truncation {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Truncation '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Truncation '{n}'")))
     }
 }
 
@@ -246,11 +247,11 @@ pub enum Completeness {
 }
 
 impl TryFrom<u32> for Completeness {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Completeness '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Completeness '{n}'")))
     }
 }
 
@@ -261,11 +262,11 @@ pub enum Sorting {
 }
 
 impl TryFrom<u32> for Sorting {
-    type Error = String;
-    fn try_from(n: u32) -> Result<Self, Self::Error> {
+    type Error = LocalError;
+    fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| format!("No bib1::Sorting '{n}'"))
+            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Sorting '{n}'")))
     }
 }
 
@@ -286,7 +287,7 @@ impl TryFrom<u32> for Sorting {
 ///
 /// assert_eq!(stringify_attribute(&attr).unwrap(), "Structure=WordList");
 /// ```
-pub fn stringify_attribute(a: &AttributeElement) -> Result<String, String> {
+pub fn stringify_attribute(a: &AttributeElement) -> LocalResult<String> {
     let attr_type = Attribute::try_from(a.attribute_type)?;
 
     let numeric_value = match &a.attribute_value {
@@ -308,5 +309,3 @@ pub fn stringify_attribute(a: &AttributeElement) -> Result<String, String> {
         Attribute::Sorting => format!("{attr_type:?}={:?}", Sorting::try_from(numeric_value)?),
     })
 }
-
-
