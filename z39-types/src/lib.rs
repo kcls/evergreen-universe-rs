@@ -29,28 +29,28 @@ pub fn new_octet_string(bytes: Vec<u8>) -> OctetString {
     OctetString::from(bytes)
 }
 
-/// Local type for rasn::prelude::OctetString
+/// Local type for OctetString
 pub type OctetString = rasn::prelude::OctetString;
 
 /// Local type for rasn::prelude::ObjectIdentifier
 pub type ObjectIdentifier = rasn::prelude::ObjectIdentifier;
 
-/// Get the str form of a rasn::types::OctetString.
+/// Get the str form of an OctetString.
 pub fn octet_string_as_str(s: &OctetString) -> LocalResult<&str> {
     std::str::from_utf8(s).map_err(|e| LocalError::ProtocolError(e.to_string()))
 }
 
-/// Create a MARC21 rasn::types::ObjectIdentifier;
+/// Create a MARC21 ObjectIdentifier;
 pub fn marc21_identifier() -> ObjectIdentifier {
     ObjectIdentifier::new(&OID_MARC21).unwrap()
 }
 
-/// Create a MARCXML rasn::types::ObjectIdentifier;
+/// Create a MARCXML ObjectIdentifier;
 pub fn marcxml_identifier() -> ObjectIdentifier {
     ObjectIdentifier::new(&OID_MARCXML).unwrap()
 }
 
-/// Create a Bib1 Attribute Set rasn::types::ObjectIdentifier;
+/// Create a Bib1 Attribute Set ObjectIdentifier;
 pub fn bib1_identifier() -> ObjectIdentifier {
     ObjectIdentifier::new(&OID_ATTR_SET_BIB1).unwrap()
 }

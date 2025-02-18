@@ -1,4 +1,4 @@
-//! Z39.50 Messages
+//! Z39.50 ASN.1 Messages and Related Types
 //!
 //! See https://www.loc.gov/z3950/agency/asn1.html
 use crate::error::{LocalError, LocalResult};
@@ -171,7 +171,7 @@ pub enum ElementSetNames {
     #[rasn(tag(0))]
     GenericElementSetName(String),
     #[rasn(tag(1))]
-    DatabaseSpecific(SequenceOf<DatabaseSpecific>),
+    DatabaseSpecific(Vec<DatabaseSpecific>),
 }
 
 #[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
@@ -186,9 +186,9 @@ pub enum StringOrNumeric {
 #[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
 pub struct ComplexAttributeValue {
     #[rasn(tag(1))]
-    pub list: SequenceOf<StringOrNumeric>,
+    pub list: Vec<StringOrNumeric>,
     #[rasn(tag(2))]
-    pub semantic_action: Option<SequenceOf<u32>>,
+    pub semantic_action: Option<Vec<u32>>,
 }
 
 #[derive(Debug, Clone, PartialEq, AsnType, Decode, Encode)]
@@ -708,7 +708,8 @@ pub struct Message {
 impl Message {
     /// Parses a collection of bytes into a Message.
     ///
-    /// Returns None if more bytes are needed to complete the message.
+    /// Returns None if more bytes are needed to complete the message, 
+    /// which can happen e.g. when reading bytes from a TcpStream.
     pub fn from_bytes(bytes: &[u8]) -> LocalResult<Option<Self>> {
         if bytes.is_empty() {
             return Ok(None);

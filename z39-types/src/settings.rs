@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 static DEFAULT_PREFERRED_MESSAGE_SIZE: u32 = 67108864;
 static DEFAULT_EXCEPTIONAL_RECORD_SIZE: u32 = 67108864;
 
+// Once applied, settings are globally accessible, but cannot change.
 static SETTINGS: OnceLock<Settings> = OnceLock::new();
 
 /// Initialization options
@@ -53,10 +54,7 @@ impl InitOptions {
     }
 }
 
-/// Settings specific to each implemenation.
-///
-/// Call Settings.apply() to store a collection of settings for use.  The
-/// apply() method may only be called once.
+/// Settings specific to each client/server implemenation.
 #[derive(Debug)]
 pub struct Settings {
     pub implementation_id: Option<String>,

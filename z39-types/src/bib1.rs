@@ -1,10 +1,10 @@
-//! Bib1 Attribute Set Types
+//! Bib1 Attribute Set Types and Values
 //!
 //! https://www.loc.gov/z3950/agency/defns/bib1.html
 use crate::error::{LocalError, LocalResult};
 use crate::message::*;
 
-// Make working with these large enums easier.
+// Make working with the larger enums easier.
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 

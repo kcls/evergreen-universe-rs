@@ -1,4 +1,4 @@
-# Z39.50 Data Types for ASN.1 Messages and Bib1 Attribute Set Values
+# Types for Z39.50 ASN.1 Messages and Bib1 Attribute Set Values
 
 * Reference: [ASN.1 Messages Types](https://www.loc.gov/z3950/agency/asn1.html)
 * Reference: [Bib1 Attribute Set](https://www.loc.gov/z3950/agency/defns/bib1.html)
@@ -22,7 +22,7 @@
         .expect("bytes should produce a whole message");
 
     let MessagePayload::InitializeRequest(ref payload) = msg.payload else {
-        panic!("Unexpected type parsed: {msg:?}");
+        panic!("Unexpected payload: {msg:?}");
     };
 
     assert_eq!(Some("YAZ"), payload.implementation_name.as_deref());
