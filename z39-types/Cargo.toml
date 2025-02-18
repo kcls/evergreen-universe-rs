@@ -1,5 +1,5 @@
 [package]
-name = "z39"
+name = "z39-types"
 version = "0.1.0"
 edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]

@@ -1,4 +1,5 @@
 use crate::message::*;
+use crate::*;
 
 // Print a list of bytes as hex values.
 #[allow(dead_code)]
@@ -16,6 +17,7 @@ fn hexdump(bytes: &[u8]) {
 #[test]
 fn test_initialize_request() {
     // Example InitializeRequest from YAZ client.
+    // https://software.indexdata.com/yaz/doc/yaz-client.html
     let bytes = [
         0xb4, 0x52, 0x83, 0x02, 0x00, 0xe0, 0x84, 0x03, 0x00, 0xe9, 0xa2, 0x85, 0x04, 0x04, 0x00,
         0x00, 0x00, 0x86, 0x04, 0x04, 0x00, 0x00, 0x00, 0x9f, 0x6e, 0x02, 0x38, 0x31, 0x9f, 0x6f,
@@ -25,10 +27,12 @@ fn test_initialize_request() {
         0x38, 0x38, 0x34, 0x31, 0x61, 0x63, 0x62, 0x31, 0x34,
     ];
 
-    let msg = Message::from_bytes(&bytes).unwrap().unwrap();
+    let msg = Message::from_bytes(&bytes)
+        .expect("bytes should parse OK")
+        .expect("bytes should produce a whole message");
 
     let MessagePayload::InitializeRequest(ref payload) = msg.payload else {
-        panic!("Wrong message type parsed: {msg:?}");
+        panic!("Unexpected type parsed: {msg:?}");
     };
 
     assert_eq!(Some("YAZ"), payload.implementation_name.as_deref());

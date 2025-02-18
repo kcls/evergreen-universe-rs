@@ -6,7 +6,7 @@ use crate::query::Z39QueryCompiler;
 
 use eg::EgValue;
 use evergreen as eg;
-use z39::message::*;
+use z39_types::message::*;
 
 use std::fmt;
 use std::io::Read;
@@ -317,10 +317,10 @@ impl Z39Session {
 
         // For now we only support binary and XML.
         let mut as_xml = false;
-        let mut response_syntax = z39::message::marc21_identifier();
+        let mut response_syntax = z39_types::marc21_identifier();
 
         if let Some(syntax) = req.preferred_record_syntax.as_ref() {
-            if z39::message::is_marcxml_identifier(syntax) {
+            if z39_types::is_marcxml_identifier(syntax) {
                 as_xml = true;
                 response_syntax = syntax.clone();
             }
@@ -335,7 +335,7 @@ impl Z39Session {
             // Z39 PresentResponse messages include bib records packaged
             // in an ASN.1 External element
 
-            let oc = z39::message::octet_string(bytes);
+            let oc = z39_types::new_octet_string(bytes);
 
             let mut external = ExternalMessage::new(Encoding::OctetAligned(oc));
 

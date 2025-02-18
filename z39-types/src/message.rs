@@ -8,41 +8,6 @@ use rasn::ber::de::DecodeErrorKind;
 use rasn::prelude::*;
 use rasn::AsnType;
 
-// https://oid-base.com/get/1.2.840.10003.5.10
-pub const OID_MARC21: [u32; 6] = [1, 2, 840, 10003, 5, 10];
-
-// https://software.indexdata.com/yaz/doc/list-oids.html
-pub const OID_MARCXML: [u32; 7] = [1, 2, 840, 10003, 5, 109, 10];
-
-// https://oid-base.com/get/1.2.840.10003.3.1
-pub const OID_ATTR_SET_BIB1: [u32; 6] = [1, 2, 840, 10003, 3, 1];
-
-// Some useful functions that mean the caller does not have to
-// explicitly import rasn::types.
-pub fn octet_string(bytes: Vec<u8>) -> OctetString {
-    OctetString::from(bytes)
-}
-
-pub fn marc21_identifier() -> ObjectIdentifier {
-    ObjectIdentifier::new(&OID_MARC21).unwrap()
-}
-
-pub fn is_marc21_identifier(oid: &ObjectIdentifier) -> bool {
-    **oid == OID_MARC21
-}
-
-pub fn is_marcxml_identifier(oid: &ObjectIdentifier) -> bool {
-    **oid == OID_MARCXML
-}
-
-pub fn is_bib1_identifier(oid: &ObjectIdentifier) -> bool {
-    **oid == OID_ATTR_SET_BIB1
-}
-
-pub fn marcxml_identifier() -> ObjectIdentifier {
-    ObjectIdentifier::new(&OID_MARCXML).unwrap()
-}
-
 #[derive(Debug, Clone, PartialEq, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
 pub struct InitializeRequest {
@@ -733,6 +698,8 @@ pub enum MessagePayload {
     Close(Close),
 }
 
+/// Models a single Z39.50 message whose payload is one of the known
+/// message types.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Message {
     pub payload: MessagePayload,
@@ -748,7 +715,7 @@ impl Message {
         }
 
         // Parse error handler.
-        // Return None if more bytes are needed, Err(String) otherwise.
+        // Return None if more bytes are needed, LocalError otherwise.
         let handle_error = |e: rasn::error::DecodeError| match *e.kind {
             DecodeErrorKind::Incomplete { needed: _ } => Ok(None),
             _ => Err(LocalError::DecodeError(e)),
@@ -767,6 +734,8 @@ impl Message {
         //  However, if the last 5 bits of the first byte are all 1's,
         //  the tag value is stored in the second byte (to accommodate
         //  larger tag values, for 31 <= tag <= 127).
+        //
+        //  There are other rules for tags > 127, but they are not needed for Z39
         let tag = if bytes[0] == 191 {
             // bytes[0] == 10111111
             bytes[1]

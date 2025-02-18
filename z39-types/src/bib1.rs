@@ -276,8 +276,8 @@ impl TryFrom<u32> for Sorting {
 /// Complex attribute values are debug-stringified in place.
 ///
 /// ```
-/// use z39::bib1::*;
-/// use z39::message::*;
+/// use z39_types::bib1::*;
+/// use z39_types::message::*;
 ///
 /// let attr = AttributeElement {
 ///     attribute_set: None,

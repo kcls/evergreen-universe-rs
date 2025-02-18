@@ -1,12 +1,12 @@
 use crate::conf;
 use crate::error::LocalError;
 use crate::error::LocalResult;
-use z39::bib1;
-use z39::message::*;
+use z39_types::bib1;
+use z39_types::message::*;
 
 /// Compiler for Z39 queries.
 ///
-/// The z39-server module creates z39::message's which we then have to
+/// The z39-server module creates z39_types::message's which we then have to
 /// handle, the most complicated of which (so far) is the SearchRequest
 /// message, which contains the search queries.  This mod translates
 /// those into queries that can be used by Evergreen.
@@ -20,7 +20,7 @@ impl<'a> Z39QueryCompiler<'a> {
     }
 
     /// Translate a Z39 Query into a query string that can be sent to Evergreen
-    pub fn compile(&self, query: &z39::message::Query) -> LocalResult<String> {
+    pub fn compile(&self, query: &z39_types::message::Query) -> LocalResult<String> {
         match query {
             Query::Type1(ref rpn_query) => self.compile_rpn_structure(&rpn_query.rpn),
             _ => Err(LocalError::NotSupported(format!("Query type: {query:?}"))),
@@ -63,9 +63,7 @@ impl<'a> Z39QueryCompiler<'a> {
     /// into a search component, e.g. id|isbn:1231231231231
     fn compile_attributes_plus_term(&self, attr_term: &AttributesPlusTerm) -> LocalResult<String> {
         let search_term = match &attr_term.term {
-            Term::General(ref v) => std::str::from_utf8(v)
-                .map_err(|e| e.to_string())?
-                .to_string(),
+            Term::General(ref v) => z39_types::octet_string_as_str(v)?.to_string(),
             Term::Numeric(n) => format!("{n}"),
             Term::CharacterString(ref v) => v.to_string(),
             _ => {
@@ -93,7 +91,7 @@ impl<'a> Z39QueryCompiler<'a> {
         }
 
         let mut search_index = None;
-        let mut bib1_use_value = None;
+        let mut bib1_index_value = None;
         let mut is_not_equal = false;
 
         // Handle the no-op/default attributes explicitly so we can
@@ -104,8 +102,8 @@ impl<'a> Z39QueryCompiler<'a> {
             match attr_type {
                 bib1::Attribute::Use => match &attr.attribute_value {
                     AttributeValue::Numeric(n) => {
-                        bib1_use_value = Some(n);
-                        search_index = self.database.bib1_use_map_index(*n);
+                        bib1_index_value = Some(n);
+                        search_index = self.database.bib1_index_map_value(*n);
                     }
                     _ => log_unused_attr(attr),
                 },
@@ -164,7 +162,7 @@ impl<'a> Z39QueryCompiler<'a> {
             .or(self.database.default_index())
             .ok_or_else(|| {
                 LocalError::NoSuchSearchIndex(format!(
-                    "No search index configured for Use attribute={bib1_use_value:?}"
+                    "No search index configured for Use attribute={bib1_index_value:?}"
                 ))
             })?;
 
@@ -198,6 +196,8 @@ fn test_compile_rpn_structure() {
 
     let mut db = conf::Z39Database::default();
     db.set_use_elasticsearch(true);
+    db.bib1_index_map_mut().insert(4, "title".to_string());
+    db.bib1_index_map_mut().insert(1003, "author".to_string());
 
     let compiler = Z39QueryCompiler { database: &db };
 

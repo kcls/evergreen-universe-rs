@@ -25,28 +25,12 @@ pub struct Z39Database {
     name: Option<String>,
     include_holdings: bool,
     default_index: Option<String>,
-    bib1_use_map: HashMap<u32, String>,
+    bib1_index_map: HashMap<u32, String>,
     max_bib_count: Option<u32>,
     max_item_count: Option<u32>,
     holdings_tag: Option<String>,
     use_elasticsearch: bool,
 }
-
-/*
-impl Default for Z39Database {
-    fn default() -> Self {
-        is_default: false,
-        name: None
-        include_holdings: bool,
-        default_index: Option<String>,
-        bib1_use_map: HashMap<u32, String>,
-        max_bib_count: Option<u32>,
-        max_item_count: Option<u32>,
-        holdings_tag: Option<String>,
-        use_elasticsearch: bool,
-    }
-}
-*/
 
 impl Z39Database {
     pub fn name(&self) -> &str {
@@ -72,11 +56,16 @@ impl Z39Database {
     /// value.
     ///
     /// If no map is found and a default is provided, return that instead.
-    pub fn bib1_use_map_index(&self, bib1_value: u32) -> Option<&str> {
-        self.bib1_use_map
+    pub fn bib1_index_map_value(&self, bib1_value: u32) -> Option<&str> {
+        self.bib1_index_map
             .get(&bib1_value)
             .map(|s| s.as_str())
             .or(self.default_index())
+    }
+
+    #[cfg(test)]
+    pub fn bib1_index_map_mut(&mut self) -> &mut HashMap<u32, String> {
+        &mut self.bib1_index_map
     }
 
     pub fn default_index(&self) -> Option<&str> {
@@ -213,7 +202,7 @@ impl Config {
 
         let default_index = db["default-index"].as_str().map(|s| s.to_string());
 
-        let mut bib1_use_map = HashMap::new();
+        let mut bib1_index_map = HashMap::new();
 
         if let Yaml::Array(ref maps) = db["bib1-use-map"] {
             for map in maps {
@@ -225,7 +214,7 @@ impl Config {
                     .as_str()
                     .ok_or_else(|| format!("Map {map:?} requires an 'index' value"))?;
 
-                bib1_use_map.insert(attr_num as u32, index.to_string());
+                bib1_index_map.insert(attr_num as u32, index.to_string());
             }
         }
 
@@ -238,7 +227,7 @@ impl Config {
             include_holdings,
             use_elasticsearch,
             default_index,
-            bib1_use_map,
+            bib1_index_map,
         };
 
         log::debug!("Adding database {zdb:?}");
