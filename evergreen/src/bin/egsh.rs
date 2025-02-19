@@ -229,13 +229,13 @@ impl Shell {
 
     /// Setup our rustyline instance, used for reading lines (yep)
     /// and managing history.
-    fn setup_readline(&mut self) -> rustyline::Editor<()> {
+    fn setup_readline(&mut self) -> rustyline::DefaultEditor {
         let config = rustyline::Config::builder()
             .history_ignore_space(true)
             .completion_type(rustyline::CompletionType::List)
             .build();
 
-        let mut readline = rustyline::Editor::with_config(config).unwrap();
+        let mut readline = rustyline::DefaultEditor::with_config(config).unwrap();
 
         if let Ok(home) = std::env::var("HOME") {
             let histfile = format!("{home}/{HISTORY_FILE}");
@@ -270,8 +270,11 @@ impl Shell {
         }
     }
 
-    fn add_to_history(&self, readline: &mut rustyline::Editor<()>, line: &str) {
-        readline.add_history_entry(line);
+    fn add_to_history(&self, readline: &mut rustyline::DefaultEditor, line: &str) {
+        if let Err(e) = readline.add_history_entry(line) {
+            eprintln!("Cannot add to history: {e}");
+            return;
+        }
 
         if let Some(filename) = self.history_file.as_ref() {
             if let Err(e) = readline.append_history(filename) {
@@ -348,7 +351,7 @@ impl Shell {
     ///
     /// If the command was successfully executed, return the command
     /// as a string so it may be added to our history.
-    fn read_one_line(&mut self, readline: &mut rustyline::Editor<()>) -> Result<(), String> {
+    fn read_one_line(&mut self, readline: &mut rustyline::DefaultEditor) -> Result<(), String> {
         let user_input = match readline.readline(PROMPT) {
             Ok(line) => line,
             // If the user has pressed Ctrl+D

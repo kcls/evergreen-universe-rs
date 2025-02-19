@@ -121,12 +121,12 @@ fn send_one_request(client: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
         }]
     };
 
-    if let Err(e) = client.write_message(Message::text(message.dump())) {
+    if let Err(e) = client.write(Message::text(message.dump())) {
         eprintln!("Error in send: {e}");
         return;
     }
 
-    let response = match client.read_message() {
+    let response = match client.read() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error in recv: {e}");
@@ -222,12 +222,12 @@ fn _test_formats() {
         }]
     };
 
-    if let Err(e) = client.write_message(Message::text(message.dump())) {
+    if let Err(e) = client.write(Message::text(message.dump())) {
         eprintln!("Error in send: {e}");
         return;
     }
 
-    let response = match client.read_message() {
+    let response = match client.read() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error in recv: {e}");
@@ -267,12 +267,12 @@ fn _test_formats() {
         }]
     };
 
-    if let Err(e) = client.write_message(Message::text(message.dump())) {
+    if let Err(e) = client.write(Message::text(message.dump())) {
         eprintln!("Error in send: {e}");
         return;
     }
 
-    let response = match client.read_message() {
+    let response = match client.read() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error in recv: {e}");

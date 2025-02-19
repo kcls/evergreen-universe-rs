@@ -219,11 +219,7 @@ impl Settings {
     }
 
     pub fn get_cached_value(&mut self, context: &SettingContext, name: &str) -> Option<&EgValue> {
-        let hash = match self.cache.get_mut(context) {
-            Some(h) => h,
-            None => return None,
-        };
-
+        let hash = self.cache.get_mut(context)?;
         hash.get(name).map(|v| v.value())
     }
 

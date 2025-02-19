@@ -4,7 +4,7 @@ use crate::osrf::logging::Logger;
 use crate::osrf::message::TransportMessage;
 use crate::util;
 use crate::EgResult;
-use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
+use redis::{Commands, ConnectionAddr, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 use std::fmt;
 
 /// Manages a Redis connection.
@@ -64,6 +64,7 @@ impl Bus {
             db: 0,
             username: Some(config.username().to_string()),
             password: Some(config.password().to_string()),
+            protocol: ProtocolVersion::RESP3,
         };
 
         let domain = config.domain();
@@ -141,7 +142,7 @@ impl Bus {
         } else {
             let mut resp: Vec<String> = self
                 .connection()
-                .blpop(&recipient, timeout as usize)
+                .blpop(&recipient, timeout as f64) // TODO
                 .map_err(|e| format!("Redis blpop error recipient={recipient}: {e}"))?;
 
             if resp.len() > 1 {
@@ -352,8 +353,8 @@ impl Bus {
     }
 
     /// Set the expire time on the specified key to 'timeout' seconds from now.
-    pub fn set_key_timeout(&mut self, key: &str, timeout: u64) -> EgResult<i32> {
-        let res: Result<i32, _> = self.connection().expire(key, timeout as usize);
+    pub fn set_key_timeout(&mut self, key: &str, timeout: i64) -> EgResult<i32> {
+        let res: Result<i32, _> = self.connection().expire(key, timeout);
 
         if let Err(ref e) = res {
             Err(format!("Error in set_key_timeout(): {e}"))?;

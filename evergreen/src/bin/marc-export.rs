@@ -218,10 +218,7 @@ fn read_options() -> Option<(ExportOptions, script::Runner)> {
         options: Some(opts),
     };
 
-    let scripter = match script::Runner::init(options).expect("Scripter should init()") {
-        Some(s) => s,
-        None => return None,
-    };
+    let scripter = script::Runner::init(options).expect("Scripter should init()")?;
 
     let destination = match scripter.params().opt_get::<String>("out-file").unwrap() {
         Some(filename) => ExportDestination::File(filename),
