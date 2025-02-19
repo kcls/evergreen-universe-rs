@@ -63,7 +63,7 @@ println!("Created: {msg:?}");
 ## Currently Supported Message Types
 
 The driver for this crate is a minimum viable Z30.50 server in Rust.
-It's unclear if additional messages types will be added, but patches are
+It's unclear if additional messages types will be added.  Patches are
 certainly welcome.
 
 * InitializeRequest

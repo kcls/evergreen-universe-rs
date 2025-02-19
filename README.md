@@ -65,7 +65,11 @@ sudo apt install git build-essential pkg-config libssl-dev
 
 ##### Install Rust via Rustup
 
-[https://rustup.rs/](https://rustup.rs/)
+See [https://rustup.rs/](https://rustup.rs/)
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
 
 ##### Checkout Code
 
