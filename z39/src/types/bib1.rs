@@ -8,6 +8,11 @@ use crate::types::pdu::*;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
+// Local shortcut
+fn err(type_: &str, val: u32) -> LocalError {
+    LocalError::ProtocolError(format!("No bib1::{type_} found with value '{val}'"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum Attribute {
     Use = 1,
@@ -24,7 +29,7 @@ impl TryFrom<u32> for Attribute {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Attribute '{n}'")))
+            .ok_or_else(|| err("Attribute", n))
     }
 }
 
@@ -146,7 +151,7 @@ impl TryFrom<u32> for Use {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Use '{n}'")))
+            .ok_or_else(|| err("Use", n))
     }
 }
 
@@ -169,7 +174,7 @@ impl TryFrom<u32> for Relation {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Relation '{n}'")))
+            .ok_or_else(|| err("Relation", n))
     }
 }
 
@@ -185,7 +190,7 @@ impl TryFrom<u32> for Position {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Position '{n}'")))
+            .ok_or_else(|| err("Position", n))
     }
 }
 
@@ -214,7 +219,7 @@ impl TryFrom<u32> for Structure {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Structure '{n}'")))
+            .ok_or_else(|| err("Structure", n))
     }
 }
 
@@ -235,7 +240,7 @@ impl TryFrom<u32> for Truncation {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Truncation '{n}'")))
+            .ok_or_else(|| err("Truncation", n))
     }
 }
 
@@ -251,7 +256,7 @@ impl TryFrom<u32> for Completeness {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Completeness '{n}'")))
+            .ok_or_else(|| err("Completeness", n))
     }
 }
 
@@ -266,7 +271,7 @@ impl TryFrom<u32> for Sorting {
     fn try_from(n: u32) -> LocalResult<Self> {
         Self::iter()
             .find(|a| *a as u32 == n)
-            .ok_or_else(|| LocalError::ProtocolError(format!("No bib1::Sorting '{n}'")))
+            .ok_or_else(|| err("Sorting", n))
     }
 }
 
