@@ -1,0 +1,91 @@
+# Z39 Server Configuration File
+z39-server:
+
+    # z39-server listens for clients on this address and port.
+    # This value is passed directly to 
+    # https://doc.rust-lang.org/std/net/struct.TcpListener.html#method.bind
+    bind: 127.0.0.1:2210
+
+    # Maximum number of allowed Z39 client connections.  Once reached,
+    # new connection attempts are rejected.
+    max-workers: 64 
+
+    # Mumber of worker threads to launch at start and the minimum
+    # bare number to maintain throughout.
+    min-workers: 4
+
+    # Maintain this many idle workers at all times, up to max-workers.
+    min-idle-workers: 2
+
+    databases:
+      - name: kcls
+
+        # Use this database if no other is specified by the client.
+        is-default: true
+
+        use-elasticsearch: true
+
+        # Limit search requests to this may records just so we
+        # have some kind of backstop.  If no value is applied,
+        # a default max value will be applied.
+        max-bib-count: 100
+
+        include-holdings: false
+
+        # Used if no index is provided or the provided Bib1 Use attribute
+        # has no mapping (below).  If empty, such searches will return 
+        # no results.
+        default-index: keyword
+
+        # Maps Bib1 Use attributes to search indexes.
+        # https://software.indexdata.com/yaz/doc/bib1.html
+        bib1-use-map:
+          - attr: 4
+            index: title
+          - attr: 7
+            index: identifier|isbn
+          - attr: 8
+            index: keyword
+          - attr: 21
+            index: subject
+          - attr: 1003
+            index: author
+          - attr: 1007
+            index: identifier|ctrlno
+          - attr: 1018
+            index: keyword|publisher
+          - attr: 1121
+            index: identifier|ctrlxref
+
+      - name: kcls-holdings-oclc
+        use-elasticsearch: true
+        max-bib-count: 100
+        include-holdings: true
+
+        # searches that include holdings data can get bulky if there are
+        # thousands of items.  This is a hard limit.
+        max-item-count: 500
+
+        holdings-tag: 852
+
+        default-index: keyword
+
+        # Trim this set to only those needed by OCLC.
+        bib1-use-map: 
+          - attr: 4
+            index: title
+          - attr: 7
+            index: identifier|isbn
+          - attr: 8
+            index: keyword
+          - attr: 21
+            index: subject
+          - attr: 1003
+            index: author
+          - attr: 1007
+            index: identifier|ctrlno
+          - attr: 1018
+            index: keyword|publisher
+          - attr: 1121
+            index: identifier|ctrlxref
+
