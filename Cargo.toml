@@ -6,6 +6,7 @@ members = [
   "evergreen",
   "sip2",
   "sip2-mediator",
+  "z39",
   "kcls",
 ]
 default-members = [
