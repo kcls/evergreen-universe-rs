@@ -1,8 +1,8 @@
-//! Z39.50 ASN.1 Messages and Related Types
+//! Z39.50 ASN.1 Primary Data Units (i.e. Messages) and Related Types
 //!
 //! See https://www.loc.gov/z3950/agency/asn1.html
 use crate::error::{LocalError, LocalResult};
-use crate::settings::Settings;
+use crate::prefs::ImplementationPrefs;
 
 use rasn::ber::de::DecodeErrorKind;
 use rasn::prelude::*;
@@ -55,7 +55,7 @@ pub struct InitializeResponse {
 // InitializeResponse will always be a canned response.
 impl Default for InitializeResponse {
     fn default() -> Self {
-        let settings = Settings::global();
+        let settings = ImplementationPrefs::global();
 
         // Translate the InitOptions values into the required BitString
         let mut options = BitString::repeat(false, 16);
@@ -708,7 +708,7 @@ pub struct Message {
 impl Message {
     /// Parses a collection of bytes into a Message.
     ///
-    /// Returns None if more bytes are needed to complete the message, 
+    /// Returns None if more bytes are needed to complete the message,
     /// which can happen e.g. when reading bytes from a TcpStream.
     pub fn from_bytes(bytes: &[u8]) -> LocalResult<Option<Self>> {
         if bytes.is_empty() {

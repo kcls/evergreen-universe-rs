@@ -1,5 +1,6 @@
-use crate::message::*;
-use crate::*;
+use crate::types::oid;
+use crate::types::pdu::*;
+use crate::types::*;
 
 // Print a list of bytes as hex values.
 #[allow(dead_code)]
@@ -125,7 +126,7 @@ fn test_payloaduest() {
         panic!();
     };
 
-    assert_eq!(OID_ATTR_SET_BIB1, rpn_query.attribute_set);
+    assert_eq!(oid::OID_ATTR_SET_BIB1, rpn_query.attribute_set);
 
     // Compare the bytes
     assert_eq!(*b"0879303727", **isbn);
@@ -169,7 +170,7 @@ fn test_present_request() {
     //println!("\n{payload:?}");
 
     assert_eq!(
-        &OID_MARC21,
+        &oid::OID_MARC21,
         payload.preferred_record_syntax.as_ref().unwrap()
     );
 
@@ -434,10 +435,10 @@ fn test_present_response() {
     //assert_eq!(bytes, *msg.to_bytes().unwrap());
 
     // Build a PresentResponse message manually.
-    let oc = rasn::types::OctetString::from_static(b"XXXXX");
+    let oc = OctetString::from(b"Pile of MARC Bytes".to_vec());
     let mut external = ExternalMessage::new(Encoding::OctetAligned(oc));
 
-    external.direct_reference = Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap());
+    external.direct_reference = Some(oid::for_marc21());
 
     let mut npr = NamePlusRecord::new(Record::RetrievalRecord(External(external)));
     npr.name = Some(DatabaseName::Name("YYYYY".to_string()));
@@ -446,7 +447,7 @@ fn test_present_response() {
 
     let mut pr = PresentResponse::default();
     pr.records = Some(records);
-    pr.number_of_records_returned = 12;
+    pr.number_of_records_returned = 1;
     pr.present_status = PresentStatus::Partial1;
 
     let m2 = Message::from_payload(MessagePayload::PresentResponse(pr));
@@ -461,7 +462,7 @@ fn test_present_response() {
     // We can compare bytes from
     assert_eq!(bytes2, m3.to_bytes().unwrap());
 
-    println!("{}", marcxml_identifier().to_string());
+    println!("{}", oid::for_marcxml().to_string());
 }
 
 #[test]
@@ -470,7 +471,8 @@ fn test_close() {
 
     close.close_reason = CloseReason::ProtocolError;
     // who doesn't want reports as MARC?
-    close.resource_report_format = Some(rasn::types::ObjectIdentifier::new(&OID_MARC21).unwrap());
+    close.resource_report_format =
+        Some(rasn::types::ObjectIdentifier::new(&oid::OID_MARC21).unwrap());
 
     let msg = Message::from_payload(MessagePayload::Close(close));
 
@@ -483,7 +485,7 @@ fn test_close() {
     };
 
     assert_eq!(
-        &OID_MARC21,
+        &oid::OID_MARC21,
         payload.resource_report_format.as_ref().unwrap()
     );
 

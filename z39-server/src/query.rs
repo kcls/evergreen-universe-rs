@@ -1,8 +1,8 @@
 use crate::conf;
 use crate::error::LocalError;
 use crate::error::LocalResult;
-use z39_types::bib1;
-use z39_types::message::*;
+use z39::types::bib1;
+use z39::types::pdu::*;
 
 /// Compiler for Z39 queries.
 ///
@@ -20,7 +20,7 @@ impl<'a> Z39QueryCompiler<'a> {
     }
 
     /// Translate a Z39 Query into a query string that can be sent to Evergreen
-    pub fn compile(&self, query: &z39_types::message::Query) -> LocalResult<String> {
+    pub fn compile(&self, query: &Query) -> LocalResult<String> {
         match query {
             Query::Type1(ref rpn_query) => self.compile_rpn_structure(&rpn_query.rpn),
             _ => Err(LocalError::NotSupported(format!("Query type: {query:?}"))),
@@ -63,7 +63,7 @@ impl<'a> Z39QueryCompiler<'a> {
     /// into a search component, e.g. id|isbn:1231231231231
     fn compile_attributes_plus_term(&self, attr_term: &AttributesPlusTerm) -> LocalResult<String> {
         let search_term = match &attr_term.term {
-            Term::General(ref v) => z39_types::octet_string_as_str(v)?.to_string(),
+            Term::General(ref v) => z39::types::octet_string_as_str(v)?.to_string(),
             Term::Numeric(n) => format!("{n}"),
             Term::CharacterString(ref v) => v.to_string(),
             _ => {

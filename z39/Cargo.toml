@@ -1,10 +1,10 @@
 [package]
-name = "z39-types"
+name = "z39"
 version = "0.1.0"
 edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 license-file = "../LICENSE"
-description = "Z39.50 Types and ASN.1 Message"
+description = "Z39.50 Types and ASN.1 Messages"
 readme = "README.md"
 keywords = ["z39", "z39.50", "library"]
 categories = ["development-tools", "network-programming", "parser-implementations"]

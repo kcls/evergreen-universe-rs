@@ -1,6 +1,6 @@
 use std::error;
 use std::fmt;
-use z39_types::Z39Error;
+use z39::Z39Error;
 
 use evergreen::result::EgError;
 

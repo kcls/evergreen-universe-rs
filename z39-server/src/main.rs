@@ -64,12 +64,12 @@ fn main() {
     };
 
     // Some responses have canned values that we can set up front.
-    z39_types::Settings {
+    z39::prefs::ImplementationPrefs {
         implementation_id: Some(IMPLEMENTATION_ID.to_string()),
         implementation_name: Some(IMPLEMENTATION_NAME.to_string()),
         implementation_version: Some(IMPLEMENTATION_VERSION.to_string()),
         // Supported operations
-        init_options: z39_types::settings::InitOptions {
+        init_options: z39::prefs::InitOptions {
             search: true,
             presen: true,
             ..Default::default()

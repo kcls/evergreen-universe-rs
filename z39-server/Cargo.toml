@@ -6,7 +6,7 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
 mptc = { path = "../mptc" }
-z39-types = { path = "../z39-types" }
+z39 = { path = "../z39" }
 marctk = { path = "../marctk" }
 evergreen = { path = "../evergreen" }
 json = "0.12.4"

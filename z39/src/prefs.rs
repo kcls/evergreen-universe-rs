@@ -1,4 +1,4 @@
-//! Global Settings
+//! Global ImplementationPrefs
 use std::sync::OnceLock;
 
 // Copied from YAZ
@@ -6,7 +6,7 @@ static DEFAULT_PREFERRED_MESSAGE_SIZE: u32 = 67108864;
 static DEFAULT_EXCEPTIONAL_RECORD_SIZE: u32 = 67108864;
 
 // Once applied, settings are globally accessible, but cannot change.
-static SETTINGS: OnceLock<Settings> = OnceLock::new();
+static IMPLEMENTATION_PREFS: OnceLock<ImplementationPrefs> = OnceLock::new();
 
 /// Initialization options
 ///
@@ -54,9 +54,9 @@ impl InitOptions {
     }
 }
 
-/// Settings specific to each client/server implemenation.
+/// ImplementationPrefs specific to each client/server implemenation.
 #[derive(Debug)]
-pub struct Settings {
+pub struct ImplementationPrefs {
     pub implementation_id: Option<String>,
     pub implementation_name: Option<String>,
     pub implementation_version: Option<String>,
@@ -65,9 +65,9 @@ pub struct Settings {
     pub init_options: InitOptions,
 }
 
-impl Default for Settings {
+impl Default for ImplementationPrefs {
     fn default() -> Self {
-        Settings {
+        ImplementationPrefs {
             implementation_id: None,
             implementation_name: None,
             implementation_version: None,
@@ -78,17 +78,19 @@ impl Default for Settings {
     }
 }
 
-impl Settings {
-    /// Returns a reference to the globally applied Settings value.
-    pub fn global() -> &'static Settings {
-        if SETTINGS.get().is_none() {
-            SETTINGS.set(Settings::default()).unwrap();
+impl ImplementationPrefs {
+    /// Returns a reference to the globally applied ImplementationPrefs value.
+    pub fn global() -> &'static ImplementationPrefs {
+        if IMPLEMENTATION_PREFS.get().is_none() {
+            IMPLEMENTATION_PREFS
+                .set(ImplementationPrefs::default())
+                .unwrap();
         }
 
-        SETTINGS.get().unwrap()
+        IMPLEMENTATION_PREFS.get().unwrap()
     }
 
-    /// Take ownership of a Settings instance and store it globally.
+    /// Take ownership of a ImplementationPrefs instance and store it globally.
     ///
     /// May only be called once globally.
     ///
@@ -96,8 +98,8 @@ impl Settings {
     ///
     /// Panics if called more than once.
     pub fn apply(self) {
-        if SETTINGS.set(self).is_err() {
-            panic!("Global Settings already applied");
+        if IMPLEMENTATION_PREFS.set(self).is_err() {
+            panic!("Global ImplementationPrefs already applied");
         }
     }
 }
