@@ -104,7 +104,7 @@ impl SessionInbound {
                 break;
             }
 
-            let message = match receiver.read_message() {
+            let message = match receiver.read() {
                 Ok(m) => m,
                 Err(e) => {
                     match e {
@@ -350,9 +350,7 @@ impl Session {
         // During shutdown, various error conditions may occur as our
         // sockets are in different states of disconnecting.  Discard
         // any errors and keep going.
-        self.sender
-            .write_message(WebSocketMessage::Close(None))
-            .ok();
+        self.sender.send(WebSocketMessage::Close(None)).ok();
 
         if let Err(e) = in_thread.join() {
             log::error!("{self} Inbound thread exited with error: {e:?}");
@@ -489,7 +487,7 @@ impl Session {
                     ));
                 } else {
                     log::trace!("{self} Queueing inbound message for processing");
-                    self.request_queue.push_back(text);
+                    self.request_queue.push_back(text.to_string());
                 }
 
                 Ok(false)
@@ -497,7 +495,7 @@ impl Session {
             WebSocketMessage::Ping(text) => {
                 let message = WebSocketMessage::Pong(text);
                 self.sender
-                    .write_message(message)
+                    .send(message)
                     .map_err(|e| format!("{self} Error sending Pong to client: {e}"))?;
                 Ok(false)
             }
@@ -731,10 +729,10 @@ impl Session {
 
         log::trace!("{self} replying with message: {msg_json}");
 
-        let msg = WebSocketMessage::Text(msg_json);
+        let msg = WebSocketMessage::Text(msg_json.into());
 
         self.sender
-            .write_message(msg)
+            .send(msg)
             .map_err(|e| format!("{self} Error sending response to websocket client: {e}"))
     }
 
@@ -842,7 +840,7 @@ impl WebsocketStream {
     fn new(address: &str, port: u16, max_parallel: usize) -> Result<Self, String> {
         log::info!("EG Websocket listening at {address}:{port}");
 
-        let listener = eg::util::tcp_listener(address, port, SIG_POLL_INTERVAL)
+        let listener = eg::util::tcp_listener(&format!("{address}:{port}"), SIG_POLL_INTERVAL)
             .map_err(|e| format!("Cannot listen for connections at {address}:{port} {e}"))?;
 
         let stream = WebsocketStream {

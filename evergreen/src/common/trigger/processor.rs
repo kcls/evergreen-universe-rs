@@ -30,7 +30,7 @@ impl fmt::Display for Processor<'_> {
 }
 
 impl<'a> Processor<'a> {
-    pub fn new(editor: &'a mut Editor, event_def_id: i64) -> EgResult<Processor> {
+    pub fn new(editor: &'a mut Editor, event_def_id: i64) -> EgResult<Processor<'a>> {
         let flesh = eg::hash! {
             "flesh": 1,
             "flesh_fields": {"atevdef": ["hook", "env", "params"]}

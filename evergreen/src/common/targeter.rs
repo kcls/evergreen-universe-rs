@@ -175,7 +175,7 @@ impl fmt::Display for HoldTargeter<'_> {
 }
 
 impl<'a> HoldTargeter<'a> {
-    pub fn new(editor: &'a mut Editor) -> HoldTargeter {
+    pub fn new(editor: &'a mut Editor) -> HoldTargeter<'a> {
         let settings = Settings::new(editor);
 
         HoldTargeter {

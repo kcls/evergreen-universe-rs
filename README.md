@@ -37,8 +37,6 @@ SIP2 Mediator
 
 ## Evergreen Rust Primer
 
-Currently assumes Ubuntu 22.04.
-
 ### Setup
 
 Actions that communicate via OpenSRF require OpenSRF/Evergreen Redis.
@@ -48,7 +46,8 @@ Actions that communicate via OpenSRF require OpenSRF/Evergreen Redis.
 #### Ansible Version
 
 Follow [these ansible instructions](
-    https://github.com/berick/evergreen-ansible-installer/tree/working/ubuntu-22.04-redis)
+    https://github.com/berick/evergreen-ansible-installer/tree/working/ubuntu-24.04)
+
 to install on a server/VM.
 
 #### Docker Version
@@ -58,8 +57,23 @@ a Docker container.
 
 #### Setup Rust
 
+##### Install Prereqs
+
 ```sh
-sudo apt install git build-essential pkg-config libssl-dev rust-all 
+sudo apt install git build-essential pkg-config libssl-dev
+```
+
+##### Install Rust via Rustup
+
+See [https://rustup.rs/](https://rustup.rs/)
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+##### Checkout Code
+
+```sh
 git clone https://github.com/kcls/evergreen-universe-rs                              
 ```
 

@@ -344,7 +344,7 @@ impl Record {
         for field in self.control_fields() {
             num_dirs += 1;
 
-            let mut field_len = field.content().as_bytes().len();
+            let mut field_len = field.content().len();
 
             field_len += 1; // end of field terminator
 
@@ -369,7 +369,7 @@ impl Record {
             let mut field_len = 3; // ind1 + ind2 + field terminator
             for sf in field.subfields() {
                 field_len += 2; // sf code + separator
-                field_len += sf.content().as_bytes().len();
+                field_len += sf.content().len();
             }
 
             // Our directory entry as a string.

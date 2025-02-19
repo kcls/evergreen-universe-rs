@@ -282,7 +282,7 @@ pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
 ///
 /// ```text
 /// loop {
-///    let mut tcp_listener = eg::util::tcp_listener("127.0.0.1", 9898, 5)?;
+///    let mut tcp_listener = eg::util::tcp_listener("127.0.0.1:9898", 5)?;
 ///
 ///    let client_stream = match self.tcp_listener.accept() {
 ///        Ok(stream, _addr) => stream,
@@ -301,9 +301,7 @@ pub fn lockfile(path: &str, action: &str) -> EgResult<bool> {
 ///    }
 /// }
 /// ```
-pub fn tcp_listener(address: &str, port: u16, read_timeout: u64) -> EgResult<TcpListener> {
-    let bind = format!("{address}:{port}");
-
+pub fn tcp_listener(bind: &str, read_timeout: u64) -> EgResult<TcpListener> {
     let socket = Socket::new(Domain::IPV4, Type::STREAM, None)
         .map_err(|e| format!("Socket::new() failed with {e}"))?;
 

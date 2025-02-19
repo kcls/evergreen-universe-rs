@@ -7,7 +7,7 @@ const DEFAULT_INDICATOR: &str = " ";
 
 /// Verifies the provided string is composed of 'len' number of bytes.
 fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
-    let byte_len = s.as_bytes().len();
+    let byte_len = s.len();
     if byte_len != len {
         return Err(format!(
             "Invalid byte count for string s={s} wanted={len} found={byte_len}"
@@ -453,7 +453,7 @@ impl Field {
         spec.chars()
             .zip(self.tag().chars())
             .all(|(spec_char, tag_char)| {
-                spec_char.to_ascii_lowercase() == 'x' || spec_char == tag_char
+                spec_char.eq_ignore_ascii_case(&'x') || spec_char == tag_char
             })
     }
 }
