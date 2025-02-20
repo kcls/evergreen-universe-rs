@@ -1,9 +1,9 @@
 [package]
 name = "marctk"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
-license-file = "../LICENSE"
+license = "MIT"
 description = "MARC21 Binary, Breaker, and XML Toolkit"
 readme = "README.md"
 keywords = ["marc", "marc21", "marcxml", "library", "bibliographic"]

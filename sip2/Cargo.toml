@@ -1,9 +1,9 @@
 [package]
 name = "sip2"
-version = "0.3.3"
+version = "0.3.4"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 edition = "2021"
-license-file = "../LICENSE"
+license = "MIT"
 description = "SIP2 Library"
 readme = "README.md"
 keywords = ["sip", "sip2", "library"]

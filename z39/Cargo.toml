@@ -1,9 +1,9 @@
 [package]
 name = "z39"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
-license-file = "../LICENSE"
+license = "MIT"
 description = "Z39.50 Types and ASN.1 Messages"
 readme = "README.md"
 keywords = ["z39", "z3950", "library", "asn1", "bib1"]
