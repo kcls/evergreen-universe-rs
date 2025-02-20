@@ -6,7 +6,7 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 license-file = "../LICENSE"
 description = "Z39.50 Types and ASN.1 Messages"
 readme = "README.md"
-keywords = ["z39", "z39.50", "library", "asn1", "bib1"]
+keywords = ["z39", "z3950", "library", "asn1", "bib1"]
 categories = ["development-tools", "network-programming", "parser-implementations"]
 repository = "https://github.com/kcls/evergreen-universe-rs"
 
