@@ -9,13 +9,13 @@ SYSTEMD_DIR = /lib/systemd/system
 TEST_THREADS = 4
 BUILD_THREADS = 4
 
-build: build-evergreen build-sip2mediator build-z39-server
+build: build-evergreen build-sip2mediator
 
 # Removes Cargo artifacts
 clean:
 	cargo clean
 
-build-release: build-evergreen-release build-sip2mediator-release build-z39-server-release
+build-release: build-evergreen-release build-sip2mediator-release
 
 test:
 	cargo test -j ${BUILD_THREADS} --all -- --test-threads=${TEST_THREADS}
@@ -23,13 +23,13 @@ test:
 test-evergreen:
 	cargo test -j ${BUILD_THREADS} --package evergreen -- --test-threads=${TEST_THREADS}
 
-install: install-evergreen install-sip2mediator install-z39-server
+install: install-evergreen install-sip2mediator
 
-install-bin: install-evergreen-bin install-sip2mediator-bin install-z39-server-bin
+install-bin: install-evergreen-bin install-sip2mediator-bin
 
-install-bin-release: install-evergreen-bin-release install-sip2mediator-bin-release install-z39-server-bin-release
+install-bin-release: install-evergreen-bin-release install-sip2mediator-bin-release
 
-install-release: install-evergreen-release install-sip2mediator-release install-z39-server-release
+install-release: install-evergreen-release install-sip2mediator-release
 
 # --- Evergreen ---
 
@@ -99,31 +99,6 @@ install-sip2mediator-config:
 	fi;
 	cp ./systemd/eg-sip2-mediator.service ${SYSTEMD_DIR}/ 
 	systemctl daemon-reload 
-
-# --- Z39 Server ---
-
-build-z39-server:
-	cargo build -j ${BUILD_THREADS} --package z39-server
-
-build-z39-server-release:
-	cargo build -j ${BUILD_THREADS} --package z39-server --release
-
-install-z39-server: install-z39-server-config install-z39-server-bin
-install-z39-server-bin:
-	cp ./target/debug/eg-z39-server ${TARGET}/bin
-
-install-z39-server-release: install-z39-server-config install-z39-server-bin-release
-
-install-z39-server-bin-release:
-	cp ./target/release/eg-z39-server ${TARGET}/bin
-
-install-z39-server-config:
-	@if [ ! -s ${TARGET}/etc/eg-z39-server.yml ]; \
-		then cp ./z39-server/conf/eg-z39-server.yml ${TARGET}/etc/; \
-	fi;
-	cp ./systemd/eg-z39-server.service ${SYSTEMD_DIR}/ 
-	systemctl daemon-reload 
-
 
 # --- KCLS ---
 
