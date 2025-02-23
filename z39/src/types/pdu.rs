@@ -791,6 +791,10 @@ impl Message {
         Message { payload }
     }
 
+    pub fn payload(&self) -> &MessagePayload {
+        &self.payload
+    }
+
     /// Translate a message into a collection of bytes suitable for dropping
     /// onto the wire.
     pub fn to_bytes(&self) -> LocalResult<Vec<u8>> {
