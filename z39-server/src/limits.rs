@@ -4,13 +4,13 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-pub struct AddrLimiter {
+pub struct RateLimiter {
     events: HashMap<SocketAddr, Vec<Instant>>,
     window: Duration,
     max_per_window: u32,
 }
 
-impl AddrLimiter {
+impl RateLimiter {
     pub fn into_shared(self) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(self))
     }
@@ -24,7 +24,6 @@ impl AddrLimiter {
     }
 
     /// Returns true if the current request may continue, false otherwise.
-    /// TODO should prob return a LocalResult?
     pub fn event_permitted(&mut self, addr: &SocketAddr) -> bool {
         // A max of zero means unbounded.
         if self.max_per_window == 0 {
@@ -54,18 +53,13 @@ impl AddrLimiter {
             }
         }
 
-        let permitted = if new_events.len() < self.max_per_window as usize {
-            new_events.push(now);
-            true
-        } else {
-            // Avoid adding the event if it's not permitted
-            false
-        };
+        // Track the event even if it's not permitted, since work was performed
+        new_events.push(now);
 
         // Change the underlying vec our hashtable points to.
         *events = new_events;
 
-        permitted
+        events.len() <= self.max_per_window as usize
     }
 
     pub fn _remove_addr(&mut self, addr: &SocketAddr) {

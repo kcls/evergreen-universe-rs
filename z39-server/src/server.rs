@@ -1,4 +1,4 @@
-use crate::limits::AddrLimiter;
+use crate::limits::RateLimiter;
 use evergreen as eg;
 
 use std::any::Any;
@@ -32,7 +32,7 @@ impl mptc::Request for Z39ConnectRequest {
 struct Z39SessionBroker {
     bus: Option<eg::osrf::bus::Bus>,
     shutdown: Arc<AtomicBool>,
-    limits: Arc<Mutex<AddrLimiter>>,
+    limits: Arc<Mutex<RateLimiter>>,
 }
 
 impl mptc::RequestHandler for Z39SessionBroker {
@@ -103,12 +103,12 @@ impl mptc::RequestHandler for Z39SessionBroker {
 pub struct Z39Server {
     tcp_listener: TcpListener,
     shutdown: Arc<AtomicBool>,
-    limits: Arc<Mutex<AddrLimiter>>,
+    limits: Arc<Mutex<RateLimiter>>,
 }
 
 impl Z39Server {
     pub fn start(tcp_listener: TcpListener) {
-        let limits = AddrLimiter::new(
+        let limits = RateLimiter::new(
             conf::global().rate_window,
             conf::global().max_msgs_per_window,
         )

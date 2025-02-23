@@ -2,7 +2,7 @@
 use crate::conf;
 use crate::error::LocalError;
 use crate::error::LocalResult;
-use crate::limits::AddrLimiter;
+use crate::limits::RateLimiter;
 use crate::query::Z39QueryCompiler;
 
 use eg::EgValue;
@@ -34,7 +34,7 @@ pub(crate) struct Z39Session {
     shutdown: Arc<AtomicBool>,
     client: eg::Client,
     last_search: Option<BibSearch>,
-    limits: Arc<Mutex<AddrLimiter>>,
+    limits: Arc<Mutex<RateLimiter>>,
 }
 
 impl fmt::Display for Z39Session {
@@ -49,7 +49,7 @@ impl Z39Session {
         peer_addr: SocketAddr,
         bus: eg::osrf::bus::Bus,
         shutdown: Arc<AtomicBool>,
-        limits: Arc<Mutex<AddrLimiter>>,
+        limits: Arc<Mutex<RateLimiter>>,
     ) -> Self {
         let client = eg::Client::from_bus(bus);
 
@@ -135,6 +135,12 @@ impl Z39Session {
             // Reset the byte array for the next message cycle.
             bytes.clear();
 
+            // Unless the caller is closing the connection, verify they
+            // have not exceeded the configured rate limit.
+            if !matches!(msg.payload(), MessagePayload::Close(_)) {
+                self.check_activity_limit()?;
+            }
+
             // Handle the message
             let resp = match self.handle_message(msg) {
                 Ok(r) => r,
@@ -152,10 +158,6 @@ impl Z39Session {
                 }
             };
 
-            if !self.check_activity_limit()? {
-                break;
-            }
-
             self.send_reply(resp)?;
         }
 
@@ -164,41 +166,35 @@ impl Z39Session {
         Ok(())
     }
 
-    /// Returns true if the request can proceed and false if a close message
-    /// was sent due to excess activity.
-    fn check_activity_limit(&mut self) -> LocalResult<bool> {
+    /// Checks for excessive activity and inserts a sleep when too many
+    /// requests have been encountered.
+    fn check_activity_limit(&mut self) -> LocalResult<()> {
         let permitted = {
             let mut limiter = match self.limits.lock() {
                 Ok(l) => l,
                 Err(e) => {
-                    // As a safety value for now, if locking errors
+                    // As a safety valve for now, if locking errors
                     // occur, move on and let the activity take place.
                     // Should only happen of another thread paniced with
                     // the lock open.
                     log::error!("{self} limiter lock error: {e}");
-                    return Ok(true);
+                    return Ok(());
                 }
             };
 
             limiter.event_permitted(&self.peer_addr)
         };
 
-        if permitted {
-            return Ok(true);
+        if !permitted {
+            log::info!("{self} exceeded rate limit; pausing momentarily");
+
+            // Once the limit has been reached, slow down all responses
+            // to the client.
+            // TODO make the sleep time configurable
+            std::thread::sleep(Duration::from_secs(5));
         }
 
-        log::info!("{self} exceeded rate limit; pausing then closing");
-
-        // Very slightly confound the client by waiting to reply so
-        // they are not encouraged to immediately reconnect.
-        std::thread::sleep(Duration::from_secs(10));
-
-        self.send_close(
-            CloseReason::CostLimit,
-            Some("Rate Limit Exceeded".to_string()),
-        )?;
-
-        Ok(false)
+        Ok(())
     }
 
     /// Send a Close message to the caller with the provided close reason
