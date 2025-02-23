@@ -1,9 +1,11 @@
+use crate::limits::AddrLimiter;
 use evergreen as eg;
 
 use std::any::Any;
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::conf;
 use crate::session::Z39Session;
@@ -30,6 +32,7 @@ impl mptc::Request for Z39ConnectRequest {
 struct Z39SessionBroker {
     bus: Option<eg::osrf::bus::Bus>,
     shutdown: Arc<AtomicBool>,
+    limits: Arc<Mutex<AddrLimiter>>,
 }
 
 impl mptc::RequestHandler for Z39SessionBroker {
@@ -46,15 +49,18 @@ impl mptc::RequestHandler for Z39SessionBroker {
         // Give the stream to the zsession
         let tcp_stream = request.tcp_stream.take().unwrap();
 
-        let peer_addr = tcp_stream
-            .peer_addr()
-            .map_err(|e| e.to_string())?
-            .to_string();
+        let peer_addr = tcp_stream.peer_addr().map_err(|e| e.to_string())?;
 
         // Give the bus to the session while it's active
         let bus = self.bus.take().unwrap();
 
-        let mut session = Z39Session::new(tcp_stream, peer_addr, bus, self.shutdown.clone());
+        let mut session = Z39Session::new(
+            tcp_stream,
+            peer_addr,
+            bus,
+            self.shutdown.clone(),
+            self.limits.clone(),
+        );
 
         let result = session
             .listen()
@@ -63,6 +69,17 @@ impl mptc::RequestHandler for Z39SessionBroker {
         // Attempt to shut down the TCP stream regardless of how
         // the conversation ended.
         session.shutdown();
+
+        if let Ok(mut _limiter) = self.limits.lock() {
+            // TODO remove addressses only after confirming they are
+            // not in use by another thread, which will be required
+            // to implement the max-sessions logic.  And even then,
+            // we may want to keep the entries for a short time so
+            // the disconnects and reconnects do not automatically
+            // clear the slate for an address.  A periodic general
+            // purge of activity could resolve that.
+            // limiter.remove_addr(&peer_addr);
+        }
 
         // Take our bus back so we don't have to reconnect in between
         // z39 clients.  This z39 Session is done with it.
@@ -76,6 +93,8 @@ impl mptc::RequestHandler for Z39SessionBroker {
         // since messages would refer to unknown sessions, but still).
         bus.generate_address();
 
+        self.bus = Some(bus);
+
         result.map_err(|e| e.to_string())
     }
 }
@@ -84,12 +103,20 @@ impl mptc::RequestHandler for Z39SessionBroker {
 pub struct Z39Server {
     tcp_listener: TcpListener,
     shutdown: Arc<AtomicBool>,
+    limits: Arc<Mutex<AddrLimiter>>,
 }
 
 impl Z39Server {
     pub fn start(tcp_listener: TcpListener) {
+        let limits = AddrLimiter::new(
+            conf::global().rate_window,
+            conf::global().max_msgs_per_window,
+        )
+        .into_shared();
+
         let server = Z39Server {
             tcp_listener,
+            limits,
             shutdown: Arc::new(AtomicBool::new(false)),
         };
 
@@ -133,6 +160,7 @@ impl mptc::RequestStream for Z39Server {
     fn new_handler(&mut self) -> Box<dyn mptc::RequestHandler> {
         Box::new(Z39SessionBroker {
             bus: None,
+            limits: self.limits.clone(),
             shutdown: self.shutdown.clone(),
         })
     }
