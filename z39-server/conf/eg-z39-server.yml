@@ -1,91 +1,106 @@
-# Z39 Server Configuration File
-z39-server:
+# Evergreen Z39.50 Server Configuration File
 
-    # z39-server listens for clients on this address and port.
-    # This value is passed directly to 
-    # https://doc.rust-lang.org/std/net/struct.TcpListener.html#method.bind
-    bind: 127.0.0.1:2210
+# z39-server listens for clients on this address and port.
+# This value is passed directly to 
+# https://doc.rust-lang.org/std/net/struct.TcpListener.html#method.bind
+bind: 127.0.0.1:2210
 
-    # Maximum number of allowed Z39 client connections.  Once reached,
-    # new connection attempts are rejected.
-    max-workers: 64 
+# Maximum number of allowed Z39 client connections.  Once reached,
+# new connection attempts are rejected.
+max-workers: 64 
 
-    # Mumber of worker threads to launch at start and the minimum
-    # bare number to maintain throughout.
-    min-workers: 4
+# Mumber of worker threads to launch at start and the minimum
+# bare number to maintain throughout.
+min-workers: 4
 
-    # Maintain this many idle workers at all times, up to max-workers.
-    min-idle-workers: 2
+# Maintain this many idle workers at all times, up to max-workers.
+min-idle-workers: 2
 
-    databases:
-      - name: kcls
+# Clients idle for this many seconds will be sent a Close message
+# and disconnected.  No value or a value of 0 means no timeout.
+idle-timeout: 30
 
-        # Use this database if no other is specified by the client.
-        is-default: true
+rate-limits:
+  # How many active sessions/threads do we allow per IP address.
+  max-sessions-per-ip: 1
 
-        use-elasticsearch: true
+  # How many messages of any type do we handle per IP address per 
+  # session per minute.
+  max-msgs-per-window: 30
 
-        # Limit search requests to this may records just so we
-        # have some kind of backstop.  If no value is applied,
-        # a default max value will be applied.
-        max-bib-count: 100
+  # These clients are not subject to any rate limiting.
+  ip-whitelist:
+    - 127.0.0.1
 
-        include-holdings: false
+databases:
+  - name: kcls
 
-        # Used if no index is provided or the provided Bib1 Use attribute
-        # has no mapping (below).  If empty, such searches will return 
-        # no results.
-        default-index: keyword
+    # Use this database if no other is specified by the client.
+    is-default: true
 
-        # Maps Bib1 Use attributes to search indexes.
-        # https://software.indexdata.com/yaz/doc/bib1.html
-        bib1-use-map:
-          - attr: 4
-            index: title
-          - attr: 7
-            index: identifier|isbn
-          - attr: 8
-            index: keyword
-          - attr: 21
-            index: subject
-          - attr: 1003
-            index: author
-          - attr: 1007
-            index: identifier|ctrlno
-          - attr: 1018
-            index: keyword|publisher
-          - attr: 1121
-            index: identifier|ctrlxref
+    use-elasticsearch: true
 
-      - name: kcls-holdings-oclc
-        use-elasticsearch: true
-        max-bib-count: 100
-        include-holdings: true
+    # Limit search requests to this may records just so we
+    # have some kind of backstop.  If no value is applied,
+    # a default max value will be applied.
+    max-bib-count: 100
 
-        # searches that include holdings data can get bulky if there are
-        # thousands of items.  This is a hard limit.
-        max-item-count: 500
+    include-holdings: false
 
-        holdings-tag: 852
+    # Used if no index is provided or the provided Bib1 Use attribute
+    # has no mapping (below).  If empty, such searches will return 
+    # no results.
+    default-index: keyword
 
-        default-index: keyword
+    # Maps Bib1 Use attributes to search indexes.
+    # https://software.indexdata.com/yaz/doc/bib1.html
+    bib1-use-map:
+      - attr: 4
+        index: title
+      - attr: 7
+        index: identifier|isbn
+      - attr: 8
+        index: keyword
+      - attr: 21
+        index: subject
+      - attr: 1003
+        index: author
+      - attr: 1007
+        index: identifier|ctrlno
+      - attr: 1018
+        index: keyword|publisher
+      - attr: 1121
+        index: identifier|ctrlxref
 
-        # Trim this set to only those needed by OCLC.
-        bib1-use-map: 
-          - attr: 4
-            index: title
-          - attr: 7
-            index: identifier|isbn
-          - attr: 8
-            index: keyword
-          - attr: 21
-            index: subject
-          - attr: 1003
-            index: author
-          - attr: 1007
-            index: identifier|ctrlno
-          - attr: 1018
-            index: keyword|publisher
-          - attr: 1121
-            index: identifier|ctrlxref
+  - name: kcls-holdings-oclc
+    use-elasticsearch: true
+    max-bib-count: 100
+    include-holdings: true
+
+    # searches that include holdings data can get bulky if there are
+    # thousands of items.  This is a hard limit.
+    max-item-count: 500
+
+    holdings-tag: 852
+
+    default-index: keyword
+
+    # Trim this set to only those needed by OCLC.
+    bib1-use-map: 
+      - attr: 4
+        index: title
+      - attr: 7
+        index: identifier|isbn
+      - attr: 8
+        index: keyword
+      - attr: 21
+        index: subject
+      - attr: 1003
+        index: author
+      - attr: 1007
+        index: identifier|ctrlno
+      - attr: 1018
+        index: keyword|publisher
+      - attr: 1121
+        index: identifier|ctrlxref
 

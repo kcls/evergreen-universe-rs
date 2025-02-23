@@ -2,6 +2,7 @@
 use crate::conf;
 use crate::error::LocalError;
 use crate::error::LocalResult;
+use crate::limits::AddrLimiter;
 use crate::query::Z39QueryCompiler;
 
 use eg::EgValue;
@@ -12,9 +13,12 @@ use z39::types::pdu::*;
 use std::fmt;
 use std::io::Read;
 use std::io::Write;
+use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 const NETWORK_BUFSIZE: usize = 1024;
 
@@ -26,10 +30,11 @@ struct BibSearch {
 
 pub(crate) struct Z39Session {
     tcp_stream: TcpStream,
-    peer_addr: String,
+    peer_addr: SocketAddr,
     shutdown: Arc<AtomicBool>,
     client: eg::Client,
     last_search: Option<BibSearch>,
+    limits: Arc<Mutex<AddrLimiter>>,
 }
 
 impl fmt::Display for Z39Session {
@@ -41,9 +46,10 @@ impl fmt::Display for Z39Session {
 impl Z39Session {
     pub fn new(
         tcp_stream: TcpStream,
-        peer_addr: String,
+        peer_addr: SocketAddr,
         bus: eg::osrf::bus::Bus,
         shutdown: Arc<AtomicBool>,
+        limits: Arc<Mutex<AddrLimiter>>,
     ) -> Self {
         let client = eg::Client::from_bus(bus);
 
@@ -52,6 +58,7 @@ impl Z39Session {
             peer_addr,
             shutdown,
             client,
+            limits,
             last_search: None,
         }
     }
@@ -61,6 +68,14 @@ impl Z39Session {
         log::info!("{self} starting session");
 
         let mut bytes = Vec::new();
+
+        let mut last_activity = Instant::now();
+
+        let timeout = if conf::global().idle_timeout > 0 {
+            Some(Duration::from_secs(conf::global().idle_timeout as u64))
+        } else {
+            None
+        };
 
         // Read bytes from the TCP stream, feeding them into the BER
         // parser, until a complete message is formed.  Handle the
@@ -76,6 +91,18 @@ impl Z39Session {
                             log::debug!("{self} Shutdown signal received, exiting listen loop");
                             break;
                         }
+
+                        if let Some(duration) = timeout {
+                            if (Instant::now() - last_activity) > duration {
+                                log::info!("{self} disconnecting on idle timeout");
+                                self.send_close(
+                                    CloseReason::LackOfActivity,
+                                    Some("Timed Out".to_string()),
+                                )?;
+                                break;
+                            }
+                        }
+
                         // Go back and wait for requests to arrive.
                         continue;
                     }
@@ -102,6 +129,9 @@ impl Z39Session {
                 continue;
             };
 
+            // Once we have a whole message, count it as activity.
+            last_activity = Instant::now();
+
             // Reset the byte array for the next message cycle.
             bytes.clear();
 
@@ -111,31 +141,22 @@ impl Z39Session {
                 Err(e) => {
                     log::error!("handle_message() exited with {e}");
 
-                    let mut close = Close {
-                        close_reason: CloseReason::SystemProblem,
-                        ..Default::default()
+                    let (reason, diag) = match e {
+                        // Avoid sending internal debug info to the client.
+                        LocalError::Internal(_) => (CloseReason::SystemProblem, None),
+                        _ => (CloseReason::ProtocolError, Some(e.to_string())),
                     };
 
-                    match e {
-                        // Avoid sending internal debug info to the client.
-                        LocalError::Internal(_) => {}
-                        _ => {
-                            close.close_reason = CloseReason::ProtocolError;
-                            close.diagnostic_information = Some(e.to_string());
-                        }
-                    }
-
-                    Message::from_payload(MessagePayload::Close(close))
+                    self.send_close(reason, diag)?;
+                    break;
                 }
             };
 
-            let bytes = resp.to_bytes()?;
+            if !self.check_activity_limit()? {
+                break;
+            }
 
-            log::trace!("{self} replying with {bytes:?}");
-
-            self.tcp_stream
-                .write_all(bytes.as_slice())
-                .map_err(|e| e.to_string())?;
+            self.send_reply(resp)?;
         }
 
         log::info!("{self} session exiting");
@@ -143,7 +164,72 @@ impl Z39Session {
         Ok(())
     }
 
+    /// Returns true if the request can proceed and false if a close message
+    /// was sent due to excess activity.
+    fn check_activity_limit(&mut self) -> LocalResult<bool> {
+        let permitted = {
+            let mut limiter = match self.limits.lock() {
+                Ok(l) => l,
+                Err(e) => {
+                    // As a safety value for now, if locking errors
+                    // occur, move on and let the activity take place.
+                    // Should only happen of another thread paniced with
+                    // the lock open.
+                    log::error!("{self} limiter lock error: {e}");
+                    return Ok(true);
+                }
+            };
+
+            limiter.event_permitted(&self.peer_addr)
+        };
+
+        if permitted {
+            return Ok(true);
+        }
+
+        log::info!("{self} exceeded rate limit; pausing then closing");
+
+        // Very slightly confound the client by waiting to reply so
+        // they are not encouraged to immediately reconnect.
+        std::thread::sleep(Duration::from_secs(10));
+
+        self.send_close(
+            CloseReason::CostLimit,
+            Some("Rate Limit Exceeded".to_string()),
+        )?;
+
+        Ok(false)
+    }
+
+    /// Send a Close message to the caller with the provided close reason
+    /// and optional diagnostic info.
+    fn send_close(&mut self, reason: CloseReason, diag: Option<String>) -> LocalResult<()> {
+        log::debug!("{self} sending Close {reason:?} {diag:?}");
+
+        let close = Close {
+            close_reason: reason,
+            diagnostic_information: diag,
+            ..Default::default()
+        };
+
+        self.send_reply(Message::from_payload(MessagePayload::Close(close)))
+    }
+
+    /// Send message bytes to the caller.
+    fn send_reply(&mut self, payload: Message) -> LocalResult<()> {
+        let bytes = payload.to_bytes()?;
+
+        log::trace!("{self} replying with bytes: {bytes:?}");
+
+        Ok(self
+            .tcp_stream
+            .write_all(bytes.as_slice())
+            .map_err(|e| e.to_string())?)
+    }
+
     /// Shut down the session's TcpStrean.
+    ///
+    /// Ignores errors.
     pub fn shutdown(&mut self) {
         self.tcp_stream.shutdown(std::net::Shutdown::Both).ok();
     }

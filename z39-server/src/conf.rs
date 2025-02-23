@@ -2,7 +2,10 @@ use crate::error::{LocalError, LocalResult};
 
 use std::collections::HashMap;
 use std::fs;
+use std::net::IpAddr;
+use std::str::FromStr;
 use std::sync::OnceLock;
+use std::time::Duration;
 use yaml_rust::Yaml;
 use yaml_rust::YamlLoader;
 
@@ -40,7 +43,7 @@ impl Z39Database {
         self.use_elasticsearch
     }
 
-    /// Set the use_elasticsearch flag.  
+    /// Set the use_elasticsearch flag.
     ///
     /// Currently used only in test code.
     #[cfg(test)]
@@ -93,6 +96,11 @@ pub struct Config {
     pub max_workers: usize,
     pub min_workers: usize,
     pub min_idle_workers: usize,
+    pub idle_timeout: usize,
+    pub max_sessions_per_ip: usize,
+    pub max_msgs_per_window: u32,
+    pub rate_window: Duration,
+    pub ip_whitelist: Vec<IpAddr>,
     databases: Vec<Z39Database>,
 }
 
@@ -104,6 +112,11 @@ impl Config {
             max_workers: 64,
             min_workers: 1,
             min_idle_workers: 1,
+            idle_timeout: 0,
+            max_sessions_per_ip: 0,
+            max_msgs_per_window: 0,
+            rate_window: Duration::from_secs(60), // TODO
+            ip_whitelist: Vec::new(),
             databases: Vec::new(),
         }
     }
@@ -155,7 +168,7 @@ impl Config {
         };
 
         let root = match yaml_docs.first() {
-            Some(v) => &v["z39-server"],
+            Some(v) => v,
             None => return Err("Invalid Z39 config".into()),
         };
 
@@ -173,6 +186,27 @@ impl Config {
 
         if let Some(v) = root["min-idle-workers"].as_i64() {
             conf.min_idle_workers = v as usize;
+        }
+
+        if let Some(v) = root["idle-timeout"].as_i64() {
+            conf.idle_timeout = v as usize;
+        }
+
+        conf.max_sessions_per_ip = root["rate-limits"]["max-sessions-per-ip"]
+            .as_i64()
+            .unwrap_or(0) as usize;
+        conf.max_msgs_per_window = root["rate-limits"]["max-msgs-per-window"]
+            .as_i64()
+            .unwrap_or(0) as u32;
+
+        if let Some(whitelist) = root["rate-limits"]["ip-whitelist"].as_vec() {
+            for addr in whitelist {
+                if let Some(addr) = addr.as_str() {
+                    let addr =
+                        IpAddr::from_str(addr).map_err(|e| LocalError::Internal(e.to_string()))?;
+                    conf.ip_whitelist.push(addr);
+                }
+            }
         }
 
         let Yaml::Array(ref databases) = root["databases"] else {

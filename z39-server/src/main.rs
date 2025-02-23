@@ -3,6 +3,7 @@ use std::path::Path;
 
 mod conf;
 mod error;
+mod limits;
 mod query;
 mod server;
 mod session;
