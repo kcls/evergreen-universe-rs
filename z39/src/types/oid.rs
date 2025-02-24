@@ -35,7 +35,7 @@ pub fn for_bib1() -> ObjectIdentifier {
 ///
 /// ```
 /// use z39::types::oid;
-/// assert!(oid::is_marcxml_identifier(&oid::for_marcxml()));
+/// assert!(oid::is_marc21_identifier(&oid::for_marc21()));
 /// ```
 pub fn is_marc21_identifier(oid: &ObjectIdentifier) -> bool {
     **oid == OID_MARC21
@@ -49,7 +49,7 @@ pub fn is_marc21_identifier(oid: &ObjectIdentifier) -> bool {
 ///
 /// ```
 /// use z39::types::oid;
-/// assert!(oid::is_marc21_identifier(&oid::for_marc21()));
+/// assert!(oid::is_marcxml_identifier(&oid::for_marcxml()));
 /// ```
 pub fn is_marcxml_identifier(oid: &ObjectIdentifier) -> bool {
     **oid == OID_MARCXML
