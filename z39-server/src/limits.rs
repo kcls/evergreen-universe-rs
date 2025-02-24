@@ -1,13 +1,14 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 pub struct RateLimiter {
-    events: HashMap<SocketAddr, Vec<Instant>>,
+    events: HashMap<IpAddr, Vec<Instant>>,
     window: Duration,
     max_per_window: u32,
+    ip_addr_whitelist: Option<Vec<IpAddr>>,
 }
 
 impl RateLimiter {
@@ -15,19 +16,30 @@ impl RateLimiter {
         Arc::new(Mutex::new(self))
     }
 
-    pub fn new(window: Duration, max_per_window: u32) -> Self {
+    pub fn new(
+        window: Duration,
+        max_per_window: u32,
+        ip_addr_whitelist: Option<Vec<IpAddr>>,
+    ) -> Self {
         Self {
             window,
             max_per_window,
+            ip_addr_whitelist,
             events: HashMap::new(),
         }
     }
 
     /// Returns true if the current request may continue, false otherwise.
-    pub fn event_permitted(&mut self, addr: &SocketAddr) -> bool {
+    pub fn event_permitted(&mut self, addr: &IpAddr) -> bool {
         // A max of zero means unbounded.
         if self.max_per_window == 0 {
             return true;
+        }
+
+        if let Some(ref wl) = self.ip_addr_whitelist {
+            if wl.contains(addr) {
+                return true;
+            }
         }
 
         let now = Instant::now();
@@ -56,13 +68,13 @@ impl RateLimiter {
         // Track the event even if it's not permitted, since work was performed
         new_events.push(now);
 
-        // Change the underlying vec our hashtable points to.
+        // Change the underlying vec our hashtable IP entry points to.
         *events = new_events;
 
         events.len() <= self.max_per_window as usize
     }
 
-    pub fn _remove_addr(&mut self, addr: &SocketAddr) {
+    pub fn _remove_addr(&mut self, addr: &IpAddr) {
         self.events.remove(addr);
     }
 }
