@@ -5,7 +5,6 @@ use crate::error::LocalResult;
 use crate::limits::RateLimiter;
 use crate::query::Z39QueryCompiler;
 
-use eg::EgValue;
 use evergreen as eg;
 use z39::types::oid;
 use z39::types::pdu::*;
@@ -288,12 +287,16 @@ impl Z39Session {
 
         let database = conf::global().find_database(db_name)?;
 
-        let result = match self.bib_search(req, database) {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("{self} bib search failed: {e}");
-                return Err(e);
+        let result = if database.use_elasticsearch() {
+            match self.bib_search_elastic(req, database) {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("{self} bib search failed: {e}");
+                    return Err(e);
+                }
             }
+        } else {
+            todo!("Native Evergreen support needed");
         };
 
         let mut bib_search = BibSearch::default();
@@ -322,7 +325,7 @@ impl Z39Session {
     }
 
     /// Search for bib records
-    fn bib_search(
+    fn bib_search_elastic(
         &mut self,
         req: &SearchRequest,
         database: &conf::Z39Database,
@@ -337,13 +340,31 @@ impl Z39Session {
             return Ok(None);
         }
 
-        let options = eg::hash! { "limit": database.max_bib_count() };
+        let search = eg::hash! {
+            "size": database.bib_search_limit(),
+            "from": 0, // offset
+            "sort": [
+                {"_score": "desc"},
+                {"id": "desc"},
+            ],
+            "query": {
+                "bool": {
+                    "must": {
+                        "query_string": {
+                            "query": query,
+                            "default_operator": "AND",
+                            "default_field": "keyword.text*",
+                        }
+                    }
+                }
+            }
+        };
 
-        let Some(search_result) = self.client.send_recv_one(
-            "open-ils.search",
-            "open-ils.search.biblio.multiclass.query.staff",
-            vec![options, EgValue::from(query)],
-        )?
+        let method = "open-ils.search.elastic.bib_search";
+
+        let Some(result) = self
+            .client
+            .send_recv_one("open-ils.search", method, search)?
         else {
             // Search can return None if the request times out.
             // Treat it as 0 results.
@@ -351,7 +372,7 @@ impl Z39Session {
         };
 
         // Panics if the database returns a non-integer bib ID.
-        let bib_ids: Vec<i64> = search_result["ids"]
+        let bib_ids: Vec<i64> = result["ids"]
             .members()
             .map(|arr| arr[0].int_required())
             .collect();

@@ -12,7 +12,7 @@ use yaml_rust::YamlLoader;
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 const DEFAULT_HOLDINGS_TAG: &str = "852";
-const DEFAULT_MAX_BIB_COUNT: u32 = 1000;
+const DEFAULT_BIB_SEARCH_LIMIT: u32 = 1000;
 const DEFAULT_MAX_ITEM_COUNT: u32 = 1000;
 
 pub fn global() -> &'static Config {
@@ -29,7 +29,7 @@ pub struct Z39Database {
     include_holdings: bool,
     default_index: Option<String>,
     bib1_index_map: HashMap<u32, String>,
-    max_bib_count: Option<u32>,
+    bib_search_limit: Option<u32>,
     max_item_count: Option<u32>,
     holdings_tag: Option<String>,
     use_elasticsearch: bool,
@@ -75,8 +75,8 @@ impl Z39Database {
         self.default_index.as_deref()
     }
 
-    pub fn max_bib_count(&self) -> u32 {
-        self.max_bib_count.unwrap_or(DEFAULT_MAX_BIB_COUNT)
+    pub fn bib_search_limit(&self) -> u32 {
+        self.bib_search_limit.unwrap_or(DEFAULT_BIB_SEARCH_LIMIT)
     }
 
     pub fn max_item_count(&self) -> u32 {
@@ -246,7 +246,7 @@ impl Config {
             .ok_or_else(|| "Database name required".to_string())?;
 
         let max_item_count = db["max-item-count"].as_i64().map(|n| n as u32);
-        let max_bib_count = db["max-bib-count"].as_i64().map(|n| n as u32);
+        let bib_search_limit = db["bib-search-limit"].as_i64().map(|n| n as u32);
         let include_holdings = db["include-holdings"].as_bool().unwrap_or(false);
         let is_default = db["is-default"].as_bool().unwrap_or(false);
         let use_elasticsearch = db["use-elasticsearch"].as_bool().unwrap_or(false);
@@ -275,7 +275,7 @@ impl Config {
             is_default,
             holdings_tag,
             max_item_count,
-            max_bib_count,
+            bib_search_limit,
             include_holdings,
             use_elasticsearch,
             default_index,
