@@ -34,7 +34,7 @@ pub(crate) struct Z39Session {
     shutdown: Arc<AtomicBool>,
     client: eg::Client,
     last_search: Option<BibSearch>,
-    limits: Arc<Mutex<RateLimiter>>,
+    limits: Option<Arc<Mutex<RateLimiter>>>,
 }
 
 impl fmt::Display for Z39Session {
@@ -49,7 +49,7 @@ impl Z39Session {
         peer_addr: SocketAddr,
         bus: eg::osrf::bus::Bus,
         shutdown: Arc<AtomicBool>,
-        limits: Arc<Mutex<RateLimiter>>,
+        limits: Option<Arc<Mutex<RateLimiter>>>,
     ) -> Self {
         let client = eg::Client::from_bus(bus);
 
@@ -168,9 +168,16 @@ impl Z39Session {
 
     /// Checks for excessive activity and inserts a sleep when too many
     /// requests have been encountered.
+    ///
+    /// TODO option to send a Close and subsequently disconnect instead
+    /// of pausing when the rate limit is exceeded.
     fn check_activity_limit(&mut self) -> LocalResult<()> {
+        let Some(ref limits) = self.limits else {
+            return Ok(());
+        };
+
         let permitted = {
-            let mut limiter = match self.limits.lock() {
+            let mut limiter = match limits.lock() {
                 Ok(l) => l,
                 Err(e) => {
                     // As a safety valve for now, if locking errors
@@ -182,16 +189,18 @@ impl Z39Session {
                 }
             };
 
-            limiter.event_permitted(&self.peer_addr)
+            limiter.event_permitted(&self.peer_addr.ip())
+            // lock drops here
         };
 
         if !permitted {
-            log::info!("{self} exceeded rate limit; pausing momentarily");
+            log::info!("{self} exceeded rate limit; pausing");
 
-            // Once the limit has been reached, slow down all responses
-            // to the client.
-            // TODO make the sleep time configurable
-            std::thread::sleep(Duration::from_secs(5));
+            let seconds = conf::global().rate_throttle_pause;
+
+            if seconds > 0 {
+                std::thread::sleep(Duration::from_secs(seconds.into()));
+            }
         }
 
         Ok(())

@@ -99,7 +99,8 @@ pub struct Config {
     pub idle_timeout: usize,
     pub max_sessions_per_ip: usize,
     pub max_msgs_per_window: u32,
-    pub rate_window: Duration,
+    pub rate_throttle_pause: u32,
+    pub rate_window: Option<Duration>,
     pub ip_whitelist: Vec<IpAddr>,
     databases: Vec<Z39Database>,
 }
@@ -115,12 +116,14 @@ impl Config {
             idle_timeout: 0,
             max_sessions_per_ip: 0,
             max_msgs_per_window: 0,
-            rate_window: Duration::from_secs(60), // TODO
+            rate_throttle_pause: 0,
+            rate_window: None,
             ip_whitelist: Vec::new(),
             databases: Vec::new(),
         }
     }
 
+    /// Returns a list of database names.
     pub fn database_names(&self) -> Vec<&str> {
         self.databases
             .iter()
@@ -128,7 +131,7 @@ impl Config {
             .collect::<Vec<&str>>()
     }
 
-    /// Returns the named database, or a default if provided.
+    /// Returns the named database or a default if provided.
     ///
     /// Returns Err if no database can be found.
     pub fn find_database(&self, database_name: Option<&str>) -> LocalResult<&Z39Database> {
@@ -147,6 +150,11 @@ impl Config {
         }
     }
 
+    /// Move the current configuration into global read-only value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once.
     pub fn apply(self) {
         if CONFIG.set(self).is_err() {
             panic!("Global Settings already applied");
@@ -195,7 +203,17 @@ impl Config {
         conf.max_sessions_per_ip = root["rate-limits"]["max-sessions-per-ip"]
             .as_i64()
             .unwrap_or(0) as usize;
-        conf.max_msgs_per_window = root["rate-limits"]["max-msgs-per-window"]
+
+        if let Some(rate_window) = root["rate-limits"]["rate-window"].as_i64() {
+            if rate_window > 0 {
+                conf.rate_window = Some(Duration::from_secs(rate_window as u64));
+            }
+        }
+
+        conf.max_msgs_per_window =
+            root["rate-limits"]["max-per-window"].as_i64().unwrap_or(0) as u32;
+
+        conf.rate_throttle_pause = root["rate-limits"]["rate-throttle-pause"]
             .as_i64()
             .unwrap_or(0) as u32;
 

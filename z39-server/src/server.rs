@@ -32,7 +32,7 @@ impl mptc::Request for Z39ConnectRequest {
 struct Z39SessionBroker {
     bus: Option<eg::osrf::bus::Bus>,
     shutdown: Arc<AtomicBool>,
-    limits: Arc<Mutex<RateLimiter>>,
+    limits: Option<Arc<Mutex<RateLimiter>>>,
 }
 
 impl mptc::RequestHandler for Z39SessionBroker {
@@ -70,16 +70,22 @@ impl mptc::RequestHandler for Z39SessionBroker {
         // the conversation ended.
         session.shutdown();
 
-        if let Ok(mut _limiter) = self.limits.lock() {
-            // TODO remove addressses only after confirming they are
-            // not in use by another thread, which will be required
-            // to implement the max-sessions logic.  And even then,
-            // we may want to keep the entries for a short time so
-            // the disconnects and reconnects do not automatically
-            // clear the slate for an address.  A periodic general
-            // purge of activity could resolve that.
-            // limiter.remove_addr(&peer_addr);
+        /*
+        if let Some(limits) = &self.limits {
+            if let Ok(mut lock) = limits.lock() {
+                // TODO remove addressses only after confirming they are
+                // not in use by another thread, which will be required
+                // to implement the max-sessions logic.  And even then,
+                // we may want to keep the entries for a short time so
+                // the disconnects and reconnects do not automatically
+                // clear the slate for an address.  A periodic general
+                // purge of activity could resolve that.
+                // limiter.remove_addr(&peer_addr);
+
+                // lock drops here
+            }
         }
+        */
 
         // Take our bus back so we don't have to reconnect in between
         // z39 clients.  This z39 Session is done with it.
@@ -103,16 +109,20 @@ impl mptc::RequestHandler for Z39SessionBroker {
 pub struct Z39Server {
     tcp_listener: TcpListener,
     shutdown: Arc<AtomicBool>,
-    limits: Arc<Mutex<RateLimiter>>,
+    limits: Option<Arc<Mutex<RateLimiter>>>,
 }
 
 impl Z39Server {
     pub fn start(tcp_listener: TcpListener) {
-        let limits = RateLimiter::new(
-            conf::global().rate_window,
-            conf::global().max_msgs_per_window,
-        )
-        .into_shared();
+        // If a rate window is defined, setup our rate limiter
+        let limits = conf::global().rate_window.map(|window| {
+            RateLimiter::new(
+                window,
+                conf::global().max_msgs_per_window,
+                Some(conf::global().ip_whitelist.clone()),
+            )
+            .into_shared()
+        });
 
         let server = Z39Server {
             tcp_listener,
