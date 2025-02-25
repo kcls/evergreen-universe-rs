@@ -188,7 +188,7 @@ impl Z39Session {
                 }
             };
 
-            limiter.event_permitted(&self.peer_addr.ip())
+            limiter.track_event(&self.peer_addr.ip())
             // lock drops here
         };
 

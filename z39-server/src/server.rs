@@ -6,9 +6,14 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::conf;
 use crate::session::Z39Session;
+
+/// How often in seconds we ask the RateLimiter to remove stale IPs.
+const RATE_LIMITER_SYNC_INTERVAL: u64 = 360;
 
 struct Z39ConnectRequest {
     tcp_stream: Option<TcpStream>,
@@ -28,7 +33,7 @@ impl mptc::Request for Z39ConnectRequest {
     }
 }
 
-/// Intermediary for relaying Send'able pieces to the Z39Session.
+/// Intermediary for managing a long-lived Bus connection between sessions.
 struct Z39SessionBroker {
     bus: Option<eg::osrf::bus::Bus>,
     shutdown: Arc<AtomicBool>,
@@ -110,6 +115,8 @@ pub struct Z39Server {
     tcp_listener: TcpListener,
     shutdown: Arc<AtomicBool>,
     limits: Option<Arc<Mutex<RateLimiter>>>,
+    limiter_sync_interval: Duration,
+    last_limiter_sync: Instant,
 }
 
 impl Z39Server {
@@ -127,6 +134,8 @@ impl Z39Server {
         let server = Z39Server {
             tcp_listener,
             limits,
+            last_limiter_sync: Instant::now(),
+            limiter_sync_interval: Duration::from_secs(RATE_LIMITER_SYNC_INTERVAL),
             shutdown: Arc::new(AtomicBool::new(false)),
         };
 
@@ -138,6 +147,24 @@ impl Z39Server {
 
         s.run();
     }
+
+    /// Periodically tell the limiter to purge stale data.
+    fn sync_limiter(&mut self) {
+        let Some(limiter) = &self.limits else { return };
+
+        if (Instant::now() - self.last_limiter_sync) < self.limiter_sync_interval {
+            return;
+        }
+
+        match limiter.lock() {
+            Ok(mut l) => l.sync(),
+            Err(e) => log::error!("limiter sync error: {e}"),
+        }
+
+        log::debug!("limiter synced");
+
+        self.last_limiter_sync = Instant::now();
+    }
 }
 
 impl mptc::RequestStream for Z39Server {
@@ -147,9 +174,9 @@ impl mptc::RequestStream for Z39Server {
             Err(e) => {
                 match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
-                        // No connection received within the timeout.
-                        // Return None to the mptc::Server so it can
-                        // perform housekeeping.
+                        // Nothing to process; do some housekeeping.
+                        self.sync_limiter();
+
                         return Ok(None);
                     }
                     _ => {
