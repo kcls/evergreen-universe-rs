@@ -29,9 +29,10 @@ impl RateLimiter {
         }
     }
 
-    /// Returns true if the current request may continue, false otherwise.
-    pub fn event_permitted(&mut self, addr: &IpAddr) -> bool {
-        // A max of zero means unbounded.
+    /// Returns true if the event should be processed as usual, i.e. has
+    /// not exceeded the rate, false otherwise.
+    pub fn track_event(&mut self, addr: &IpAddr) -> bool {
+        // A max of zero means unlimited
         if self.max_per_window == 0 {
             return true;
         }
@@ -42,39 +43,47 @@ impl RateLimiter {
             }
         }
 
-        let now = Instant::now();
-
-        let Some(events) = self.events.get_mut(addr) else {
-            // New IP entry.
-            self.events.insert(*addr, vec![now]);
+        // If it's a newly tracked address, add it and move on.
+        if self.events.contains_key(addr) {
+            self.events.insert(*addr, vec![Instant::now()]);
             return true;
         };
 
-        // Destination for retained entries.
-        let mut new_events = Vec::new();
+        let events = self.remove_old_events(addr).unwrap(); // invariant
 
-        // Start of the window we care about
-        let then = now - self.window;
-
-        // Drain and rebuild the events list including only those
-        // within the time frame we care about.  This has the necessary
-        // side effect of ensuring our events lists do not grow unbound.
-        for event_time in events.drain(..) {
-            if event_time > then {
-                new_events.push(event_time);
-            }
-        }
-
-        // Track the event even if it's not permitted, since work was performed
-        new_events.push(now);
-
-        // Change the underlying vec our hashtable IP entry points to.
-        *events = new_events;
+        // Track the event, regardless of permissibility, since work was
+        // done, plus the caller may choose to honor the request after a pause.
+        events.push(Instant::now());
 
         events.len() <= self.max_per_window as usize
     }
 
-    pub fn _remove_addr(&mut self, addr: &IpAddr) {
-        self.events.remove(addr);
+    /// Remove events that occurred outside of the window of time we care about.
+    fn remove_old_events(&mut self, addr: &IpAddr) -> Option<&mut Vec<Instant>> {
+        if let Some(events) = self.events.get_mut(addr) {
+            let before = Instant::now() - self.window;
+            events.retain(|e| e > &before);
+            Some(events)
+        } else {
+            None
+        }
+    }
+
+    /// Cycle through all IPs and remove old events, removing IP
+    /// entries for addresses which have no remaining events.
+    pub fn sync(&mut self) {
+        let addrs: Vec<IpAddr> = self.events.keys().copied().collect();
+
+        for addr in addrs.iter() {
+            let is_empty = if let Some(events) = self.remove_old_events(addr) {
+                events.is_empty()
+            } else {
+                false
+            };
+
+            if is_empty {
+                self.events.remove(addr);
+            }
+        }
     }
 }
