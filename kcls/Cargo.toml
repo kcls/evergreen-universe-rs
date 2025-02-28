@@ -26,3 +26,8 @@ path = "src/bin/bib-to-auth-linker.rs"
 name = "kcls-extract-street-dates"
 path = "src/bin/extract-street-dates.rs"
 
+[[bin]]
+name = "kcls-student-importer"
+path = "src/bin/student-importer.rs"
+
+
