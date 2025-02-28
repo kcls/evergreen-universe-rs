@@ -124,6 +124,10 @@ Commands
             patron-status <patron-barcode>
             checkin <item-barcode>
             checkout <item-barcode> <patron-barcode>
+    format
+        Parses a stream of JSON values and prints them back as output, 
+        formatting the JSON as (by default) pretty-printed strings,
+        including hash-based IDL objects, i.e. with field names.
 
     help
         Show this message
@@ -419,6 +423,7 @@ impl Shell {
             "pref" => self.handle_prefs(args),
             "setting" => self.handle_settings(args),
             "cstore" => self.handle_cstore(args),
+            "format" => self.handle_format(args),
             "jqc" => self.handle_jqc(args),
             "sip" => {
                 let res = self.handle_sip(args);
@@ -436,6 +441,33 @@ impl Shell {
             }
             _ => Err(format!("Unknown command: {}", self.command)),
         }
+    }
+
+    fn handle_format(&mut self, args: &[&str]) -> Result<(), String> {
+        self.args_min_length(args, 1)?;
+        // Use the serde_json stream parser to read the parameters.
+
+        let data = args[..].join(" ");
+        let stream = serde_json::Deserializer::from_str(&data).into_iter::<serde_json::Value>();
+
+        for param_res in stream {
+            let p = match param_res {
+                Ok(p) => p,
+                Err(e) => Err(format!("Cannot parse params: {data} {e}"))?,
+            };
+
+            // Translate the serde_json::Value into a EgValue.
+            let p_str = match serde_json::to_string(&p) {
+                Ok(s) => s,
+                Err(e) => Err(format!("Error stringifying: {e}"))?,
+            };
+
+            let param = EgValue::parse(&p_str)?;
+
+            self.print_json_record(param)?;
+        }
+
+        Ok(())
     }
 
     fn handle_sip(&mut self, args: &[&str]) -> Result<(), String> {
