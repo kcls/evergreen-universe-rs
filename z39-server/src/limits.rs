@@ -44,7 +44,7 @@ impl RateLimiter {
         }
 
         // If it's a newly tracked address, add it and move on.
-        if self.events.contains_key(addr) {
+        if !self.events.contains_key(addr) {
             self.events.insert(*addr, vec![Instant::now()]);
             return true;
         };

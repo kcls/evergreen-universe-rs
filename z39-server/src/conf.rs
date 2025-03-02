@@ -101,6 +101,7 @@ pub struct Config {
     pub max_msgs_per_window: u32,
     pub rate_throttle_pause: u32,
     pub rate_window: Option<Duration>,
+    pub close_on_exceeds_rate: bool,
     pub ip_whitelist: Vec<IpAddr>,
     databases: Vec<Z39Database>,
 }
@@ -118,6 +119,7 @@ impl Config {
             max_msgs_per_window: 0,
             rate_throttle_pause: 0,
             rate_window: None,
+            close_on_exceeds_rate: false,
             ip_whitelist: Vec::new(),
             databases: Vec::new(),
         }
@@ -200,9 +202,9 @@ impl Config {
             conf.idle_timeout = v as usize;
         }
 
-        conf.max_sessions_per_ip = root["rate-limits"]["max-sessions-per-ip"]
-            .as_i64()
-            .unwrap_or(0) as usize;
+        if let Some(val) = root["rate-limits"]["max-sessions-per-ip"].as_i64() {
+            conf.max_sessions_per_ip = val as usize;
+        }
 
         if let Some(rate_window) = root["rate-limits"]["rate-window"].as_i64() {
             if rate_window > 0 {
@@ -210,12 +212,17 @@ impl Config {
             }
         }
 
-        conf.max_msgs_per_window =
-            root["rate-limits"]["max-per-window"].as_i64().unwrap_or(0) as u32;
+        if let Some(val) = root["rate-limits"]["max-per-window"].as_i64() {
+            conf.max_msgs_per_window = val as u32;
+        }
 
-        conf.rate_throttle_pause = root["rate-limits"]["rate-throttle-pause"]
-            .as_i64()
-            .unwrap_or(0) as u32;
+        if let Some(val) = root["rate-limits"]["rate-throttle-pause"].as_i64() {
+            conf.rate_throttle_pause = val as u32;
+        }
+
+        if let Some(val) = root["rate-limits"]["close-on-exceeds-rate"].as_bool() {
+            conf.close_on_exceeds_rate = val;
+        }
 
         if let Some(whitelist) = root["rate-limits"]["ip-whitelist"].as_vec() {
             for addr in whitelist {
