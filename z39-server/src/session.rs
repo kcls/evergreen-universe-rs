@@ -192,7 +192,19 @@ impl Z39Session {
             // lock drops here
         };
 
-        if !permitted {
+        if permitted {
+            return Ok(());
+        }
+
+        if conf::global().close_on_exceeds_rate {
+            log::info!("{self} exceeded rate limit; closing connection");
+
+            self.send_close(
+                CloseReason::CostLimit,
+                Some("Exceeded Rate Limit".to_string()),
+            )
+
+        } else {
             log::info!("{self} exceeded rate limit; pausing");
 
             let seconds = conf::global().rate_throttle_pause;
@@ -200,9 +212,9 @@ impl Z39Session {
             if seconds > 0 {
                 std::thread::sleep(Duration::from_secs(seconds.into()));
             }
-        }
 
-        Ok(())
+            Ok(())
+        }
     }
 
     /// Send a Close message to the caller with the provided close reason

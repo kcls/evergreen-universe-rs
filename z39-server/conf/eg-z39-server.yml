@@ -28,13 +28,16 @@ rate-limits:
   # max-per-window to determine the maximum rate.
   rate-window: 60
 
-  # How many messages of any type do we handle per IP address per 
-  # session per window.
+  # How many messages of any type do we handle per IP address per window.
   max-per-window: 30
 
   # How long to pause in seconds before processing new requests 
   # from a client which has exceeded the message rate.
   rate-throttle-pause: 3
+
+  # Otherwise, disconnect clients that exceed the rate.
+  # This supersedes rate-throttle-pause.
+  close-on-exceeds-rate: true
 
   # These clients are not subject to any rate limiting.
   ip-whitelist:
