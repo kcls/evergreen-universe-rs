@@ -3,6 +3,7 @@ use eg::EgResult;
 use csv;
 use std::fs::File;
 use std::io::BufReader;
+use std::collections::HashMap;
 
 // TODO
 // Importer struct; Display w/ filename
@@ -29,18 +30,16 @@ fn process_file(file_name: &str) -> EgResult<()> {
 
     println!("Headers: {headers:?}");
 
-    for row_result in reader.records() {
-        // TODO more detailed error info
-        let row = row_result.map_err(|e| format!("Error parsing CSV file: {e}"))?;
+    for row_result in reader.deserialize() {
+        let row: HashMap<String, String> = row_result
+            .map_err(|e| format!("Error parsing CSV file: {e}"))?;
         println!("row: {row:?}");
     }
 
-    println!("{reader:?}");
+    //println!("{reader:?}");
 
     Ok(())
 }
-
-
 
 fn main() {
     let file_name = "/home/berick/holy-fam.csv";
