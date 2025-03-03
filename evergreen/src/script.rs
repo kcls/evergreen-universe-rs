@@ -206,6 +206,15 @@ impl Runner {
         log::info!("{pfx}{msg}");
     }
 
+    /// Logs an error message to log::error! and STDOUT and exits with
+    /// the provided exit code.
+    pub fn exit(&self, code: i32, msg: &str) {
+        let pfx = self.core.log_prefix.as_deref().unwrap_or("");
+        eprintln!("{} {pfx}{msg}", date::now().format("%F %T%.3f"));
+        log::error!("{pfx}{msg}");
+        std::process::exit(code);
+    }
+
     /// Set the announcement log prefix.
     ///
     /// Append a space so we don't have to do that at log time.
