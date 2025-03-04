@@ -1,5 +1,6 @@
 use eg::script;
 use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use regex::Regex;
 use std::collections::HashMap;
@@ -43,6 +44,9 @@ const MAX_NEW_RATIO: f32 = 0.8;
 /// This is useful when files contain only new accounts, which is
 /// atypical, but can happen.
 const MAX_ALLOW_NEW_UNCHECKED: usize = 100;
+
+const STUDENT_ID_REGEX: &str = r#"[^a-zA-Z0-9_\-\.]"#;
+const COLLEGE_ID_REGEX: &str = r#"[^a-zA-Z0-9]"#;
 
 // Map of district code to home org unit id.
 const HOME_OU_MAP: &[(&str, u32)] = &[
@@ -98,6 +102,8 @@ struct Importer {
     is_college: bool,
     is_purge: bool,
     is_force_new: bool,
+    student_id_regex: Regex,
+    college_id_regex: Regex,
 }
 
 impl fmt::Display for Importer {
@@ -139,8 +145,7 @@ impl Importer {
         let all_count = all_barcodes.len();
         let new_count = new_barcodes.len();
 
-        self.runner
-            .announce(&format!("Found {new_count} new barcodes"));
+        self.runner.announce(&format!("Found {new_count} new barcodes"));
 
         self.check_new_accounts_ratio(all_count, new_count);
 
@@ -192,6 +197,11 @@ impl Importer {
         );
     }
 
+    fn populate_defaults(&mut self, hash: &mut HashMap<String, String>) -> EgResult<()> {
+
+        Ok(())
+    }
+
     /// Returns the subset of all barcodes which do not already exist
     /// in the database.
     fn get_new_barcodes(&mut self, all_barcodes: &[String]) -> EgResult<Vec<String>> {
@@ -227,6 +237,23 @@ impl Importer {
     /// Create the new user account and add it to the database along with
     /// its addresses, alerts, etc.
     fn add_account(&mut self, hash: HashMap<String, String>) -> EgResult<()> {
+        // Translate our hash to an EgValue to prep for cleanup and insert.
+
+        let mut patron = eg::blessed! {
+            // '_barcode' because it's not a field on the 'au' class.
+            // This allows us to skip field name enforcement.
+            "_barcode": hash.get("barcode").unwrap().as_str(),
+            "_classname": "au"
+        }?;
+
+        // Required for everyone.
+        for field in ["family_name", "first_given_name"] {
+            patron[field] = hash.get("field")
+                .ok_or_else(|| format!("field '{field}' is required: {hash:?}"))?
+                .as_str()
+                .into();
+        }
+
         Ok(())
     }
 
@@ -234,6 +261,8 @@ impl Importer {
     /// code to generate the patron barcode.
     ///
     /// Returns a copy of the generated barcode.
+    ///
+    /// The normalization rules may seem arbitrary.  It's all grandfathered in.
     fn apply_barcode(&self, hash: &mut HashMap<String, String>) -> EgResult<String> {
         let mut student_id = hash
             .get("student_id")
@@ -247,32 +276,24 @@ impl Importer {
         }
 
         if self.is_college {
-            // A limited set of characters are permitted for student_id values.
-            // TODO Precompile.
-            let reg = Regex::new(r#"[^a-zA-Z0-9_\-\.]"#).unwrap();
-
-            student_id = reg.replace_all(&student_id, "").into_owned();
+            student_id = self.college_id_regex.replace_all(&student_id, "").into_owned();
 
             // College accounts are forced into lowercase.
             student_id = student_id.to_ascii_lowercase();
+
         } else {
-            // K12 and teacher accounts are further limited in
-            // what characters are permitted.
+            // K12 teachers and students
+            student_id = self.student_id_regex.replace_all(&student_id, "").into_owned();
 
-            // TODO Precompile
-            let reg = Regex::new(r#"[^a-zA-Z0-9]"#).unwrap();
+            if self.is_teacher {
+                // Left-pad teacher barcodes with 0s to they are at least 4 chars long
+                if student_id.len() < 4 {
+                    student_id = format!("{student_id:0>4}");
+                }
 
-            student_id = reg.replace_all(&student_id, "").into_owned();
-        }
-
-        if self.is_teacher {
-            // Left-pad teacher barcodes with 0s to they are at least 4 chars long
-            if student_id.len() < 4 {
-                student_id = format!("{student_id:0>4}");
+                // K12 teachers are uppercased.
+                student_id = student_id.to_ascii_uppercase();
             }
-
-            // Teacher accounts are uppercased.
-            student_id = student_id.to_ascii_uppercase();
         }
 
         // Make sure we still have something to work with after cleanup.
@@ -371,6 +392,9 @@ fn main() {
         return runner.exit(1, &format!("Unknown district: {district_code}"));
     };
 
+    let student_id_regex = Regex::new(STUDENT_ID_REGEX).unwrap();
+    let college_id_regex = Regex::new(COLLEGE_ID_REGEX).unwrap();
+
     let mut importer = Importer {
         runner,
         home_ou,
@@ -380,6 +404,8 @@ fn main() {
         is_teacher,
         is_college,
         is_classroom,
+        student_id_regex,
+        college_id_regex,
         file_name: file_name.to_string(),
         district_code: district_code.to_string(),
     };
