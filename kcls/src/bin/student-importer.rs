@@ -96,7 +96,6 @@ struct Importer {
     is_college: bool,
     is_purge: bool,
     is_force_new: bool,
-    out_directory: String,
     new_barcodes: Vec<String>,
     seen_barcodes: HashSet<String>,
 }
@@ -108,6 +107,8 @@ impl fmt::Display for Importer {
 }
 
 impl Importer {
+    /// Parse a CSV file and generate accounts for new
+    /// students, teachers, or classroom cards;
     fn process_file(&mut self, file_path: &Path) -> EgResult<()> {
         let file =
             File::open(file_path).map_err(|e| format!("Cannot open file: {file_path:?} {e}"))?;
@@ -116,20 +117,56 @@ impl Importer {
         let mut reader = csv::Reader::from_reader(buf_reader);
 
         let mut all_accounts: Vec<HashMap<String, String>> = Vec::new();
+        let mut all_barcodes: Vec<String> = Vec::new();
 
+        // Read all of the accounts from file up front so we can
+        // get a count of how many new accounts we're creating.
+        // Derive the barcode for each along the way.
         for row_result in reader.deserialize() {
             let mut hash: HashMap<String, String> =
                 row_result.map_err(|e| format!("Error parsing CSV file: {e}"))?;
 
-            self.apply_barcode(&mut hash)?;
+            let barcode = self.apply_barcode(&mut hash)?;
 
             all_accounts.push(hash);
+            all_barcodes.push(barcode);
         }
 
+        let new_barcodes = self.get_new_barcodes(&all_barcodes)?;
+
+        self.runner
+            .announce(&format!("Found {} new barcodes", new_barcodes.len()));
 
         //self.process_account(row)?;
 
         Ok(())
+    }
+
+    /// Returns the subset of all barcodes which will be new accounts
+    fn get_new_barcodes(&mut self, all_barcodes: &[String]) -> EgResult<Vec<String>> {
+        // Search for the ones we do have, then return the remainders.
+
+        let mut new_barcodes = Vec::new();
+
+        // This has the potential to be a large number of barcodes.
+        // Chunk the lookups into manageable groups.
+        for batch in all_barcodes.chunks(500) {
+            let query = eg::hash! {
+                "select": {"ac": ["barcode"]},
+                "from": "ac",
+                "where": {"+ac": {"barcode": {"in": batch}}}
+            };
+
+            let existing = self.runner.editor_mut().json_query(query)?;
+
+            for barcode in batch.iter() {
+                if !existing.iter().any(|b| &b.string().unwrap() == barcode) {
+                    new_barcodes.push(barcode.to_string());
+                }
+            }
+        }
+
+        Ok(new_barcodes)
     }
 
     /*
@@ -152,7 +189,9 @@ impl Importer {
 
     /// Normalize the student_id value and use it with the district
     /// code to generate the patron barcode.
-    fn apply_barcode(&self, hash: &mut HashMap<String, String>) -> EgResult<()> {
+    ///
+    /// Returns a copy of the generated barcode.
+    fn apply_barcode(&self, hash: &mut HashMap<String, String>) -> EgResult<String> {
         let mut student_id = hash
             .get("student_id")
             .map(|s| s.to_string())
@@ -212,9 +251,11 @@ impl Importer {
             }
         }
 
-        hash.insert("barcode".to_string(), barcode + &student_id);
+        let barcode = barcode + &student_id;
 
-        Ok(())
+        hash.insert("barcode".to_string(), barcode.clone());
+
+        Ok(barcode)
     }
 }
 
@@ -222,7 +263,6 @@ fn main() {
     let mut ops = getopts::Options::new();
 
     ops.optopt("", "district-code", "", "");
-    ops.optopt("", "out-directory", "", "");
     ops.optflag("", "teacher", "");
     ops.optflag("", "college", "");
     ops.optflag("", "classroom", "");
@@ -251,29 +291,26 @@ fn main() {
         }
     };
 
-    runner.set_log_prefix(LOG_PREFIX);
+    // Avoid requiring the caller to pass --announce
+    runner.set_announce(true);
+
+    let Some(district_code) = runner.params().opt_str("district-code") else {
+        return runner.exit(1, "--district-code required");
+    };
+
+    runner.set_log_prefix(&format!("{LOG_PREFIX} [{district_code}]"));
 
     // First and only free parameter is the path to the CSV file
     let Some(file_path) = runner.params().free.first().map(|s| s.to_string()) else {
         return runner.exit(1, "CSV file required");
     };
 
+    runner.announce("Processing file {file_path}");
+
     let file_path = Path::new(&file_path);
 
     let Some(Some(file_name)) = file_path.file_name().map(|f| f.to_str()) else {
         return runner.exit(1, &format!("Valid file name required: {file_path:?}"));
-    };
-
-    let Some(district_code) = runner.params().opt_str("district-code") else {
-        return runner.exit(1, "--district-code required");
-    };
-
-    let Some(out_directory) = runner
-        .params()
-        .opt_str("out-directory")
-        .map(|s| s.to_string())
-    else {
-        return runner.exit(1, "--out-directory required");
     };
 
     let is_teacher = runner.params().opt_present("teacher");
@@ -300,7 +337,6 @@ fn main() {
         is_teacher,
         is_college,
         is_classroom,
-        out_directory,
         new_barcodes: Vec::new(),
         seen_barcodes: HashSet::new(),
         file_name: file_name.to_string(),
