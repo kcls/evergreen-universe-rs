@@ -195,7 +195,7 @@ impl EgValue {
         // Verify the existing data contains only fields that are
         // represented in the IDL for the provided class.
         for k in map.keys() {
-            if !idl_class.has_field(k) {
+            if !idl_class.has_field(k) && !k.starts_with('_') {
                 let msg = format!("IDL class '{classname}' has no field named '{k}'");
                 log::error!("{msg}");
                 return Err(msg.into());
@@ -333,7 +333,7 @@ impl EgValue {
                 // Skip _classname field.
                 continue;
             }
-            if !idl_class.has_field(key) {
+            if !idl_class.has_field(key) && !key.starts_with('_') {
                 return Err(format!(
                     "Class '{}' has no field named '{key}'",
                     idl_class.classname()
@@ -1691,7 +1691,7 @@ impl IndexMut<&str> for EgValue {
         };
 
         if is_classed {
-            if !has_field || key.starts_with('_') {
+            if !has_field && !key.starts_with('_') {
                 let err = format!(
                     "Indexing IDL class '{}': No field named '{key}'",
                     self.classname().unwrap()
