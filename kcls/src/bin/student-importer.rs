@@ -3,7 +3,6 @@ use eg::EgResult;
 use evergreen as eg;
 use regex::Regex;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt;
 use std::fs::File;
 use std::io::BufReader;
@@ -38,9 +37,12 @@ const EXPIRE_AGE: u32 = 21;
 // block the import for manual review.
 const MAX_NEW_RATIO: f32 = 0.8;
 
-// If all of the students in a file are new, block if the file has more
-// than this many students.
-const MAX_FORCE_NEW: u32 = 100;
+/// If the number of new accounts is less than this value, avoid enforcing
+/// the new-accounts ratio.
+///
+/// This is useful when files contain only new accounts, which is
+/// atypical, but can happen.
+const MAX_ALLOW_NEW_UNCHECKED: usize = 100;
 
 // Map of district code to home org unit id.
 const HOME_OU_MAP: &[(&str, u32)] = &[
@@ -96,8 +98,6 @@ struct Importer {
     is_college: bool,
     is_purge: bool,
     is_force_new: bool,
-    new_barcodes: Vec<String>,
-    seen_barcodes: HashSet<String>,
 }
 
 impl fmt::Display for Importer {
@@ -120,7 +120,7 @@ impl Importer {
         let mut all_barcodes: Vec<String> = Vec::new();
 
         // Read all of the accounts from file up front so we can
-        // get a count of how many new accounts we're creating.
+        // get a count of how many new users we're creating.
         // Derive the barcode for each along the way.
         for row_result in reader.deserialize() {
             let mut hash: HashMap<String, String> =
@@ -128,29 +128,79 @@ impl Importer {
 
             let barcode = self.apply_barcode(&mut hash)?;
 
-            all_accounts.push(hash);
-            all_barcodes.push(barcode);
+            // Avoid duplicate accounts
+            if !all_barcodes.contains(&barcode) {
+                all_accounts.push(hash);
+                all_barcodes.push(barcode);
+            }
         }
 
         let new_barcodes = self.get_new_barcodes(&all_barcodes)?;
+        let all_count = all_barcodes.len();
+        let new_count = new_barcodes.len();
 
         self.runner
-            .announce(&format!("Found {} new barcodes", new_barcodes.len()));
+            .announce(&format!("Found {new_count} new barcodes"));
 
-        //self.process_account(row)?;
+        self.check_new_accounts_ratio(all_count, new_count);
+
+        for hash in all_accounts {
+            let barcode = hash.get("barcode").unwrap(); // invariant
+
+            if !new_barcodes.contains(barcode) {
+                // This account already exists.
+                continue;
+            }
+
+            self.add_account(hash)?;
+        }
 
         Ok(())
     }
 
-    /// Returns the subset of all barcodes which will be new accounts
+    /// Verify the number of new accounts does not exceed the configured
+    /// MAX_NEW_RATIO.  
+    ///
+    /// Exits the program if the ratio is exceeded.
+    fn check_new_accounts_ratio(&self, all_count: usize, new_count: usize) {
+        if self.is_force_new {
+            self.runner.announce("Running in --force-new mode");
+            return;
+        }
+
+        if new_count < MAX_ALLOW_NEW_UNCHECKED {
+            // No checks required.
+            return;
+        }
+
+        let ratio = new_count as f32 / all_count as f32;
+
+        if ratio < MAX_NEW_RATIO {
+            // Below the ratio, all good.
+            return;
+        }
+
+        // Ratio exceeded.  Log and exit.
+        self.runner.exit(
+            1,
+            &format!(
+                r#"
+                Ratio ({ratio}) of new accounts ({new_count}) to 
+                existing accounts ({all_count}) exceeds the MAX_NEW_RATIO 
+                ({MAX_NEW_RATIO}) value.  Use --force-new to override"#
+            ),
+        );
+    }
+
+    /// Returns the subset of all barcodes which do not already exist
+    /// in the database.
     fn get_new_barcodes(&mut self, all_barcodes: &[String]) -> EgResult<Vec<String>> {
         // Search for the ones we do have, then return the remainders.
-
         let mut new_barcodes = Vec::new();
 
         // This has the potential to be a large number of barcodes.
         // Chunk the lookups into manageable groups.
-        for batch in all_barcodes.chunks(500) {
+        for batch in all_barcodes.chunks(250) {
             let query = eg::hash! {
                 "select": {"ac": ["barcode"]},
                 "from": "ac",
@@ -159,8 +209,13 @@ impl Importer {
 
             let existing = self.runner.editor_mut().json_query(query)?;
 
+            // Use .string() here since it coerces numeric barcodes
+            // into strings.  Panics if a barcode value (from the database)
+            // is not stringifiable.
+            let existing: Vec<String> = existing.iter().map(|e| e.string().unwrap()).collect();
+
             for barcode in batch.iter() {
-                if !existing.iter().any(|b| &b.string().unwrap() == barcode) {
+                if !existing.contains(barcode) {
                     new_barcodes.push(barcode.to_string());
                 }
             }
@@ -169,23 +224,11 @@ impl Importer {
         Ok(new_barcodes)
     }
 
-    /*
-    fn process_account(&mut self, mut hash: HashMap<String, String>) -> EgResult<()> {
-        let barcode = self._barcode(&hash)?;
-
-        if self.seen_barcodes.contains(&barcode) {
-            // Avoid dupes
-            return Ok(());
-        }
-
-        self.seen_barcodes.insert(barcode.to_string());
-
-        self.runner
-            .announce(&format!("Extracted barcode: {barcode}"));
-
+    /// Create the new user account and add it to the database along with
+    /// its addresses, alerts, etc.
+    fn add_account(&mut self, hash: HashMap<String, String>) -> EgResult<()> {
         Ok(())
     }
-    */
 
     /// Normalize the student_id value and use it with the district
     /// code to generate the patron barcode.
@@ -337,8 +380,6 @@ fn main() {
         is_teacher,
         is_college,
         is_classroom,
-        new_barcodes: Vec::new(),
-        seen_barcodes: HashSet::new(),
         file_name: file_name.to_string(),
         district_code: district_code.to_string(),
     };
