@@ -1,7 +1,11 @@
+use eg::date;
 use eg::script;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
+// hrm, for date.year()
+use chrono::Datelike;
+use regex::Captures;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
@@ -20,8 +24,10 @@ const CLASSROOM_IDENT_VALUE: &str = "KCLS generated";
 
 const STUDENT_ALERT_MSG: &str =
     "Student Ecard: No physical checkouts. No computer/printing. No laptops.";
+
 const TEACHER_ALERT_MSG: &str =
     "Teacher Ecard: No physical checkouts. No computer/printing. No laptops.";
+
 const CLASSROOM_ALERT_MSG: &str =
     "Classroom use only: No physical checkouts. No computer/printing. No laptops.";
 
@@ -30,9 +36,6 @@ const ALERT_TYPE: u32 = 20; // "Alerting note, no Blocks" standing penalty
 
 // KCLS org unit for penalty application
 const ROOT_ORG: u32 = 1;
-
-// Age at which k12 accounts are set to expire
-const EXPIRE_AGE: u32 = 21;
 
 // If more than this ration of students in a file are new accounts,
 // block the import for manual review.
@@ -47,6 +50,13 @@ const MAX_ALLOW_NEW_UNCHECKED: usize = 100;
 
 const STUDENT_ID_REGEX: &str = r#"[^a-zA-Z0-9_\-\.]"#;
 const COLLEGE_ID_REGEX: &str = r#"[^a-zA-Z0-9]"#;
+const DOB_REGEX: &str = r#"^\d{4}-\d{2}-\d{2}$"#;
+/// We allow schools to send DoB values in US-style mm/dd/yyyy
+const DOB_US_REGEX: &str = r#"^(\d{1,2})/(\d{1,2})/(\d{4})$"#;
+
+const TEACHER_EXPIRE_INTERVAL: &str = "10 years";
+const COLLEGE_EXPIRE_INTERVAL: &str = "4 years";
+const STUDENT_EXPIRE_AGE: u16 = 21;
 
 // Map of district code to home org unit id.
 const HOME_OU_MAP: &[(&str, u32)] = &[
@@ -102,6 +112,8 @@ struct Importer {
     is_college: bool,
     is_purge: bool,
     is_force_new: bool,
+    dob_regex: Regex,
+    dob_us_regex: Regex,
     student_id_regex: Regex,
     college_id_regex: Regex,
 }
@@ -145,7 +157,8 @@ impl Importer {
         let all_count = all_barcodes.len();
         let new_count = new_barcodes.len();
 
-        self.runner.announce(&format!("Found {new_count} new barcodes"));
+        self.runner
+            .announce(&format!("Found {new_count} new barcodes"));
 
         self.check_new_accounts_ratio(all_count, new_count);
 
@@ -198,7 +211,6 @@ impl Importer {
     }
 
     fn populate_defaults(&mut self, hash: &mut HashMap<String, String>) -> EgResult<()> {
-
         Ok(())
     }
 
@@ -247,12 +259,114 @@ impl Importer {
         }?;
 
         // Required for everyone.
+        // "student_id" has already been verified and "dob" is sometimes optional.
         for field in ["family_name", "first_given_name"] {
-            patron[field] = hash.get("field")
+            patron[field] = hash
+                .get(field)
                 .ok_or_else(|| format!("field '{field}' is required: {hash:?}"))?
-                .as_str()
+                .to_uppercase()
                 .into();
         }
+
+        self.apply_fields(&hash, &mut patron)?;
+
+        if self.is_dry_run {
+            self.runner
+                .announce(&format!("Adding account: {}", patron.dump()));
+        }
+
+        Ok(())
+    }
+
+    /// Extract values from the source hash and translate them into
+    /// our patron object, normalizing and applying defaults on the way.
+    fn apply_fields(&self, hash: &HashMap<String, String>, patron: &mut EgValue) -> EgResult<()> {
+        if self.is_teacher || self.is_classroom {
+            // We never care about date of birth for adults/generic cards.
+            patron["dob"] = "1900-01-01".into();
+        } else {
+            let dob = hash
+                .get("dob")
+                .ok_or_else(|| format!("'dob' value is required: {hash:?}"))?
+                .trim();
+
+            // Translate mm/dd/yyyy into ISO.
+            let dob = self.dob_us_regex.replace(dob, |caps: &Captures| {
+                // caps[0] is the full source string
+                format!("{}-{:0>1}-{:0>1}", &caps[3], &caps[1], &caps[2])
+            });
+
+            if !self.dob_regex.is_match(&dob) {
+                return Err(format!("DOB format is invalid: {dob}").into());
+            }
+
+            patron["dob"] = dob.into_owned().into();
+        }
+
+        // Password is initially set to last 4 characters of the barcode.
+        let barcode = patron["_barcode"].str()?;
+
+        // barcodes have 3-char district codes plus a non-empty student_id.
+        patron["_password"] = barcode[(barcode.len() - 4)..].into();
+
+        self.set_expire_date(patron)?;
+
+        Ok(())
+    }
+
+    /// Calculate and apply the patron expire_date value.
+    fn set_expire_date(&self, patron: &mut EgValue) -> EgResult<()> {
+        let now_date = date::now(); // local timezone
+        let now_year = now_date.year() as u32;
+
+        if self.is_teacher || self.is_classroom {
+            patron["expire_date"] =
+                date::to_iso(&date::add_interval(now_date, TEACHER_EXPIRE_INTERVAL)?).into();
+
+            return Ok(());
+        }
+
+        if self.is_college {
+            patron["expire_date"] =
+                date::to_iso(&date::add_interval(now_date, COLLEGE_EXPIRE_INTERVAL)?).into();
+
+            return Ok(());
+        }
+
+        // Student accounts expire based on student age.
+        let birth_year = &patron["dob"].str()?[..4]; // ISO YYYY-MM-DDDD
+
+        let birth_year: u16 = birth_year
+            .parse()
+            .map_err(|e| format!("Invalid date of birth year: {birth_year}"))?;
+
+        // Can underflow
+        let mut age_years: i32 = now_year as i32 - birth_year as i32;
+
+        // The DoB for any account whose birth date is older than the
+        // expire age or less than 2 years old is coerced into that
+        // range so we can ensure a reasonable expire date.
+        if age_years > (STUDENT_EXPIRE_AGE - 1).into() {
+            age_years = (STUDENT_EXPIRE_AGE - 1).into();
+        } else if age_years < 2 {
+            age_years = 2;
+        }
+
+        let expire_year = now_year + (STUDENT_EXPIRE_AGE - age_years as u16) as u32;
+
+        // This can fail if the calculated date is invalid.  If so,
+        // running the importer again on the same data the next day or
+        // so will likely fix it.
+        // Alternatively. we could loop on with_year() for x number of times
+        // until a valid date is generated.
+        let expire_date = now_date.with_year(expire_year as i32).ok_or_else(|| {
+            format!(
+                "Error setting expire date: {now_date} + {expire_year} years : {}",
+                patron.dump()
+            )
+        })?;
+
+        patron["expire_date"] = date::to_iso(&expire_date).into();
 
         Ok(())
     }
@@ -266,6 +380,7 @@ impl Importer {
     fn apply_barcode(&self, hash: &mut HashMap<String, String>) -> EgResult<String> {
         let mut student_id = hash
             .get("student_id")
+            .map(|s| s.trim())
             .map(|s| s.to_string())
             .ok_or("student_id column/value required")?;
 
@@ -276,14 +391,19 @@ impl Importer {
         }
 
         if self.is_college {
-            student_id = self.college_id_regex.replace_all(&student_id, "").into_owned();
+            student_id = self
+                .college_id_regex
+                .replace_all(&student_id, "")
+                .into_owned();
 
             // College accounts are forced into lowercase.
             student_id = student_id.to_ascii_lowercase();
-
         } else {
             // K12 teachers and students
-            student_id = self.student_id_regex.replace_all(&student_id, "").into_owned();
+            student_id = self
+                .student_id_regex
+                .replace_all(&student_id, "")
+                .into_owned();
 
             if self.is_teacher {
                 // Left-pad teacher barcodes with 0s to they are at least 4 chars long
@@ -394,6 +514,8 @@ fn main() {
 
     let student_id_regex = Regex::new(STUDENT_ID_REGEX).unwrap();
     let college_id_regex = Regex::new(COLLEGE_ID_REGEX).unwrap();
+    let dob_regex = Regex::new(DOB_REGEX).unwrap();
+    let dob_us_regex = Regex::new(DOB_US_REGEX).unwrap();
 
     let mut importer = Importer {
         runner,
@@ -404,6 +526,8 @@ fn main() {
         is_teacher,
         is_college,
         is_classroom,
+        dob_regex,
+        dob_us_regex,
         student_id_regex,
         college_id_regex,
         file_name: file_name.to_string(),
