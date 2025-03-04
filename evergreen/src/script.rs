@@ -194,6 +194,11 @@ impl Runner {
         &self.core
     }
 
+    /// Allow setting the 'announce' flag manually.
+    pub fn set_announce(&mut self, flag: bool) {
+        self.core.announce = flag;
+    }
+
     /// Send messages to log::info! and additoinally log messages to
     /// STDOUT when self.core.announce is true.
     ///
