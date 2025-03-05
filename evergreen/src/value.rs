@@ -249,6 +249,7 @@ impl EgValue {
     /// Fields which are not represented in the Blessed value, but do
     /// exist in the class definition for the value, are included in the
     /// generated Hash as Null values.
+    /// TODO rename as into_classed_hash()
     pub fn to_classed_hash(&mut self) {
         let (idl_class, mut map) = match self {
             Self::Array(ref mut list) => {
