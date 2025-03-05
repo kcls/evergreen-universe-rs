@@ -170,7 +170,7 @@ impl Importer {
                 continue;
             }
 
-            self.add_account(hash)?;
+            self.process_account(hash)?;
         }
 
         Ok(())
@@ -210,10 +210,6 @@ impl Importer {
         );
     }
 
-    fn populate_defaults(&mut self, hash: &mut HashMap<String, String>) -> EgResult<()> {
-        Ok(())
-    }
-
     /// Returns the subset of all barcodes which do not already exist
     /// in the database.
     fn get_new_barcodes(&mut self, all_barcodes: &[String]) -> EgResult<Vec<String>> {
@@ -248,13 +244,14 @@ impl Importer {
 
     /// Create the new user account and add it to the database along with
     /// its addresses, alerts, etc.
-    fn add_account(&mut self, hash: HashMap<String, String>) -> EgResult<()> {
+    fn process_account(&mut self, hash: HashMap<String, String>) -> EgResult<()> {
         // Translate our hash to an EgValue to prep for cleanup and insert.
 
         let mut patron = eg::blessed! {
             // '_barcode' because it's not a field on the 'au' class.
             // This allows us to skip field name enforcement.
             "_barcode": hash.get("barcode").unwrap().as_str(),
+            "_student_id": hash.get("student_id").unwrap().as_str(),
             "_classname": "au"
         }?;
 
@@ -268,48 +265,119 @@ impl Importer {
                 .into();
         }
 
-        self.apply_fields(&hash, &mut patron)?;
+        // Optional middle name
+        if let Some(mname) = hash.get("second_given_name") {
+            patron["second_given_name"] = mname.as_str().into();
+        }
+
+        self.apply_field_values(&hash, &mut patron)?;
 
         if self.is_dry_run {
+            let mut phash = patron.clone();
+            phash.to_classed_hash();
+            phash.scrub_hash_nulls();
             self.runner
-                .announce(&format!("Adding account: {}", patron.dump()));
+                .announce(&format!("Adding account: {}", phash.pretty(2)));
+            return Ok(());
         }
+
+        self.insert_account(&mut patron)
+    }
+
+    /// Send the account data off to the APIs for database insertion.
+    fn insert_account(&mut self, patron: &mut EgValue) -> EgResult<()> {
+        // Start with actor.usr
+
+        // These are handled separately
+        let password = patron["passwd"].clone();
+        let barcode = patron.remove("_barcode").unwrap();
+
+        self.runner.editor_mut().xact_begin()?;
+
+        let new_patron = self.runner.editor_mut().create(patron.clone())?;
+
+        self.runner.announce(&format!(
+            "Created new account for {barcode} with id {}",
+            new_patron["id"]
+        ));
+
+        self.runner.editor_mut().rollback()?;
+
+        // TODO NONEs
+        // $phash->{state} ||= 'WA';
+        // $phash->{country} ||= 'USA';
+        // $phash->{within_city_limits} ||= 'f';
 
         Ok(())
     }
 
     /// Extract values from the source hash and translate them into
     /// our patron object, normalizing and applying defaults on the way.
-    fn apply_fields(&self, hash: &HashMap<String, String>, patron: &mut EgValue) -> EgResult<()> {
-        if self.is_teacher || self.is_classroom {
-            // We never care about date of birth for adults/generic cards.
-            patron["dob"] = "1900-01-01".into();
-        } else {
-            let dob = hash
-                .get("dob")
-                .ok_or_else(|| format!("'dob' value is required: {hash:?}"))?
-                .trim();
-
-            // Translate mm/dd/yyyy into ISO.
-            let dob = self.dob_us_regex.replace(dob, |caps: &Captures| {
-                // caps[0] is the full source string
-                format!("{}-{:0>1}-{:0>1}", &caps[3], &caps[1], &caps[2])
-            });
-
-            if !self.dob_regex.is_match(&dob) {
-                return Err(format!("DOB format is invalid: {dob}").into());
-            }
-
-            patron["dob"] = dob.into_owned().into();
-        }
-
+    fn apply_field_values(
+        &self,
+        hash: &HashMap<String, String>,
+        patron: &mut EgValue,
+    ) -> EgResult<()> {
         // Password is initially set to last 4 characters of the barcode.
-        let barcode = patron["_barcode"].str()?;
+        // string() to avoid mut borrow conflicts
+        let barcode = patron["_barcode"].string()?;
 
         // barcodes have 3-char district codes plus a non-empty student_id.
-        patron["_password"] = barcode[(barcode.len() - 4)..].into();
+        // "passwd" field is still required on actor.usr even though
+        // the password ultimately ends up in a different table.
+        patron["passwd"] = barcode[(barcode.len() - 4)..].into();
 
+        patron["usrname"] = barcode.into();
+        patron["home_ou"] = self.home_ou.into();
+        patron["net_access_level"] = STUDENT_NET_ACCESS.into();
+
+        if self.is_teacher {
+            patron["juvenile"] = "f".into();
+            patron["profile"] = TEACHER_PROFILE.into();
+            patron["ident_type"] = STUDENT_IDENT_TYPE.into();
+            patron["ident_value"] = patron.remove("_student_id").unwrap();
+        } else if self.is_classroom {
+            patron["juvenile"] = "f".into();
+            patron["profile"] = CLASSROOM_PROFILE.into();
+            patron["ident_type"] = CLASSROOM_IDENT_TYPE.into();
+            patron["ident_value"] = CLASSROOM_IDENT_VALUE.into();
+        } else {
+            patron["juvenile"] = "t".into();
+            patron["profile"] = STUDENT_PROFILE.into();
+            patron["ident_type"] = STUDENT_IDENT_TYPE.into();
+            patron["ident_value"] = patron.remove("_student_id").unwrap();
+        }
+
+        self.set_dob(hash, patron)?;
         self.set_expire_date(patron)?;
+
+        Ok(())
+    }
+
+    /// Extract + normalize the dob or apply a default.
+    fn set_dob(&self, hash: &HashMap<String, String>, patron: &mut EgValue) -> EgResult<()> {
+        // We don't care about dates of birth for adults/generic cards.
+        if self.is_teacher || self.is_classroom {
+            patron["dob"] = "1900-01-01".into();
+            return Ok(());
+        }
+
+        let dob = hash
+            .get("dob")
+            .ok_or_else(|| format!("'dob' value is required: {hash:?}"))?
+            .trim();
+
+        // Translate mm/dd/yyyy into ISO.
+        let dob = self.dob_us_regex.replace(dob, |caps: &Captures| {
+            // caps[0] is the full source string
+            format!("{}-{:0>1}-{:0>1}", &caps[3], &caps[1], &caps[2])
+        });
+
+        if !self.dob_regex.is_match(&dob) {
+            return Err(format!("DOB format is invalid: {dob}").into());
+        }
+
+        patron["dob"] = dob.into_owned().into();
 
         Ok(())
     }
