@@ -281,11 +281,11 @@ impl Importer {
             return Ok(());
         }
 
-        self.insert_account(&mut patron)
+        self.insert_account(patron)
     }
 
     /// Send the account data off to the APIs for database insertion.
-    fn insert_account(&mut self, patron: &mut EgValue) -> EgResult<()> {
+    fn insert_account(&mut self, mut patron: EgValue) -> EgResult<()> {
         // Start with actor.usr
 
         // These are handled separately
@@ -294,19 +294,94 @@ impl Importer {
 
         self.runner.editor_mut().xact_begin()?;
 
-        let new_patron = self.runner.editor_mut().create(patron.clone())?;
+        let mut new_patron = self.runner.editor_mut().create(patron)?;
+        let patron_id = new_patron.id()?;
 
-        self.runner.announce(&format!(
-            "Created new account for {barcode} with id {}",
-            new_patron["id"]
-        ));
+        self.runner.announce(&format!("Created account for {barcode} with id {patron_id}"));
+
+        let addr = eg::blessed! {
+            "_classname": "aua",
+            "usr": patron_id,
+            "street1": "NONE",
+            "street2": "NONE",
+            "city": "NONE",
+            "post_code": "NONE",
+            "state": "WA",
+            "county": "NONE",
+            "country": "USA",
+            "within_city_limits": "f",
+        }?;
+
+        let new_addr = self.runner.editor_mut().create(addr)?;
+
+        let card = eg::blessed! {
+            "_classname": "ac",
+            "barcode": barcode,
+            "usr": patron_id,
+        }?;
+
+        let new_card = self.runner.editor_mut().create(card)?;
+
+        let alert1_msg = if self.is_classroom {
+            CLASSROOM_ALERT_MSG
+        } else if self.is_teacher {
+            TEACHER_ALERT_MSG
+        } else {
+            STUDENT_ALERT_MSG
+        };
+
+        let message = eg::blessed! {
+            "_classname": "aum",
+            "usr": patron_id,
+            "title": alert1_msg,
+            "message": alert1_msg,
+            "sending_lib": ROOT_ORG,
+            "editor": self.runner.staff_account(),
+        }?;
+
+        let new_message_1 = self.runner.editor_mut().create(message)?;
+
+        let alert_1 = eg::blessed! {
+            "_classname": "ausp",
+            "usr": patron_id,
+            "org_unit": ROOT_ORG,
+            "standing_penalty": ALERT_TYPE,
+            "usr_message": new_message_1.id()?,
+        }?;
+
+        let _ = self.runner.editor_mut().create(alert_1)?;
+
+        let message = eg::blessed! {
+            "_classname": "aum",
+            "usr": patron_id,
+            "title": ALERT2_MSG,
+            "message": ALERT2_MSG,
+            "sending_lib": ROOT_ORG,
+            "editor": self.runner.staff_account(),
+        }?;
+
+        let new_message_2 = self.runner.editor_mut().create(message)?;
+
+        let alert_2 = eg::blessed! {
+            "_classname": "ausp",
+            "usr": patron_id,
+            "org_unit": ROOT_ORG,
+            "standing_penalty": ALERT_TYPE,
+            "usr_message": new_message_2.id()?,
+        }?;
+
+        let _ = self.runner.editor_mut().create(alert_2)?;
+
+        new_patron["card"] = new_card.id()?.into();
+        new_patron["billing_address"] = new_addr.id()?.into();
+        new_patron["mailing_address"] = new_addr.id()?.into();
+
+        let _ = self.runner.editor_mut().update(new_patron)?;
+
+        // TODO 
+        // go ahead and migrate the password.
 
         self.runner.editor_mut().rollback()?;
-
-        // TODO NONEs
-        // $phash->{state} ||= 'WA';
-        // $phash->{country} ||= 'USA';
-        // $phash->{within_city_limits} ||= 'f';
 
         Ok(())
     }
