@@ -918,7 +918,7 @@ impl Session {
         };
 
         log::debug!("{self} verifying password for user ID {user_id}");
-        eg::common::user::verify_migrated_password(self.editor(), user_id, password, false)
+        eg::common::user::verify_main_password(self.editor(), user_id, password, false)
     }
 
     pub fn handle_patron_status(&mut self, sip_msg: sip2::Message) -> EgResult<sip2::Message> {
