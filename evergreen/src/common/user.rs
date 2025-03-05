@@ -12,7 +12,7 @@ pub const PW_TYPE_MAIN: &str = "main";
 /// # Arguments
 ///
 /// * 'is_hashed' - Set to true if the password has already been md5-hashed.
-pub fn verify_migrated_password(
+pub fn verify_main_password(
     e: &mut Editor,
     user_id: i64,
     password: &str,
@@ -76,6 +76,31 @@ pub fn verify_password(
             .to_string()
             .into())
     }
+}
+
+/// Modify a user's main password.
+pub fn modify_main_password(e: &mut Editor, user_id: i64, password: &str) -> EgResult<bool> {
+    let new_salt_vec = e.json_query(eg::hash! {"from": ["actor.create_salt", PW_TYPE_MAIN]})?;
+
+    let new_salt = new_salt_vec.first().ok_or("actor.create_salt failed")?;
+
+    let new_salt = new_salt["actor.create_salt"].str()?;
+
+    let password = format!("{:x}", md5::compute(password));
+
+    let resp = e.json_query(eg::hash! {
+        "from": [
+            "actor.set_passwd",
+            user_id,
+            PW_TYPE_MAIN,
+            password,
+            new_salt
+        ]
+    })?;
+
+    let resp = resp.first().ok_or("actor.set_passwd failed")?;
+
+    Ok(resp["actor.set_passwd"].boolish())
 }
 
 /// Returns a list of all org unit IDs where the provided user has
