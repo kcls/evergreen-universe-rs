@@ -288,8 +288,8 @@ impl Importer {
     fn insert_account(&mut self, mut patron: EgValue) -> EgResult<()> {
         // Start with actor.usr
 
-        // These are handled separately
-        let password = patron["passwd"].clone();
+        // Password will likely be numeric.
+        let password = patron["passwd"].string()?;
         let barcode = patron.remove("_barcode").unwrap();
 
         self.runner.editor_mut().xact_begin()?;
@@ -297,7 +297,9 @@ impl Importer {
         let mut new_patron = self.runner.editor_mut().create(patron)?;
         let patron_id = new_patron.id()?;
 
-        self.runner.announce(&format!("Created account for {barcode} with id {patron_id}"));
+        self.runner.announce(&format!(
+            "Created account for {barcode} with id {patron_id}"
+        ));
 
         let addr = eg::blessed! {
             "_classname": "aua",
@@ -376,10 +378,9 @@ impl Importer {
         new_patron["billing_address"] = new_addr.id()?.into();
         new_patron["mailing_address"] = new_addr.id()?.into();
 
-        let _ = self.runner.editor_mut().update(new_patron)?;
+        self.runner.editor_mut().update(new_patron)?;
 
-        // TODO 
-        // go ahead and migrate the password.
+        eg::common::user::modify_main_password(self.runner.editor_mut(), patron_id, &password)?;
 
         self.runner.editor_mut().rollback()?;
 
@@ -481,7 +482,7 @@ impl Importer {
 
         let birth_year: u16 = birth_year
             .parse()
-            .map_err(|e| format!("Invalid date of birth year: {birth_year}"))?;
+            .map_err(|_| format!("Invalid date of birth year: {birth_year}"))?;
 
         // Can underflow
         let mut age_years: i32 = now_year as i32 - birth_year as i32;
