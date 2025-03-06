@@ -62,8 +62,11 @@ macro_rules! blessed {
     ($($tts:tt)*) => {{
         match $crate::EgValue::from_json_value(serde_json::json!({$($tts)*})) {
             Ok(mut v) => {
-                v.from_classed_hash()?;
-                Ok(v)
+                if let Err(e) = v.from_classed_hash() {
+                    Err(e)
+                } else {
+                    Ok(v)
+                }
             },
             Err(e) => {
                 log::error!("eg::hash! {e}");
