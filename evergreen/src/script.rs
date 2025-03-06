@@ -6,6 +6,8 @@ use eg::db::DatabaseConnection;
 use eg::init;
 use eg::Editor;
 use eg::EgResult;
+use std::io;
+use io::Write;
 
 const HELP_TEXT: &str = "
 Runner Additions:
@@ -309,5 +311,20 @@ impl Runner {
         } else {
             Err("Could not retrieve auth session".into())
         }
+    }
+
+    /// Display a message, ask the user if they wish to continue, then
+    /// return true if the user provides a response that looks like "yes",
+    /// false otherwise.
+    pub fn prompt(&self, msg: &str) -> EgResult<bool> {
+        print!("{msg}: Continue? [yN] ");
+        let _ = io::stdout().flush(); 
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).map_err(|e| format!("Prompt failed: {e}"))?;
+
+        input = input.trim().to_ascii_lowercase();
+
+        Ok(input.starts_with("y"))
     }
 }
