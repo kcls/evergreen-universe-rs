@@ -1,16 +1,16 @@
+use chrono::Datelike; // date.year()
 use eg::date;
 use eg::script;
 use eg::EgResult;
 use eg::EgValue;
 use evergreen as eg;
-// hrm, for date.year()
-use chrono::Datelike;
 use regex::Captures;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::BufReader;
+use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
 
@@ -39,7 +39,7 @@ Options:
         Force the creation of new accounts when the number of new accounts
         exceeds the "too many new accounts" ratio.
 
-    --report-only
+    --test-file
         Print the steps that would be taken without modifying any data.
 "#;
 
@@ -132,21 +132,39 @@ const HOME_OU_MAP: &[(&str, u32)] = &[
     ("frs", 1529), // Forest Ridge School of the Sacred Heart (Newport Way)
 ];
 
+/// Collection of precompiled regexes.
+///
+/// Keeping them separate for ease of testing.
+struct LocalRegexes {
+    student_id_regex: Regex,
+    college_id_regex: Regex,
+    dob_regex: Regex,
+    dob_us_regex: Regex,
+}
+
+impl LocalRegexes {
+    fn compile() -> Self {
+        Self {
+            dob_regex: Regex::new(DOB_REGEX).unwrap(),
+            dob_us_regex: Regex::new(DOB_US_REGEX).unwrap(),
+            student_id_regex: Regex::new(STUDENT_ID_REGEX).unwrap(),
+            college_id_regex: Regex::new(COLLEGE_ID_REGEX).unwrap(),
+        }
+    }
+}
+
 struct Importer {
     file_name: String,
     runner: script::Runner,
     district_code: String,
     home_ou: u32,
-    is_report_only: bool,
+    test_file: bool,
     is_teacher: bool,
     is_classroom: bool,
     is_college: bool,
     is_purge: bool,
     is_force_new: bool,
-    dob_regex: Regex,
-    dob_us_regex: Regex,
-    student_id_regex: Regex,
-    college_id_regex: Regex,
+    regexes: LocalRegexes,
 }
 
 impl fmt::Display for Importer {
@@ -156,36 +174,31 @@ impl fmt::Display for Importer {
 }
 
 impl Importer {
-    /// Parse a CSV file and create accounts
+    /// Process a CSV file
     fn process_file(&mut self, file_path: &Path) -> EgResult<()> {
         let file =
             File::open(file_path).map_err(|e| format!("Cannot open file: {file_path:?} {e}"))?;
 
-        let buf_reader = BufReader::new(file);
-        let mut reader = csv::Reader::from_reader(buf_reader);
+        self.process_csv(BufReader::new(file))
+    }
 
-        let mut all_accounts: Vec<HashMap<String, String>> = Vec::new();
-        let mut all_barcodes: Vec<String> = Vec::new();
+    #[cfg(test)]
+    /// Process a CSV string
+    fn process_string(&mut self, csv: &str) -> EgResult<()> {
+        self.process_csv(BufReader::new(csv.as_bytes()))
+    }
 
-        // Read all of the accounts from file up front so we can
-        // get a count of how many new users we're creating.
-        // Derive the barcode for each along the way.
-        for row_result in reader.deserialize() {
-            let mut hash: HashMap<String, String> =
-                row_result.map_err(|e| format!("Error parsing CSV file: {e}"))?;
+    fn process_csv(&mut self, reader: impl Read) -> EgResult<()> {
+        let accounts = self.load_csv_data(reader)?;
 
-            let barcode = self.apply_barcode(&mut hash)?;
+        let (new_barcodes, existing_barcodes) = self.group_barcodes(&accounts)?;
 
-            // Avoid duplicate accounts
-            if !all_barcodes.contains(&barcode) {
-                all_accounts.push(hash);
-                all_barcodes.push(barcode);
-            }
-        }
-
-        let (new_barcodes, existing_barcodes) = self.organize_barcodes(&all_barcodes)?;
-        let all_count = all_barcodes.len();
         let new_count = new_barcodes.len();
+        let all_count = new_count + existing_barcodes.len();
+
+        self.runner.announce(&format!(
+            "{self} contains {new_count} new accounts out of {all_count} total"
+        ));
 
         if self.is_purge {
             return self.purge_accounts(existing_barcodes);
@@ -196,15 +209,54 @@ impl Importer {
 
         self.check_new_accounts_ratio(all_count, new_count);
 
-        for hash in all_accounts {
+        for hash in accounts {
             let barcode = hash.get("barcode").unwrap(); // set above
 
             if new_barcodes.contains(barcode) {
-                self.create_account(hash)?;
+                let patron = self.create_account(hash)?;
+                if self.test_file {
+                    self.log_account(&patron);
+                } else {
+                    self.insert_account(patron)?;
+                }
             }
         }
 
         Ok(())
+    }
+
+    /// Returns the loaded account data as a list of hashes.
+    fn load_csv_data(&self, reader: impl Read) -> EgResult<Vec<HashMap<String, String>>> {
+        let mut reader = csv::Reader::from_reader(reader);
+
+        let mut accounts: Vec<HashMap<String, String>> = Vec::new();
+
+        // Read all of the accounts from file up front so we can
+        // get a count of how many new users we're creating.
+        // Derive the barcode for each along the way.
+        for row_result in reader.deserialize() {
+            let mut hash: HashMap<String, String> =
+                row_result.map_err(|e| format!("Error parsing CSV file: {e}"))?;
+
+            let barcode = self.apply_barcode(&mut hash)?;
+
+            if !accounts
+                .iter()
+                .map(|a| a.get("barcode").unwrap())
+                .any(|b| b == &barcode)
+            {
+                accounts.push(hash);
+            }
+        }
+
+        Ok(accounts)
+    }
+
+    fn log_account(&self, patron: &EgValue) {
+        let mut phash = patron.clone();
+        phash.to_classed_hash();
+        phash.scrub_hash_nulls();
+        self.runner.announce(&phash.dump());
     }
 
     /// Permanently delete all accounts related to the provided barcodes.
@@ -215,7 +267,7 @@ impl Importer {
         for barcode in barcodes.drain(..) {
             self.runner.announce(&format!("Purging account {barcode}"));
 
-            if self.is_report_only {
+            if self.test_file {
                 continue;
             }
 
@@ -279,16 +331,22 @@ impl Importer {
 
     /// Split the set of barcodes into new and existing, where existing
     /// barcodes are present in actor.card.
-    fn organize_barcodes(
+    fn group_barcodes(
         &mut self,
-        all_barcodes: &[String],
+        accounts: &[HashMap<String, String>],
     ) -> EgResult<(Vec<String>, Vec<String>)> {
         // Search for the ones we do have, then return the remainders.
         let mut existing_barcodes = Vec::new();
 
+        let all_barcodes: Vec<&String> =
+            accounts.iter().map(|a| a.get("barcode").unwrap()).collect();
+
         // This has the potential to be a large number of barcodes.
         // Chunk the lookups into manageable groups.
         for batch in all_barcodes.chunks(250) {
+            // eg::hash! (thus JsonValue) doesn't support From<&std::string::String>
+            let batch = batch.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
+
             let query = eg::hash! {
                 "select": {"ac": ["barcode"]},
                 "from": "ac",
@@ -310,7 +368,7 @@ impl Importer {
 
         let mut new_barcodes = Vec::new();
 
-        for barcode in all_barcodes.iter() {
+        for barcode in all_barcodes {
             if !existing_barcodes.contains(barcode) {
                 new_barcodes.push(barcode.to_string());
             }
@@ -321,7 +379,7 @@ impl Importer {
 
     /// Create the new user account and add it to the database along with
     /// its addresses, alerts, etc.
-    fn create_account(&mut self, hash: HashMap<String, String>) -> EgResult<()> {
+    fn create_account(&mut self, hash: HashMap<String, String>) -> EgResult<EgValue> {
         // Translate our hash to an EgValue to prep for cleanup and insert.
 
         let mut patron = eg::blessed! {
@@ -349,16 +407,7 @@ impl Importer {
 
         self.apply_field_values(&hash, &mut patron)?;
 
-        if self.is_report_only {
-            let mut phash = patron.clone();
-            phash.to_classed_hash();
-            phash.scrub_hash_nulls();
-            self.runner
-                .announce(&format!("Adding account: {}", phash.pretty(2)));
-            return Ok(());
-        }
-
-        self.insert_account(patron)
+        Ok(patron)
     }
 
     /// Send the account data off to the APIs for database insertion.
@@ -519,12 +568,12 @@ impl Importer {
             .trim();
 
         // Translate mm/dd/yyyy into ISO.
-        let dob = self.dob_us_regex.replace(dob, |caps: &Captures| {
+        let dob = self.regexes.dob_us_regex.replace(dob, |caps: &Captures| {
             // caps[0] is the full source string
             format!("{}-{:0>1}-{:0>1}", &caps[3], &caps[1], &caps[2])
         });
 
-        if !self.dob_regex.is_match(&dob) {
+        if !self.regexes.dob_regex.is_match(&dob) {
             return Err(format!("DOB format is invalid: {dob}").into());
         }
 
@@ -616,6 +665,7 @@ impl Importer {
 
         if self.is_college {
             student_id = self
+                .regexes
                 .college_id_regex
                 .replace_all(&student_id, "")
                 .into_owned();
@@ -625,6 +675,7 @@ impl Importer {
         } else {
             // K12 teachers and students
             student_id = self
+                .regexes
                 .student_id_regex
                 .replace_all(&student_id, "")
                 .into_owned();
@@ -674,7 +725,7 @@ fn main() {
     ops.optflag("", "teacher", "");
     ops.optflag("", "college", "");
     ops.optflag("", "classroom", "");
-    ops.optflag("", "report-only", "");
+    ops.optflag("", "test-file", "");
     ops.optflag("", "purge", "");
     ops.optflag("", "force-new", "");
 
@@ -725,7 +776,7 @@ fn main() {
     let is_college = runner.params().opt_present("college");
     let is_classroom = runner.params().opt_present("classroom");
     let is_force_new = runner.params().opt_present("force-new");
-    let is_report_only = runner.params().opt_present("report-only");
+    let test_file = runner.params().opt_present("test-file");
     let is_purge = runner.params().opt_present("purge");
 
     let Some(home_ou) = HOME_OU_MAP
@@ -736,28 +787,24 @@ fn main() {
         return runner.exit(1, &format!("Unknown district: {district_code}"));
     };
 
-    let student_id_regex = Regex::new(STUDENT_ID_REGEX).unwrap();
-    let college_id_regex = Regex::new(COLLEGE_ID_REGEX).unwrap();
-    let dob_regex = Regex::new(DOB_REGEX).unwrap();
-    let dob_us_regex = Regex::new(DOB_US_REGEX).unwrap();
-
-    if is_purge && !runner.prompt("Purge all accounts").unwrap() {
+    if is_purge
+        && !runner
+            .prompt("Purging all accounts.  This cannot be undone.")
+            .unwrap()
+    {
         return;
     }
 
     let mut importer = Importer {
         runner,
         home_ou,
-        is_report_only,
+        test_file,
         is_purge,
         is_force_new,
         is_teacher,
         is_college,
         is_classroom,
-        dob_regex,
-        dob_us_regex,
-        student_id_regex,
-        college_id_regex,
+        regexes: LocalRegexes::compile(),
         file_name: file_name.to_string(),
         district_code: district_code.to_string(),
     };
@@ -768,4 +815,40 @@ fn main() {
             &format!("Error processing file {}: {e}", importer.file_name),
         );
     }
+}
+
+#[cfg(test)]
+const TEST_OK_CSV: &str = r#"
+student_id,first_given_name,family_name,dob
+0000,first-name1,family-name1,2020-01-01,
+0001,first-name2,family-name2,2030-01-01,
+0002,first-name3,family-name3,2010-01-01,
+0003,first-name4,family-name4,1900-01-01,
+"#;
+
+#[cfg(test)]
+fn test_create_k12() {
+    let options = script::Options::default();
+    let mut runner = script::Runner::init(options).unwrap().unwrap();
+
+    let mut importer = Importer {
+        runner,
+        home_ou: 1234,
+        test_file: true,
+        is_purge: false,
+        is_force_new: false,
+        is_teacher: false,
+        is_college: false,
+        is_classroom: false,
+        regexes: LocalRegexes::compile(),
+        file_name: "<STRING>".to_string(),
+        district_code: "210".to_string(),
+    };
+
+    //importer.
+
+    let reader = BufReader::new(TEST_OK_CSV.as_bytes());
+    let accounts = importer.load_csv_data(reader).unwrap();
+
+    assert_eq!(accounts.len(), TEST_OK_CSV.split('\n').count() - 1);
 }
