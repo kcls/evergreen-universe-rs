@@ -12,11 +12,14 @@ use std::fmt;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::time::Duration;
 
 const HELP_TEXT: &str = r#"
 Import students, teachers, and classroom accounts from a CSV file.
 
-kcls-student-importer --district-code 405 --teacher /tmp/403.teacher.2025-03-06.csv
+Example:
+
+kcls-student-importer --staff-account 4953211 --district-code 405 --teacher /tmp/403.teacher.2025-03-06.csv
 
 Options:
 
@@ -29,19 +32,18 @@ Options:
     --classroom
         Process CSV file entries as classroom accounts.
 
-    --purge-all
-        Purge (permanently delete) every account represented in the CSV file.
+    --purge
+        Purge (permanently delete) every account in the CSV file.
 
     --force-new
         Force the creation of new accounts when the number of new accounts
         exceeds the "too many new accounts" ratio.
 
-    --dry-run
-        Print the generated patron data without interacting with Evergreen.
+    --report-only
+        Print the steps that would be taken without modifying any data.
 "#;
 
-
-const LOG_PREFIX: &str = "SI";
+const LOG_PREFIX: &str = "KSI";
 const STUDENT_PROFILE: u32 = 901; // "Student Ecard"
 const TEACHER_PROFILE: u32 = 903; // "Teacher Ecard"
 const CLASSROOM_PROFILE: u32 = 902; // "Classroom Databases"
@@ -49,6 +51,7 @@ const STUDENT_NET_ACCESS: u32 = 101; // No Access
 const STUDENT_IDENT_TYPE: u32 = 101; // "Sch-district file" ident type
 const CLASSROOM_IDENT_TYPE: u32 = 3; // ident type "Other"
 const CLASSROOM_IDENT_VALUE: &str = "KCLS generated";
+const DEFAULT_POST_CODE: u32 = 98010;
 
 const STUDENT_ALERT_MSG: &str =
     "Student Ecard: No physical checkouts. No computer/printing. No laptops.";
@@ -84,7 +87,7 @@ const DOB_US_REGEX: &str = r#"^(\d{1,2})/(\d{1,2})/(\d{4})$"#;
 
 const TEACHER_EXPIRE_INTERVAL: &str = "10 years";
 const COLLEGE_EXPIRE_INTERVAL: &str = "4 years";
-const STUDENT_EXPIRE_AGE: u16 = 21;
+const STUDENT_EXPIRE_AGE: u16 = 21; // years
 
 // Map of district code to home org unit id.
 const HOME_OU_MAP: &[(&str, u32)] = &[
@@ -134,7 +137,7 @@ struct Importer {
     runner: script::Runner,
     district_code: String,
     home_ou: u32,
-    is_dry_run: bool,
+    is_report_only: bool,
     is_teacher: bool,
     is_classroom: bool,
     is_college: bool,
@@ -194,7 +197,8 @@ impl Importer {
         self.check_new_accounts_ratio(all_count, new_count);
 
         for hash in all_accounts {
-            let barcode = hash.get("barcode").unwrap(); // invariant
+            let barcode = hash.get("barcode").unwrap(); // set above
+
             if new_barcodes.contains(barcode) {
                 self.create_account(hash)?;
             }
@@ -203,20 +207,41 @@ impl Importer {
         Ok(())
     }
 
-    /// Create the new user account and add it to the database along with
-    /// its addresses, alerts, etc.
+    /// Permanently delete all accounts related to the provided barcodes.
     fn purge_accounts(&mut self, mut barcodes: Vec<String>) -> EgResult<()> {
-        self.runner.announce(&format!("Purging {} accounts", barcodes.len()));
+        self.runner
+            .announce(&format!("Purging {} accounts", barcodes.len()));
 
         for barcode in barcodes.drain(..) {
             self.runner.announce(&format!("Purging account {barcode}"));
 
-            // TODO
+            if self.is_report_only {
+                continue;
+            }
+
+            let card_op = self
+                .runner
+                .editor_mut()
+                .search("ac", eg::hash! {"barcode": barcode})?
+                .pop();
+
+            if let Some(card) = card_op {
+                self.runner.editor_mut().xact_begin()?;
+
+                self.runner.editor_mut().json_query(eg::hash! {
+                    "from": [
+                        "actor.usr_delete",
+                        card["usr"].int()?,
+                        EgValue::Null,
+                    ]
+                })?;
+
+                self.runner.editor_mut().commit()?;
+            }
         }
 
         Ok(())
     }
-
 
     /// Verify the number of new accounts does not exceed the configured
     /// MAX_NEW_RATIO.  
@@ -254,7 +279,10 @@ impl Importer {
 
     /// Split the set of barcodes into new and existing, where existing
     /// barcodes are present in actor.card.
-    fn organize_barcodes(&mut self, all_barcodes: &[String]) -> EgResult<(Vec<String>, Vec<String>)> {
+    fn organize_barcodes(
+        &mut self,
+        all_barcodes: &[String],
+    ) -> EgResult<(Vec<String>, Vec<String>)> {
         // Search for the ones we do have, then return the remainders.
         let mut existing_barcodes = Vec::new();
 
@@ -272,7 +300,10 @@ impl Importer {
             // Use .string() here since it coerces numeric barcodes
             // into strings.  Panics if a barcode value (from the database)
             // is not stringifiable.
-            let mut existing: Vec<String> = existing.iter().map(|e| e.string().unwrap()).collect();
+            let mut existing: Vec<String> = existing
+                .iter()
+                .map(|e| e["barcode"].string().expect("barcodes stringify"))
+                .collect();
 
             existing_barcodes.append(&mut existing);
         }
@@ -318,7 +349,7 @@ impl Importer {
 
         self.apply_field_values(&hash, &mut patron)?;
 
-        if self.is_dry_run {
+        if self.is_report_only {
             let mut phash = patron.clone();
             phash.to_classed_hash();
             phash.scrub_hash_nulls();
@@ -351,11 +382,9 @@ impl Importer {
             "_classname": "aua",
             "usr": patron_id,
             "street1": "NONE",
-            "street2": "NONE",
             "city": "NONE",
-            "post_code": "NONE",
+            "post_code": DEFAULT_POST_CODE,
             "state": "WA",
-            "county": "NONE",
             "country": "USA",
             "within_city_limits": "f",
         }?;
@@ -428,7 +457,7 @@ impl Importer {
 
         eg::common::user::modify_main_password(self.runner.editor_mut(), patron_id, &password)?;
 
-        self.runner.editor_mut().rollback()?;
+        self.runner.editor_mut().commit()?;
 
         Ok(())
     }
@@ -544,17 +573,22 @@ impl Importer {
 
         let expire_year = now_year + (STUDENT_EXPIRE_AGE - age_years as u16) as u32;
 
-        // This can fail if the calculated date is invalid.  If so,
-        // running the importer again on the same data the next day or
-        // so will likely fix it.
-        // Alternatively. we could loop on with_year() for x number of times
-        // until a valid date is generated.
-        let expire_date = now_date.with_year(expire_year as i32).ok_or_else(|| {
-            format!(
-                "Error setting expire date: {now_date} + {expire_year} years : {}",
-                patron.dump()
-            )
-        })?;
+        let mut now_date = now_date;
+        let mut expire_date = None;
+
+        // date.with_year() can fail if the calculated date is invalid.
+        // Give it a few tries.
+        for _ in 0..5 {
+            expire_date = now_date.with_year(expire_year as i32);
+            if expire_date.is_some() {
+                break;
+            }
+            // Add 1 day.  from_days() is not yet finalized.
+            now_date += Duration::from_secs(86400);
+        }
+
+        let expire_date =
+            expire_date.ok_or_else(|| format!("Cannot generate expire date from {now_date}"))?;
 
         patron["expire_date"] = date::to_iso(&expire_date).into();
 
@@ -640,7 +674,7 @@ fn main() {
     ops.optflag("", "teacher", "");
     ops.optflag("", "college", "");
     ops.optflag("", "classroom", "");
-    ops.optflag("", "dry-run", "");
+    ops.optflag("", "report-only", "");
     ops.optflag("", "purge", "");
     ops.optflag("", "force-new", "");
 
@@ -679,7 +713,7 @@ fn main() {
         return runner.exit(1, "CSV file required");
     };
 
-    runner.announce("Processing file {file_path}");
+    runner.announce(&format!("Processing file {file_path}"));
 
     let file_path = Path::new(&file_path);
 
@@ -691,7 +725,7 @@ fn main() {
     let is_college = runner.params().opt_present("college");
     let is_classroom = runner.params().opt_present("classroom");
     let is_force_new = runner.params().opt_present("force-new");
-    let is_dry_run = runner.params().opt_present("dry-run");
+    let is_report_only = runner.params().opt_present("report-only");
     let is_purge = runner.params().opt_present("purge");
 
     let Some(home_ou) = HOME_OU_MAP
@@ -707,12 +741,14 @@ fn main() {
     let dob_regex = Regex::new(DOB_REGEX).unwrap();
     let dob_us_regex = Regex::new(DOB_US_REGEX).unwrap();
 
-    // TODO warn on --purge-all
+    if is_purge && !runner.prompt("Purge all accounts").unwrap() {
+        return;
+    }
 
     let mut importer = Importer {
         runner,
         home_ou,
-        is_dry_run,
+        is_report_only,
         is_purge,
         is_force_new,
         is_teacher,
