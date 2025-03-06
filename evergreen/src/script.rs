@@ -38,6 +38,7 @@ Database Connector Additions:
 /// Account ID for updates, e.g. applying an 'editor' value to a bib record update.
 const DEFAULT_STAFF_ACCOUNT: i64 = 1;
 
+#[derive(Default)]
 pub struct Options {
     /// Getops Options prepopulated with script-local parameter definitions.
     pub options: Option<getopts::Options>,
@@ -317,7 +318,7 @@ impl Runner {
     /// return true if the user provides a response that looks like "yes",
     /// false otherwise.
     pub fn prompt(&self, msg: &str) -> EgResult<bool> {
-        print!("{msg}: Continue? [yN] ");
+        print!("\n{msg} Continue? [yN] ");
         let _ = io::stdout().flush(); 
 
         let mut input = String::new();
