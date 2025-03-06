@@ -13,6 +13,34 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+const HELP_TEXT: &str = r#"
+Import students, teachers, and classroom accounts from a CSV file.
+
+kcls-student-importer --district-code 405 --teacher /tmp/403.teacher.2025-03-06.csv
+
+Options:
+
+    --district-code
+        3-character school district code.
+
+    --teacher
+        Process CSV file entries as teacher accounts.
+
+    --classroom
+        Process CSV file entries as classroom accounts.
+
+    --purge-all
+        Purge (permanently delete) every account represented in the CSV file.
+
+    --force-new
+        Force the creation of new accounts when the number of new accounts
+        exceeds the "too many new accounts" ratio.
+
+    --dry-run
+        Print the generated patron data without interacting with Evergreen.
+"#;
+
+
 const LOG_PREFIX: &str = "SI";
 const STUDENT_PROFILE: u32 = 901; // "Student Ecard"
 const TEACHER_PROFILE: u32 = 903; // "Teacher Ecard"
@@ -125,8 +153,7 @@ impl fmt::Display for Importer {
 }
 
 impl Importer {
-    /// Parse a CSV file and generate accounts for new
-    /// students, teachers, or classroom cards;
+    /// Parse a CSV file and create accounts
     fn process_file(&mut self, file_path: &Path) -> EgResult<()> {
         let file =
             File::open(file_path).map_err(|e| format!("Cannot open file: {file_path:?} {e}"))?;
@@ -153,9 +180,13 @@ impl Importer {
             }
         }
 
-        let new_barcodes = self.get_new_barcodes(&all_barcodes)?;
+        let (new_barcodes, existing_barcodes) = self.organize_barcodes(&all_barcodes)?;
         let all_count = all_barcodes.len();
         let new_count = new_barcodes.len();
+
+        if self.is_purge {
+            return self.purge_accounts(existing_barcodes);
+        }
 
         self.runner
             .announce(&format!("Found {new_count} new barcodes"));
@@ -164,17 +195,28 @@ impl Importer {
 
         for hash in all_accounts {
             let barcode = hash.get("barcode").unwrap(); // invariant
-
-            if !new_barcodes.contains(barcode) {
-                // This account already exists.
-                continue;
+            if new_barcodes.contains(barcode) {
+                self.create_account(hash)?;
             }
-
-            self.process_account(hash)?;
         }
 
         Ok(())
     }
+
+    /// Create the new user account and add it to the database along with
+    /// its addresses, alerts, etc.
+    fn purge_accounts(&mut self, mut barcodes: Vec<String>) -> EgResult<()> {
+        self.runner.announce(&format!("Purging {} accounts", barcodes.len()));
+
+        for barcode in barcodes.drain(..) {
+            self.runner.announce(&format!("Purging account {barcode}"));
+
+            // TODO
+        }
+
+        Ok(())
+    }
+
 
     /// Verify the number of new accounts does not exceed the configured
     /// MAX_NEW_RATIO.  
@@ -210,11 +252,11 @@ impl Importer {
         );
     }
 
-    /// Returns the subset of all barcodes which do not already exist
-    /// in the database.
-    fn get_new_barcodes(&mut self, all_barcodes: &[String]) -> EgResult<Vec<String>> {
+    /// Split the set of barcodes into new and existing, where existing
+    /// barcodes are present in actor.card.
+    fn organize_barcodes(&mut self, all_barcodes: &[String]) -> EgResult<(Vec<String>, Vec<String>)> {
         // Search for the ones we do have, then return the remainders.
-        let mut new_barcodes = Vec::new();
+        let mut existing_barcodes = Vec::new();
 
         // This has the potential to be a large number of barcodes.
         // Chunk the lookups into manageable groups.
@@ -230,21 +272,25 @@ impl Importer {
             // Use .string() here since it coerces numeric barcodes
             // into strings.  Panics if a barcode value (from the database)
             // is not stringifiable.
-            let existing: Vec<String> = existing.iter().map(|e| e.string().unwrap()).collect();
+            let mut existing: Vec<String> = existing.iter().map(|e| e.string().unwrap()).collect();
 
-            for barcode in batch.iter() {
-                if !existing.contains(barcode) {
-                    new_barcodes.push(barcode.to_string());
-                }
+            existing_barcodes.append(&mut existing);
+        }
+
+        let mut new_barcodes = Vec::new();
+
+        for barcode in all_barcodes.iter() {
+            if !existing_barcodes.contains(barcode) {
+                new_barcodes.push(barcode.to_string());
             }
         }
 
-        Ok(new_barcodes)
+        Ok((new_barcodes, existing_barcodes))
     }
 
     /// Create the new user account and add it to the database along with
     /// its addresses, alerts, etc.
-    fn process_account(&mut self, hash: HashMap<String, String>) -> EgResult<()> {
+    fn create_account(&mut self, hash: HashMap<String, String>) -> EgResult<()> {
         // Translate our hash to an EgValue to prep for cleanup and insert.
 
         let mut patron = eg::blessed! {
@@ -601,7 +647,7 @@ fn main() {
     let options = script::Options {
         with_evergreen: true,
         with_database: false,
-        help_text: None, // TODO
+        help_text: Some(HELP_TEXT.to_string()),
         extra_params: None,
         options: Some(ops),
     };
@@ -660,6 +706,8 @@ fn main() {
     let college_id_regex = Regex::new(COLLEGE_ID_REGEX).unwrap();
     let dob_regex = Regex::new(DOB_REGEX).unwrap();
     let dob_us_regex = Regex::new(DOB_US_REGEX).unwrap();
+
+    // TODO warn on --purge-all
 
     let mut importer = Importer {
         runner,
