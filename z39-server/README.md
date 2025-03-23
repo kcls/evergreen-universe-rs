@@ -1,3 +1,7 @@
 # Evergreen Z39.50 Server
 
-## TODO
+## Currently Support Message Types
+
+* InitializeRequest => InitializeResponse
+* SearchRequest => SearchResponse
+* PresentRequest => PresentResponse
