@@ -137,11 +137,14 @@ impl Z39Session {
             // Unless the caller is closing the connection, verify they
             // have not exceeded the configured rate limit.
             if !matches!(msg.payload(), MessagePayload::Close(_)) {
-                self.check_activity_limit()?;
+                if self.check_activity_limit()? {
+                    log::debug!("{self} exiting listen loop on exceeds activity");
+                    break;
+                }
             }
 
             // Handle the message
-            let resp = match self.handle_message(msg) {
+            let resp_op = match self.handle_message(msg) {
                 Ok(r) => r,
                 Err(e) => {
                     log::error!("handle_message() exited with {e}");
@@ -157,6 +160,10 @@ impl Z39Session {
                 }
             };
 
+            let Some(resp) = resp_op else {
+                break;
+            };
+
             self.send_reply(resp)?;
         }
 
@@ -168,11 +175,11 @@ impl Z39Session {
     /// Checks for excessive activity and inserts a sleep when too many
     /// requests have been encountered.
     ///
-    /// TODO option to send a Close and subsequently disconnect instead
-    /// of pausing when the rate limit is exceeded.
-    fn check_activity_limit(&mut self) -> LocalResult<()> {
+    /// Returns true if a Close messsage was sent to the caller and we
+    /// should break from our listen loop and terminate the connection.
+    fn check_activity_limit(&mut self) -> LocalResult<bool> {
         let Some(ref limits) = self.limits else {
-            return Ok(());
+            return Ok(false);
         };
 
         let permitted = {
@@ -184,7 +191,7 @@ impl Z39Session {
                     // Should only happen of another thread paniced with
                     // the lock open.
                     log::error!("{self} limiter lock error: {e}");
-                    return Ok(());
+                    return Ok(false);
                 }
             };
 
@@ -193,7 +200,7 @@ impl Z39Session {
         };
 
         if permitted {
-            return Ok(());
+            return Ok(false);
         }
 
         if conf::global().close_on_exceeds_rate {
@@ -202,7 +209,9 @@ impl Z39Session {
             self.send_close(
                 CloseReason::CostLimit,
                 Some("Exceeded Rate Limit".to_string()),
-            )
+            )?;
+
+            Ok(true)
 
         } else {
             log::info!("{self} exceeded rate limit; pausing");
@@ -213,7 +222,7 @@ impl Z39Session {
                 std::thread::sleep(Duration::from_secs(seconds.into()));
             }
 
-            Ok(())
+            Ok(false)
         }
     }
 
@@ -260,17 +269,24 @@ impl Z39Session {
     /// Z39 message handler.
     ///
     /// Dispatches each message to its handler.
-    fn handle_message(&mut self, msg: Message) -> LocalResult<Message> {
+    ///
+    /// Returns None if a Close message was received, no response should
+    /// be delivered, and the connection should close.
+    fn handle_message(&mut self, msg: Message) -> LocalResult<Option<Message>> {
         log::debug!("{self} processing message {msg:?}");
 
         let payload = match &msg.payload {
             MessagePayload::InitializeRequest(r) => self.handle_init_request(r)?,
             MessagePayload::SearchRequest(r) => self.handle_search_request(r)?,
             MessagePayload::PresentRequest(r) => self.handle_present_request(r)?,
-            _ => return Err(format!("handle_message() unsupported message type: {msg:?}").into()),
+            MessagePayload::Close(r) => {
+                log::info!("{self} received Close message reason={:?}, exiting", r.close_reason);
+                return Ok(None);
+            }
+            _ => return Err(format!("{self} unsupported message type: {msg:?}").into()),
         };
 
-        Ok(Message::from_payload(payload))
+        Ok(Some(Message::from_payload(payload)))
     }
 
     /// Handle the InitializeResponse
