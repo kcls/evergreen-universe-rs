@@ -177,8 +177,13 @@ impl Worker {
         log::trace!("{self} starting");
 
         if let Err(e) = self.handler.worker_start() {
-            log::error!("Error starting worker: {e}.  Exiting");
-            return;
+            log::error!("{self} error starting worker: {e}.  Exiting");
+
+            // Failure to start the worker likely means a systemic issue
+            // that could result in a lot of thread churn.  Sleep for a
+            // sec here to keep things from getting too chaotic.
+            thread::sleep(Duration::from_secs(1));
+            panic!("{} worker_start failed {}.  Exiting", self, e);
         }
 
         loop {
@@ -220,12 +225,16 @@ impl Worker {
             }
         }
 
-        self.set_as_done().ok(); // we're done.  ignore errors.
+        let done_result = self.set_as_done();
 
         log::debug!("{self} exiting main listen loop");
 
         if let Err(e) = self.handler.worker_end() {
             log::error!("{self} handler returned on error on exit: {e}");
+        }
+
+        if let Err(e) = done_result {
+            panic!("{self} could not set as done {e}; panic'ing to force cleanup");
         }
     }
 

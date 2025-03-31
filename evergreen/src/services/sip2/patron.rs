@@ -194,7 +194,7 @@ impl Session {
         let user = match self.get_user(barcode)? {
             Some(u) => u,
             None => {
-                log::warn!("{self} No such patron: {barcode}");
+                log::info!("{self} No such patron: {barcode}");
                 return Ok(None);
             }
         };
@@ -1014,7 +1014,7 @@ impl Session {
         let sipdate = sip2::util::sip_date_now();
 
         if patron_op.is_none() {
-            log::warn!("Replying to patron lookup for not-found patron");
+            log::info!("{self} replying to patron lookup for not-found patron");
 
             let resp = sip2::Message::from_values(
                 msg_code,

@@ -121,6 +121,11 @@ impl Worker {
     }
 
     /// Wait for and process inbound API calls.
+    ///
+    /// # Panics
+    ///
+    /// Some unrecoverable errors panic.  This forces the main server thread
+    /// to clean our thread up, regardless of any worker state signaling.
     pub fn listen(&mut self, factory: app::ApplicationWorkerFactory) {
         let selfstr = format!("{self}");
 
@@ -128,7 +133,12 @@ impl Worker {
 
         if let Err(e) = app_worker.worker_start(self.client.clone()) {
             log::error!("{selfstr} worker_start failed {e}.  Exiting");
-            return;
+
+            // Failure to start the worker likely means a systemic issue
+            // that could result in a lot of thread churn.  Sleep for a
+            // sec here to keep things from getting too chaotic.
+            thread::sleep(time::Duration::from_secs(1));
+            panic!("{selfstr} worker_start failed {e}.  Exiting");
         }
 
         let max_requests: usize =
@@ -243,14 +253,23 @@ impl Worker {
 
         log::debug!("{self} exiting listen loop and cleaning up");
 
+        // Tell the worker to cleanup
         if let Err(e) = app_worker.worker_end() {
             log::error!("{selfstr} worker_end failed {e}");
         }
 
-        self.notify_state(WorkerState::Exiting).ok(); // ignore errors
+        // Tell our main thread we're exiting
+        let exit_result = self.set_exiting();
 
         // Clear our worker-specific bus address of any lingering data.
-        self.reset().ok();
+        if let Err(e) = self.reset() {
+            log::error!("{selfstr} error resetting bus address: {e}");
+        }
+
+        // If we could not notify of our exiting, force it.
+        if let Err(e) = exit_result {
+            panic!("{selfstr} failed to notify exit {e}; panic'ing to force cleanup");
+        }
     }
 
     /// Call recv() on our message bus and process the response.
@@ -339,6 +358,17 @@ impl Worker {
         if let Err(e) = self.notify_state(WorkerState::Idle) {
             Err(format!(
                 "{self} failed to notify parent of Idle state. Exiting. {e}"
+            ))?;
+        }
+
+        Ok(())
+    }
+
+    /// Tell our parent we're available to perform work.
+    fn set_exiting(&mut self) -> EgResult<()> {
+        if let Err(e) = self.notify_state(WorkerState::Exiting) {
+            Err(format!(
+                "{self} failed to notify parent of Exiting state. Exiting. {e}"
             ))?;
         }
 
