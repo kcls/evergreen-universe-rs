@@ -14,6 +14,10 @@ sip2-mediator:
     # new connection attempts are rejected.
     max-workers: 64 
 
+    # For SIP, a "request" is equivlent to a SIP session.  It's not (e.g.)
+    # an individual SIP message.
+    max-worker-requests: 100
+
     # Mumber of worker threads to launch at start and the minimum
     # bare number to maintain throughout.
     min-workers: 4

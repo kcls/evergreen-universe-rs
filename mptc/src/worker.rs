@@ -174,7 +174,7 @@ impl Worker {
     }
 
     pub fn run(&mut self) {
-        log::trace!("{self} starting");
+        log::debug!("{self} starting");
 
         if let Err(e) = self.handler.worker_start() {
             log::error!("{self} error starting worker: {e}.  Exiting");
@@ -183,7 +183,7 @@ impl Worker {
             // that could result in a lot of thread churn.  Sleep for a
             // sec here to keep things from getting too chaotic.
             thread::sleep(Duration::from_secs(1));
-            panic!("{} worker_start failed {}.  Exiting", self, e);
+            panic!("{} worker_start failed {}.  exiting", self, e);
         }
 
         loop {
@@ -274,8 +274,8 @@ impl fmt::Display for Worker {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "Worker id={} requests={}",
-            self.worker_id, self.request_count
+            "Worker id={} requests={} max-requests={}",
+            self.worker_id, self.request_count, self.max_requests
         )
     }
 }

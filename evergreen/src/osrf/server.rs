@@ -204,7 +204,7 @@ impl Server {
         worker_id: u64,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) {
-        log::trace!("Creating new worker {worker_id}");
+        log::debug!("{service} Creating new worker {worker_id}");
 
         let mut worker = match Worker::new(service, worker_id, sig_tracker, to_parent_tx) {
             Ok(w) => w,
@@ -492,7 +492,7 @@ impl Server {
     }
 
     fn remove_thread(&mut self, worker_id: &u64) {
-        log::trace!("server: removing thread {}", worker_id);
+        log::debug!("server: removing thread {}", worker_id);
         self.workers.remove(worker_id);
         self.spawn_threads();
     }

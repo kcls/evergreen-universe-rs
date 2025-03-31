@@ -9,6 +9,7 @@ pub struct Config {
     pub sip_address: String,
     pub sip_port: u16,
     pub max_workers: usize,
+    pub max_worker_requests: usize,
     pub min_workers: usize,
     pub min_idle_workers: usize,
     pub ascii: bool,
@@ -22,6 +23,7 @@ impl Default for Config {
             sip_address: String::from("localhost"),
             sip_port: 6001,
             max_workers: 64,
+            max_worker_requests: 100,
             min_workers: 1,
             min_idle_workers: 1,
             ascii: true,
@@ -65,6 +67,10 @@ impl Config {
 
         if let Some(v) = root["max-workers"].as_i64() {
             conf.max_workers = v as usize;
+        }
+
+        if let Some(v) = root["max-worker-requests"].as_i64() {
+            conf.max_worker_requests = v as usize;
         }
 
         if let Some(v) = root["min-workers"].as_i64() {

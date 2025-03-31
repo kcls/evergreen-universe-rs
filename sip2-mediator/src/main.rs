@@ -29,6 +29,7 @@ fn main() -> EgResult<()> {
     let max_workers = conf.max_workers;
     let min_workers = conf.min_workers;
     let min_idle_workers = conf.min_idle_workers;
+    let max_worker_requests = conf.max_worker_requests;
 
     let options = eg::init::InitOptions {
         skip_logging: false,
@@ -49,6 +50,7 @@ fn main() -> EgResult<()> {
     s.set_max_workers(max_workers);
     s.set_min_workers(min_workers);
     s.set_min_idle_workers(min_idle_workers);
+    s.set_max_worker_requests(max_worker_requests);
 
     s.run();
 

@@ -28,8 +28,8 @@ pub struct Server {
 
     min_workers: usize,
     max_workers: usize,
-    max_worker_reqs: usize,
     min_idle_workers: usize,
+    max_worker_requests: usize,
 
     sig_tracker: SignalTracker,
 
@@ -51,7 +51,7 @@ impl Server {
             min_workers: super::DEFAULT_MIN_WORKERS,
             min_idle_workers: super::DEFAULT_MIN_IDLE_WORKERS,
             max_workers: super::DEFAULT_MAX_WORKERS,
-            max_worker_reqs: super::DEFAULT_MAX_WORKER_REQS,
+            max_worker_requests: super::DEFAULT_MAX_WORKER_REQUESTS,
         }
     }
 
@@ -65,7 +65,7 @@ impl Server {
         self.max_workers = v;
     }
     pub fn set_max_worker_requests(&mut self, v: usize) {
-        self.max_worker_reqs = v;
+        self.max_worker_requests = v;
     }
 
     fn next_worker_id(&mut self) -> u64 {
@@ -89,11 +89,11 @@ impl Server {
     fn start_one_worker(&mut self) -> u64 {
         let worker_id = self.next_worker_id();
         let to_parent_tx = self.to_parent_tx.clone();
-        let max_reqs = self.max_worker_reqs;
+        let max_reqs = self.max_worker_requests;
         let handler = self.stream.new_handler();
         let sig_tracker = self.sig_tracker.clone();
 
-        log::trace!(
+        log::debug!(
             "Starting worker with idle={} active={}",
             self.idle_worker_count(),
             self.active_worker_count(),
@@ -148,7 +148,7 @@ impl Server {
     }
 
     fn remove_worker(&mut self, worker_id: &u64, respawn: bool) {
-        log::trace!("server: removing worker {}", worker_id);
+        log::debug!("server: removing worker {}", worker_id);
 
         if let Some(worker) = self.workers.remove(worker_id) {
             if let Err(e) = worker.join_handle.join() {
@@ -268,6 +268,14 @@ impl Server {
         self.sig_tracker.track_graceful_shutdown();
         self.sig_tracker.track_fast_shutdown();
         self.sig_tracker.track_reload();
+
+        log::debug!(
+            "server: starting workers min-workers={} mid-idle-workers={} max-workers={} max-worker-requests={}",
+            self.min_workers,
+            self.min_idle_workers,
+            self.max_workers,
+            self.max_worker_requests,
+        );
 
         self.start_workers();
 
