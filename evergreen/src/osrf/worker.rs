@@ -540,7 +540,7 @@ impl Worker {
                 // There may be more param defs than parameters if
                 // some param are optional.
                 if let Some(param_val) = method_call.params().get(idx) {
-                    if idx >= pcount.minimum().into() && param_val.is_null() {
+                    if idx >= pcount.minimum() as usize && param_val.is_null() {
                         // NULL placeholders for non-required parameters are
                         // allowed.
                         continue;
