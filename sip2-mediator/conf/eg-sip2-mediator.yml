@@ -14,8 +14,11 @@ sip2-mediator:
     # new connection attempts are rejected.
     max-workers: 64 
 
-    # For SIP, a "request" is equivlent to a SIP session.  It's not (e.g.)
+    # For SIP, a request is equivlent to a SIP session.  It's not (e.g.)
     # an individual SIP message.
+    # Additionally, at time of writing, MPTC does not clean up idle
+    # workers that linger above the min-idle threshold.  Settting a lower
+    # max requests allows those to be recycled more frequently as well.
     max-worker-requests: 100
 
     # Mumber of worker threads to launch at start and the minimum
