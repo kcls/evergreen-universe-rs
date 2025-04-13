@@ -10,7 +10,6 @@ use crate::osrf::message::MessageType;
 use crate::osrf::message::Payload;
 use crate::osrf::message::TransportMessage;
 use crate::osrf::method::ParamCount;
-use crate::osrf::sclient::HostSettings;
 use crate::osrf::server::Server;
 use crate::osrf::session::ServerSession;
 use crate::util;
@@ -60,6 +59,10 @@ pub struct Worker {
     /// True if the caller has requested a stateful conversation.
     connected: bool,
 
+    max_requests: usize,
+
+    keepalive: usize,
+
     /// Currently active session.
     /// A worker can only have one active session at a time.
     /// For stateless requests, each new thread results in a new session.
@@ -86,6 +89,8 @@ impl Worker {
         worker_id: u64,
         sig_tracker: SignalTracker,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
+        max_requests: usize,
+        keepalive: usize,
     ) -> EgResult<Worker> {
         let client = Client::connect()?;
 
@@ -95,6 +100,8 @@ impl Worker {
             worker_id,
             client,
             to_parent_tx,
+            max_requests,
+            keepalive,
             session: None,
             connected: false,
         })
@@ -141,19 +148,7 @@ impl Worker {
             panic!("{selfstr} worker_start failed {e}.  Exiting");
         }
 
-        let max_requests: usize =
-            HostSettings::get(&format!("apps/{}/unix_config/max_requests", self.service))
-                .expect("Host Settings Not Retrieved")
-                .as_usize()
-                .unwrap_or(5000);
-
-        let keepalive: usize =
-            HostSettings::get(&format!("apps/{}/unix_config/keepalive", self.service))
-                .expect("Host Settings Not Retrieved")
-                .as_usize()
-                .unwrap_or(5);
-
-        let mut requests: usize = 0;
+        let mut request_count: usize = 0;
 
         // We listen for API calls at an addressed scoped to our
         // username and domain.
@@ -165,7 +160,7 @@ impl Worker {
 
         let my_addr = self.client.address().as_str().to_string();
 
-        while requests < max_requests {
+        while request_count < self.max_requests {
             let timeout: u64;
             let sent_to: &str;
 
@@ -175,7 +170,7 @@ impl Worker {
                 // address and only wait up to keeplive seconds for
                 // subsequent messages.
                 sent_to = &my_addr;
-                timeout = keepalive as u64;
+                timeout = self.keepalive as u64;
             } else {
                 // If we are not within a stateful conversation, clear
                 // our bus data and message backlogs since any remaining
@@ -225,7 +220,7 @@ impl Worker {
                 if msg_handled {
                     // Increment our message handled count.
                     // Each connected session counts as 1 "request".
-                    requests += 1;
+                    request_count += 1;
 
                     // An inbound message may have modified our
                     // thread-scoped locale.  Reset our locale back

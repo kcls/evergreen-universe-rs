@@ -37,6 +37,8 @@ const IDLE_WAKE_TIME: u64 = 3;
 const SHUTDOWN_MAX_WAIT: u64 = 30;
 const DEFAULT_MIN_WORKERS: usize = 3;
 const DEFAULT_MAX_WORKERS: usize = 30;
+const DEFAULT_MAX_WORKER_REQUESTS: usize = 1000;
+const DEFAULT_WORKER_KEEPALIVE: usize = 5;
 const DEFAULT_MIN_IDLE_WORKERS: usize = 1;
 
 /// How often do we log our idle/active thread counts.
@@ -62,6 +64,8 @@ pub struct Server {
     to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
     min_workers: usize,
     max_workers: usize,
+    max_worker_requests: usize,
+    worker_keepalive: usize,
 
     sig_tracker: SignalTracker,
 
@@ -98,6 +102,16 @@ impl Server {
                 .as_usize()
                 .unwrap_or(DEFAULT_MAX_WORKERS);
 
+        let mut max_worker_requests =
+            HostSettings::get(&format!("apps/{service}/unix_config/max_requests"))?
+                .as_usize()
+                .unwrap_or(DEFAULT_MAX_WORKER_REQUESTS);
+
+        let mut worker_keepalive =
+            HostSettings::get(&format!("apps/{service}/unix_config/keepalive"))?
+                .as_usize()
+                .unwrap_or(DEFAULT_WORKER_KEEPALIVE);
+
         // Environment vars override values from opensrf.settings
 
         if let Ok(num) = env::var("OSRF_SERVER_MIN_WORKERS") {
@@ -118,12 +132,26 @@ impl Server {
             }
         }
 
+        if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKER_REQUESTS") {
+            if let Ok(num) = num.parse::<usize>() {
+                max_worker_requests = num;
+            }
+        }
+
+        if let Ok(num) = env::var("OSRF_SERVER_WORKER_KEEPALIVE") {
+            if let Ok(num) = num.parse::<usize>() {
+                worker_keepalive = num;
+            }
+        }
+
         log::info!(
-            "Starting service {} with min-workers={} min-idle={} max-workers={}",
+            "Starting service {} with min-workers={} min-idle={} max-workers={} max-requests={} keepalive={}",
             service,
             min_workers,
             min_idle_workers,
             max_workers,
+            max_worker_requests,
+            worker_keepalive,
         );
 
         // We have a single to-parent channel whose trasmitter is cloned
@@ -142,6 +170,8 @@ impl Server {
             application,
             min_workers,
             max_workers,
+            max_worker_requests,
+            worker_keepalive,
             min_idle_workers,
             worker_id_gen: 0,
             to_parent_tx: tx,
@@ -181,11 +211,21 @@ impl Server {
         let service = self.service().to_string();
         let factory = self.application.worker_factory();
         let sig_tracker = self.sig_tracker.clone();
+        let max_worker_requests = self.max_worker_requests;
+        let worker_keepalive = self.worker_keepalive;
 
         log::trace!("server: spawning a new worker {worker_id}");
 
         let handle = thread::spawn(move || {
-            Server::start_worker_thread(sig_tracker, factory, service, worker_id, to_parent_tx);
+            Server::start_worker_thread(
+                sig_tracker,
+                factory,
+                service,
+                worker_id,
+                to_parent_tx,
+                max_worker_requests,
+                worker_keepalive,
+            );
         });
 
         self.workers.insert(
@@ -203,10 +243,21 @@ impl Server {
         service: String,
         worker_id: u64,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
+        max_worker_requests: usize,
+        worker_keepalive: usize,
     ) {
         log::debug!("{service} Creating new worker {worker_id}");
 
-        let mut worker = match Worker::new(service, worker_id, sig_tracker, to_parent_tx) {
+        let worker_result = Worker::new(
+            service,
+            worker_id,
+            sig_tracker,
+            to_parent_tx,
+            max_worker_requests,
+            worker_keepalive,
+        );
+
+        let mut worker = match worker_result {
             Ok(w) => w,
             Err(e) => {
                 log::error!("Cannot create worker: {e}. Exiting.");
