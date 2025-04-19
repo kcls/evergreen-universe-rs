@@ -68,6 +68,8 @@ pub struct Server {
     max_worker_requests: usize,
     worker_keepalive: usize,
 
+    exited_workers: HashMap<u64, WorkerThread>,
+
     sig_tracker: SignalTracker,
 
     /// Minimum number of idle workers.  Note we don't support
@@ -178,6 +180,7 @@ impl Server {
             to_parent_tx: tx,
             to_parent_rx: rx,
             workers: HashMap::new(),
+            exited_workers: HashMap::new(),
             sig_tracker: SignalTracker::new(),
         };
 
@@ -449,6 +452,7 @@ impl Server {
                 self.perform_idle_worker_maint();
             }
 
+            self.clean_exited_workers(false);
             self.log_thread_counts(&mut log_timer);
         }
 
@@ -476,11 +480,12 @@ impl Server {
         }
 
         log::info!(
-            "Service {} max-threads={} active-threads={} idle-threads={}",
+            "Service {} max-threads={} active-threads={} idle-threads={} exited-threads={}",
             self.application.name(),
             self.max_workers,
             active_count,
             self.idle_thread_count(),
+            self.exited_workers.len(),
         );
 
         timer.reset();
@@ -505,7 +510,7 @@ impl Server {
         let timer = util::Timer::new(SHUTDOWN_MAX_WAIT);
         let duration = Duration::from_secs(1);
 
-        while !timer.done() && !self.workers.is_empty() {
+        while !timer.done() && (!self.workers.is_empty() || !self.exited_workers.is_empty()) {
             let info = format!(
                 "{} shutdown: {} threads; {} active; time remaining {}",
                 self.application.name(),
@@ -524,6 +529,7 @@ impl Server {
             }
 
             self.check_failed_threads();
+            self.clean_exited_workers(true);
         }
 
         // Timer may have completed before all working threads reported
@@ -553,10 +559,40 @@ impl Server {
         handled
     }
 
+    /// Move the thread into the exited_workers list for future cleanup
+    /// and spwan new threads to fill the gap as needed.
     fn remove_thread(&mut self, worker_id: &u64) {
         log::debug!("server: removing thread {}", worker_id);
-        self.workers.remove(worker_id);
+
+        // The worker signal may have arrived before its thead fully
+        // exited.  Track the thread as being done so we can go
+        // back and cleanup.
+        if let Some(worker) = self.workers.remove(worker_id) {
+            self.exited_workers.insert(*worker_id, worker);
+        }
         self.spawn_threads();
+    }
+
+    fn clean_exited_workers(&mut self, block: bool) {
+        let mut keep = HashMap::new();
+
+        log::debug!("server: exited thread count {}", self.exited_workers.len());
+
+        for (worker_id, worker) in self.exited_workers.drain() {
+            if block || worker.join_handle.is_finished() {
+                log::debug!("server: joining worker: {worker_id}");
+
+                let _ = worker
+                    .join_handle
+                    .join()
+                    .inspect_err(|e| log::error!("server: failure joining worker thread: {e:?}"));
+            } else {
+                log::debug!("server: worker {worker_id} has not finished");
+                keep.insert(worker_id, worker);
+            }
+        }
+
+        self.exited_workers = keep;
     }
 
     /// Set the state of our thread worker based on the state reported
@@ -585,7 +621,7 @@ impl Server {
         let idle = self.idle_thread_count();
         let active = self.active_thread_count();
 
-        log::trace!("server: workers idle={idle} active={active}");
+        log::debug!("server: workers idle={idle} active={active}");
 
         if self.sig_tracker.any_shutdown_requested() {
             return;
@@ -599,7 +635,7 @@ impl Server {
             }
         }
 
-        if idle < IDLE_THREAD_WARN_THRESHOLD {
+        if self.min_idle_workers > IDLE_THREAD_WARN_THRESHOLD && idle < IDLE_THREAD_WARN_THRESHOLD {
             log::warn!(
                 "server: idle thread count={} is below warning threshold={}",
                 idle,
