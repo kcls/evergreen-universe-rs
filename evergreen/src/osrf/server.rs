@@ -15,6 +15,7 @@ use std::env;
 use std::sync::mpsc;
 use std::sync::OnceLock;
 use std::thread;
+use std::time;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -272,7 +273,17 @@ impl Server {
 
         log::trace!("Worker {worker_id} going into listen()");
 
-        worker.listen(factory);
+        if let Err(e) = worker.listen(factory) {
+            // Failure here ikely means a systemic issue that could
+            // result in a lot of thread churn.  Sleep for a sec to keep
+            // things from getting too chaotic.
+            thread::sleep(time::Duration::from_secs(1));
+
+            // This code is running within the worker thread.  A failure
+            // may mean the worker was unable to communicate its status
+            // to the main thread.  Panic here to force a cleanup.
+            panic!("{worker} failed; forcing an exit: {e}");
+        }
     }
 
     /// List of domains where our service is allowed to run and

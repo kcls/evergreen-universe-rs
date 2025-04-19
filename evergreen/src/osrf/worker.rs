@@ -18,8 +18,6 @@ use mptc::signals::SignalTracker;
 use std::cell::RefMut;
 use std::fmt;
 use std::sync::mpsc;
-use std::thread;
-use std::time;
 
 // How often each worker wakes to check for shutdown signals, etc.
 const IDLE_WAKE_TIME: u64 = 5;
@@ -129,24 +127,13 @@ impl Worker {
 
     /// Wait for and process inbound API calls.
     ///
-    /// # Panics
-    ///
-    /// Some unrecoverable errors panic.  This forces the main server thread
-    /// to clean our thread up, regardless of any worker state signaling.
-    pub fn listen(&mut self, factory: app::ApplicationWorkerFactory) {
+    /// Exits with Err if this worker encounters a fatal error and should be purged.
+    pub fn listen(&mut self, factory: app::ApplicationWorkerFactory) -> EgResult<()> {
         let selfstr = format!("{self}");
 
         let mut app_worker = (factory)();
 
-        if let Err(e) = app_worker.worker_start(self.client.clone()) {
-            log::error!("{selfstr} worker_start failed {e}.  Exiting");
-
-            // Failure to start the worker likely means a systemic issue
-            // that could result in a lot of thread churn.  Sleep for a
-            // sec here to keep things from getting too chaotic.
-            thread::sleep(time::Duration::from_secs(1));
-            panic!("{selfstr} worker_start failed {e}.  Exiting");
-        }
+        app_worker.worker_start(self.client.clone())?;
 
         let mut request_count: usize = 0;
 
@@ -175,10 +162,7 @@ impl Worker {
                 // If we are not within a stateful conversation, clear
                 // our bus data and message backlogs since any remaining
                 // data is no longer relevant.
-                if let Err(e) = self.reset() {
-                    log::error!("{selfstr} could not reset {e}.  Exiting");
-                    break;
-                }
+                self.reset()?;
 
                 sent_to = &service_addr;
                 timeout = IDLE_WAKE_TIME;
@@ -213,9 +197,7 @@ impl Worker {
                     break;
                 }
 
-                if self.set_idle().is_err() {
-                    break;
-                }
+                self.set_idle()?;
 
                 if msg_handled {
                     // Increment our message handled count.
@@ -250,21 +232,12 @@ impl Worker {
 
         // Tell the worker to cleanup
         if let Err(e) = app_worker.worker_end() {
+            // Avoid treating this as a fatal worker error
             log::error!("{selfstr} worker_end failed {e}");
         }
 
-        // Tell our main thread we're exiting
-        let exit_result = self.set_exiting();
-
-        // Clear our worker-specific bus address of any lingering data.
-        if let Err(e) = self.reset() {
-            log::error!("{selfstr} error resetting bus address: {e}");
-        }
-
-        // If we could not notify of our exiting, force it.
-        if let Err(e) = exit_result {
-            panic!("{selfstr} failed to notify exit {e}; panic'ing to force cleanup");
-        }
+        self.set_exiting()?;
+        self.reset()
     }
 
     /// Call recv() on our message bus and process the response.
@@ -278,24 +251,12 @@ impl Worker {
     ) -> EgResult<(bool, bool)> {
         let selfstr = format!("{self}");
 
-        let recv_result = self
+        let tmsg_op = self
             .client_internal_mut()
             .bus_mut()
-            .recv(timeout, Some(sent_to));
+            .recv(timeout, Some(sent_to))?;
 
-        let msg_op = match recv_result {
-            Ok(o) => o,
-            Err(e) => {
-                // There's a good chance an error in recv() means the
-                // thread/system is unusable, so let the worker exit.
-                //
-                // Avoid a tight thread respawn loop with a short pause.
-                thread::sleep(time::Duration::from_secs(1));
-                Err(e)?
-            }
-        };
-
-        let tmsg = match msg_op {
+        let tmsg = match tmsg_op {
             Some(v) => v,
             None => {
                 if !self.connected {
@@ -306,10 +267,7 @@ impl Worker {
                 // Caller failed to send a message within the keepliave interval.
                 log::warn!("{selfstr} timeout waiting on request while connected");
 
-                if let Err(e) = self.reply_with_status(MessageStatus::Timeout, "Timeout") {
-                    Err(format!("server: could not reply with Timeout message: {e}"))?;
-                }
-
+                self.reply_with_status(MessageStatus::Timeout, "Timeout")?;
                 self.set_active()?;
 
                 return Ok((true, false)); // work occurred
