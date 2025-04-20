@@ -5,13 +5,16 @@ use memcache;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::OnceLock;
+
+static GLOBAL_MEMCACHE_CLIENT: OnceLock<memcache::Client> = OnceLock::new();
 
 thread_local! {
     static CACHE_CONNECTIONS: RefCell<HashMap<String, CacheConnection>> = RefCell::new(HashMap::new());
 }
 
 const DEFAULT_MAX_CACHE_TIME: u32 = 86400;
-const DEFAULT_MAX_CACHE_SIZE: u32 = 100000000; // ~100M
+const DEFAULT_MAX_CACHE_SIZE: u32 = 10_000_000; // ~10M
 const GLOBAL_CACHE_NAME: &str = "global";
 const ANON_CACHE_NAME: &str = "anon";
 
@@ -143,15 +146,22 @@ impl Cache {
 
         log::info!("Connecting to cache servers: {servers:?}");
 
-        let mc = match memcache::connect(servers) {
-            Ok(mc) => mc,
-            Err(e) => {
-                return Err(format!(
-                    "Cannot connect to memcache with config: {} : {e}",
-                    config.clone().into_json_value().dump()
-                )
-                .into());
-            }
+        let mc = if let Some(client) = GLOBAL_MEMCACHE_CLIENT.get() {
+            client.clone()
+        } else {
+            let mc = match memcache::connect(servers) {
+                Ok(mc) => mc,
+                Err(e) => {
+                    return Err(format!(
+                        "Cannot connect to memcache with config: {} : {e}",
+                        config.clone().into_json_value().dump()
+                    )
+                    .into());
+                }
+            };
+
+            GLOBAL_MEMCACHE_CLIENT.set(mc.clone()).ok();
+            mc
         };
 
         let cache = CacheConnection {
