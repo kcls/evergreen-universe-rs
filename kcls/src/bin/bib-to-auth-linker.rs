@@ -43,6 +43,10 @@ By default, all non-deleted bib records are processed.
     --parallel <count>
         Number of parallel worker threads to run.  Defaults to 1.
 
+    --log-only
+        Log / announce changes to records without committing the changes 
+        to the database.
+
     -h, --help
         Display this help
 
@@ -89,6 +93,7 @@ struct BibLinker {
     auths_mod_since: Option<date::EgDate>,
     record_id: Option<i64>,
     parallel: usize,
+    log_only: bool,
 }
 
 impl BibLinker {
@@ -138,6 +143,8 @@ impl BibLinker {
             None => 1,
         };
 
+        let log_only = scripter.params().opt_present("log-only");
+
         Ok(BibLinker {
             min_id,
             max_id,
@@ -146,6 +153,7 @@ impl BibLinker {
             auths_mod_since,
             scripter,
             parallel,
+            log_only,
         })
     }
 
@@ -300,13 +308,14 @@ impl BibLinker {
         for chunk in bib_ids.chunks(chunksize) {
             let chunk = chunk.to_vec();
             let script_core = self.scripter.core().clone();
+            let log_only = self.log_only;
 
             let handle = thread::spawn(move || {
                 // Each thread needs its own opensrf connection / editor.
                 let mut scripter: script::Runner = script_core.into();
                 scripter.connect_evergreen().expect("should connect to eg");
 
-                let mut worker = Worker { scripter };
+                let mut worker = Worker { scripter, log_only };
 
                 if let Err(e) = worker.link_batch(chunk) {
                     log::error!("Batch failed to complete: {e}");
@@ -330,6 +339,7 @@ impl BibLinker {
 /// Processes one batch of bib IDs within its own thread.
 struct Worker {
     scripter: script::Runner,
+    log_only: bool,
 }
 
 impl Worker {
@@ -803,6 +813,10 @@ impl Worker {
             } // Each bib field with selected bib tag
         } // Each controlled bib tag
 
+        if self.log_only {
+            return Ok(());
+        }
+
         self.update_bib_record(bre, orig_record, record)
     }
 }
@@ -814,6 +828,7 @@ fn main() -> EgResult<()> {
     ops.optopt("", "max-id", "", "");
     ops.optopt("", "record-id", "", "");
     ops.optopt("", "parallel", "", "");
+    ops.optflag("", "log-only", "");
     ops.optopt("", "bibs-modified-since", "", "");
     ops.optopt("", "auths-modified-since", "", "");
 
