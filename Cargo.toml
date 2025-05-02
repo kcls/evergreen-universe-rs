@@ -7,11 +7,13 @@ members = [
   "sip2",
   "sip2-mediator",
   "z39",
-  "kcls",
-]
-default-members = [
-  "mptc",
-  "marctk",
-  "sip2",
-  "evergreen",
+  "kcls", 
+  "evergreen-bin",
+  "evergreen-services/sip2",
+#  "evergreen-services/actor",
+#  "evergreen-services/circ",
+#  "evergreen-services/search",
+#  "evergreen-services/store",
+#  "evergreen-services/hold-targeter",
+#  "evergreen-services/auth-internal",
 ]

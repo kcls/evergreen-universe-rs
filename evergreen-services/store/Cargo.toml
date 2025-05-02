@@ -1,0 +1,19 @@
+[package]
+name = "eg-service-store"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+evergreen = { path = "../../evergreen" }
+json = "0.12.4"
+log = "0.4.22"
+postgres = { version = "0.19.9", features = ["with-chrono-0_4"] }
+rust_decimal = { version = "1.36.0", features = ["db-postgres"] }
+pg_interval = "0.4.2"
+postgres-cursor = "0.4.0"
+
+[[bin]]
+name = "eg-service-rs-store"
+path = "src/main.rs"
+
+

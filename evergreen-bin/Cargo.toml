@@ -1,0 +1,61 @@
+[package]
+name = "evergreen-bin"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bill Erickson <berickxx@gmail.com>"]
+
+[dependencies]
+mptc = { path = "../mptc" }
+marctk = { path = "../marctk" }
+sip2 = { path = "../sip2" }
+evergreen = { path = "../evergreen" }
+log = "0.4.22"
+getopts = "0.2.21"
+rustyline = "15.0.0"
+json = "0.12.4"
+tungstenite = "0.26.1"
+postgres = { version = "0.19.9", features = ["with-chrono-0_4"] }
+postgres-cursor = "0.4.0"
+rust_decimal = { version = "1.36.0", features = ["db-postgres"] }
+httparse = "1.9.5"
+url = "2.5.4"
+
+# Needed for parsing JSON streams in egsh.
+serde_json = "1.0.135"
+
+[[bin]]
+name = "osrf-router"
+path = "src/bin/router.rs"
+
+[[bin]]
+name = "eg-websockets"
+path = "src/bin/websockets.rs"
+
+[[bin]]
+name = "eg-http-gateway"
+path = "src/bin/http-gateway.rs"
+
+[[bin]]
+name = "eg-hold-targeter"
+path = "src/bin/hold-targeter.rs"
+
+[[bin]]
+name = "eg-marc-export"
+path = "src/bin/marc-export.rs"
+
+[[bin]]
+name = "eg-parallel-ingest"
+path = "src/bin/parallel-ingest.rs"
+
+[[bin]]
+name = "eg-auth-to-auth-linker"
+path = "src/bin/auth-to-auth-linker.rs"
+
+[[bin]]
+name = "eg-edi-file-fetcher"
+path = "src/bin/edi-file-fetcher.rs"
+
+[[bin]]
+name = "eg-compile-json-query"
+path = "src/bin/compile-json-query.rs"
+

@@ -109,7 +109,7 @@ impl DirectoryEntry {
     ///
     /// * `which` - Which entry is this in the directory
     /// * `data_start_idx` - Where in the record as a whole does the data
-    ///     we care about start.
+    ///   we care about start.
     /// * `dir_bytes` - Bytes of this directory entry.
     ///
     /// # References

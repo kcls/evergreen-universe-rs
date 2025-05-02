@@ -189,7 +189,7 @@ impl Bus {
     /// # Arguments
     ///
     /// * `timeout` - Time in seconds to wait for a value.
-    ///     0 means do not block.
+    ///   0 means do not block.
     pub fn recv_json_value(
         &mut self,
         timeout: u64,
@@ -242,10 +242,10 @@ impl Bus {
     /// # Arguments
     ///
     /// * `timeout` - Time in seconds to wait for a response.
-    ///     0 means do not block.
+    ///   0 means do not block.
     /// * `recipient` - Optionally specify the name of the destination
-    ///     queue/stream.  This overrides using the bus-specific
-    ///     bus address as the recipient.
+    ///   queue/stream.  This overrides using the bus-specific
+    ///   bus address as the recipient.
     pub fn recv(
         &mut self,
         timeout: u64,

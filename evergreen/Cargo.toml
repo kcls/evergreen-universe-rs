@@ -7,7 +7,7 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 [dependencies]
 mptc = { path = "../mptc" }
 marctk = { path = "../marctk" }
-sip2 = { path = "../sip2", features = ["json"] }
+sip2 = { path = "../sip2" }
 rand = "0.8.5"
 log = "0.4.22"
 syslog = "7.0.0"
@@ -20,92 +20,14 @@ chrono-tz = "0.10.0"
 postgres = { version = "0.19.9", features = ["with-chrono-0_4"] }
 rust_decimal = { version = "1.36.0", features = ["db-postgres"] }
 pg_interval = "0.4.2"
-postgres-cursor = "0.4.0"
 regex = "1.11.1"
 getopts = "0.2.21"
 md5 = "0.7.0"
 memcache = "0.18.0"
 daemonize = "0.5.0"
 icu_normalizer = "1.5.0"
-httparse = "1.9.5"
-rustyline = "15.0.0"
-tungstenite = "0.26.1"
 socket2 = "0.5.8"
 url = "2.5.4"
 ssh2 = "0.9.4"
 ftp = "3.0.1"
 glob = "0.3.2"
-# Needed for parsing JSON streams in egsh.
-serde_json = "1.0.135"
-
-[[bin]]
-name = "osrf-router"
-path = "src/bin/router.rs"
-
-[[bin]]
-name = "eg-websockets"
-path = "src/bin/websockets.rs"
-
-[[bin]]
-name = "eg-http-gateway"
-path = "src/bin/http-gateway.rs"
-
-[[bin]]
-name = "eg-hold-targeter"
-path = "src/bin/hold-targeter.rs"
-
-[[bin]]
-name = "eg-marc-export"
-path = "src/bin/marc-export.rs"
-
-[[bin]]
-name = "eg-parallel-ingest"
-path = "src/bin/parallel-ingest.rs"
-
-[[bin]]
-name = "eg-auth-to-auth-linker"
-path = "src/bin/auth-to-auth-linker.rs"
-
-[[bin]]
-name = "eg-edi-file-fetcher"
-path = "src/bin/edi-file-fetcher.rs"
-
-[[bin]]
-name = "eg-compile-json-query"
-path = "src/bin/compile-json-query.rs"
-
-
-# --- Services
-# Service names are prefixed with rs- to prevent
-# clobberation with existing service names.
-
-[[bin]]
-name = "eg-service-rs-actor"
-path = "src/services/actor/main.rs"
-
-[[bin]]
-name = "eg-service-rs-search"
-path = "src/services/search/main.rs"
-
-[[bin]]
-name = "eg-service-rs-circ"
-path = "src/services/circ/main.rs"
-
-[[bin]]
-name = "eg-service-rs-hold-targeter"
-path = "src/services/hold-targeter/main.rs"
-
-[[bin]]
-name = "eg-service-rs-store"
-path = "src/services/store/main.rs"
-
-[[bin]]
-name = "eg-service-rs-auth-internal"
-path = "src/services/auth-internal/main.rs"
-
-[[bin]]
-name = "eg-service-rs-sip2"
-path = "src/services/sip2/main.rs"
-
-
-

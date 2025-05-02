@@ -1,0 +1,15 @@
+[package]
+name = "eg-service-actor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+evergreen = { path = "../../evergreen" }
+json = "0.12.4"
+log = "0.4.22"
+
+[[bin]]
+name = "eg-service-rs-actor"
+path = "src/main.rs"
+
+
