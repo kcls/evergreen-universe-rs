@@ -36,10 +36,12 @@ install-release: install-evergreen-release install-sip2mediator-release
 build-evergreen:
 	cargo build -j ${BUILD_THREADS} --package evergreen
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2
+	cargo build -j ${BUILD_THREADS} --package eg-service-actor
 
 build-evergreen-release:
 	cargo build -j ${BUILD_THREADS} --package evergreen --release
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2 --release
+	cargo build -j ${BUILD_THREADS} --package eg-service-actor --release
 
 install-evergreen: install-evergreen-config install-evergreen-bin
 

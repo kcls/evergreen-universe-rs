@@ -74,15 +74,6 @@ path = "src/bin/edi-file-fetcher.rs"
 name = "eg-compile-json-query"
 path = "src/bin/compile-json-query.rs"
 
-
-# --- Services
-# Service names are prefixed with rs- to prevent
-# clobberation with existing service names.
-
-[[bin]]
-name = "eg-service-rs-actor"
-path = "src/services/actor/main.rs"
-
 [[bin]]
 name = "eg-service-rs-search"
 path = "src/services/search/main.rs"

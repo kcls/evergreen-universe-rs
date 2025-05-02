@@ -8,6 +8,7 @@ members = [
   "sip2-mediator",
   "z39",
   "kcls", 
+  "eg-service-actor",
   "eg-service-sip2",
 ]
 default-members = [
