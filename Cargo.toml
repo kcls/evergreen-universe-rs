@@ -13,6 +13,7 @@ members = [
   "evergreen-circ",
   "evergreen-search",
   "evergreen-store",
+  "evergreen-addrs",
   "evergreen-hold-targeter",
   "evergreen-auth-internal",
 ]
