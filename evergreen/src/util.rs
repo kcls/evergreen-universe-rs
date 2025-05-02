@@ -188,13 +188,8 @@ pub fn pg_unpack_int_array(array: &str) -> Vec<i64> {
     array
         .replace(['{', '}'], "")
         .split(',')
-        .filter_map(|s| {
-            // We only care about int-ish things.
-            match s.parse::<i64>() {
-                Ok(i) => Some(i),
-                Err(_) => None,
-            }
-        })
+        // We only care about int-ish things.
+        .filter_map(|s| s.parse::<i64>().ok())
         .collect::<HashSet<i64>>() // uniquify
         .iter()
         .copied()
