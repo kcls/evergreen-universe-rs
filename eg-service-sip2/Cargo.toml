@@ -1,0 +1,18 @@
+[package]
+name = "eg-service-sip2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+evergreen = { path = "../evergreen" }
+sip2 = { path = "../sip2", features = ["json"] }
+json = "0.12.4"
+log = "0.4.22"
+chrono = "0.4.39"
+chrono-tz = "0.10.0"
+
+[[bin]]
+name = "eg-service-rs-sip2"
+path = "src/main.rs"
+
+

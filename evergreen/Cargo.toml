@@ -7,7 +7,7 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 [dependencies]
 mptc = { path = "../mptc" }
 marctk = { path = "../marctk" }
-sip2 = { path = "../sip2", features = ["json"] }
+sip2 = { path = "../sip2" }
 rand = "0.8.5"
 log = "0.4.22"
 syslog = "7.0.0"
@@ -102,10 +102,4 @@ path = "src/services/store/main.rs"
 [[bin]]
 name = "eg-service-rs-auth-internal"
 path = "src/services/auth-internal/main.rs"
-
-[[bin]]
-name = "eg-service-rs-sip2"
-path = "src/services/sip2/main.rs"
-
-
 
