@@ -8,8 +8,13 @@ members = [
   "sip2-mediator",
   "z39",
   "kcls", 
-  "eg-service-actor",
-  "eg-service-sip2",
+  "evergreen-actor",
+  "evergreen-sip2",
+  "evergreen-circ",
+  "evergreen-search",
+  "evergreen-store",
+  "evergreen-hold-targeter",
+  "evergreen-auth-internal",
 ]
 default-members = [
   "mptc",

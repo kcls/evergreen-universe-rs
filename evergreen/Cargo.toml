@@ -74,23 +74,3 @@ path = "src/bin/edi-file-fetcher.rs"
 name = "eg-compile-json-query"
 path = "src/bin/compile-json-query.rs"
 
-[[bin]]
-name = "eg-service-rs-search"
-path = "src/services/search/main.rs"
-
-[[bin]]
-name = "eg-service-rs-circ"
-path = "src/services/circ/main.rs"
-
-[[bin]]
-name = "eg-service-rs-hold-targeter"
-path = "src/services/hold-targeter/main.rs"
-
-[[bin]]
-name = "eg-service-rs-store"
-path = "src/services/store/main.rs"
-
-[[bin]]
-name = "eg-service-rs-auth-internal"
-path = "src/services/auth-internal/main.rs"
-

@@ -37,11 +37,21 @@ build-evergreen:
 	cargo build -j ${BUILD_THREADS} --package evergreen
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2
 	cargo build -j ${BUILD_THREADS} --package eg-service-actor
+	cargo build -j ${BUILD_THREADS} --package eg-service-circ
+	cargo build -j ${BUILD_THREADS} --package eg-service-store
+	cargo build -j ${BUILD_THREADS} --package eg-service-search
+	cargo build -j ${BUILD_THREADS} --package eg-service-hold-targeter
+	cargo build -j ${BUILD_THREADS} --package eg-service-auth-internal
 
 build-evergreen-release:
 	cargo build -j ${BUILD_THREADS} --package evergreen --release
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2 --release
 	cargo build -j ${BUILD_THREADS} --package eg-service-actor --release
+	cargo build -j ${BUILD_THREADS} --package eg-service-circ --release
+	cargo build -j ${BUILD_THREADS} --package eg-service-store --release
+	cargo build -j ${BUILD_THREADS} --package eg-service-search --release
+	cargo build -j ${BUILD_THREADS} --package eg-service-hold-targeter --release
+	cargo build -j ${BUILD_THREADS} --package eg-service-auth-internal --release
 
 install-evergreen: install-evergreen-config install-evergreen-bin
 
