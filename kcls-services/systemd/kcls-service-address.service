@@ -1,0 +1,10 @@
+[Unit]
+Description=Evergreen Service kcls.address
+
+[Service]
+Type=simple
+User=opensrf
+Group=opensrf
+ExecStart=/usr/local/bin/kcls-service-address
+ExecReload=/bin/kill -HUP $MAINPID
+

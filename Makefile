@@ -3,6 +3,7 @@
 TARGET = /usr/local
 SYSTEMD_DIR = /lib/systemd/system
 BIN_DIR = ${TARGET}/bin
+SHARE_DIR = ${TARGET}/share/evergreen
 
 # Number of test threads to run in parallel.
 # Inline doc tests are compiler-heavy so having a limit here
@@ -114,15 +115,35 @@ install-sip2mediator-config:
 
 # --- KCLS ---
 
-build-kcls:
+build-kcls: build-kcls-services
 	cargo build -j ${BUILD_THREADS} --package kcls
 
-build-kcls-release:
+build-kcls-release: build-kcls-services-release
 	cargo build -j ${BUILD_THREADS} --package kcls --release
 
-install-kcls: install-kcls-bin
+install-kcls: install-kcls-bin install-kcls-services
 
-install-kcls-release: install-kcls-bin-release
+install-kcls-release: install-kcls-bin-release install-kcls-services-release
+
+build-kcls-services:
+	cargo build -j ${BUILD_THREADS} --package kcls-service-address
+
+build-kcls-services-release:
+	cargo build -j ${BUILD_THREADS} --package kcls-service-address --release
+
+install-kcls-services: install-kcls-services-config
+	cp ./target/debug/kcls-service-address ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/address-data
+	cp -r ./kcls-services/address/data/shapefiles ${SHARE_DIR}/address-data/
+
+install-kcls-services-release: install-kcls-services-config
+	cp ./target/release/kcls-service-address ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/address-data
+	cp -r ./kcls-services/address/data/shapefiles ${SHARE_DIR}/address-data/
+
+install-kcls-services-config:
+	cp ./kcls-services/systemd/kcls-service-address.service ${SYSTEMD_DIR}/
+	systemctl daemon-reload
 
 install-kcls-bin:
 	cp ./target/debug/kcls-on-order-audience-repairs ${BIN_DIR}/

@@ -160,10 +160,20 @@ impl GatewayHandler {
         // We know method is non-None here.
         let method = request.method.take().unwrap();
 
+        // Unique thread used to correlate the responses below with this
+        // specific request.
+        let thread = eg::util::random_number(16);
+
+        // Workers (and their bus) are reused across requests.  Discard any
+        // partial-message buffer left over from a prior request (e.g. one
+        // whose client disconnected mid-stream) so it can't bleed into this
+        // request's response.
+        self.partial_buffer = None;
+
         let tm = eg::osrf::message::TransportMessage::with_body(
             recipient.as_str(),
             self.bus().address().as_str(),
-            &eg::util::random_number(16), // thread
+            &thread,
             eg::osrf::message::Message::new(
                 eg::osrf::message::MessageType::Request,
                 1, // thread trace
@@ -181,6 +191,24 @@ impl GatewayHandler {
                 Some(r) => r,
                 None => return Ok(replies), // Timeout
             };
+
+            // Only process replies that belong to this request's thread.
+            //
+            // Because workers and their bus are reused, a reply from an
+            // earlier request can still be sitting in our queue -- e.g. when
+            // a client cancels an in-flight request (a cancelled autocomplete
+            // lookup, say), the OpenSRF call still runs and delivers its reply
+            // here.  Without this check that stray reply would be mis-read as
+            // the response to the current request, crossing responses between
+            // unrelated requests.
+            if tm.thread() != thread.as_str() {
+                log::warn!(
+                    "Discarding stray bus message for thread={} while handling thread={}",
+                    tm.thread(),
+                    thread
+                );
+                continue;
+            }
 
             let mut complete = false;
             let mut batch = self.extract_osrf_responses(&request.format, &mut complete, tm)?;
