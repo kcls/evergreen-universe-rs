@@ -13,15 +13,18 @@ use tokio;
 use smarty_rust_sdk::us_street_api::lookup::{Lookup, MatchStrategy};
 use smarty_rust_sdk::sdk::batch::Batch;
 use smarty_rust_sdk::sdk::options::OptionsBuilder;
+use smarty_rust_sdk::sdk::options::Options;
 use smarty_rust_sdk::sdk::authentication::SecretKeyCredential;
 use smarty_rust_sdk::us_street_api::client::USStreetAddressClient;
+
+const MAX_RESULT_CANDIDATES: i64 = 8;
+/// Generic error to return to the caller.
+const ADDR_LOOKUP_ERROR: &str = "Address lookup error";
 
 // Import our local app module
 use crate::app;
 
 /// List of method definitions we know at compile time.
-///
-/// These will form the basis (and possibly all) of our published methods.
 pub static METHODS: &[StaticMethodDef] = &[
     StaticMethodDef {
         name: "lookup",
@@ -41,63 +44,127 @@ pub static METHODS: &[StaticMethodDef] = &[
             },
         ],
     },
+    StaticMethodDef {
+        name: "autocomplete",
+        desc: "Autocomplete an address",
+        param_count: ParamCount::Exactly(2),
+        handler: lookup,
+        params: &[
+            StaticParam {
+                name: "Session Token",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                name: "Search",
+                datatype: ParamDataType::Object,
+                desc: "",
+            },
+        ],
+    },
 ];
 
-pub fn lookup(
-    worker: &mut Box<dyn ApplicationWorker>,
-    session: &mut ServerSession,
-    method: message::MethodCall,
-) -> EgResult<()> {
-    // Cast our worker instance into something we know how to use.
-    let _worker = app::AddrsWorker::downcast(worker)?;
 
-    // Extract the method call parameters.
-    // Incorrectly shaped parameters will result in an error
-    // response to the caller.
-    let sestoken = method.param(0).str()?;
-    let search = method.param(1);
+/// Build a set of SDK options with our authentication values.
+fn smarty_sdk_options(license: &str) -> EgResult<Options> {
 
-    // TODO verify sestoken
+    let auth_id = std::env::var("SMARTY_AUTH_ID").map_err(|_| {
+        log::error!("Missing SMARTY_AUTH_ID env var");
+        ADDR_LOOKUP_ERROR
+    })?;
 
-    //session.respond(response)
+    let auth_token = std::env::var("SMARTY_AUTH_TOKEN").map_err(|_| {
+        log::error!("Missing SMARTY_AUTH_TOKEN env var");
+        ADDR_LOOKUP_ERROR
+    })?;
 
-    let lookup2 = Lookup {
-        street: "1 Rosedale Street, Baltimore, MD".to_string(),
-        max_candidates: 8,
-        match_strategy: MatchStrategy::Enhanced,
-        ..Default::default()
-    };
-
-    let mut batch = Batch::default();
-    batch.push(lookup2).unwrap(); // TODO
-
-    let authentication = SecretKeyCredential::new(
-        std::env::var("SMARTY_AUTH_ID").expect("Missing SMARTY_AUTH_ID env variable"),
-        std::env::var("SMARTY_AUTH_TOKEN").expect("Missing SMARTY_AUTH_TOKEN env variable"),
-    );
+    let authentication = SecretKeyCredential::new(auth_id, auth_token);
 
     let options = OptionsBuilder::new(Some(authentication))
         // The appropriate license values to be used for your subscriptions
         // can be found on the Subscriptions page of the account dashboard.
         // https://www.smartystreets.com/docs/cloud/licensing
-        .with_license("us-core-cloud")
+        .with_license(license)
         .build();
 
-    let mut client = USStreetAddressClient::new(options).unwrap(); // TODO
+    Ok(options)
+}
 
-    // This little bit of magic allows us to wrap and run an async method
-    // so our API method does not have to be async.
+
+/// # Reference
+///
+/// * <https://docs.rs/smarty-rust-sdk/0.4.4/smarty_rust_sdk/us_street_api/lookup/struct.Lookup.html>
+pub fn lookup(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
+) -> EgResult<()> {
+    let _worker = app::AddrsWorker::downcast(worker)?;
+
+    let _sestoken = method.param(0).str()?;
+    let search = method.param(1);
+
+    // TODO verify sestoken
+
+    let mut lookup = Lookup {
+        max_candidates: MAX_RESULT_CANDIDATES,
+        match_strategy: MatchStrategy::Enhanced,
+        ..Default::default()
+    };
+
+    // For now, support and map a specific subset of search options,
+    // partly to limit control (e.g. max_candidates) but also to avoid
+    // vendor- specific APIs.
+    if let Some(street) = search["street"].as_str() {
+        lookup.street = street.to_string();
+    }
+    if let Some(street2) = search["street2"].as_str() {
+        lookup.street2 = street2.to_string();
+    }
+    if let Some(city) = search["city"].as_str() {
+        lookup.city = city.to_string();
+    }
+    if let Some(state) = search["state"].as_str() {
+        lookup.state = state.to_string();
+    }
+    if let Some(zipcode) = search["zipcode"].as_str() {
+        lookup.zipcode = zipcode.to_string();
+    }
+    // could be numeric
+    if let Some(zipcode) = search["zipcode"].to_string() {
+        lookup.zipcode = zipcode;
+    }
+
+    let mut batch = Batch::default();
+
+    if let Err(e) = batch.push(lookup) {
+        log::error!("cannot create lookup() batch: {e}");
+        return Err(ADDR_LOOKUP_ERROR.into());
+    }
+
+    let options = smarty_sdk_options("us-core-cloud")?;
+
+    let client = USStreetAddressClient::new(options).map_err(|e| {
+        log::error!("Cannot create USStreetAddressClient: {e}");
+        ADDR_LOOKUP_ERROR
+    })?;
+
+    // This little bit of magic allows us to wrap and run an async method.
+    // Useful since EG/OSRF APIs are not async.
     let rt  = tokio::runtime::Runtime::new().unwrap();
     rt.handle().block_on(async {
         client.send(&mut batch).await.unwrap(); // TODO
     });
 
     for record in batch.records() {
-        println!("{}", serde_json::to_string_pretty(&record.results).unwrap() /* TODO */);
+        println!("Got record: {record:?}");
 
-        //let s = serde_json::to_string(&record.results).unwrap();
         for result in &record.results {
+            // Assumes Smarty returns serde-serializable data.
             let s = serde_json::to_string(&result).unwrap();
+
+            // There's no direct crosswalk from serde json to vanilla
+            // json, so do the stringify+parse dance.
             session.respond(EgValue::parse(&s)?)?;
         }
     }
