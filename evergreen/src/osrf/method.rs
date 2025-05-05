@@ -75,6 +75,7 @@ pub enum ParamDataType {
     Number,
     Array,
     Object, // JsonValue::Object or other object-y thing
+    Numeric, // number or stringy number
     Boolish,
     Scalar, // Not an Object or Array.
     Any,
@@ -87,6 +88,7 @@ impl fmt::Display for ParamDataType {
             ParamDataType::Number => "Number",
             ParamDataType::Array => "Array",
             ParamDataType::Object => "Object",
+            ParamDataType::Numeric => "Numeric",
             ParamDataType::Boolish => "Boolish",
             ParamDataType::Scalar => "Scalar",
             ParamDataType::Any => "Any",
@@ -106,6 +108,7 @@ impl ParamDataType {
             ParamDataType::Number => param.is_number(),
             ParamDataType::Array => param.is_array(),
             ParamDataType::Object => param.is_object(),
+            ParamDataType::Numeric => param.is_numeric(),
             ParamDataType::Boolish => {
                 param.is_boolean() || param.is_number() || param.is_string() || param.is_null()
             }
