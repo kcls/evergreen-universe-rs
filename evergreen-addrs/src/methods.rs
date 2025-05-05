@@ -114,7 +114,7 @@ pub fn lookup(
 
     // For now, support and map a specific subset of search options,
     // partly to limit control (e.g. max_candidates) but also to avoid
-    // vendor- specific APIs.
+    // vendor-specific APIs.
     if let Some(street) = search["street"].as_str() {
         lookup.street = street.to_string();
     }
@@ -149,12 +149,20 @@ pub fn lookup(
         ADDR_LOOKUP_ERROR
     })?;
 
-    // This little bit of magic allows us to wrap and run an async method.
-    // Useful since EG/OSRF APIs are not async.
+    let mut send_result = Ok(());
+
+    // Await'ing async methods in a non-async environment is not
+    // supported, and Smarty offers no sync variant of their SDK.  Wrap
+    // the await in a runtime block_on().
     let rt  = tokio::runtime::Runtime::new().unwrap();
     rt.handle().block_on(async {
-        client.send(&mut batch).await.unwrap(); // TODO
+        send_result = client.send(&mut batch).await;
     });
+    
+    send_result.map_err(|e| {
+        log::error!("Error sending address query: {e}");
+        ADDR_LOOKUP_ERROR
+    })?;
 
     for record in batch.records() {
         println!("Got record: {record:?}");
