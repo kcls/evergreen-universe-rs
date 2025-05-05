@@ -3,6 +3,7 @@
 TARGET = /usr/local
 SYSTEMD_DIR = /lib/systemd/system
 BIN_DIR = ${TARGET}/bin
+SHARE_DIR = ${TARGET}/share/evergreen
 
 # Number of test threads to run in parallel.
 # Inline doc tests are compiler-heavy so having a limit here
@@ -10,24 +11,24 @@ BIN_DIR = ${TARGET}/bin
 TEST_THREADS = 4
 BUILD_THREADS = 4
 
-build: build-evergreen build-sip2mediator
+build: build-evergreen build-sip2mediator build-kcls build-kcls-services
 
 # Removes Cargo artifacts
 clean:
 	cargo clean
 
-build-release: build-evergreen-release build-sip2mediator-release
+build-release: build-evergreen-release build-sip2mediator-release build-kcls-release build-kcls-services-release
 
 test:
 	cargo test -j ${BUILD_THREADS} --all -- --test-threads=${TEST_THREADS}
 
-install: install-evergreen install-sip2mediator
+install: install-evergreen install-sip2mediator install-kcls install-kcls-services install-kcls-services-config
 
 install-bin: install-evergreen-bin install-sip2mediator-bin
 
 install-bin-release: install-evergreen-bin-release install-sip2mediator-bin-release
 
-install-release: install-evergreen-release install-sip2mediator-release
+install-release: install-evergreen-release install-sip2mediator-release install-kcls-release install-kcls-services-release install-kcls-services-config
 
 # --- Evergreen ---
 
@@ -66,6 +67,7 @@ install-evergreen-bin:
 
 install-evergreen-services:
 	cp ./target/debug/eg-service-rs-sip2 ${BIN_DIR}/
+	# cp ./target/debug/eg-service-rs-addrs ${BIN_DIR}/  # Moved to kcls-services
 
 install-evergreen-release: install-evergreen-config install-evergreen-bin-release install-evergreen-services-release
 
@@ -80,12 +82,14 @@ install-evergreen-bin-release:
 
 install-evergreen-services-release:
 	cp ./target/release/eg-service-rs-sip2 ${BIN_DIR}/
+	# cp ./target/release/eg-service-rs-addrs ${BIN_DIR}/  # Moved to kcls-services
 
 install-evergreen-config:
 	cp ./evergreen-bin/systemd/osrf-router.service ${SYSTEMD_DIR}/
 	cp ./evergreen-bin/systemd/eg-http-gateway.service ${SYSTEMD_DIR}/
 	cp ./evergreen-bin/systemd/eg-websockets.service ${SYSTEMD_DIR}/
 	cp ./evergreen-services/systemd/eg-service-rs-sip2.service ${SYSTEMD_DIR}/
+	# cp ./evergreen-services/systemd/eg-service-rs-addrs.service ${SYSTEMD_DIR}/  # Moved to kcls-services
 	systemctl daemon-reload
 
 # --- SIP2 Mediator ---
@@ -116,6 +120,28 @@ install-sip2mediator-config:
 
 build-kcls:
 	cargo build -j ${BUILD_THREADS} --package kcls
+
+# --- KCLS Services ---
+
+build-kcls-services:
+	cargo build -j ${BUILD_THREADS} --package eg-service-addrs
+
+build-kcls-services-release:
+	cargo build -j ${BUILD_THREADS} --package eg-service-addrs --release
+
+install-kcls-services:
+	cp ./target/debug/eg-service-rs-addrs ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/addrs-data
+	cp -r ./kcls-services/addrs/data/shapefiles ${SHARE_DIR}/addrs-data/
+
+install-kcls-services-release:
+	cp ./target/release/eg-service-rs-addrs ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/addrs-data
+	cp -r ./kcls-services/addrs/data/shapefiles ${SHARE_DIR}/addrs-data/
+
+install-kcls-services-config:
+	cp ./kcls-services/systemd/eg-service-rs-addrs.service ${SYSTEMD_DIR}/
+	systemctl daemon-reload
 
 build-kcls-release:
 	cargo build -j ${BUILD_THREADS} --package kcls --release
