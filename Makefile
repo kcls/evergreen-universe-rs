@@ -41,6 +41,7 @@ build-evergreen-bin: build-evergreen-core
 
 build-evergreen-services: build-evergreen-core
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2
+	cargo build -j ${BUILD_THREADS} --package eg-service-addrs
 
 build-evergreen-release: build-evergreen-core-release build-evergreen-bin-release build-evergreen-services-release
 
@@ -52,6 +53,7 @@ build-evergreen-bin-release: build-evergreen-core-release
 
 build-evergreen-services-release: build-evergreen-core-release
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2 --release
+	cargo build -j ${BUILD_THREADS} --package eg-service-addrs --release
 
 install-evergreen: install-evergreen-config install-evergreen-bin
 
@@ -66,6 +68,7 @@ install-evergreen-bin:
 
 install-evergreen-services:
 	cp ./target/debug/eg-service-rs-sip2 ${BIN_DIR}/
+	cp ./target/debug/eg-service-rs-addrs ${BIN_DIR}/
 
 install-evergreen-release: install-evergreen-config install-evergreen-bin-release install-evergreen-services-release
 
@@ -80,12 +83,14 @@ install-evergreen-bin-release:
 
 install-evergreen-services-release:
 	cp ./target/release/eg-service-rs-sip2 ${BIN_DIR}/
+	cp ./target/release/eg-service-rs-addrs ${BIN_DIR}/
 
 install-evergreen-config:
 	cp ./evergreen-bin/systemd/osrf-router.service ${SYSTEMD_DIR}/
 	cp ./evergreen-bin/systemd/eg-http-gateway.service ${SYSTEMD_DIR}/
 	cp ./evergreen-bin/systemd/eg-websockets.service ${SYSTEMD_DIR}/
 	cp ./evergreen-services/systemd/eg-service-rs-sip2.service ${SYSTEMD_DIR}/
+	cp ./evergreen-services/systemd/eg-service-rs-addrs.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
 # --- SIP2 Mediator ---
