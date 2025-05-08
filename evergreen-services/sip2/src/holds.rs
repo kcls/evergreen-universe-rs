@@ -1,7 +1,7 @@
 use crate::session::Session;
-use eg::result::EgResult;
 use eg::EgEvent;
 use eg::EgValue;
+use eg::result::EgResult;
 use evergreen as eg;
 
 use crate::item::Item;

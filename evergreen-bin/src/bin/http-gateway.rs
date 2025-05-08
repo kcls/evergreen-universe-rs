@@ -300,7 +300,7 @@ impl GatewayHandler {
             log::trace!("Read {num_bytes} from the TCP stream");
 
             if num_bytes == 0 {
-                // If we read zero bytes here it means the remote has 
+                // If we read zero bytes here it means the remote has
                 // ungracefully disconnected and left us w/ a dead socket.
                 return Err("HTTP client disconnected".into());
             }

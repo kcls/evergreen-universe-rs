@@ -1,7 +1,7 @@
 use super::patron::Patron;
 use super::session::Session;
-use eg::result::EgResult;
 use eg::EgValue;
+use eg::result::EgResult;
 use evergreen as eg;
 use sip2::spec::PayType;
 

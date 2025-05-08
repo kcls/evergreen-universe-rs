@@ -1,10 +1,10 @@
 use super::item;
 use super::session::Session;
 use chrono::NaiveDateTime;
+use eg::EgValue;
 use eg::common::circulator::Circulator;
 use eg::constants as C;
 use eg::result::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 use std::collections::HashMap;
 

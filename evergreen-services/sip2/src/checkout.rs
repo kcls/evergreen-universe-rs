@@ -2,10 +2,10 @@ use super::session::DEFAULT_DUE_DATE_FORMAT;
 use crate::item::Item;
 use crate::patron::Patron;
 use crate::session::Session;
+use eg::EgValue;
 use eg::common::circulator::Circulator;
 use eg::date;
 use eg::result::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 use std::collections::HashMap;
 
@@ -153,7 +153,7 @@ impl Session {
                     item_barcode,
                     patron_barcode,
                     is_explicit_renewal,
-                ))
+                ));
             }
         };
 
@@ -164,7 +164,7 @@ impl Session {
                     item_barcode,
                     patron_barcode,
                     is_explicit_renewal,
-                ))
+                ));
             }
         };
 

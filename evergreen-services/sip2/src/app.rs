@@ -1,9 +1,9 @@
-use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
-use eg::osrf::cache::Cache;
-use eg::osrf::method::MethodDef;
 use eg::Client;
 use eg::EgError;
 use eg::EgResult;
+use eg::osrf::app::{Application, ApplicationWorker, ApplicationWorkerFactory};
+use eg::osrf::cache::Cache;
+use eg::osrf::method::MethodDef;
 use evergreen as eg;
 use std::any::Any;
 

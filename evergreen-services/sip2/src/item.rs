@@ -1,9 +1,9 @@
 use super::session::DEFAULT_DUE_DATE_FORMAT;
 use crate::session::Session;
-use eg::constants as C;
-use eg::date;
 use eg::EgResult;
 use eg::EgValue;
+use eg::constants as C;
+use eg::date;
 use evergreen as eg;
 use std::fmt;
 

@@ -1,8 +1,8 @@
-use eg::common::auth;
-use eg::osrf::cache::Cache;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use eg::common::auth;
+use eg::osrf::cache::Cache;
 use evergreen as eg;
 use std::collections::HashMap;
 use std::fmt;

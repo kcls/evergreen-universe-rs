@@ -1,9 +1,9 @@
 use crate::session::Session;
+use eg::EgEvent;
+use eg::EgValue;
 use eg::constants as C;
 use eg::date;
 use eg::result::EgResult;
-use eg::EgEvent;
-use eg::EgValue;
 use evergreen as eg;
 
 const EG_NULL: EgValue = EgValue::Null;
@@ -68,11 +68,7 @@ impl SummaryListOptions {
     /// Returns zero-based offset from 1-based SIP "start item" value.
     pub fn offset(&self) -> usize {
         if let Some(s) = self.start_item {
-            if s > 0 {
-                s - 1
-            } else {
-                0
-            }
+            if s > 0 { s - 1 } else { 0 }
         } else {
             0
         }
@@ -81,11 +77,7 @@ impl SummaryListOptions {
     /// Returns zero-based limit from 1-based SIP "end item" value.
     pub fn limit(&self) -> usize {
         if let Some(e) = self.end_item {
-            if e > 0 {
-                e - 1
-            } else {
-                DEFAULT_LIST_ITEM_SIZE
-            }
+            if e > 0 { e - 1 } else { DEFAULT_LIST_ITEM_SIZE }
         } else {
             DEFAULT_LIST_ITEM_SIZE
         }

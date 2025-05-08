@@ -1,6 +1,6 @@
 use crate::session::Session;
-use eg::result::EgResult;
 use eg::EgValue;
+use eg::result::EgResult;
 use evergreen as eg;
 
 const PATRON_NAME_PARTS: [&str; 3] = ["first_given_name", "second_given_name", "family_name"];
