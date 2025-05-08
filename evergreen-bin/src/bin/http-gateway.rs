@@ -106,7 +106,12 @@ impl GatewayHandler {
                 }
                 Err(e) => log::error!("parse_request() failed: {e}"),
             },
-            Err(e) => log::error!("read_request() failed: {e}"),
+            Err(e) => {
+                // Failure to read indicates we've likely lost the connection
+                // to the HTTP client.  No need to craft a response.
+                log::error!("read_request() failed: {e}");
+                return Err(e);
+            }
         }
 
         let data = response.dump();
@@ -293,6 +298,12 @@ impl GatewayHandler {
                 .map_err(|e| format!("Error reading HTTP stream: {e}"))?;
 
             log::trace!("Read {num_bytes} from the TCP stream");
+
+            if num_bytes == 0 {
+                // If we read zero bytes here it means the remote has 
+                // ungracefully disconnected and left us w/ a dead socket.
+                return Err("HTTP client disconnected".into());
+            }
 
             chars.extend_from_slice(&buffer[..num_bytes]);
 
