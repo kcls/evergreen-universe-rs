@@ -3,6 +3,8 @@
  * script.  It varies from stock Evergreen.  It should be possible to
  * sync with stock Evergreen with additional command line options.
  */
+use eg::common::bib;
+use eg::common::org;
 use eg::date;
 use eg::norm::Normalizer;
 use eg::script;
@@ -15,6 +17,7 @@ use std::sync::OnceLock;
 use std::thread;
 
 const DEFAULT_CONTROL_NUMBER_IDENTIFIER: &str = "DLC";
+const ON_ORDER_CALL_NUMBER: &str = "ON ORDER";
 
 static CONTROLLED_FIELDS: OnceLock<Vec<ControlledField>> = OnceLock::new();
 
@@ -94,6 +97,8 @@ struct BibLinker {
     record_id: Option<i64>,
     parallel: usize,
     log_only: bool,
+    /// MARC call number fields
+    cn_fields: Option<Vec<bib::BibSubfield>>,
 }
 
 impl BibLinker {
@@ -154,6 +159,7 @@ impl BibLinker {
             scripter,
             parallel,
             log_only,
+            cn_fields: None,
         })
     }
 
@@ -221,6 +227,17 @@ impl BibLinker {
         }
 
         Ok(list)
+    }
+
+    /// Lookup the MARC bib call number fields
+    ///
+    /// NOTE this assumes individual bib records do not have owners.
+    fn load_marc_cn_fields(&mut self) -> EgResult<()> {
+        let org_id = org::root_org_unit(self.scripter.editor_mut())?.id()?;
+
+        self.cn_fields = bib::bib_call_number_fields(self.scripter.editor_mut(), org_id)?;
+
+        Ok(())
     }
 
     /// Collect the list of controlled fields from the database.
@@ -309,13 +326,18 @@ impl BibLinker {
             let chunk = chunk.to_vec();
             let script_core = self.scripter.core().clone();
             let log_only = self.log_only;
+            let cn_fields = self.cn_fields.clone();
 
             let handle = thread::spawn(move || {
                 // Each thread needs its own opensrf connection / editor.
                 let mut scripter: script::Runner = script_core.into();
                 scripter.connect_evergreen().expect("should connect to eg");
 
-                let mut worker = Worker { scripter, log_only };
+                let mut worker = Worker {
+                    scripter,
+                    log_only,
+                    cn_fields,
+                };
 
                 if let Err(e) = worker.link_batch(chunk) {
                     log::error!("Batch failed to complete: {e}");
@@ -340,6 +362,7 @@ impl BibLinker {
 struct Worker {
     scripter: script::Runner,
     log_only: bool,
+    cn_fields: Option<Vec<bib::BibSubfield>>,
 }
 
 impl Worker {
@@ -653,6 +676,12 @@ impl Worker {
                 }
             };
 
+            if self.is_on_order_record(&orig_record) {
+                self.scripter
+                    .announce(&format!("Skipping on-order record {rec_id}"));
+                continue;
+            }
+
             let mut record = orig_record.clone();
 
             if let Err(e) = self.link_one_bib(rec_id, bre, &orig_record, &mut record) {
@@ -663,6 +692,25 @@ impl Worker {
         }
 
         Ok(())
+    }
+
+    /// True if the bib record has an ON ORDER bib-level call number.
+    ///
+    /// KCLS-specific.
+    fn is_on_order_record(&mut self, rec: &marc::Record) -> bool {
+        let Some(fields) = self.cn_fields.as_ref() else {
+            return false;
+        };
+
+        for sf in fields {
+            for cn in rec.get_field_values(&sf.tag, &sf.subfield) {
+                if cn.trim() == ON_ORDER_CALL_NUMBER {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn link_one_bib(
@@ -848,6 +896,8 @@ fn main() -> EgResult<()> {
     scripter.set_log_prefix("B2A");
 
     let mut linker = BibLinker::new(scripter)?;
+
+    linker.load_marc_cn_fields()?;
 
     linker.load_controlled_fields()?;
 
