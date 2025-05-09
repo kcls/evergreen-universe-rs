@@ -60,6 +60,24 @@ pub fn full_path(editor: &mut Editor, org_id: i64, depth: Option<i64>) -> EgResu
     org_relations_query(editor, org_id, "actor.org_unit_full_path", depth)
 }
 
+/// Returns the root org unit object, which is the first parent-less org unit
+/// found.
+///
+/// # Panics
+///
+/// Panics if the system has no root org unit.
+pub fn root_org_unit(editor: &mut Editor) -> EgResult<EgValue> {
+    Ok(editor
+        .search_with_ops(
+            "aou",
+            eg::hash! {"parent_ou": EgValue::Null},
+            eg::hash! {"limit": 1},
+        )?
+        .pop()
+        .expect("we require a root org unit")
+    )
+}
+
 /// Conveys the open state of an org unit on a specific day.
 #[derive(Clone, PartialEq)]
 pub enum OrgOpenState {

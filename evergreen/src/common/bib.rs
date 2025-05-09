@@ -1,5 +1,6 @@
 use crate as eg;
 use eg::common::holds;
+use eg::common::settings::Settings;
 use eg::idl;
 use eg::Editor;
 use eg::EgResult;
@@ -404,4 +405,54 @@ pub fn record_copy_counts(
     });
 
     Ok(data)
+}
+
+#[derive(Debug, Clone)]
+pub struct BibSubfield {
+    pub tag: String,
+    pub subfield: String,
+}
+
+/// Returns bib tag and subfield values where bib-level call number
+/// data may be found.
+pub fn bib_call_number_fields(
+    editor: &mut Editor,
+    org_id: i64,
+) -> EgResult<Option<Vec<BibSubfield>>> {
+    // get the default classification scheme for the specified org unit.
+    let mut settings = Settings::new(editor);
+
+    let class_id = settings.get_value_at_org("cat.default_classification_scheme", org_id)?;
+
+    let Some(class_id) = class_id.as_int() else {
+        log::debug!("No value for cat.default_classification_scheme at org {org_id}");
+        return Ok(None);
+    };
+
+    let classification = editor
+        .retrieve("acnc", class_id)?
+        .ok_or_else(|| editor.die_event())?;
+
+    // Require field; could be string or number.
+    // E.g. "092ab,099ab,086ab"
+    let field_str = classification["field"].string()?;
+
+    let mut subfields = Vec::new();
+
+    for field in field_str.split(',') {
+        if field.len() < 4 {
+            continue;
+        }
+
+        let tag = &field[..3];
+
+        for sf in field[3..].split("") {
+            subfields.push(BibSubfield {
+                tag: tag.to_string(),
+                subfield: sf.to_string(),
+            });
+        }
+    }
+
+    Ok(Some(subfields))
 }
