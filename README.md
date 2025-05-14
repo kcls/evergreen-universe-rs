@@ -46,7 +46,7 @@ Actions that communicate via OpenSRF require OpenSRF/Evergreen Redis.
 #### Ansible Version
 
 Follow [these ansible instructions](
-    https://github.com/berick/evergreen-ansible-installer/tree/working/ubuntu-24.04)
+    https://github.com/berick/evergreen-ansible-installer/tree/ubuntu-24.04)
 
 to install on a server/VM.
 
