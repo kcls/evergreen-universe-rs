@@ -1,4 +1,6 @@
 //! Base MARC record model and associated components.
+
+use crate::query::ComplexSpecification;
 const TAG_SIZE: usize = 3;
 const LEADER_SIZE: usize = 24;
 const CODE_SIZE: usize = 1;
@@ -771,7 +773,7 @@ impl Record {
     ///
     /// // This is kinda lazy, but you get the idea.
     /// assert!(record.to_breaker().contains("$xX CONTENT"));
-    ///
+    /// ```
     pub fn extract_fields_mut(
         &mut self,
         query: impl Into<crate::query::FieldQueryMut>,
@@ -779,5 +781,143 @@ impl Record {
         self.fields_mut()
             .iter_mut()
             .filter(query.into().field_filter)
+    }
+
+    /// Extract only certain desired subfields from fields using a specification
+    /// inspired by [ruby-marc](https://github.com/ruby-marc/ruby-marc/),
+    /// [SolrMarc](https://github.com/solrmarc/solrmarc/wiki/Basic-field-based-extraction-specifications),
+    /// and [traject](https://github.com/traject/traject).
+    ///
+    /// # Specification syntax
+    ///
+    /// * A three-character tag will match any field that has that tag, for example `650` would
+    ///   only match fields with the tag `650`.
+    /// * The letter `x` (or upper case `X`) can be used as a wildcard, for example `2xx` would
+    ///   match any field with a tag that starts with the character `2`.
+    /// * Tags are optionally followed by indicators in parentheses.  For example, `650(00)` would
+    ///   match fields with first and second indicators equal to zero.  `650(**)` would match
+    ///   fields with any indicators, which is the same as omitting the indicators from the
+    ///   specification altogether.  `650(_0)` and `650( 0)` both match fields with an empty
+    ///   first indicator, although you may find using the `_` version clearer.
+    /// * Each specification can optionally end with a list of subfield codes.  For example,
+    ///   `245abc` would match 245 fields and select only subfields `a`, `b`, and `c`.
+    /// * Multiple specifications can be combined with a `:` between them, for example
+    ///   `60x(*0)a:650av:653` would select
+    ///     * subfield `a` from any field that begins with `60` and has second indicator `0`, and
+    ///     * subfields `a` and `v` from any field with tag `650`, and
+    ///     * any subfield from any field with tag `653`
+    ///
+    /// Returns an iterator over fields.  You can call the `subfields()` method on the result
+    /// to iterate through the requested subfields.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Record;
+    /// let record = Record::from_breaker(
+    ///     r#"=600 10$aZhang, Heng, $d 78-139 $v Juvenile literature.
+    /// =650 \0$aEarthquakes $v Juvenile literature.
+    /// =955 \0$a1234"#
+    /// ).unwrap();
+    ///
+    /// let fields = record.extract_partial_fields("600a");
+    /// assert_eq!(fields.len(), 1);
+    ///
+    /// let field = fields.first().unwrap();
+    /// assert_eq!(field.tag(), "600");
+    /// assert_eq!(field.subfields().len(), 1);
+    /// assert_eq!(field.subfields()[0].code(), "a");
+    /// ```
+    ///
+    /// An example with indicators specified:
+    ///
+    /// ```
+    /// use marctk::Record;
+    /// let record = Record::from_breaker(
+    ///     r#"=650 \0$aEarthquakes $v Juvenile literature.
+    ///=650 \0$aEarthquake damage $v Juvenile literature.
+    ///=650 \4$aNon-LCSH term"#
+    /// ).unwrap();
+    ///
+    /// let fields = record.extract_partial_fields("650(*0)a");
+    /// let terms: Vec<_> = fields.into_iter().map(|f|f.first_subfield("a").unwrap().content().to_string()).collect();
+    /// assert_eq!(terms, vec!["Earthquakes ", "Earthquake damage "]);
+    /// ```
+    ///
+    /// An example with multiple specifications (which means more potential
+    /// matching fields and subfields):
+    ///
+    /// ```
+    /// use marctk::Record;
+    /// let record = Record::from_breaker(
+    ///     r#"=600 10$aZhang, Heng, $d 78-139 $v Juvenile literature.
+    ///=650 \0$aAmusement parks $vComic books, strips, etc.
+    ///=655 \7$aHorror comics. $2lcgft
+    ///=655 \7$aGraphic novels. $2lcgft"#
+    /// ).unwrap();
+    ///
+    /// let genre_query = "600(*0)vx:650(*0)vx:655(*0)avx:655(*7)avx";
+    /// let fields = record.extract_partial_fields(genre_query);
+    /// let matching_subfields = fields.iter().fold(Vec::new(), |mut accumulator, field| {
+    ///    accumulator.extend(field.subfields());
+    ///    accumulator
+    /// });
+    /// let terms: Vec<&str> = matching_subfields.iter().map(|sf| sf.content()).collect();
+    /// assert_eq!(
+    ///     terms,
+    ///     vec![" Juvenile literature.", "Comic books, strips, etc.", "Horror comics. ", "Graphic novels. "]
+    /// );
+    /// ```
+    pub fn extract_partial_fields(&self, query: &str) -> Vec<Field> {
+        let specs: Vec<ComplexSpecification> =
+            query.split(':').map(ComplexSpecification::from).collect();
+        let matching_fields = self
+            .fields()
+            .iter()
+            .filter(|f| specs.iter().any(|spec| spec.matches_field(f)));
+        matching_fields
+            .map(|field| {
+                let mut new_field = field.clone();
+                new_field
+                    .subfields_mut()
+                    .retain(|sf| specs.iter().any(|spec| spec.subfield_filter()(sf, field)));
+                new_field
+            })
+            .collect()
+    }
+
+    /// Extract only certain desired subfields from fields using a specification.
+    /// See [`extract_partial_fields`] for the details of the specification syntax.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Record;
+    /// let record = Record::from_breaker(
+    ///     r#"=600 10$aZhang, Heng, $d 78-139 $v Juvenile literature.
+    ///=650 \0$aAmusement parks $vComic books, strips, etc.
+    ///=655 \7$aHorror comics. $2lcgft
+    ///=655 \7$aGraphic novels. $2lcgft"#
+    /// ).unwrap();
+    ///
+    /// let genre_query = "600(*0)vx:650(*0)vx:655(*0)avx:655(*7)avx";
+    /// let values = record.extract_values(genre_query);
+    /// assert_eq!(
+    ///     values,
+    ///     vec![" Juvenile literature.", "Comic books, strips, etc.", "Horror comics. ", "Graphic novels. "]
+    /// );
+    /// ```
+    ///
+    /// [`extract_partial_fields`]: crate::Record::extract_partial_fields
+    pub fn extract_values(&self, query: &str) -> Vec<String> {
+        self.extract_partial_fields(query)
+            .iter()
+            .fold(Vec::new(), |mut accumulator, field| {
+                accumulator.extend(field.subfields());
+                accumulator
+            })
+            .iter()
+            .map(|sf| sf.content().to_owned())
+            .collect()
     }
 }
