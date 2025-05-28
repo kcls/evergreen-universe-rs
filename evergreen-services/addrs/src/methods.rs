@@ -1,5 +1,6 @@
 use eg::EgResult;
 use eg::EgValue;
+use eg::Editor;
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
@@ -9,6 +10,10 @@ use evergreen as eg;
 use serde_json;
 use smarty_rust_sdk;
 use tokio;
+
+use geo::prelude::Contains;                                                    
+use shapefile::record::*;
+use std::path::Path;
 
 use smarty_rust_sdk::sdk::authentication::SecretKeyCredential;
 use smarty_rust_sdk::sdk::batch::Batch;
@@ -63,6 +68,30 @@ pub static METHODS: &[StaticMethodDef] = &[
                 name: "Search",
                 datatype: ParamDataType::Object,
                 desc: "",
+            },
+        ],
+    },
+    // 47.54030395464964, -122.05041577546649
+    StaticMethodDef {
+        name: "home-org",
+        desc: "Closest/best org unit to use as the home org based on lat/long",
+        param_count: ParamCount::Exactly(3),
+        handler: home_org,
+        params: &[
+            StaticParam {
+                name: "Session Token",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                name: "Latitude",
+                datatype: ParamDataType::Numeric,
+                desc: "Numeric value between -90 and 90; e.g. 47.54030395464964",
+            },
+            StaticParam {
+                name: "Longitude",
+                datatype: ParamDataType::Numeric,
+                desc: "Numeric value between -180 and 180; e.g. -122.05041577546649",
             },
         ],
     },
@@ -257,3 +286,74 @@ pub fn autocomplete(
 
     Ok(())
 }
+
+/// Find the best/closest home library given the provided lat/long values based
+/// on predefined shapefiles.
+///
+/// TODO configs and file locations
+pub fn home_org(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
+) -> EgResult<()> {
+    let worker = app::AddrsWorker::downcast(worker)?;
+
+    let _sestoken = method.param(0).str()?;
+    let lat = method.param(1).float()?;
+    let long = method.param(2).float()?;
+    let mut editor = Editor::new(worker.client());
+
+    let query = eg::hash! {
+        "select": {"aou": ["id", "shortname"]},
+        "from": {"aou": "aout"},
+        "where": {"+aout": {"can_have_users": "t"}}
+    };
+
+    let org_list = editor.json_query(query)?;
+
+    for org in org_list {
+        //  TODO, obvi
+        let code = org["shortname"].string()?;
+        let shapefile = format!("/home/berick/kcls-shapefiles/lib-outlines/{code}_Outline/{code}_dissolved_outline.shp");
+
+        if shapefile_contains(&shapefile, lat, long)? {
+            return session.respond(org.id()?);
+        }
+    }
+
+    Ok(())
+}
+
+fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
+    log::debug!("Inspecting shapefile {shapefile} for lat={lat} and long={long}");
+
+    if !Path::new(shapefile).exists() {
+        // Assumption here is not every branch will have a shapefile in place.
+        // If not, avoid returning an error.
+        log::debug!("No such shapefile: {shapefile}");
+
+        return Ok(false);
+    }
+
+    let mut reader = shapefile::Reader::from_path(&shapefile)
+        .map_err(|e| format!("Cannot read shapefile: {shapefile}: {e}"))?;
+
+    let point = Point::new(long, lat); // x, y
+                                                                               
+    for shape_record in reader.iter_shapes_and_records() {                     
+        let (shape, _record) = shape_record
+            .map_err(|e| format!("Cannot extract shape/record from {shapefile}: {e}"))?;
+
+        if let Shape::Polygon(poly) = shape {
+            let geo_poly: geo::MultiPolygon<f64> = poly.into();
+            let geo_point: geo::Point<f64> = point.clone().into();
+
+            if geo_poly.contains(&geo_point) {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
