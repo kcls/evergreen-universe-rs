@@ -575,8 +575,13 @@ impl Server {
 
     fn clean_exited_workers(&mut self, block: bool) {
         let mut keep = HashMap::new();
+        let count = self.exited_workers.len();
 
-        log::debug!("server: exited thread count {}", self.exited_workers.len());
+        if count == 0 {
+            return;
+        }
+
+        log::debug!("server: exited thread count={count}");
 
         for (worker_id, worker) in self.exited_workers.drain() {
             if block || worker.join_handle.is_finished() {
