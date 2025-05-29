@@ -62,12 +62,15 @@ impl HomeOrgTester {
             if let Some(org_id) = result["home_ou"].as_i64() {
                 Ok(org_id)
             } else {
-                Err(format!("Invalid home_ou value for {}: {:?}", location.name, result["home_ou"]).into())
+                Err(format!("Invalid home_ou value for {} (lat: {}, lon: {}): {:?}", 
+                    location.name, location.lat, location.lon, result["home_ou"]).into())
             }
         } else if result.is_object() && result["home_ou"].is_null() {
-            Err(format!("No home_ou assigned for {}", location.name).into())
+            Err(format!("No home_ou assigned for {} (lat: {}, lon: {})", 
+                location.name, location.lat, location.lon).into())
         } else {
-            Err(format!("Invalid response format for {}: {:?}", location.name, result).into())
+            Err(format!("Invalid response format for {} (lat: {}, lon: {}): {:?}", 
+                location.name, location.lat, location.lon, result).into())
         }
     }
 }
