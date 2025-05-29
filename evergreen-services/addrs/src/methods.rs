@@ -324,6 +324,7 @@ pub fn home_org(
     Ok(())
 }
 
+/// Returns true if the shapefile provided contains the lat/long provided.
 fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
     log::debug!("Inspecting shapefile {shapefile} for lat={lat} and long={long}");
 
