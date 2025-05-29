@@ -30,6 +30,9 @@ const MAX_AUTO_RESULTS: i32 = 5;
 /// Generic error to return to the caller.
 const ADDR_LOOKUP_ERROR: &str = "Address lookup error";
 
+// TODO
+const DEFAULT_ADDR_DATA_DIR: &str = "/usr/local/share/evergreen/addrs-data";
+
 // Import our local app module
 use crate::app;
 
@@ -317,9 +320,8 @@ pub fn home_org(
     };
 
     for org in org_list {
-        //  TODO, obvi
         let code = org["shortname"].string()?;
-        let shapefile = format!("/home/berick/kcls-shapefiles/lib-outlines/{code}_Outline/{code}_dissolved_outline.shp");
+        let shapefile = format!("{DEFAULT_ADDR_DATA_DIR}/shapefiles/home-orgs/{code}/{code}.shp");
 
         if shapefile_contains(&shapefile, lat, long)? {
             response["home_ou"] = org["id"].clone();
