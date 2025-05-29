@@ -311,17 +311,25 @@ pub fn home_org(
 
     let org_list = editor.json_query(query)?;
 
+    let mut response = eg::hash! {
+        "home_ou": EgValue::Null,
+        "is_reciprocal": false
+    };
+
     for org in org_list {
         //  TODO, obvi
         let code = org["shortname"].string()?;
         let shapefile = format!("/home/berick/kcls-shapefiles/lib-outlines/{code}_Outline/{code}_dissolved_outline.shp");
 
         if shapefile_contains(&shapefile, lat, long)? {
-            return session.respond(org.id()?);
+            response["home_ou"] = org["id"].clone();
+            return session.respond(response);
         }
     }
 
-    Ok(())
+    // TODO scan recip files
+
+    session.respond(response)
 }
 
 /// Returns true if the shapefile provided contains the lat/long provided.

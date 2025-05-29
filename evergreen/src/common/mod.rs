@@ -14,6 +14,7 @@ pub mod noncat;
 pub mod org;
 pub mod penalty;
 pub mod renew;
+pub mod service_test;
 pub mod settings;
 pub mod targeter;
 pub mod transit;
