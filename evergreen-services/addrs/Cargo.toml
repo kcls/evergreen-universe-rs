@@ -8,6 +8,7 @@ env_logger = "0.11.8"
 evergreen = { path = "../../evergreen" }
 json = "0.12.4"
 log = "0.4.22"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.140"
 smarty-rust-sdk = "0.4.4"
 tokio = "1.44.2"
@@ -17,5 +18,9 @@ shapefile = {version = "0.7.0", features = ["geo-types"]}
 [[bin]]
 name = "eg-service-rs-addrs"
 path = "src/main.rs"
+
+[[test]]
+name = "api"
+path = "tests/api.rs"
 
 

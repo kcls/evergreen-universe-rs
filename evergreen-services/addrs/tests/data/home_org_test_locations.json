@@ -1,0 +1,351 @@
+{
+  "test_locations": {
+    "king_county_seattle": [
+      {
+        "name": "Downtown Seattle",
+        "lat": 47.6062,
+        "lon": -122.3321,
+        "expected_org": null,
+        "notes": "City center"
+      },
+      {
+        "name": "University District",
+        "lat": 47.6553,
+        "lon": -122.3035,
+        "expected_org": null,
+        "notes": "UW campus area"
+      },
+      {
+        "name": "Capitol Hill",
+        "lat": 47.6252,
+        "lon": -122.3208,
+        "expected_org": null
+      },
+      {
+        "name": "Ballard",
+        "lat": 47.6684,
+        "lon": -122.3849,
+        "expected_org": null
+      },
+      {
+        "name": "West Seattle",
+        "lat": 47.5614,
+        "lon": -122.3866,
+        "expected_org": null
+      },
+      {
+        "name": "Northgate",
+        "lat": 47.7079,
+        "lon": -122.3264,
+        "expected_org": null
+      },
+      {
+        "name": "Rainier Valley",
+        "lat": 47.5365,
+        "lon": -122.2705,
+        "expected_org": null
+      },
+      {
+        "name": "Queen Anne",
+        "lat": 47.6379,
+        "lon": -122.3571,
+        "expected_org": null
+      },
+      {
+        "name": "Fremont",
+        "lat": 47.6513,
+        "lon": -122.3465,
+        "expected_org": null
+      },
+      {
+        "name": "Georgetown",
+        "lat": 47.5469,
+        "lon": -122.3241,
+        "expected_org": null
+      }
+    ],
+    "king_county_eastside": [
+      {
+        "name": "Bellevue Downtown",
+        "lat": 47.6101,
+        "lon": -122.2015,
+        "expected_org": 1492
+      },
+      {
+        "name": "Redmond",
+        "lat": 47.6740,
+        "lon": -122.1215,
+        "expected_org": 1533
+      },
+      {
+        "name": "Kirkland",
+        "lat": 47.6769,
+        "lon": -122.2060,
+        "expected_org": 1518
+      },
+      {
+        "name": "Issaquah",
+        "lat": 47.5301,
+        "lon": -122.0326,
+        "expected_org": 1513
+      },
+      {
+        "name": "Sammamish",
+        "lat": 47.6163,
+        "lon": -122.0356,
+        "expected_org": 1534
+      },
+      {
+        "name": "Mercer Island",
+        "lat": 47.5707,
+        "lon": -122.2221,
+        "expected_org": 1525
+      },
+      {
+        "name": "Newcastle",
+        "lat": 47.5396,
+        "lon": -122.1625,
+        "expected_org": 1564
+      },
+      {
+        "name": "Woodinville",
+        "lat": 47.7544,
+        "lon": -122.1635,
+        "expected_org": 1548
+      }
+    ],
+    "king_county_south": [
+      {
+        "name": "Renton",
+        "lat": 47.4829,
+        "lon": -122.2171,
+        "expected_org": 1556
+      },
+      {
+        "name": "Kent",
+        "lat": 47.3809,
+        "lon": -122.2348,
+        "expected_org": 1520
+      },
+      {
+        "name": "Federal Way",
+        "lat": 47.3223,
+        "lon": -122.3126,
+        "expected_org": 1505
+      },
+      {
+        "name": "Auburn",
+        "lat": 47.3073,
+        "lon": -122.2285,
+        "expected_org": 1490
+      },
+      {
+        "name": "Tukwila",
+        "lat": 47.4740,
+        "lon": -122.2605,
+        "expected_org": null
+      },
+      {
+        "name": "SeaTac",
+        "lat": 47.4439,
+        "lon": -122.2982,
+        "expected_org": 1546
+      },
+      {
+        "name": "Burien",
+        "lat": 47.4704,
+        "lon": -122.3468,
+        "expected_org": 1495
+      },
+      {
+        "name": "Des Moines",
+        "lat": 47.4019,
+        "lon": -122.3246,
+        "expected_org": 1502
+      }
+    ],
+    "king_county_north": [
+      {
+        "name": "Shoreline",
+        "lat": 47.7557,
+        "lon": -122.3415,
+        "expected_org": 1535
+      },
+      {
+        "name": "Lake Forest Park",
+        "lat": 47.7568,
+        "lon": -122.2809,
+        "expected_org": 1521
+      },
+      {
+        "name": "Kenmore",
+        "lat": 47.7573,
+        "lon": -122.2440,
+        "expected_org": 1519
+      },
+      {
+        "name": "Bothell",
+        "lat": 47.7623,
+        "lon": -122.2054,
+        "expected_org": 1493
+      }
+    ],
+    "other_washington": [
+      {
+        "name": "Spokane",
+        "lat": 47.6588,
+        "lon": -117.4260,
+        "expected_org": null
+      },
+      {
+        "name": "Tacoma",
+        "lat": 47.2529,
+        "lon": -122.4443,
+        "expected_org": null
+      },
+      {
+        "name": "Vancouver",
+        "lat": 45.6387,
+        "lon": -122.6615,
+        "expected_org": null
+      },
+      {
+        "name": "Everett",
+        "lat": 47.9790,
+        "lon": -122.2021,
+        "expected_org": null
+      },
+      {
+        "name": "Bellingham",
+        "lat": 48.7519,
+        "lon": -122.4787,
+        "expected_org": null
+      },
+      {
+        "name": "Olympia",
+        "lat": 47.0379,
+        "lon": -122.9007,
+        "expected_org": null
+      },
+      {
+        "name": "Yakima",
+        "lat": 46.6021,
+        "lon": -120.5059,
+        "expected_org": null
+      },
+      {
+        "name": "Walla Walla",
+        "lat": 46.0646,
+        "lon": -118.3430,
+        "expected_org": null
+      },
+      {
+        "name": "Wenatchee",
+        "lat": 47.4235,
+        "lon": -120.3103,
+        "expected_org": null
+      },
+      {
+        "name": "Port Angeles",
+        "lat": 48.1181,
+        "lon": -123.4307,
+        "expected_org": null
+      }
+    ]
+  },
+  "boundary_tests": [
+    {
+      "name": "King County North Border",
+      "lat": 47.8234,
+      "lon": -122.2400,
+      "expected_org": null
+    },
+    {
+      "name": "King County South Border",
+      "lat": 47.0847,
+      "lon": -122.2157,
+      "expected_org": null
+    },
+    {
+      "name": "King County East Border",
+      "lat": 47.4500,
+      "lon": -121.3421,
+      "expected_org": null
+    },
+    {
+      "name": "King County West Border",
+      "lat": 47.4500,
+      "lon": -122.5432,
+      "expected_org": null
+    }
+  ],
+  "edge_cases": [
+    {
+      "name": "San Juan Islands",
+      "lat": 48.5568,
+      "lon": -123.0972,
+      "expected_org": null,
+      "notes": "Remote islands"
+    },
+    {
+      "name": "Mount Rainier Summit",
+      "lat": 46.8523,
+      "lon": -121.7603,
+      "expected_org": null,
+      "notes": "Mountain peak"
+    },
+    {
+      "name": "Columbia River Gorge",
+      "lat": 45.7118,
+      "lon": -121.5144,
+      "expected_org": null,
+      "notes": "State border"
+    },
+    {
+      "name": "Pacific Ocean Coast",
+      "lat": 47.9164,
+      "lon": -124.6366,
+      "expected_org": null,
+      "notes": "Coastal point"
+    },
+    {
+      "name": "Eastern WA Desert",
+      "lat": 46.7500,
+      "lon": -119.0000,
+      "expected_org": null,
+      "notes": "Remote eastern area"
+    }
+  ],
+  "invalid_coordinates": [
+    {
+      "name": "Outside Washington - California",
+      "lat": 37.7749,
+      "lon": -122.4194,
+      "expected_org": null
+    },
+    {
+      "name": "Outside Washington - Oregon",
+      "lat": 45.5152,
+      "lon": -122.6784,
+      "expected_org": null
+    },
+    {
+      "name": "Outside Washington - Idaho",
+      "lat": 43.6150,
+      "lon": -116.2023,
+      "expected_org": null
+    },
+    {
+      "name": "Outside Washington - Canada",
+      "lat": 49.2827,
+      "lon": -123.1207,
+      "expected_org": null
+    },
+    {
+      "name": "Middle of Pacific Ocean",
+      "lat": 47.0000,
+      "lon": -135.0000,
+      "expected_org": null
+    }
+  ]
+}
