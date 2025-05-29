@@ -144,7 +144,7 @@ for handle in handles {
 
 ## Example: Testing the addrs service
 
-See `evergreen-services/addrs/tests/api.rs` for a complete example of testing:
+See `kcls-services/addrs/tests/api.rs` for a complete example of testing:
 - `home-org` - Find org unit by coordinates
 - `lookup` - Verify address details
 - `autocomplete` - Get address suggestions

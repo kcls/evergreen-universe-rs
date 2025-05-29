@@ -10,7 +10,7 @@ members = [
   "kcls", 
   "evergreen-bin",
   "evergreen-services/sip2",
-  "evergreen-services/addrs",
+  "kcls-services/addrs",
 #  "evergreen-services/actor",
 #  "evergreen-services/circ",
 #  "evergreen-services/search",
