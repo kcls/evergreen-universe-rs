@@ -3,6 +3,7 @@
 TARGET = /usr/local
 SYSTEMD_DIR = /lib/systemd/system
 BIN_DIR = ${TARGET}/bin
+SHARE_DIR = ${TARGET}/share/evergreen
 
 # Number of test threads to run in parallel.
 # Inline doc tests are compiler-heavy so having a limit here
@@ -132,9 +133,13 @@ build-kcls-services-release:
 
 install-kcls-services:
 	cp ./target/debug/eg-service-rs-addrs ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/addrs-data
+	cp -r ./kcls-services/addrs/data/shapefiles ${SHARE_DIR}/addrs-data/
 
 install-kcls-services-release:
 	cp ./target/release/eg-service-rs-addrs ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/addrs-data
+	cp -r ./kcls-services/addrs/data/shapefiles ${SHARE_DIR}/addrs-data/
 
 install-kcls-services-config:
 	cp ./kcls-services/systemd/eg-service-rs-addrs.service ${SYSTEMD_DIR}/
