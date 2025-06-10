@@ -1,6 +1,6 @@
 [package]
 name = "marctk"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 license = "MIT"
