@@ -104,11 +104,44 @@ impl Record {
     /// Create a MARC [`Record`] from a MARC Breaker string.
     ///
     /// Assumes one record per input string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use marctk::Record;
+    /// let breaker_str = r#"=LDR 01716cas a2200433 i 4500
+    /// =008 071030c20079999nvumr p       0    0eng d
+    /// =035 \\$a(OCoLC)ocn179901451
+    /// =245 00$aRenoOut.
+    /// =336 \\$atext$btxt$2rdacontent
+    /// =650 \0$aLesbians$zNevada$zReno$vPeriodicals$0(uri) http://id.loc.gov/authorities/subjects/sh85076160"#;
+    /// let record = Record::from_breaker(breaker_str).unwrap();
+    ///
+    /// assert_eq!(record.leader(), "01716cas a2200433 i 4500");
+    ///
+    /// let field_035s = record.get_fields("035");
+    /// let subfield_contents: Vec<_> = field_035s
+    ///     .first()
+    ///     .unwrap()
+    ///     .subfields()
+    ///     .iter()
+    ///     .map(|sf| sf.content())
+    ///     .collect();
+    /// assert_eq!(subfield_contents, ["(OCoLC)ocn179901451"]);
+    /// ```
     pub fn from_breaker(breaker: &str) -> Result<Self, String> {
+        if !breaker.starts_with('=') {
+            return Err("Breaker fields must begin with =".to_owned());
+        };
         let mut record = Record::new();
 
-        for line in breaker.lines() {
-            record.add_breaker_line(line)?;
+        for line in breaker
+            // Each field will start on a new line beginning with =
+            .split("\n=")
+            // Make sure that the preceding .split() did not remove the needed =
+            .map(|line| format!("={}", line.trim_start_matches('=')))
+        {
+            record.add_breaker_line(&line)?;
         }
 
         Ok(record)

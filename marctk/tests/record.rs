@@ -60,6 +60,27 @@ fn breaker_round_trip() {
 }
 
 #[test]
+fn invalid_breaker() {
+    let no_equal_signs = r#"003 OCoLC
+020 \\$a9781945540042$q(paperback)
+245 10$aDespierta con Cala :$binspiraciones para "una vida" en equilibrio /$cIsmael Cala.
+250 \\$aPrimera edición."#;
+    assert!(Record::from_breaker(no_equal_signs).is_err());
+}
+
+#[test]
+fn breaker_round_trip_including_line_breaks() {
+    let breaker_with_line_break = r#"=LDR 02322cam a2200445u  4500
+=245 10$aRobot / $c Jan Pieńkowski.
+=500 \\$a"Illustrated by Jan Pienkowski, assisted by Jane Walmsley, Kinga Pniewska and Martine Forrest; paper engineering by James Roger Diaz, Tor Lokvig and Marcin Stajewski."
+  --P. [4] of cover.
+=520 \\$aA robot family's everyday life is described and illustrated in a dutiful young robot's letter home inquiring how everyone is doing."#;
+    let record = Record::from_breaker(breaker_with_line_break).unwrap();
+    let breaker = record.to_breaker();
+    assert_eq!(breaker_with_line_break, breaker);
+}
+
+#[test]
 fn mixed_breaker_round_trip() {
     let record = Record::from_xml(MARC_XML)
         .next()
