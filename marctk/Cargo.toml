@@ -18,3 +18,15 @@ xml-rs = "0.8.25"
 name = "marc-converter"
 path = "src/bin/marc-converter.rs"
 
+[features]
+marc21_bibliographic = []
+
+# Note: to view the documentation as it would appear on
+# docs.rs (with optional features associated with their
+# feature flags), you can:
+# ```
+# cargo install --locked cargo-docs-rs
+# cargo +nightly docs-rs --open -p marctk
+# ```
+[package.metadata.docs.rs]
+all-features = true
