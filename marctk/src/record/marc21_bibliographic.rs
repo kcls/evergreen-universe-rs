@@ -1,3 +1,4 @@
+#![cfg(feature = "marc21_bibliographic")]
 use crate::{Field, Record};
 
 impl Record {
@@ -11,7 +12,6 @@ impl Record {
     ///     .unwrap();
     /// assert_eq!(record.main_title(), Some("Robot / ".to_string()));
     /// ```
-    #[cfg(feature = "marc21_bibliographic")]
     pub fn main_title(&self) -> Option<String> {
         Some(
             self.get_fields("245")
@@ -49,7 +49,6 @@ impl Record {
     /// );
     /// ```
     /// [`get_fields`]: crate::Record::get_fields
-    #[cfg(feature = "marc21_bibliographic")]
     pub fn get_parallel_fields(&self, tag: &str) -> Vec<&Field> {
         let parallel_field_matches = {
             |field: &Field| match field.first_subfield("6") {
