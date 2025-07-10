@@ -133,11 +133,7 @@ impl Timer {
     }
     pub fn remaining(&self) -> u64 {
         let elapsed = self.start_time.elapsed().as_secs();
-        if elapsed > self.duration {
-            0
-        } else {
-            self.duration - elapsed
-        }
+        self.duration.saturating_sub(elapsed)
     }
     pub fn duration(&self) -> u64 {
         self.duration
