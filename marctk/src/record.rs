@@ -921,3 +921,6 @@ impl Record {
             .collect()
     }
 }
+
+#[cfg(feature = "marc21_bibliographic")]
+mod marc21_bibliographic;

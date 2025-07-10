@@ -19,7 +19,7 @@ jobs:
     - name: Build
       run: cargo build --all
     - name: Run tests
-      run: cargo test --all
+      run: cargo test --all --all-features
 
   clippy:
     runs-on: ubuntu-latest
