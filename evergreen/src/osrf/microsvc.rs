@@ -115,7 +115,7 @@ impl Microservice {
     }
 
     /// Mutable Ref to our under-the-covers client singleton.
-    fn client_internal_mut(&self) -> RefMut<ClientSingleton> {
+    fn client_internal_mut(&self) -> RefMut<'_, ClientSingleton> {
         self.client.singleton().borrow_mut()
     }
 
