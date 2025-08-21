@@ -1127,7 +1127,7 @@ impl EgValue {
     /// Iterator over key-value pairs of an EgValue::{Object, Blessed}
     ///
     /// Returns an empty iterator if this is not an Object or Blessed type.
-    pub fn entries(&self) -> EgValueEntries {
+    pub fn entries(&self) -> EgValueEntries<'_> {
         EgValueEntries {
             map_iter: match self {
                 EgValue::Hash(ref o) => Some(o.iter()),
@@ -1140,7 +1140,7 @@ impl EgValue {
     /// Mutable Iterator over key-value pairs of an EgValue::{Object, Blessed}
     ///
     /// Returns an empty iterator if this is not an Object or Blessed type.
-    pub fn entries_mut(&mut self) -> EgValueEntriesMut {
+    pub fn entries_mut(&mut self) -> EgValueEntriesMut<'_> {
         EgValueEntriesMut {
             map_iter: match self {
                 EgValue::Hash(ref mut o) => Some(o.iter_mut()),
@@ -1153,7 +1153,7 @@ impl EgValue {
     /// Iterator over keys of an EgValue::{Object, Blessed} type.
     ///
     /// Returns an empty iterator if this is not an Object or Blessed type.
-    pub fn keys(&self) -> EgValueKeys {
+    pub fn keys(&self) -> EgValueKeys<'_> {
         EgValueKeys {
             map_iter: match self {
                 EgValue::Hash(ref o) => Some(o.keys()),
