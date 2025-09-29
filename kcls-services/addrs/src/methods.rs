@@ -1,3 +1,12 @@
+// Debugging Smarty streets:
+// OSRF_LOG_LEVEL=trace and run by hand (or change config)
+// Get the POST info out of the logs
+// Translate that into a curl, e.g.:
+//
+// curl -X GET
+// "https://us-street.api.smarty.com/street-address?auth-id=<AUTHID>&auth-token=<TOKEN>&license=&city=Yakima&zipcode=98903&candidates=5&match=enhanced&format=default" \
+//  -H "Content-Type: application/json; charset=utf-8" -v
+//
 use eg::EgResult;
 use eg::EgValue;
 use eg::Editor;
@@ -101,7 +110,7 @@ pub static METHODS: &[StaticMethodDef] = &[
 ];
 
 /// Build a set of SDK options with our authentication values.
-fn smarty_sdk_options(license: &str) -> EgResult<Options> {
+fn smarty_sdk_options(_license: &str) -> EgResult<Options> {
     let auth_id = std::env::var("SMARTY_AUTH_ID").map_err(|_| {
         log::error!("Missing SMARTY_AUTH_ID env var");
         ADDR_LOOKUP_ERROR
@@ -115,10 +124,13 @@ fn smarty_sdk_options(license: &str) -> EgResult<Options> {
     let authentication = SecretKeyCredential::new(auth_id, auth_token);
 
     let options = OptionsBuilder::new(Some(authentication))
+        .with_logging()
         // The appropriate license values to be used for your subscriptions
         // can be found on the Subscriptions page of the account dashboard.
         // https://www.smartystreets.com/docs/cloud/licensing
-        .with_license(license)
+        // NOTE: the sample rust code does not use the license() function
+        // and commenting it out seems to have no negative affect.
+        //.with_license(license)
         .build();
 
     Ok(options)
