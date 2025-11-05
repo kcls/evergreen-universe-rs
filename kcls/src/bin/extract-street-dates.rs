@@ -4,6 +4,12 @@ use getopts::Options;
 use calamine::{Reader, open_workbook, Xlsx};
 use csv::Writer;
 
+use eg::script;
+use eg::EgResult;
+use eg::EgValue;
+use evergreen as eg;
+
+
 /// Convert Excel date serial number to YYYY-MM-DD format
 /// Excel stores dates as days since 1900-01-01
 fn excel_date_to_string(serial: f64) -> String {
@@ -64,25 +70,23 @@ fn main() {
 
     opts.optopt("", "file", "Path to Excel file", "FILE");
     opts.optopt("", "output", "Path to output CSV file", "FILE");
-    opts.optflag("h", "help", "Show this help message");
+    //opts.optflag("h", "help", "Show this help message");
 
-    let params = match opts.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Error parsing options: {}", e);
-            println!("{}", HELP_TEXT);
-            std::process::exit(1);
-        }
+    let options = script::Options {
+        with_evergreen: true,
+        with_database: false,
+        help_text: None,
+        extra_params: None,
+        options: Some(opts),
     };
 
-    // Show help if requested
-    if params.opt_present("help") {
-        println!("{}", HELP_TEXT);
-        return;
-    }
+    let mut scripter = match script::Runner::init(options).expect("Init OK") {
+        Some(s) => s,
+        None => return, // e.g. --help
+    };
 
     // Get the input file path (required)
-    let file_path = match params.opt_str("file") {
+    let file_path = match scripter.params().opt_str("file") {
         Some(path) => path,
         None => {
             eprintln!("Error: --file option is required");
@@ -92,7 +96,7 @@ fn main() {
     };
 
     // Get the optional output file path
-    let output_path = params.opt_str("output");
+    let output_path = scripter.params().opt_str("output");
 
     println!("Processing file: {}", file_path);
 
@@ -103,14 +107,79 @@ fn main() {
         Ok(records) => {
             println!("Successfully extracted {} records", records.len());
 
+            apply_street_dates(&mut scripter, &records).expect("OK");
+
             // Output the results
-            output_results(&records, output_path.as_deref());
+            //output_results(&records, output_path.as_deref());
         }
         Err(e) => {
             eprintln!("Error processing file: {}", e);
             std::process::exit(1);
         }
     }
+}
+
+// TODO add a --edi-account-host command line to filter on ACQ vendors
+// TODO group records by invoice number
+
+fn apply_street_dates(scripter: &mut script::Runner, records: &[StreetDateRecord]) -> Result<(), String> {
+/*
+struct StreetDateRecord {
+    invoice_number: String,
+    ean: String,
+    pub_date: String,
+}
+*/
+    for record in records {
+        let inv_ident = record.invoice_number.trim();
+        // TODO add provider filter as well.
+        let mut invoices = scripter.editor_mut().search("acqinv", 
+            eg::hash! {"inv_ident": inv_ident})?;
+
+        let Some(invoice) = invoices.pop() else {
+            //println!("No invoice found for {inv_ident}");
+            continue;
+        };
+
+        println!("found ivnoice {}", invoice.dump());
+
+        // finds linteitem entries linked to our invoice
+        let entries = scripter.editor_mut().search("acqie", eg::hash! {"invoice": invoice.id()?})?;
+
+        // find lineitem attributes for each line item on the invoice
+        for entry in entries {
+            println!("\tEntry: {} li = {}", entry.dump(), entry["lineitem"].int()?);
+
+            let attrs = scripter.editor_mut()
+                .search("acqlia", eg::hash! {"order_ident": "t", "lineitem": entry["lineitem"].int()?})?;
+
+            let isbn = record.ean.trim();
+            for attr in &attrs {
+                println!("\t\tattr {} wants {}", attr["attr_value"].str()?, isbn);
+
+                if attr["attr_name"].str()? == "isbn" && attr["attr_value"].str()? == isbn {
+                    println!("Found LI {} {}", entry["lineitem"].int()?, attr.dump());
+                }
+            }
+        }
+
+        let attr = eg::blessed! {
+            "_classname": "acqlia",
+            "lineitem": matched_lineitem_id,
+            "attr_name": "street_date", 
+            "attr_value": record.pub_date
+        }
+
+        scripter.editor_mut().create("acqlia", attr)...
+
+        
+
+        //let attrs = sciptor.editor_mut().search("jub", 
+
+
+    }
+
+    Ok(())
 }
 
 /// Process the Excel file and extract street date records

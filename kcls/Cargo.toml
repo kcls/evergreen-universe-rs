@@ -23,6 +23,6 @@ name = "kcls-bib-to-auth-linker"
 path = "src/bin/bib-to-auth-linker.rs"
 
 [[bin]]
-name = "extract-street-dates"
+name = "kcls-extract-street-dates"
 path = "src/bin/extract-street-dates.rs"
 
