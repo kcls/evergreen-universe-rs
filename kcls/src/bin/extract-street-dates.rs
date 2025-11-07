@@ -51,6 +51,22 @@ struct StreetDateRecord {
     pub_date: String,
 }
 
+struct ApplyStats {
+    invoices_found: usize,
+    invoices_not_found: usize,
+    street_dates_created: usize,
+}
+
+impl ApplyStats {
+    fn new() -> Self {
+        Self {
+            invoices_found: 0,
+            invoices_not_found: 0,
+            street_dates_created: 0,
+        }
+    }
+}
+
 fn main() {
     let mut opts = Options::new();
 
@@ -97,27 +113,31 @@ fn main() {
 
 /// Apply street date records to Evergreen acquisitions
 fn apply_street_dates(scripter: &mut script::Runner, records: &[StreetDateRecord]) -> Result<(), String> {
+    println!("\nApplying street dates...");
+
     scripter.editor_mut().xact_begin()?;
 
     let mut defs = scripter.editor_mut().search("acqliad", eg::hash! {"code": "street_date"})?;
     let street_date_def = defs.pop().ok_or("street_date definition not found in acq.lineitem_attr_definition")?;
     let street_date_def_id = street_date_def.id()?;
 
+    let mut stats = ApplyStats::new();
+
     // TODO: group records by invoice number
     for record in records {
-
         let inv_ident = record.invoice_number.trim();
         let mut invoices = scripter.editor_mut().search("acqinv",
             eg::hash! {"inv_ident": inv_ident})?;
 
         let Some(invoice) = invoices.pop() else {
+            stats.invoices_not_found += 1;
             continue;
         };
 
-        // finds linteitem entries linked to our invoice
+        stats.invoices_found += 1;
+
         let entries = scripter.editor_mut().search("acqie", eg::hash! {"invoice": invoice.id()?})?;
 
-        // find lineitem attributes for each line item on the invoice
         for entry in entries {
             let attrs = scripter.editor_mut()
                 .search("acqlia", eg::hash! {"order_ident": "t", "lineitem": entry["lineitem"].int()?})?;
@@ -142,12 +162,18 @@ fn apply_street_dates(scripter: &mut script::Runner, records: &[StreetDateRecord
                     "attr_value": record.pub_date.clone(),
                 }?;
 
-                scripter.editor_mut().create(attr)?;   
+                scripter.editor_mut().create(attr)?;
+                stats.street_dates_created += 1;
             }
         }
     }
 
     scripter.editor_mut().xact_commit()?;
+
+    println!("\n=== Summary ===");
+    println!("Invoices found: {}", stats.invoices_found);
+    println!("Invoices not found: {}", stats.invoices_not_found);
+    println!("Street dates created: {}", stats.street_dates_created);
 
     Ok(())
 }
@@ -197,7 +223,7 @@ fn process_excel_file(file_path: &str) -> Result<Vec<StreetDateRecord>, String> 
     println!("  Pub Date: {:?}", pub_date_col);
 
     // Process data rows (skip header row)
-    for (row_idx, row) in range.rows().enumerate().skip(1) {
+    for (_row_idx, row) in range.rows().enumerate().skip(1) {
         // Extract values based on column indices
         let invoice = invoice_col
             .and_then(|col| row.get(col))
@@ -231,16 +257,6 @@ fn process_excel_file(file_path: &str) -> Result<Vec<StreetDateRecord>, String> 
                 ean,
                 pub_date,
             });
-        }
-
-        // Show first few records for debugging
-        if row_idx <= 5 {
-            println!("Row {}: Invoice={}, EAN={}, PubDate={}",
-                row_idx,
-                records.last().map(|r| r.invoice_number.as_str()).unwrap_or(""),
-                records.last().map(|r| r.ean.as_str()).unwrap_or(""),
-                records.last().map(|r| r.pub_date.as_str()).unwrap_or("")
-            );
         }
     }
 
