@@ -1,12 +1,7 @@
-use std::env;
-use std::fs::File;
 use getopts::Options;
 use calamine::{Reader, open_workbook, Xlsx};
-use csv::Writer;
 
 use eg::script;
-use eg::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 
 
@@ -35,27 +30,20 @@ fn excel_date_to_string(serial: f64) -> String {
 const HELP_TEXT: &str = r#"
 Extract Street Dates from Vendor Excel Files
 
-This tool reads vendor Excel files and extracts Invoice Number, EAN, and Publication Date.
+This tool reads vendor Excel files and extracts Invoice Number, EAN, and Publication Date,
+then applies the street dates to matching line items in Evergreen acquisitions.
 
 Options:
     --file <path>
         Path to the Excel file to process (required)
 
-    --output <path>
-        Path to save the output CSV file (optional, defaults to STDOUT)
-
     -h, --help
         Display this help message
 
-Examples:
-    # Print extracted data to screen
+Example:
     extract-street-dates --file vendor_data.xlsx
-
-    # Save extracted data to a CSV file
-    extract-street-dates --file vendor_data.xlsx --output results.csv
 "#;
 
-/// Represents one row of extracted data from the vendor file
 #[derive(Debug)]
 struct StreetDateRecord {
     invoice_number: String,
@@ -64,13 +52,10 @@ struct StreetDateRecord {
 }
 
 fn main() {
-    // Parse command line arguments
-    let args: Vec<String> = env::args().collect();
     let mut opts = Options::new();
 
+    // TODO: add a --edi-account-host command line to filter on ACQ vendors
     opts.optopt("", "file", "Path to Excel file", "FILE");
-    opts.optopt("", "output", "Path to output CSV file", "FILE");
-    //opts.optflag("h", "help", "Show this help message");
 
     let options = script::Options {
         with_evergreen: true,
@@ -82,7 +67,7 @@ fn main() {
 
     let mut scripter = match script::Runner::init(options).expect("Init OK") {
         Some(s) => s,
-        None => return, // e.g. --help
+        None => return,
     };
 
     // Get the input file path (required)
@@ -95,22 +80,13 @@ fn main() {
         }
     };
 
-    // Get the optional output file path
-    let output_path = scripter.params().opt_str("output");
-
     println!("Processing file: {}", file_path);
-
-    // TODO: Read and process the Excel file
-    // This is where we'll add Excel reading functionality
 
     match process_excel_file(&file_path) {
         Ok(records) => {
             println!("Successfully extracted {} records", records.len());
 
             apply_street_dates(&mut scripter, &records).expect("OK");
-
-            // Output the results
-            //output_results(&records, output_path.as_deref());
         }
         Err(e) => {
             eprintln!("Error processing file: {}", e);
@@ -119,65 +95,59 @@ fn main() {
     }
 }
 
-// TODO add a --edi-account-host command line to filter on ACQ vendors
-// TODO group records by invoice number
-
+/// Apply street date records to Evergreen acquisitions
 fn apply_street_dates(scripter: &mut script::Runner, records: &[StreetDateRecord]) -> Result<(), String> {
-/*
-struct StreetDateRecord {
-    invoice_number: String,
-    ean: String,
-    pub_date: String,
-}
-*/
+    scripter.editor_mut().xact_begin()?;
+
+    let mut defs = scripter.editor_mut().search("acqliad", eg::hash! {"code": "street_date"})?;
+    let street_date_def = defs.pop().ok_or("street_date definition not found in acq.lineitem_attr_definition")?;
+    let street_date_def_id = street_date_def.id()?;
+
+    // TODO: group records by invoice number
     for record in records {
+
         let inv_ident = record.invoice_number.trim();
-        // TODO add provider filter as well.
-        let mut invoices = scripter.editor_mut().search("acqinv", 
+        let mut invoices = scripter.editor_mut().search("acqinv",
             eg::hash! {"inv_ident": inv_ident})?;
 
         let Some(invoice) = invoices.pop() else {
-            //println!("No invoice found for {inv_ident}");
             continue;
         };
-
-        println!("found ivnoice {}", invoice.dump());
 
         // finds linteitem entries linked to our invoice
         let entries = scripter.editor_mut().search("acqie", eg::hash! {"invoice": invoice.id()?})?;
 
         // find lineitem attributes for each line item on the invoice
         for entry in entries {
-            println!("\tEntry: {} li = {}", entry.dump(), entry["lineitem"].int()?);
-
             let attrs = scripter.editor_mut()
                 .search("acqlia", eg::hash! {"order_ident": "t", "lineitem": entry["lineitem"].int()?})?;
 
             let isbn = record.ean.trim();
-            for attr in &attrs {
-                println!("\t\tattr {} wants {}", attr["attr_value"].str()?, isbn);
+            let mut matched_lineitem_id: Option<i64> = None;
 
+            for attr in &attrs {
                 if attr["attr_name"].str()? == "isbn" && attr["attr_value"].str()? == isbn {
-                    println!("Found LI {} {}", entry["lineitem"].int()?, attr.dump());
+                    matched_lineitem_id = Some(entry["lineitem"].int()?);
+                    break;
                 }
             }
+
+            if let Some(li_id) = matched_lineitem_id {
+                let attr = eg::blessed! {
+                    "_classname": "acqlia",
+                    "lineitem": li_id,
+                    "definition": street_date_def_id,
+                    "attr_type": "lineitem_attr_definition",
+                    "attr_name": "street_date",
+                    "attr_value": record.pub_date.clone(),
+                }?;
+
+                scripter.editor_mut().create(attr)?;   
+            }
         }
-
-        let attr = eg::blessed! {
-            "_classname": "acqlia",
-            "lineitem": matched_lineitem_id,
-            "attr_name": "street_date", 
-            "attr_value": record.pub_date
-        }
-
-        scripter.editor_mut().create("acqlia", attr)...
-
-        
-
-        //let attrs = sciptor.editor_mut().search("jub", 
-
-
     }
+
+    scripter.editor_mut().xact_commit()?;
 
     Ok(())
 }
@@ -283,55 +253,4 @@ fn find_column_index(headers: &[String], keywords: &[&str]) -> Option<usize> {
         let header_lower = header.to_lowercase();
         keywords.iter().any(|keyword| header_lower.contains(keyword))
     })
-}
-
-/// Output the extracted records to STDOUT or a file
-fn output_results(records: &[StreetDateRecord], output_path: Option<&str>) {
-    if let Some(path) = output_path {
-        // Write to CSV file
-        match write_csv_file(records, path) {
-            Ok(_) => println!("Successfully wrote {} records to {}", records.len(), path),
-            Err(e) => eprintln!("Error writing CSV file: {}", e),
-        }
-    } else {
-        // Print to STDOUT
-        println!("\nExtracted Records:");
-        println!("Invoice Number | EAN | Publication Date");
-        println!("{}", "-".repeat(50));
-
-        for record in records {
-            println!("{} | {} | {}",
-                record.invoice_number,
-                record.ean,
-                record.pub_date
-            );
-        }
-    }
-}
-
-/// Write records to a CSV file
-fn write_csv_file(records: &[StreetDateRecord], path: &str) -> Result<(), String> {
-    let file = File::create(path)
-        .map_err(|e| format!("Failed to create file: {}", e))?;
-
-    let mut writer = Writer::from_writer(file);
-
-    // Write header row
-    writer.write_record(&["Invoice Number", "EAN", "Publication Date"])
-        .map_err(|e| format!("Failed to write header: {}", e))?;
-
-    // Write data rows
-    for record in records {
-        writer.write_record(&[
-            &record.invoice_number,
-            &record.ean,
-            &record.pub_date,
-        ])
-        .map_err(|e| format!("Failed to write record: {}", e))?;
-    }
-
-    writer.flush()
-        .map_err(|e| format!("Failed to flush writer: {}", e))?;
-
-    Ok(())
 }
