@@ -108,6 +108,11 @@ sudo make install
 
 ```
 
+#### Running benchmarks
+
+1. (The first time you run the benchmarks): `cargo install cargo-criterion`
+1. (Every time): `cargo criterion`
+
 ### Example: Running egsh ("eggshell")
 
 `egsh` is an Evergreen-aware srfsh clone
