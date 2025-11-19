@@ -910,15 +910,21 @@ impl Record {
     ///
     /// [`extract_partial_fields`]: crate::Record::extract_partial_fields
     pub fn extract_values(&self, query: &str) -> Vec<String> {
-        self.extract_partial_fields(query)
+        let specs: Vec<ComplexSpecification> =
+            query.split(':').map(ComplexSpecification::from).collect();
+        let matching_fields = self
+            .fields()
             .iter()
-            .fold(Vec::new(), |mut accumulator, field| {
-                accumulator.extend(field.subfields());
-                accumulator
-            })
-            .iter()
-            .map(|sf| sf.content().to_owned())
-            .collect()
+            .filter(|f| specs.iter().any(|spec| spec.matches_field(f)));
+        matching_fields.fold(Vec::new(), |mut accumulator, field| {
+            let matching_subfield_values = field
+                .subfields()
+                .iter()
+                .filter(|sf| specs.iter().any(|spec| spec.subfield_filter()(sf, field)))
+                .map(|sf| sf.content.to_owned());
+            accumulator.extend(matching_subfield_values);
+            accumulator
+        })
     }
 }
 

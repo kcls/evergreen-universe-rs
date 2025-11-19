@@ -14,9 +14,16 @@ repository = "https://github.com/kcls/evergreen-universe-rs"
 getopts = "0.2.21"
 xml-rs = "0.8.25"
 
+[dev-dependencies]
+criterion = "0.3"
+
 [[bin]]
 name = "marc-converter"
 path = "src/bin/marc-converter.rs"
+
+[[bench]]
+name = "extract_values"
+harness = false
 
 [features]
 marc21_bibliographic = []
