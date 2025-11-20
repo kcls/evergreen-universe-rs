@@ -55,6 +55,8 @@ struct ApplyStats {
     invoices_found: usize,
     invoices_not_found: usize,
     street_dates_created: usize,
+    street_dates_updated: usize,
+    street_dates_unchanged: usize,
 }
 
 impl ApplyStats {
@@ -63,6 +65,8 @@ impl ApplyStats {
             invoices_found: 0,
             invoices_not_found: 0,
             street_dates_created: 0,
+            street_dates_updated: 0,
+            street_dates_unchanged: 0,
         }
     }
 }
@@ -153,17 +157,41 @@ fn apply_street_dates(scripter: &mut script::Runner, records: &[StreetDateRecord
             }
 
             if let Some(li_id) = matched_lineitem_id {
-                let attr = eg::blessed! {
-                    "_classname": "acqlia",
-                    "lineitem": li_id,
-                    "definition": street_date_def_id,
-                    "attr_type": "lineitem_attr_definition",
-                    "attr_name": "street_date",
-                    "attr_value": record.pub_date.clone(),
-                }?;
+                // Check for existing street_date attribute
+                let existing_street_dates = scripter.editor_mut().search("acqlia",
+                    eg::hash! {
+                        "lineitem": li_id,
+                        "definition": street_date_def_id
+                    })?;
 
-                scripter.editor_mut().create(attr)?;
-                stats.street_dates_created += 1;
+                if let Some(mut existing_attr) = existing_street_dates.into_iter().next() {
+                    // Street date already exists - check if it needs updating
+                    let current_value = existing_attr["attr_value"].str()?;
+                    let new_value = record.pub_date.trim();
+
+                    if current_value != new_value {
+                        println!("Updating street date for lineitem {}: {} -> {}",
+                            li_id, current_value, new_value);
+                        existing_attr["attr_value"] = eg::EgValue::from(new_value);
+                        scripter.editor_mut().update(existing_attr)?;
+                        stats.street_dates_updated += 1;
+                    } else {
+                        stats.street_dates_unchanged += 1;
+                    }
+                } else {
+                    println!("Creating street date for lineitem {}: {}", li_id, record.pub_date);
+                    let attr = eg::blessed! {
+                        "_classname": "acqlia",
+                        "lineitem": li_id,
+                        "definition": street_date_def_id,
+                        "attr_type": "lineitem_attr_definition",
+                        "attr_name": "street_date",
+                        "attr_value": record.pub_date.clone(),
+                    }?;
+
+                    scripter.editor_mut().create(attr)?;
+                    stats.street_dates_created += 1;
+                }
             }
         }
     }
@@ -174,6 +202,8 @@ fn apply_street_dates(scripter: &mut script::Runner, records: &[StreetDateRecord
     println!("Invoices found: {}", stats.invoices_found);
     println!("Invoices not found: {}", stats.invoices_not_found);
     println!("Street dates created: {}", stats.street_dates_created);
+    println!("Street dates updated: {}", stats.street_dates_updated);
+    println!("Street dates unchanged: {}", stats.street_dates_unchanged);
 
     Ok(())
 }
