@@ -358,7 +358,7 @@ fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
         return Ok(false);
     }
 
-    let mut reader = shapefile::Reader::from_path(&shapefile)
+    let mut reader = shapefile::Reader::from_path(shapefile)
         .map_err(|e| format!("Cannot read shapefile: {shapefile}: {e}"))?;
 
     let point = Point::new(long, lat); // x, y
@@ -369,7 +369,7 @@ fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
 
         if let Shape::Polygon(poly) = shape {
             let geo_poly: geo::MultiPolygon<f64> = poly.into();
-            let geo_point: geo::Point<f64> = point.clone().into();
+            let geo_point: geo::Point<f64> = point.into();
 
             if geo_poly.contains(&geo_point) {
                 return Ok(true);
