@@ -1,12 +1,12 @@
 use clap::Parser;
 use geo::Contains;
-use shapefile::{Shape, Point};
+use shapefile::{Point, Shape};
 use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(
-    author, 
-    version, 
+    author,
+    version,
     about = "Test if a shapefile contains a given lat/long point",
     long_about = "Test if a shapefile contains a given lat/long point.\n\nNote: When passing negative numbers (e.g., negative longitude), use the equals sign format to prevent parsing issues.\nExample: test-shapefile-point --lat 47.6062 --long=-122.3321 --shapefile file.shp"
 )]
@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let contains = shapefile_contains(&args.shapefile, args.lat, args.long)?;
-    
+
     println!("Shapefile: {}", args.shapefile);
     println!("Latitude: {}", args.lat);
     println!("Longitude: {}", args.long);
@@ -43,13 +43,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Returns true if the shapefile provided contains the lat/long provided.
-fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> Result<bool, Box<dyn std::error::Error>> {
-    eprintln!("Inspecting shapefile {} for lat={} and long={}", shapefile, lat, long);
+fn shapefile_contains(
+    shapefile: &str,
+    lat: f64,
+    long: f64,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    eprintln!(
+        "Inspecting shapefile {} for lat={} and long={}",
+        shapefile, lat, long
+    );
 
     let mut reader = shapefile::Reader::from_path(shapefile)?;
 
     let point = Point::new(long, lat); // Note: shapefile uses x,y (long,lat) order
-    
+
     for shape_record in reader.iter_shapes_and_records() {
         let (shape, _record) = shape_record?;
 

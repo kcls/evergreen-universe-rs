@@ -7,20 +7,20 @@
 // "https://us-street.api.smarty.com/street-address?auth-id=<AUTHID>&auth-token=<TOKEN>&license=&city=Yakima&zipcode=98903&candidates=5&match=enhanced&format=default" \
 //  -H "Content-Type: application/json; charset=utf-8" -v
 //
-use eg::EgResult;
-use eg::EgValue;
-use eg::Editor;
 use eg::osrf::app::ApplicationWorker;
 use eg::osrf::message;
 use eg::osrf::method::{ParamCount, ParamDataType, StaticMethodDef, StaticParam};
 use eg::osrf::session::ServerSession;
+use eg::Editor;
+use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 
 use serde_json;
 use smarty_rust_sdk;
 use tokio;
 
-use geo::prelude::Contains;                                                    
+use geo::prelude::Contains;
 use shapefile::record::*;
 use std::path::Path;
 
@@ -362,8 +362,8 @@ fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
         .map_err(|e| format!("Cannot read shapefile: {shapefile}: {e}"))?;
 
     let point = Point::new(long, lat); // x, y
-                                                                               
-    for shape_record in reader.iter_shapes_and_records() {                     
+
+    for shape_record in reader.iter_shapes_and_records() {
         let (shape, _record) = shape_record
             .map_err(|e| format!("Cannot extract shape/record from {shapefile}: {e}"))?;
 
@@ -379,4 +379,3 @@ fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
 
     Ok(false)
 }
-
