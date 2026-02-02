@@ -785,50 +785,50 @@ impl JsonQueryCompiler {
 
         // Find the left and right field names from the IDL via links.
 
-        if right_join_field.is_some() && left_join_field.is_none() {
-            let rfield_name = right_join_field.unwrap(); // verified
-
-            // Find the link definition that points from the target/joined
-            // class to the left/source class.
-            let idl_link = right_idl_class
-                .links()
-                .get(rfield_name)
-                .ok_or_else(|| format!("No such link  for class '{right_class}'"))?;
-
-            let reltype = idl_link.reltype();
-
-            let maybe_left_class = idl_link.class();
-
-            if reltype != idl::RelType::HasMany && maybe_left_class == left_class {
-                left_join_field = Some(idl_link.key());
-            }
-
+        if let Some(rfield_name) = right_join_field {
             if left_join_field.is_none() {
-                return Err(format!(
-                    "No link defined from {right_class}::{rfield_name} to {maybe_left_class}"
-                )
-                .into());
+                // Find the link definition that points from the target/joined
+                // class to the left/source class.
+                let idl_link = right_idl_class
+                    .links()
+                    .get(rfield_name)
+                    .ok_or_else(|| format!("No such link  for class '{right_class}'"))?;
+
+                let reltype = idl_link.reltype();
+
+                let maybe_left_class = idl_link.class();
+
+                if reltype != idl::RelType::HasMany && maybe_left_class == left_class {
+                    left_join_field = Some(idl_link.key());
+                }
+
+                if left_join_field.is_none() {
+                    return Err(format!(
+                        "No link defined from {right_class}::{rfield_name} to {maybe_left_class}"
+                    )
+                    .into());
+                }
             }
-        } else if right_join_field.is_none() && left_join_field.is_some() {
-            let lfield_name = left_join_field.unwrap(); // verified above.
-
-            let idl_link = left_idl_class
-                .links()
-                .get(lfield_name)
-                .ok_or_else(|| format!("No such link {lfield_name} for class {left_class}"))?;
-
-            let reltype = idl_link.reltype();
-
-            let maybe_right_class = idl_link.class();
-            if reltype != idl::RelType::HasMany && maybe_right_class == right_class {
-                right_join_field = Some(idl_link.key());
-            }
-
+        } else if let Some(lfield_name) = left_join_field {
             if right_join_field.is_none() {
-                return Err(format!(
-                    "No link defined from {left_class}::{lfield_name} to {maybe_right_class}"
-                )
-                .into());
+                let idl_link = left_idl_class
+                    .links()
+                    .get(lfield_name)
+                    .ok_or_else(|| format!("No such link {lfield_name} for class {left_class}"))?;
+
+                let reltype = idl_link.reltype();
+
+                let maybe_right_class = idl_link.class();
+                if reltype != idl::RelType::HasMany && maybe_right_class == right_class {
+                    right_join_field = Some(idl_link.key());
+                }
+
+                if right_join_field.is_none() {
+                    return Err(format!(
+                        "No link defined from {left_class}::{lfield_name} to {maybe_right_class}"
+                    )
+                    .into());
+                }
             }
         } else if right_join_field.is_none() && left_join_field.is_none() {
             // See if we can determine the left and right join fields
@@ -1315,10 +1315,10 @@ impl JsonQueryCompiler {
                 // Handle cases where we receive numeric values as JSON strings.
                 Ok(num.to_string())
             } else {
-                return Err(format!(
-                    "Field {field_name} is numeric, but query value isn't: {value}",
+                Err(
+                    format!("Field {field_name} is numeric, but query value isn't: {value}",)
+                        .into(),
                 )
-                .into());
             }
         } else {
             // IDL field is non-numeric.  Quote the param.

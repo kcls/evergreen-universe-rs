@@ -1535,8 +1535,7 @@ impl<'a> HoldTargeter<'a> {
 
         let result = self.target_hold_internal(hold_id, find_copy.unwrap_or(0));
 
-        if result.is_ok() {
-            let ctx = result.unwrap();
+        if let Ok(ctx) = result {
             self.commit()?;
             return Ok(ctx);
         }

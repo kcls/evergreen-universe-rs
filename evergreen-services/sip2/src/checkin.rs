@@ -199,10 +199,10 @@ impl Session {
             }
         }
 
-        if let Some(sn) = checkin_loc_op {
-            if let Some(org) = self.org_from_sn(sn)? {
-                args["circ_lib"] = org["id"].clone();
-            }
+        if let Some(sn) = checkin_loc_op
+            && let Some(org) = self.org_from_sn(sn)?
+        {
+            args["circ_lib"] = org["id"].clone();
         }
 
         if !args.has_key("circ_lib") {
@@ -253,12 +253,11 @@ impl Session {
 
         let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
         let mut destination_loc = None;
-        if let Some(org_id) = evt.org() {
-            if let Some(org) = self.org_from_id(*org_id)? {
-                if let Some(sn) = org["shortname"].as_str() {
-                    destination_loc = Some(sn.to_string());
-                }
-            }
+        if let Some(org_id) = evt.org()
+            && let Some(org) = self.org_from_id(*org_id)?
+            && let Some(sn) = org["shortname"].as_str()
+        {
+            destination_loc = Some(sn.to_string());
         }
 
         let copy = &evt.payload()["copy"];
@@ -269,13 +268,12 @@ impl Session {
 
             log::debug!("{self} Checkin of {} returned a copy object", item.barcode);
 
-            if let Ok(circ_lib) = copy["circ_lib"].int() {
-                if circ_lib != item.circ_lib {
-                    if let Some(org) = self.org_from_id(circ_lib)? {
-                        let loc = org["shortname"].as_str().unwrap();
-                        permanent_loc = loc.to_string();
-                    }
-                }
+            if let Ok(circ_lib) = copy["circ_lib"].int()
+                && circ_lib != item.circ_lib
+                && let Some(org) = self.org_from_id(circ_lib)?
+            {
+                let loc = org["shortname"].as_str().unwrap();
+                permanent_loc = loc.to_string();
             }
         }
 
@@ -296,10 +294,10 @@ impl Session {
                 item.barcode
             );
 
-            if let Some(user) = self.get_user_and_card(circ["usr"].int()?)? {
-                if let Some(bc) = user["card"]["barcode"].as_str() {
-                    result.patron_barcode = Some(bc.to_string());
-                }
+            if let Some(user) = self.get_user_and_card(circ["usr"].int()?)?
+                && let Some(bc) = user["card"]["barcode"].as_str()
+            {
+                result.patron_barcode = Some(bc.to_string());
             }
         }
 
@@ -413,12 +411,11 @@ impl Session {
         let mut permanent_loc = item.permanent_loc.to_string(); // item.circ_lib
 
         let mut destination_loc = None;
-        if let Some(org_id) = evt.org() {
-            if let Some(org) = self.org_from_id(*org_id)? {
-                if let Some(sn) = org["shortname"].as_str() {
-                    destination_loc = Some(sn.to_string());
-                }
-            }
+        if let Some(org_id) = evt.org()
+            && let Some(org) = self.org_from_id(*org_id)?
+            && let Some(sn) = org["shortname"].as_str()
+        {
+            destination_loc = Some(sn.to_string());
         }
 
         let copy = &evt.payload()["copy"];
@@ -429,13 +426,12 @@ impl Session {
 
             log::debug!("{self} Checkin of {} returned a copy object", item.barcode);
 
-            if let Ok(circ_lib) = copy["circ_lib"].int() {
-                if circ_lib != item.circ_lib {
-                    if let Some(org) = self.org_from_id(circ_lib)? {
-                        let loc = org["shortname"].as_str().unwrap();
-                        permanent_loc = loc.to_string();
-                    }
-                }
+            if let Ok(circ_lib) = copy["circ_lib"].int()
+                && circ_lib != item.circ_lib
+                && let Some(org) = self.org_from_id(circ_lib)?
+            {
+                let loc = org["shortname"].as_str().unwrap();
+                permanent_loc = loc.to_string();
             }
         }
 
@@ -456,10 +452,10 @@ impl Session {
                 item.barcode
             );
 
-            if let Some(user) = self.get_user_and_card(circ["usr"].int()?)? {
-                if let Some(bc) = user["card"]["barcode"].as_str() {
-                    result.patron_barcode = Some(bc.to_string());
-                }
+            if let Some(user) = self.get_user_and_card(circ["usr"].int()?)?
+                && let Some(bc) = user["card"]["barcode"].as_str()
+            {
+                result.patron_barcode = Some(bc.to_string());
             }
         }
 
@@ -518,10 +514,10 @@ impl Session {
             pickup_lib_id = pickup_lib.id()?;
         } else {
             pickup_lib_id = pickup_lib.int()?;
-            if let Some(org) = self.org_from_id(pickup_lib_id)? {
-                if let Some(sn) = org["shortname"].as_str() {
-                    result.destination_loc = Some(sn.to_string());
-                }
+            if let Some(org) = self.org_from_id(pickup_lib_id)?
+                && let Some(sn) = org["shortname"].as_str()
+            {
+                result.destination_loc = Some(sn.to_string());
             }
         }
 

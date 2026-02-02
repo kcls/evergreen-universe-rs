@@ -671,9 +671,9 @@ impl Router {
         if addr.is_service() {
             self.route_api_request(&addr, tm)
         } else if addr.is_router() {
-            return self.handle_router_command(tm);
+            self.handle_router_command(tm)
         } else {
-            return Err(format!("Unexpected message recipient: {}", to).into());
+            Err(format!("Unexpected message recipient: {}", to).into())
         }
     }
 

@@ -206,7 +206,7 @@ impl Record {
 
         // Directory byte length should be divisible by the directry entry length.
         let dir_len = dir_bytes.len();
-        if dir_len == 0 || dir_len % DIRECTORY_ENTRY_LEN != 0 {
+        if dir_len == 0 || !dir_len.is_multiple_of(DIRECTORY_ENTRY_LEN) {
             return Err(format!("Invalid directory length {}", dir_len));
         }
 

@@ -1042,10 +1042,10 @@ pub fn get_copy_price(editor: &mut Editor, copy_id: i64) -> EgResult<f64> {
     // Fall back to legacy item cost calculation
     let price_binding;
     if price.is_null() || (price.float()? == 0.0 && charge_on_zero) {
-        let def_price = match settings.get_value("cat.default_item_price")?.as_f64() {
-            Some(p) => p,
-            _ => 0.0,
-        };
+        let def_price = settings
+            .get_value("cat.default_item_price")?
+            .as_f64()
+            .unwrap_or(0.0);
         price_binding = Some(EgValue::from(def_price));
         price = price_binding.as_ref().unwrap();
     }

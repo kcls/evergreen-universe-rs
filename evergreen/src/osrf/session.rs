@@ -820,9 +820,8 @@ impl ServerSession {
     ) -> EgResult<Option<Message>> {
         let result_value;
 
-        if self.atomic_resp_queue.is_some() {
+        if let Some(q) = self.atomic_resp_queue.as_mut() {
             // Add the reply to the queue.
-            let q = self.atomic_resp_queue.as_mut().unwrap();
 
             if let Some(res) = result.take() {
                 q.push(res);

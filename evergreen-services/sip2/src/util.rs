@@ -133,13 +133,13 @@ impl Session {
                     .or_else(|| user[part].as_str())
             };
 
-            if let Some(n) = name_op {
-                if !n.is_empty() {
-                    if !name.is_empty() {
-                        name.push(' ');
-                    }
-                    name.push_str(n);
+            if let Some(n) = name_op
+                && !n.is_empty()
+            {
+                if !name.is_empty() {
+                    name.push(' ');
                 }
+                name.push_str(n);
             }
         }
 
@@ -160,13 +160,13 @@ impl Session {
         ];
 
         for &part in &parts {
-            if let Some(v) = address[part].as_str() {
-                if !v.is_empty() {
-                    if !addr.is_empty() {
-                        addr.push(' ');
-                    }
-                    addr.push_str(v);
+            if let Some(v) = address[part].as_str()
+                && !v.is_empty()
+            {
+                if !addr.is_empty() {
+                    addr.push(' ');
                 }
+                addr.push_str(v);
             }
         }
 

@@ -373,11 +373,12 @@ impl PotentialMatchesQuery {
                 None => vec![],
             },
             ScriptMode::RangeOfRecords => {
-                if self.ids.start_id.is_some() && self.ids.end_id.is_some() {
-                    vec![self.ids.start_id.unwrap(), self.ids.end_id.unwrap()]
-                } else {
-                    vec![]
+                if let Some(start_id) = self.ids.start_id {
+                    if let Some(end_id) = self.ids.end_id {
+                        return vec![start_id, end_id];
+                    }
                 }
+                vec![]
             }
             _ => vec![],
         }

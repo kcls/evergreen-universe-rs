@@ -74,8 +74,7 @@ pub fn root_org_unit(editor: &mut Editor) -> EgResult<EgValue> {
             eg::hash! {"limit": 1},
         )?
         .pop()
-        .expect("we require a root org unit")
-    )
+        .expect("we require a root org unit"))
 }
 
 /// Conveys the open state of an org unit on a specific day.

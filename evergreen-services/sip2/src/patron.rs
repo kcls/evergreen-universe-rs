@@ -208,10 +208,10 @@ impl Session {
             patron.address = Some(self.format_address(&user["mailing_address"]));
         }
 
-        if let Some(email) = user["email"].as_str() {
-            if !email.is_empty() {
-                patron.email = Some(email.to_string());
-            }
+        if let Some(email) = user["email"].as_str()
+            && !email.is_empty()
+        {
+            patron.email = Some(email.to_string());
         };
 
         if let Some(sn) = user["home_ou"]["shortname"].as_str() {
@@ -243,10 +243,10 @@ impl Session {
             patron.phone = Some(phone.to_string());
         }
 
-        if let Some(expire) = user["expire_date"].as_str() {
-            if let Ok(date) = date::parse_datetime(expire) {
-                patron.expire_date = Some(date.format("%Y%m%d").to_string());
-            }
+        if let Some(expire) = user["expire_date"].as_str()
+            && let Ok(date) = date::parse_datetime(expire)
+        {
+            patron.expire_date = Some(date.format("%Y%m%d").to_string());
         }
 
         self.set_patron_privileges(&user, &mut patron)?;
@@ -478,10 +478,10 @@ impl Session {
     fn circ_id_to_value(&mut self, id: i64) -> EgResult<String> {
         let mut format = Msg64SummaryDatatype::Barcode;
 
-        if let Some(set) = self.config().settings().get("msg64_summary_datatype") {
-            if set.str()?.starts_with('t') {
-                format = Msg64SummaryDatatype::Title;
-            }
+        if let Some(set) = self.config().settings().get("msg64_summary_datatype")
+            && set.str()?.starts_with('t')
+        {
+            format = Msg64SummaryDatatype::Title;
         }
 
         if format == Msg64SummaryDatatype::Barcode {
@@ -517,10 +517,10 @@ impl Session {
     ) -> EgResult<()> {
         let mut format = Msg64HoldDatatype::Barcode;
 
-        if let Some(set) = self.config().settings().get("msg64_hold_datatype") {
-            if set.str()?.starts_with('t') {
-                format = Msg64HoldDatatype::Title;
-            }
+        if let Some(set) = self.config().settings().get("msg64_hold_datatype")
+            && set.str()?.starts_with('t')
+        {
+            format = Msg64HoldDatatype::Title;
         }
 
         let hold_ids = match unavail {
@@ -572,10 +572,10 @@ impl Session {
 
         let title_fields = self.editor().search("mfde", search)?;
 
-        if let Some(tf) = title_fields.first() {
-            if let Some(v) = tf["value"].as_str() {
-                return Ok(Some(v.to_string()));
-            }
+        if let Some(tf) = title_fields.first()
+            && let Some(v) = tf["value"].as_str()
+        {
+            return Ok(Some(v.to_string()));
         }
 
         Ok(None)
@@ -929,16 +929,16 @@ impl Session {
         let mut start_item = None;
         let mut end_item = None;
 
-        if let Some(s) = sip_msg.get_field_value("BP") {
-            if let Ok(v) = s.parse::<usize>() {
-                start_item = Some(v);
-            }
+        if let Some(s) = sip_msg.get_field_value("BP")
+            && let Ok(v) = s.parse::<usize>()
+        {
+            start_item = Some(v);
         }
 
-        if let Some(s) = sip_msg.get_field_value("BQ") {
-            if let Ok(v) = s.parse::<usize>() {
-                end_item = Some(v);
-            }
+        if let Some(s) = sip_msg.get_field_value("BQ")
+            && let Ok(v) = s.parse::<usize>()
+        {
+            end_item = Some(v);
         }
 
         // fixed fields are required for correctly formatted messages.
