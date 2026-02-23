@@ -1,5 +1,5 @@
 [package]
-name = "eg-service-addrs"
+name = "kcls-service-address"
 version = "0.1.0"
 edition = "2024"
 
@@ -15,7 +15,7 @@ geo = "0.30.0"
 shapefile = {version = "0.7.0", features = ["geo-types"]}
 
 [[bin]]
-name = "eg-service-rs-addrs"
+name = "kcls-service-address"
 path = "src/main.rs"
 
 

@@ -39,8 +39,8 @@ const MAX_AUTO_RESULTS: i32 = 5;
 /// Generic error to return to the caller.
 const ADDR_LOOKUP_ERROR: &str = "Address lookup error";
 
-// TODO
-const DEFAULT_ADDR_DATA_DIR: &str = "/usr/local/share/evergreen/addrs-data";
+// TODO: Add to systemd config
+const DEFAULT_ADDR_DATA_DIR: &str = "/usr/local/share/evergreen/address-data";
 
 // Import our local app module
 use crate::app;
