@@ -42,7 +42,6 @@ build-evergreen-bin: build-evergreen-core
 
 build-evergreen-services: build-evergreen-core
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2
-	# cargo build -j ${BUILD_THREADS} --package eg-service-addrs  # Moved to kcls-services
 
 build-evergreen-release: build-evergreen-core-release build-evergreen-bin-release build-evergreen-services-release
 
@@ -54,7 +53,6 @@ build-evergreen-bin-release: build-evergreen-core-release
 
 build-evergreen-services-release: build-evergreen-core-release
 	cargo build -j ${BUILD_THREADS} --package eg-service-sip2 --release
-	# cargo build -j ${BUILD_THREADS} --package eg-service-addrs --release  # Moved to kcls-services
 
 install-evergreen: install-evergreen-config install-evergreen-bin
 
