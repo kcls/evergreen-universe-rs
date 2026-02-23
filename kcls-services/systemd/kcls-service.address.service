@@ -5,6 +5,6 @@ Description=Evergreen Service open-ils.rs-addrs
 Type=simple
 User=opensrf
 Group=opensrf
-ExecStart=/usr/local/bin/eg-service-rs-addrs
+ExecStart=/usr/local/bin/kcls-service-address
 ExecReload=/bin/kill -HUP $MAINPID
 
