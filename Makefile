@@ -67,7 +67,6 @@ install-evergreen-bin:
 
 install-evergreen-services:
 	cp ./target/debug/eg-service-rs-sip2 ${BIN_DIR}/
-	# cp ./target/debug/eg-service-rs-addrs ${BIN_DIR}/  # Moved to kcls-services
 
 install-evergreen-release: install-evergreen-config install-evergreen-bin-release install-evergreen-services-release
 
@@ -82,14 +81,12 @@ install-evergreen-bin-release:
 
 install-evergreen-services-release:
 	cp ./target/release/eg-service-rs-sip2 ${BIN_DIR}/
-	# cp ./target/release/eg-service-rs-addrs ${BIN_DIR}/  # Moved to kcls-services
 
 install-evergreen-config:
 	cp ./evergreen-bin/systemd/osrf-router.service ${SYSTEMD_DIR}/
 	cp ./evergreen-bin/systemd/eg-http-gateway.service ${SYSTEMD_DIR}/
 	cp ./evergreen-bin/systemd/eg-websockets.service ${SYSTEMD_DIR}/
 	cp ./evergreen-services/systemd/eg-service-rs-sip2.service ${SYSTEMD_DIR}/
-	# cp ./evergreen-services/systemd/eg-service-rs-addrs.service ${SYSTEMD_DIR}/  # Moved to kcls-services
 	systemctl daemon-reload
 
 # --- SIP2 Mediator ---
@@ -124,23 +121,23 @@ build-kcls:
 # --- KCLS Services ---
 
 build-kcls-services:
-	cargo build -j ${BUILD_THREADS} --package eg-service-addrs
+	cargo build -j ${BUILD_THREADS} --package kcls-service-address
 
 build-kcls-services-release:
-	cargo build -j ${BUILD_THREADS} --package eg-service-addrs --release
+	cargo build -j ${BUILD_THREADS} --package kcls-service-address --release
 
 install-kcls-services:
-	cp ./target/debug/eg-service-rs-addrs ${BIN_DIR}/
-	mkdir -p ${SHARE_DIR}/addrs-data
-	cp -r ./kcls-services/addrs/data/shapefiles ${SHARE_DIR}/addrs-data/
+	cp ./target/debug/kcls-service-address ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/address-data
+	cp -r ./kcls-services/address/data/shapefiles ${SHARE_DIR}/address-data/
 
 install-kcls-services-release:
-	cp ./target/release/eg-service-rs-addrs ${BIN_DIR}/
-	mkdir -p ${SHARE_DIR}/addrs-data
-	cp -r ./kcls-services/addrs/data/shapefiles ${SHARE_DIR}/addrs-data/
+	cp ./target/release/kcls-service-address ${BIN_DIR}/
+	mkdir -p ${SHARE_DIR}/address-data
+	cp -r ./kcls-services/address/data/shapefiles ${SHARE_DIR}/address-data/
 
 install-kcls-services-config:
-	cp ./kcls-services/systemd/eg-service-rs-addrs.service ${SYSTEMD_DIR}/
+	cp ./kcls-services/systemd/kcls-service-address.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
 
 build-kcls-release:
