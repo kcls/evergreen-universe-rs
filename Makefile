@@ -11,24 +11,24 @@ SHARE_DIR = ${TARGET}/share/evergreen
 TEST_THREADS = 4
 BUILD_THREADS = 4
 
-build: build-evergreen build-sip2mediator build-kcls build-kcls-services
+build: build-evergreen build-sip2mediator
 
 # Removes Cargo artifacts
 clean:
 	cargo clean
 
-build-release: build-evergreen-release build-sip2mediator-release build-kcls-release build-kcls-services-release
+build-release: build-evergreen-release build-sip2mediator-release
 
 test:
 	cargo test -j ${BUILD_THREADS} --all -- --test-threads=${TEST_THREADS}
 
-install: install-evergreen install-sip2mediator install-kcls install-kcls-services install-kcls-services-config
+install: install-evergreen install-sip2mediator
 
 install-bin: install-evergreen-bin install-sip2mediator-bin
 
 install-bin-release: install-evergreen-bin-release install-sip2mediator-bin-release
 
-install-release: install-evergreen-release install-sip2mediator-release install-kcls-release install-kcls-services-release install-kcls-services-config
+install-release: install-evergreen-release install-sip2mediator-release
 
 # --- Evergreen ---
 
@@ -115,10 +115,15 @@ install-sip2mediator-config:
 
 # --- KCLS ---
 
-build-kcls:
+build-kcls: build-kcls-services
 	cargo build -j ${BUILD_THREADS} --package kcls
 
-# --- KCLS Services ---
+build-kcls-release: build-kcls-services-release
+	cargo build -j ${BUILD_THREADS} --package kcls --release
+
+install-kcls: install-kcls-bin install-kcls-services
+
+install-kcls-release: install-kcls-bin-release install-kcls-services-release
 
 build-kcls-services:
 	cargo build -j ${BUILD_THREADS} --package kcls-service-address
@@ -139,13 +144,6 @@ install-kcls-services-release:
 install-kcls-services-config:
 	cp ./kcls-services/systemd/kcls-service-address.service ${SYSTEMD_DIR}/
 	systemctl daemon-reload
-
-build-kcls-release:
-	cargo build -j ${BUILD_THREADS} --package kcls --release
-
-install-kcls: install-kcls-bin
-
-install-kcls-release: install-kcls-bin-release
 
 install-kcls-bin:
 	cp ./target/debug/kcls-on-order-audience-repairs ${BIN_DIR}/
