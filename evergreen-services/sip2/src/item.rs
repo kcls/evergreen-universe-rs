@@ -31,6 +31,7 @@ pub struct Item {
     pub hold_pickup_date: Option<String>,
     pub hold_patron_barcode: Option<String>,
     pub circ_patron_id: Option<i64>,
+    pub active_transit_id: Option<i64>,
 }
 
 impl fmt::Display for Item {
@@ -92,8 +93,10 @@ impl Session {
         let mut dest_location = circ_lib.to_string();
         let transit_op = self.get_copy_transit(&copy, copy_status)?;
 
+        let mut active_transit_id = None;
         if let Some(transit) = &transit_op {
             dest_location = transit["dest"]["shortname"].string()?;
+            active_transit_id = transit["id"].as_i64();
         }
 
         let mut hold_pickup_date_op: Option<String> = None;
@@ -172,9 +175,69 @@ impl Session {
             hold_pickup_date: hold_pickup_date_op,
             hold_patron_barcode: hold_patron_barcode_op,
             circ_patron_id,
+            active_transit_id,
             record_id: copy["call_number"]["record"].int()?,
             call_number_id: copy["call_number"].id()?,
         }))
+    }
+
+    /// Updates the transit and copy to indicate that an intermediate
+    /// transit hop occurred.
+    ///
+    /// If the msg17_stamp_transit is enabled and the active SIP account has
+    /// a workstation org unit, update the transit source to the org unit and
+    /// update the send time to now.
+    ///
+    /// Also updates the copy editor and edit_date to indicate copy-related
+    /// activity.
+    pub fn stamp_transit_hop(&mut self, copy_id: i64, transit_id: i64) -> EgResult<()> {
+        if !self.config().setting_is_true("msg17_stamp_transit") {
+            return Ok(());
+        }
+
+        let Some(org_id) = self.editor().requestor_ws_ou() else {
+            log::warn!("{self} msg17_stamp_transit requires a workstation org unit");
+            return Ok(());
+        };
+
+        // Fetch standalone, non-fleshed transits and copies for update.
+        // Note there is no reason (at present) to force a refetch of
+        // the transit or copy info after update, since SIP responses do
+        // not include the affected data (transit source / dates).
+        let mut transit = self
+            .editor()
+            .retrieve("atc", transit_id)?
+            .ok_or_else(|| self.editor().die_event())?;
+
+        if transit["source"].int()? == org_id {
+            log::info!("{self} msg17_stamp_transit source org unit already matches");
+            return Ok(());
+        }
+
+        let mut copy = self
+            .editor()
+            .retrieve("acp", copy_id)?
+            .ok_or_else(|| self.editor().die_event())?;
+
+        self.editor().xact_begin()?;
+
+        transit["source"] = org_id.into();
+        transit["source_send_time"] = "now".into();
+
+        copy["edit_date"] = "now".into();
+        copy["editor"] = self.editor().requestor_id().unwrap().into(); // auth required here
+
+        log::info!(
+            "Stamping transit hop for item {} at {} for transit {}",
+            copy.id()?,
+            org_id,
+            transit_id
+        );
+
+        self.editor().update(transit)?;
+        self.editor().update(copy)?;
+
+        self.editor().commit()
     }
 
     /// Find an active hold linked to the copy.  The copy must be on

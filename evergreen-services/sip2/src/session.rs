@@ -111,6 +111,10 @@ impl Config {
             false
         }
     }
+
+    pub fn setting_value(&self, name: &str) -> Option<&EgValue> {
+        self.settings.get(name)
+    }
 }
 
 pub struct Session {
