@@ -127,8 +127,10 @@ install-kcls-release: install-kcls-bin-release
 install-kcls-bin:
 	cp ./target/debug/kcls-on-order-audience-repairs ${BIN_DIR}/
 	cp ./target/debug/kcls-bib-to-auth-linker ${BIN_DIR}/
+	cp ./target/debug/kcls-extract-street-dates ${BIN_DIR}/
 
 install-kcls-bin-release:
 	cp ./target/release/kcls-on-order-audience-repairs ${BIN_DIR}/
 	cp ./target/release/kcls-bib-to-auth-linker ${BIN_DIR}/
+	cp ./target/release/kcls-extract-street-dates ${BIN_DIR}/
 
