@@ -72,26 +72,31 @@ impl ComplexSpecification {
         field.matches_spec(&self.tag) && self.ind1_matches(field) && self.ind2_matches(field)
     }
 
-    fn ind1_matches(&self, field: &Field) -> bool {
-        match self.ind1 {
-            Some(i) => {
-                i == '*' // * is a wildcard that matches anything
-                    || field.ind1() == i.to_string()
-                    || field.ind1().trim().is_empty() && i == '_' // _ can represent an empty indicator
+    fn indicator_matches(
+        field: &Field,
+        query_indicator: Option<char>,
+        field_indicator_fn: fn(&Field) -> &str,
+    ) -> bool {
+        match query_indicator {
+            Some(query_indicator) => {
+                let field_indicator = field_indicator_fn(field).chars().next();
+                field_indicator.is_some_and(|field_indicator| {
+                    query_indicator == '*'
+                        || field_indicator == query_indicator
+                        // '_' can represent an empty indicator
+                        || field_indicator.is_whitespace() && query_indicator == '_'
+                })
             }
             None => true,
         }
     }
 
+    fn ind1_matches(&self, field: &Field) -> bool {
+        Self::indicator_matches(field, self.ind1, Field::ind1)
+    }
+
     fn ind2_matches(&self, field: &Field) -> bool {
-        match self.ind2 {
-            Some(i) => {
-                i == '*'
-                    || field.ind2() == i.to_string()
-                    || field.ind1().trim().is_empty() && i == '_'
-            }
-            None => true,
-        }
+        Self::indicator_matches(field, self.ind2, Field::ind2)
     }
 
     fn parse_indicators_and_subfields(
@@ -247,5 +252,15 @@ mod tests {
         assert!(ComplexSpecification::from("245(1*)a").matches_field(&field));
         assert!(!ComplexSpecification::from("245(00)a").matches_field(&field));
         assert!(!ComplexSpecification::from("650(14)").matches_field(&field));
+    }
+
+    #[test]
+    fn test_can_match_fields_to_complex_specifications_with_empty_indicator() {
+        let mut field = Field::new("100").unwrap();
+        let _ = field.set_ind1("0");
+        let _ = field.set_ind2(" ");
+
+        assert!(ComplexSpecification::from("100(0_)").matches_field(&field));
+        assert!(ComplexSpecification::from("100(0*)").matches_field(&field));
     }
 }
