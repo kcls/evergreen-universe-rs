@@ -25,6 +25,11 @@ path = "src/bin/marc-converter.rs"
 name = "extract_values"
 harness = false
 
+[[bench]]
+name = "marc_breaker"
+harness = false
+
+
 [features]
 marc21_bibliographic = []
 

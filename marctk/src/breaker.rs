@@ -5,6 +5,7 @@ use super::Record;
 use super::Subfield;
 
 const MARC_BREAKER_SF_DELIMITER: &str = "$";
+const MARC_BREAKER_SF_DELIMITER_CHAR: char = '$';
 const MARC_BREAKER_SF_DELIMITER_ESCAPE: &str = "{dollar}";
 
 /// Replace bare subfield delimiter values with their escaped version.
@@ -130,18 +131,13 @@ impl Record {
     /// assert_eq!(subfield_contents, ["(OCoLC)ocn179901451"]);
     /// ```
     pub fn from_breaker(breaker: &str) -> Result<Self, String> {
-        if !breaker.starts_with('=') {
-            return Err("Breaker fields must begin with =".to_owned());
-        };
+        let breaker = breaker
+            .strip_prefix('=')
+            .ok_or("Breaker fields must begin with =".to_owned())?;
         let mut record = Record::new();
 
-        for line in breaker
-            // Each field will start on a new line beginning with =
-            .split("\n=")
-            // Make sure that the preceding .split() did not remove the needed =
-            .map(|line| format!("={}", line.trim_start_matches('=')))
-        {
-            record.add_breaker_line(&line)?;
+        for line in breaker.split("\n=") {
+            record.add_breaker_line(line)?;
         }
 
         Ok(record)
@@ -156,17 +152,13 @@ impl Record {
         Record::from_breaker(&breaker)
     }
 
-    /// Process one line of breaker text and append the result to [`self`]
+    /// Process one line of breaker text (without the = prefix) and append the result to [`self`]
     fn add_breaker_line(&mut self, line: &str) -> Result<(), String> {
-        let mut len = line.len();
-        if len < 4 {
+        let len = line.len();
+        if len < 3 {
             // Skip unusable lines
             return Ok(());
         }
-
-        // Step past the opening '=' character
-        let line = &line[1..];
-        len -= 1;
 
         let tag = &line[..3];
 
@@ -201,7 +193,7 @@ impl Record {
         }
 
         if len > 6 {
-            for sf in line[6..].split(MARC_BREAKER_SF_DELIMITER) {
+            for sf in line[6..].split(MARC_BREAKER_SF_DELIMITER_CHAR) {
                 if sf.is_empty() {
                     continue;
                 }
@@ -223,10 +215,10 @@ mod breaker_tests {
     fn test_add_breaker_line() {
         let mut record = crate::Record::default();
 
-        assert!(record.add_breaker_line("=LDR too short").is_err());
+        assert!(record.add_breaker_line("LDR too short").is_err());
 
         record
-            .add_breaker_line("=100 11$aSunshine$b$csquashes")
+            .add_breaker_line("100 11$aSunshine$b$csquashes")
             .unwrap();
         assert_eq!(record.get_field_values("100", "a")[0], "Sunshine");
         assert_eq!(record.get_field_values("100", "b")[0], "");
