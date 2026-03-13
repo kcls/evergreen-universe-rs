@@ -6,6 +6,8 @@ const LEADER_SIZE: usize = 24;
 const CODE_SIZE: usize = 1;
 const DEFAULT_LEADER: &str = "                        ";
 const DEFAULT_INDICATOR: &str = " ";
+const ESTIMATED_NUMBER_OF_FIELDS: usize = 30;
+const ESTIMATED_NUMBER_OF_SUBFIELDS: usize = 5;
 
 /// Verifies the provided string is composed of 'len' number of bytes.
 fn check_byte_count(s: &str, len: usize) -> Result<(), String> {
@@ -237,7 +239,7 @@ impl Field {
             tag,
             ind1: None,
             ind2: None,
-            subfields: Vec::new(),
+            subfields: Vec::with_capacity(ESTIMATED_NUMBER_OF_SUBFIELDS),
         })
     }
     /// Get the tag
@@ -480,7 +482,7 @@ impl Record {
         Record {
             leader: DEFAULT_LEADER.to_string(),
             control_fields: Vec::new(),
-            fields: Vec::new(),
+            fields: Vec::with_capacity(ESTIMATED_NUMBER_OF_FIELDS),
         }
     }
 
