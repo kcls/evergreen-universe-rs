@@ -12,6 +12,7 @@ use crate::osrf::message::TransportMessage;
 use crate::osrf::params::ApiParams;
 use crate::util;
 use crate::{EgResult, EgValue};
+use serde_json;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::VecDeque;
@@ -373,7 +374,7 @@ impl ClientSessionInternal {
 
                 // Compile the collected JSON chunks into a single value,
                 // which is the final response value.
-                let jval = json::parse(&buf)
+                let jval = serde_json::from_str::<serde_json::Value>(&buf)
                     .map_err(|e| format!("Error reconstituting partial message: {e}"))?;
 
                 // Avoid exiting with an error on receipt of invalid data
@@ -582,7 +583,7 @@ impl ClientSession {
 
     /// Issue a new API call and return the Request
     ///
-    /// params is a JSON-able thing.  E.g. vec![1,2,3], json::object!{"a": "b"}, etc.
+    /// params is a JSON-able thing.  E.g. vec![1,2,3], eg::hash!{"a": "b"}, etc.
     pub fn request(&mut self, method: &str, params: impl Into<ApiParams>) -> EgResult<Request> {
         let thread = self.session.borrow().thread().to_string();
 

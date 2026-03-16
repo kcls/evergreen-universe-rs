@@ -513,7 +513,7 @@ impl Session {
     /// Wrap a websocket request in an OpenSRF transport message and
     /// put on the OpenSRF bus for delivery.
     fn relay_to_osrf(&mut self, json_text: &str) -> Result<(), String> {
-        let mut wrapper = json::parse(json_text)
+        let mut wrapper = serde_json::from_str::<serde_json::Value>(json_text)
             .map_err(|e| format!("{self} Cannot parse websocket message: {e} {json_text}"))?;
 
         let thread = wrapper["thread"].take();
@@ -563,11 +563,7 @@ impl Session {
 
         // msg_list is typically an array, but may be a single opensrf message.
         if !msg_list.is_array() {
-            let mut list = json::JsonValue::new_array();
-
-            if let Err(e) = list.push(msg_list) {
-                Err(format!("{self} Error creating message list {e}"))?;
-            }
+            let list = serde_json::Value::Array(vec![msg_list]);
 
             msg_list = list;
         }
@@ -580,13 +576,12 @@ impl Session {
 
         let mut body_vec: Vec<message::Message> = Vec::new();
 
-        loop {
-            let msg_json = msg_list.array_remove(0);
+        let msg_items = match msg_list {
+            serde_json::Value::Array(arr) => arr,
+            _ => Vec::new(),
+        };
 
-            if msg_json.is_null() {
-                break;
-            }
-
+        for msg_json in msg_items {
             // false here means "non-raw data mode" which means we
             // require the IDL.  The IDL is required for HASH-ifying
             // inputs and outputs.
@@ -664,7 +659,7 @@ impl Session {
     fn relay_to_websocket(&mut self, mut tm: message::TransportMessage) -> Result<(), String> {
         let mut msg_list = tm.take_body();
 
-        let mut body = json::JsonValue::new_array();
+        let mut body = serde_json::Value::Array(Vec::new());
         let mut transport_error = false;
 
         for mut msg in msg_list.drain(..) {
@@ -710,22 +705,22 @@ impl Session {
                 }
             }
 
-            if let Err(e) = body.push(msg.into_json_value()) {
-                Err(format!("{self} Error building message response: {e}"))?;
+            if let serde_json::Value::Array(ref mut arr) = body {
+                arr.push(msg.into_json_value());
             }
         }
 
-        let mut obj = json::object! {
-            oxrf_xid: tm.osrf_xid(),
-            thread: tm.thread(),
-            osrf_msg: body
-        };
+        let mut obj = serde_json::json!({
+            "oxrf_xid": tm.osrf_xid(),
+            "thread": tm.thread(),
+            "osrf_msg": body
+        });
 
         if transport_error {
-            obj["transport_error"] = json::from(true);
+            obj["transport_error"] = serde_json::Value::from(true);
         }
 
-        let msg_json = obj.dump();
+        let msg_json = serde_json::to_string(&obj).unwrap_or_else(|e| e.to_string());
 
         log::trace!("{self} replying with message: {msg_json}");
 

@@ -267,7 +267,7 @@ impl Session {
             .unwrap_or("sip2");
 
         let query = eg::hash! {
-            from: [
+            "from": [
                 "actor.insert_usr_activity",
                 patron_id,
                 who,
@@ -624,7 +624,7 @@ impl Session {
                 "+acp": {"deleted": "f"},
                 "+acn": {"record": bre_ids, "deleted": "f"}
             },
-            limit: 1
+            "limit": 1
         };
 
         let copy_id_hashes = self.editor().json_query(query)?;
@@ -695,7 +695,7 @@ impl Session {
         };
 
         let mut ops = eg::hash! {
-            order_by: {"mbts": "xact_start"}
+            "order_by": {"mbts": "xact_start"}
         };
 
         if let Some(sum_ops) = summary_ops {
@@ -849,9 +849,9 @@ impl Session {
         let ws_org = self.editor().perm_org();
 
         let search = eg::hash! {
-            select: {csp: ["id", "block_list"]},
-            from: {ausp: "csp"},
-            where: {
+            "select": {"csp": ["id", "block_list"]},
+            "from": {"ausp": "csp"},
+            "where": {
                 "+ausp": {
                     "usr": user_id,
                     "-or": [

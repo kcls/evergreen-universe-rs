@@ -28,7 +28,7 @@ const TRANSPORT_MSG_JSON: &str = r#"{
 
 #[test]
 fn parse_transport_message() {
-    let json_value = json::parse(TRANSPORT_MSG_JSON).unwrap();
+    let json_value: serde_json::Value = serde_json::from_str(TRANSPORT_MSG_JSON).unwrap();
     let tm = TransportMessage::from_json_value(json_value, true).unwrap();
 
     assert_eq!(tm.thread(), "my-thread");
@@ -46,7 +46,7 @@ fn parse_transport_message() {
 
 #[test]
 fn parse_opensrf_message() {
-    let mut json_value = json::parse(TRANSPORT_MSG_JSON).unwrap();
+    let mut json_value: serde_json::Value = serde_json::from_str(TRANSPORT_MSG_JSON).unwrap();
     let body = json_value["body"][0].take();
     let msg_op = Message::from_json_value(body, true);
     assert!(msg_op.is_ok());

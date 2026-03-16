@@ -1,11 +1,11 @@
 use crate::{EgResult, EgValue};
-use json::JsonValue;
+use serde_json::Value;
 
-/// Generic container for translating various data types into a `Vec<JsonValue>`.
+/// Generic container for translating various data types into API call parameters.
 ///
 /// NOTE: `Into<ApiParams>` values that are Vec/&Vec's are treated as a
 /// list of individual API call parameters.  To pass a single parameter
-/// that is itself a list, pass the value as either a JsonValue::Array
+/// that is itself a list, pass the value as either an EgValue::Array
 /// or as a (e.g.) vec![vec![1,2,3]].
 pub struct ApiParams {
     params: Vec<EgValue>,
@@ -13,8 +13,8 @@ pub struct ApiParams {
 
 impl ApiParams {
     /// Consumes the stored parameters
-    pub fn serialize(mut self) -> Vec<JsonValue> {
-        let mut arr: Vec<JsonValue> = Vec::new();
+    pub fn serialize(mut self) -> Vec<Value> {
+        let mut arr: Vec<Value> = Vec::new();
         while !self.params.is_empty() {
             arr.push(self.params.remove(0).into_json_value());
         }
@@ -39,7 +39,7 @@ impl ApiParams {
         self.params.push(v)
     }
 
-    pub fn from_json_value(v: JsonValue) -> EgResult<ApiParams> {
+    pub fn from_json_value(v: Value) -> EgResult<ApiParams> {
         Ok(ApiParams::from(EgValue::from_json_value(v)?))
     }
 }
