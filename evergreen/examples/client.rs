@@ -14,7 +14,7 @@ fn main() -> EgResult<()> {
 
     // We anticipate multiple responses.  Collect them all!
     while let Some(resp) = req.recv()? {
-        println!("Response: {}", resp.dump());
+        println!("Response: {}", resp.to_json_string()?);
     }
 
     ses.disconnect()?; // Only required if connected

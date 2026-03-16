@@ -385,7 +385,7 @@ impl Worker {
     ) -> EgResult<Vec<AuthLeader>> {
         let mut leaders: Vec<AuthLeader> = Vec::new();
 
-        let params = eg::hash! {tag: "008", record: auth_ids.clone()};
+        let params = eg::hash! {"tag": "008", "record": auth_ids.clone()};
         let maybe_leaders = self.scripter.editor_mut().search("afr", params)?;
 
         // Sort the auth_leaders list to match the order of the original

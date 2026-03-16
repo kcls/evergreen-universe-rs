@@ -713,7 +713,7 @@ impl Parser {
         if let Some(v) = v.pkey_value() {
             Ok(v.clone())
         } else {
-            Err(format!("Cannot determine pkey value: {}", v.dump()).into())
+            Err(format!("Cannot determine pkey value: {}", v.dump()).into()) // TODO deprecate dump()
         }
     }
 }

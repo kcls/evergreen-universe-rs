@@ -316,7 +316,7 @@ impl Session {
 
         log::info!(
             "{self} Checkout of {item_barcode} returned: {}",
-            resp.dump()
+            resp.to_json_string()?
         );
 
         let event = if resp.is_array() {
@@ -473,7 +473,7 @@ impl Session {
 
         log::debug!(
             "{self} Checkout of {item_barcode} returned: {}",
-            evt.to_value().dump()
+            evt.to_value().to_json_string()?
         );
 
         let mut result = CheckoutResult::new();

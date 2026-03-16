@@ -73,7 +73,7 @@ impl Processor<'_> {
         };
 
         let eg_evt = EgEvent::parse(&evt)
-            .ok_or_else(|| format!("Renew returned unexpected data: {}", evt.dump()))?;
+            .ok_or_else(|| format!("Renew returned unexpected data: {}", evt.dump()))?; // TODO deprecate dump()
 
         log::info!("{self} autorenewal returned {eg_evt}");
 

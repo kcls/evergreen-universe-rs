@@ -32,7 +32,7 @@ fn main() -> EgResult<()> {
 
     let mvr = bib::map_to_mvr(&mut editor, 5)?;
 
-    println!("MVR\n{}", mvr.dump());
+    println!("MVR\n{}", mvr.to_json_string()?);
 
     Ok(())
 }

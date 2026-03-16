@@ -6,6 +6,7 @@ use crate::osrf::message::TransportMessage;
 use crate::util;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 use std::fmt;
+use serde_json::Value;
 
 /// Manages a Redis connection.
 pub struct Bus {
@@ -166,7 +167,7 @@ impl Bus {
         &mut self,
         timeout: u64,
         recipient: Option<&str>,
-    ) -> EgResult<Option<json::JsonValue>> {
+    ) -> EgResult<Option<Value>> {
         let json_string = match self.recv_one_chunk(timeout, recipient)? {
             Some(s) => s,
             None => {
@@ -176,7 +177,7 @@ impl Bus {
 
         log::trace!("{self} read json from the bus: {json_string}");
 
-        match json::parse(&json_string) {
+        match serde_json::from_str::<Value>(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),
             Err(err) => Err(format!("Error parsing JSON: {err:?}").into()),
         }
@@ -194,8 +195,8 @@ impl Bus {
         &mut self,
         timeout: u64,
         recipient: Option<&str>,
-    ) -> EgResult<Option<json::JsonValue>> {
-        let mut option: Option<json::JsonValue>;
+    ) -> EgResult<Option<Value>> {
+        let mut option: Option<Value>;
 
         match timeout {
             // See if any data is ready now
@@ -285,7 +286,7 @@ impl Bus {
         // Play a little inside baseball here and tag the message
         // with our log trace.  This way the layers above don't have
         // to worry about it.
-        json_val["osrf_xid"] = json::from(Logger::get_log_trace());
+        json_val["osrf_xid"] = Value::from(Logger::get_log_trace());
 
         // Similarly, this allows us to avoid an unnecessary clone
         // on the recipient if it resides in the now-moved source message.
@@ -293,7 +294,7 @@ impl Bus {
         // requirement for TransportMessage.
         let recipient = recipient.unwrap_or(json_val["to"].as_str().unwrap());
 
-        let json_str = json_val.dump();
+        let json_str = serde_json::to_string(&json_val).unwrap_or_else(|e| e.to_string());
 
         log::trace!("send() writing chunk to={}: {}", recipient, json_str);
 
