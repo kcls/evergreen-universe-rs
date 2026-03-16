@@ -131,7 +131,7 @@ impl JsonQueryCompiler {
             }
         }
 
-        array.dump()
+        array.dump() // TODO deprecate dump()
     }
 
     /// KLUDGE: Generates the (likely) SQL that will run on the server.
@@ -337,16 +337,16 @@ impl JsonQueryCompiler {
 
         for hash in order_by.members() {
             if !hash.is_object() {
-                return Err(format!("Malformed ORDER BY: {}", order_by.dump()).into());
+                return Err(format!("Malformed ORDER BY: {}", order_by.to_json_string()?).into());
             }
 
             let class_alias = hash["class"]
                 .as_str()
-                .ok_or_else(|| format!("ORDER BY has no class: {}", order_by.dump()))?;
+                .ok_or_else(|| format!("ORDER BY has no class: {}", order_by.dump()))?; // TODO deprecate dump()
 
             let field_name = hash["field"]
                 .as_str()
-                .ok_or_else(|| format!("ORDER BY has no field: {}", order_by.dump()))?;
+                .ok_or_else(|| format!("ORDER BY has no field: {}", order_by.dump()))?; // TODO deprecate dump()
 
             let classname = self.get_alias_classname(class_alias)?;
 
@@ -399,22 +399,22 @@ impl JsonQueryCompiler {
             qtype = "INTERSECT";
             &query["intersect"]
         } else {
-            return Err(format!("Invalid UNION/INTERSECT/EXCEPT query: {}", query.dump()).into());
+            return Err(format!("Invalid UNION/INTERSECT/EXCEPT query: {}", query.to_json_string()?).into());
         };
 
         if !query["order_by"].is_null() {
-            return Err(format!("ORDER BY not supported for query type: {}", query.dump()).into());
+            return Err(format!("ORDER BY not supported for query type: {}", query.to_json_string()?).into());
         }
 
         // At this point we're guaranteed it's an array.
         if query_array.len() < 2 {
-            return Err(format!("Invalid query array for query type: {}", query.dump()).into());
+            return Err(format!("Invalid query array for query type: {}", query.to_json_string()?).into());
         }
 
         if qtype == "EXCEPT" && query_array.len() > 2 {
             return Err(format!(
                 "EXCEPT operator has too many query operands: {}",
-                query.dump()
+                query.to_json_string()?
             )
             .into());
         }
@@ -422,7 +422,7 @@ impl JsonQueryCompiler {
         let mut sql = String::new();
         for (idx, hash) in query_array.members().enumerate() {
             if !hash.is_object() {
-                return Err(format!("Invalid sub-query for query type: {}", query.dump()).into());
+                return Err(format!("Invalid sub-query for query type: {}", query.to_json_string()?).into());
             }
 
             if idx > 0 {
@@ -447,7 +447,7 @@ impl JsonQueryCompiler {
 
         let sub_sql = compiler
             .take_query_string()
-            .ok_or_else(|| format!("Sub-query produced no SQL: {}", query.dump()))?;
+            .ok_or_else(|| format!("Sub-query produced no SQL: {}", query.dump()))?; // TODO deprecate dump()
 
         if let Some(params) = compiler.params.as_mut() {
             for value in params.drain(..) {
@@ -519,7 +519,7 @@ impl JsonQueryCompiler {
 
             return Err(format!(
                 "SELECT received invalid 'exclude' query: {}",
-                select_def.dump()
+                select_def.to_json_string()?
             )
             .into());
         }
@@ -1150,7 +1150,7 @@ impl JsonQueryCompiler {
         } else {
             return Err(format!(
                 "Invalid predicate for field transform for {field_name}: {}",
-                value_obj.dump()
+                value_obj.to_json_string()?
             )
             .into());
         };
@@ -1239,7 +1239,7 @@ impl JsonQueryCompiler {
         value: &EgValue,
     ) -> EgResult<String> {
         if value.is_object() || value.is_array() {
-            return Err(format!("Invalid simple search predicate: {}", value.dump()).into());
+            return Err(format!("Invalid simple search predicate: {}", value.to_json_string()?).into());
         }
 
         let prefix = format!(r#""{class_alias}".{field_name}"#);
@@ -1487,12 +1487,12 @@ impl JsonQueryCompiler {
     /// ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]
     fn compile_function_from(&mut self, from_def: &EgValue) -> EgResult<String> {
         if from_def.is_empty() || !from_def.is_array() {
-            return Err(format!("Invalid FROM function spec: {}", from_def.dump()).into());
+            return Err(format!("Invalid FROM function spec: {}", from_def.to_json_string()?).into());
         }
 
         let func_name = match from_def[0].as_str() {
             Some(f) => self.check_identifier(f)?.to_string(),
-            None => return Err(format!("Invalid function name: {}", from_def[0].dump()).into()),
+            None => return Err(format!("Invalid function name: {}", from_def[0].to_json_string()?).into()),
         };
 
         let mut sql = func_name.to_string();
@@ -1513,7 +1513,7 @@ impl JsonQueryCompiler {
                 } else if value.is_number() {
                     params.push(value.to_string().unwrap());
                 } else {
-                    return Err(format!("Invalid function parameter: {}", value.dump()).into());
+                    return Err(format!("Invalid function parameter: {}", value.to_json_string()?).into());
                 };
             }
 

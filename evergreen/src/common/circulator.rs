@@ -423,9 +423,9 @@ impl<'a> Circulator<'a> {
     /// Search for the copy in question
     pub fn load_copy(&mut self) -> EgResult<()> {
         let copy_flesh = eg::hash! {
-            flesh: 1,
-            flesh_fields: {
-                acp: COPY_FLESH
+            "flesh": 1,
+            "flesh_fields": {
+                "acp": COPY_FLESH
             }
         };
 
@@ -452,8 +452,8 @@ impl<'a> Circulator<'a> {
             self.copy_barcode = Some(copy_barcode.string()?);
 
             let query = eg::hash! {
-                barcode: copy_barcode.clone(),
-                deleted: "f", // cstore turns json false into NULL :\
+                "barcode": copy_barcode.clone(),
+                "deleted": "f", // cstore turns json false into NULL :\
             };
 
             if let Some(copy) = self
@@ -485,13 +485,13 @@ impl<'a> Circulator<'a> {
         }
 
         let query = eg::hash! {
-            copy: self.copy_id,
-            ack_time: EgValue::Null,
+            "copy": self.copy_id,
+            "ack_time": EgValue::Null,
         };
 
         let flesh = eg::hash! {
-            flesh: 1,
-            flesh_fields: {aca: ["alert_type"]}
+            "flesh": 1,
+            "flesh_fields": {"aca": ["alert_type"]}
         };
 
         for alert in self
@@ -513,7 +513,7 @@ impl<'a> Circulator<'a> {
 
         let circ_lib = self.circ_lib;
         let query = eg::hash! {
-            org: org::full_path(self.editor(), circ_lib, None)?
+            "org": org::full_path(self.editor(), circ_lib, None)?
         };
 
         // actor.copy_alert_suppress
@@ -611,7 +611,7 @@ impl<'a> Circulator<'a> {
         };
 
         let list = self.editor().json_query(eg::hash! {
-            from: ["asset.copy_state", copy_id]
+            "from": ["asset.copy_state", copy_id]
         })?;
 
         let mut copy_state = "NORMAL";
@@ -629,7 +629,7 @@ impl<'a> Circulator<'a> {
         let copy_circ_lib = self.copy()["circ_lib"].int()?;
 
         let query = eg::hash! {
-            org: org::full_path(self.editor(), circ_lib, None)?
+            "org": org::full_path(self.editor(), circ_lib, None)?
         };
 
         // actor.copy_alert_suppress
@@ -699,13 +699,13 @@ impl<'a> Circulator<'a> {
             }
 
             let alert = eg::hash! {
-                alert_type: atype["id"].clone(),
-                copy: self.copy_id,
-                temp: "t",
-                create_staff: self.requestor_id()?,
-                create_time: "now",
-                ack_staff: self.requestor_id()?,
-                ack_time: "now",
+                "alert_type": atype["id"].clone(),
+                "copy": self.copy_id,
+                "temp": "t",
+                "create_staff": self.requestor_id()?,
+                "create_time": "now",
+                "ack_staff": self.requestor_id()?,
+                "ack_time": "now",
             };
 
             let alert = EgValue::create("aca", alert)?;
@@ -829,8 +829,8 @@ impl<'a> Circulator<'a> {
 
         if let Some(copy) = self.copy.as_ref() {
             let query = eg::hash! {
-                target_copy: copy["id"].clone(),
-                checkin_time: EgValue::Null,
+                "target_copy": copy["id"].clone(),
+                "checkin_time": EgValue::Null,
             };
 
             if let Some(circ) = self.editor().search("circ", query)?.pop() {
@@ -872,15 +872,15 @@ impl<'a> Circulator<'a> {
         // to the provided copy.
 
         let query = eg::hash! {
-            target_copy: copy["id"].clone(),
-            checkin_time: EgValue::Null,
+            "target_copy": copy["id"].clone(),
+            "checkin_time": EgValue::Null,
         };
 
         let flesh = eg::hash! {
-            flesh: 2,
-            flesh_fields: {
-                circ: ["usr"],
-                au: ["card"],
+            "flesh": 2,
+            "flesh_fields": {
+                "circ": ["usr"],
+                "au": ["card"],
             }
         };
 
@@ -908,8 +908,8 @@ impl<'a> Circulator<'a> {
             None => return Ok(false),
         };
 
-        let query = eg::hash! {barcode: barcode.clone()};
-        let flesh = eg::hash! {flesh: 1, flesh_fields: {"ac": ["usr"]}};
+        let query = eg::hash! {"barcode": barcode.clone()};
+        let flesh = eg::hash! {"flesh": 1, "flesh_fields": {"ac": ["usr"]}};
 
         let mut card = match self.editor().search_with_ops("ac", query, flesh)?.pop() {
             Some(c) => c,
@@ -937,7 +937,7 @@ impl<'a> Circulator<'a> {
             None => return Ok(false),
         };
 
-        let flesh = eg::hash! {flesh: 1, flesh_fields: {au: ["card"]}};
+        let flesh = eg::hash! {"flesh": 1, "flesh_fields": {"au": ["card"]}};
 
         let patron = self
             .editor()

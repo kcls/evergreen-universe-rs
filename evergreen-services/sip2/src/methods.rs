@@ -9,6 +9,15 @@ use eg::osrf::session::ServerSession;
 use evergreen as eg;
 use sip2;
 
+/// Convert a sip2::Message response to an EgValue by serializing
+/// through a JSON string (bridging json::JsonValue -> serde_json::Value).
+fn sip_msg_to_eg_value(msg: &sip2::Message) -> EgResult<EgValue> {
+    let json_str = msg.to_json();
+    let serde_val: serde_json::Value = serde_json::from_str(&json_str)
+        .map_err(|e| format!("Error parsing SIP response JSON: {e}"))?;
+    EgValue::from_json_value(serde_val)
+}
+
 // Import our local app module
 use crate::app;
 use crate::session::Config;
@@ -96,7 +105,7 @@ pub fn dispatch_sip_request(
 
     let seskey = seskey_param.str()?;
 
-    let sip_msg = sip2::Message::from_json_value(sip_msg_param.into_json_value())
+    let sip_msg = sip2::Message::from_json(&sip_msg_param.to_json_string()?)
         .map_err(|e| format!("Error parsing SIP message: {e}"))?;
 
     let mut editor = Editor::new(worker.client());
@@ -105,12 +114,12 @@ pub fn dispatch_sip_request(
 
     if msg_code == "93" {
         let response = handle_login(&mut editor, seskey, sip_msg)?;
-        let value = EgValue::from_json_value(response.to_json_value())?;
+        let value = sip_msg_to_eg_value(&response)?;
 
         return session.respond_complete(value);
     } else if msg_code == "99" {
         let response = handle_sc_status(&mut editor, seskey, sip_msg)?;
-        let value = EgValue::from_json_value(response.to_json_value())?;
+        let value = sip_msg_to_eg_value(&response)?;
 
         return session.respond_complete(value);
     }
@@ -123,7 +132,7 @@ pub fn dispatch_sip_request(
 
                 let response = sip2::Message::from_ff_values("XT", &[]).unwrap();
 
-                let value = EgValue::from_json_value(response.to_json_value())?;
+                let value = sip_msg_to_eg_value(&response)?;
                 return session.respond_complete(value);
             }
 
@@ -147,7 +156,7 @@ pub fn dispatch_sip_request(
         _ => return Err(format!("SIP message '{msg_code}' not implemented").into()),
     };
 
-    let value = EgValue::from_json_value(response.to_json_value())?;
+    let value = sip_msg_to_eg_value(&response)?;
 
     session.respond_complete(value)
 }

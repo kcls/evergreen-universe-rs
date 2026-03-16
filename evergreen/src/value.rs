@@ -1,13 +1,9 @@
-//! Wrapper class for JsonValue's which may also contain IDL-blessed values,
+//! Wrapper class for JSON values which may also contain IDL-blessed values,
 //! i.e. those that have an IDL class and a well-defined set of fields.
-
-// Values serialize and deserialize as JSON/JsonValue's and much of the
-// code here takes direct inspiration from from the implemention for:
-// <https://docs.rs/json/latest/json/enum.JsonValue.html>
 use crate as eg;
 use eg::idl;
 use eg::{EgError, EgResult};
-use json::JsonValue;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
 use std::mem;
@@ -22,7 +18,9 @@ const JSON_PAYLOAD_KEY: &str = "__p";
 /// into flat hashes.
 const HASH_CLASSNAME_KEY: &str = "_classname";
 
-/// Macro for build EgValue::Hash's by leveraging the json::object! macro.
+/// Macro for building EgValue::Hash's via serde_json::json!.
+///
+/// Keys must be quoted string literals (e.g., `"key": value`).
 ///
 /// Panics if an attempt is made to build an EgValue::Blessed with
 /// an unknown class name or invalid field, which can only happen
@@ -33,7 +31,7 @@ const HASH_CLASSNAME_KEY: &str = "_classname";
 #[macro_export]
 macro_rules! hash {
     ($($tts:tt)*) => {
-        match $crate::EgValue::from_json_value(json::object!($($tts)*)) {
+        match $crate::EgValue::from_json_value(serde_json::json!({$($tts)*})) {
             Ok(v) => v,
             Err(e) => {
                 // Unlikely to get here, but not impossible.
@@ -62,7 +60,7 @@ macro_rules! hash {
 #[macro_export]
 macro_rules! blessed {
     ($($tts:tt)*) => {{
-        match $crate::EgValue::from_json_value(json::object!($($tts)*)) {
+        match $crate::EgValue::from_json_value(serde_json::json!({$($tts)*})) {
             Ok(mut v) => {
                 v.from_classed_hash()?;
                 Ok(v)
@@ -75,22 +73,17 @@ macro_rules! blessed {
     }}
 }
 
-/// Macro for building EgValue's by leveraging the json::object! macro.
-///
-/// Panics if an attempt is made to build an EgValue::Blessed with
-/// an unknown class name or invalid field, however this should never
-/// happen in practice, since EgValue::Blessed's are validated well
-/// before they can be included in an eg::hash! {} invocation.
+/// Macro for building EgValue arrays via serde_json::json!.
 ///
 /// let a = eg::array! ["hello", "errbody"];
 #[macro_export]
 macro_rules! array {
     ($($tts:tt)*) => {
-        match $crate::EgValue::from_json_value(json::array!($($tts)*)) {
+        match $crate::EgValue::from_json_value(serde_json::json!([$($tts)*])) {
             Ok(v) => v,
             Err(e) => {
                 // Unlikely to get here, but not impossible.
-                let msg = format!("eg::hash! {e}");
+                let msg = format!("eg::array! {e}");
                 log::error!("{msg}");
                 panic!("{}", msg);
             }
@@ -130,7 +123,7 @@ impl BlessedValue {
 #[derive(Debug, PartialEq, Clone)]
 pub enum EgValue {
     Null,
-    Number(json::number::Number),
+    Number(serde_json::Number),
     Boolean(bool),
     String(String),
     Array(Vec<EgValue>),
@@ -153,10 +146,7 @@ impl EgValue {
     /// }
     /// ```
     pub fn parse(s: &str) -> EgResult<EgValue> {
-        match json::parse(s) {
-            Ok(v) => EgValue::from_json_value(v),
-            Err(e) => Err(format!("JSON Parse Error: {e} : {s}").into()),
-        }
+        serde_json::from_str(s).map_err(|e| format!("JSON Parse Error: {e} : {s}").into())
     }
 
     /// Create a new empty blessed value using the provided class name.
@@ -178,7 +168,7 @@ impl EgValue {
     /// Translate an EgValue::Hash into an EGValue::Blessed, non-recursively,
     /// using the provided class name.
     ///
-    /// Returns Err of the classname is unknown or the object
+    /// Returns Err if the classname is unknown or the object
     /// contains fields which are not in the IDL.
     ///
     /// Having all IDL fields is not required.
@@ -283,9 +273,9 @@ impl EgValue {
         *self = EgValue::Hash(map);
     }
 
-    /// Translate a raw JsonValue, which may contain class name keys
+    /// Translate a raw Value, which may contain class name keys
     /// in the HASH_CLASSNAME_KEY field, into an EgValue.
-    pub fn from_classed_json_hash(v: JsonValue) -> EgResult<EgValue> {
+    pub fn from_classed_json_hash(v: Value) -> EgResult<EgValue> {
         let mut value = EgValue::from_json_value(v)?;
         value.from_classed_hash()?;
         Ok(value)
@@ -418,24 +408,24 @@ impl EgValue {
     /// ```
     /// use evergreen::EgValue;
     ///
-    /// let v = json::array! ["one", "two", "three"];
+    /// let v = serde_json::json!(["one", "two", "three"]);
     /// let v = EgValue::add_class_wrapper(v, "foo");
     /// let v = EgValue::from_json_value_plain(v);
     /// assert!(v.is_object());
     /// assert_eq!(v["__c"].as_str(), Some("foo"));
     /// assert_eq!(v["__p"][0].as_str(), Some("one"));
     /// assert_eq!(EgValue::wrapped_classname(&v.into_json_value()), Some("foo"));
-    pub fn add_class_wrapper(val: JsonValue, class: &str) -> json::JsonValue {
-        let mut hash = json::JsonValue::new_object();
-
-        hash.insert(JSON_CLASS_KEY, class).expect("Is Object");
-        hash.insert(JSON_PAYLOAD_KEY, val).expect("Is Object");
-        hash
+    /// ```
+    pub fn add_class_wrapper(val: Value, class: &str) -> Value {
+        serde_json::json!({
+            JSON_CLASS_KEY: class,
+            JSON_PAYLOAD_KEY: val,
+        })
     }
 
     /// Un-package a value wrapped in class+payload object and return
     /// the class name and wrapped object.
-    pub fn remove_class_wrapper(mut obj: JsonValue) -> Option<(String, JsonValue)> {
+    pub fn remove_class_wrapper(mut obj: Value) -> Option<(String, Value)> {
         EgValue::wrapped_classname(&obj)
             .map(|cname| cname.to_string())
             .map(|cname| (cname, obj[JSON_PAYLOAD_KEY].take()))
@@ -446,20 +436,17 @@ impl EgValue {
     /// ```
     /// use evergreen::EgValue;
     ///
-    /// let h = json::object! {
+    /// let h = serde_json::json!({
     ///   "__c": "yup",
     ///   "__p": [1, 2, 3]
-    /// };
+    /// });
     ///
     /// assert_eq!(EgValue::wrapped_classname(&h), Some("yup"));
     /// ```
-    pub fn wrapped_classname(obj: &JsonValue) -> Option<&str> {
-        if obj.is_object()
-            && obj.has_key(JSON_CLASS_KEY)
-            && obj.has_key(JSON_PAYLOAD_KEY)
-            && obj[JSON_CLASS_KEY].is_string()
-        {
-            obj[JSON_CLASS_KEY].as_str()
+    pub fn wrapped_classname(obj: &Value) -> Option<&str> {
+        let map = obj.as_object()?;
+        if map.contains_key(JSON_CLASS_KEY) && map.contains_key(JSON_PAYLOAD_KEY) {
+            map[JSON_CLASS_KEY].as_str()
         } else {
             None
         }
@@ -581,15 +568,40 @@ impl EgValue {
     }
 
     /// Turn a value into a JSON string.
+    ///
+    /// serde_json::to_string() can produce an Err which should be reported.
+    /// TODO deprecate me and use to_json_string.
+    ///
     pub fn dump(&self) -> String {
-        // into_json_value consumes the value, hence the clone().
-        self.clone().into_json_value().dump()
+        serde_json::to_string(self).unwrap_or_else(|e| {
+            log::error!("Error creating JSON string: {e}");
+            "null".to_string()
+        })
     }
 
-    /// Turn a value into a pretty-printed JSON string using the
-    /// provided level of indentation.
-    pub fn pretty(&self, indent: u16) -> String {
-        self.clone().into_json_value().pretty(indent)
+    /// Stringify to JSON.
+    ///
+    /// ```
+    /// use evergreen::EgValue;
+    ///
+    /// let v = EgValue::from("hello");
+    /// assert_eq!(v.to_json_string().unwrap(), r#""hello""#);
+    ///
+    /// let v = EgValue::from(42);
+    /// assert_eq!(v.to_json_string().unwrap(), "42");
+    ///
+    /// assert_eq!(EgValue::Null.to_json_string().unwrap(), "null");
+    /// ```
+    pub fn to_json_string(&self) -> EgResult<String> {
+        serde_json::to_string(self).map_err(|e| e.to_string().into())
+    }
+
+    /// Turn a value into a pretty-printed JSON string.
+    ///
+    /// Note: serde_json always uses 2-space indentation; the indent
+    /// parameter is accepted for API compatibility but is not used.
+    pub fn pretty(&self, _indent: u16) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|e| e.to_string())
     }
 
     /// Push a value onto the end of an Array.
@@ -632,114 +644,122 @@ impl EgValue {
         }
     }
 
-    /// Translates a JsonValue into an EgValue treating values which
-    /// appear to be IDL-classed values as vanilla JsonValue::Object's.
+    /// Translates a Value into an EgValue treating values which
+    /// appear to be IDL-classed values as vanilla objects.
     ///
     /// Useful if you know the data you are working with does
     /// not contain any IDL-classed content or you're interested
     /// in the parts of the message that may be Blessed.
-    pub fn from_json_value_plain(mut v: JsonValue) -> EgValue {
+    pub fn from_json_value_plain(v: Value) -> EgValue {
         match v {
-            JsonValue::Null => EgValue::Null,
-            JsonValue::Boolean(b) => EgValue::Boolean(b),
-            JsonValue::Short(_) | JsonValue::String(_) => EgValue::String(v.take_string().unwrap()),
-            JsonValue::Number(n) => EgValue::Number(n),
-            JsonValue::Array(mut list) => {
-                let mut val_list = Vec::new();
-                for v in list.drain(..) {
-                    val_list.push(EgValue::from_json_value_plain(v));
+            Value::Null => EgValue::Null,
+            Value::Bool(b) => EgValue::Boolean(b),
+            Value::String(s) => EgValue::String(s),
+            Value::Number(n) => EgValue::Number(n),
+            Value::Array(list) => EgValue::Array(
+                list.into_iter()
+                    .map(EgValue::from_json_value_plain)
+                    .collect(),
+            ),
+            Value::Object(map) => {
+                let mut hash = HashMap::new();
+                for (k, v) in map {
+                    hash.insert(k, EgValue::from_json_value_plain(v));
                 }
-                EgValue::Array(val_list)
-            }
-            JsonValue::Object(_) => {
-                let mut map = HashMap::new();
-                let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
-
-                while let Some(k) = keys.pop() {
-                    let val = EgValue::from_json_value_plain(v.remove(&k));
-                    map.insert(k, val);
-                }
-                EgValue::Hash(map)
+                EgValue::Hash(hash)
             }
         }
     }
 
-    /// Transform a JSON value into an EgValue.
+    /// Transform a Value into an EgValue.
     ///
-    /// Returns an Err if the value is shaped like and IDL object
+    /// Returns an Err if the value is shaped like an IDL object
     /// but contains an unrecognized class name.
-    pub fn from_json_value(mut v: JsonValue) -> EgResult<EgValue> {
-        if v.is_number() || v.is_null() || v.is_boolean() || v.is_string() {
-            return Ok(EgValue::from_json_value_plain(v));
-        }
+    pub fn from_json_value(v: Value) -> EgResult<EgValue> {
+        match v {
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_) => Ok(EgValue::from_json_value_plain(v)),
 
-        if let JsonValue::Array(mut list) = v {
-            let mut val_list = Vec::new();
-            for v in list.drain(..) {
-                val_list.push(EgValue::from_json_value(v)?);
-            }
-            return Ok(EgValue::Array(val_list));
-        }
-
-        // JSON object
-        let mut map = HashMap::new();
-        let mut keys: Vec<String> = v.entries().map(|(k, _)| k.to_string()).collect();
-
-        if EgValue::wrapped_classname(&v).is_none() {
-            // Vanilla JSON object
-            while let Some(k) = keys.pop() {
-                let val = EgValue::from_json_value(v.remove(&k))?;
-                map.insert(k, val);
+            Value::Array(list) => {
+                let mut val_list = Vec::new();
+                for v in list {
+                    val_list.push(EgValue::from_json_value(v)?);
+                }
+                Ok(EgValue::Array(val_list))
             }
 
-            return Ok(EgValue::Hash(map));
-        }
+            Value::Object(obj_map) => {
+                // Check for IDL class wrapper
+                if let (Some(classname), Some(_)) = (
+                    obj_map.get(JSON_CLASS_KEY).and_then(|v| v.as_str()),
+                    obj_map.get(JSON_PAYLOAD_KEY),
+                ) {
+                    let classname = classname.to_string();
+                    let idl_class = idl::get_class(&classname)?;
 
-        let (classname, mut list) = EgValue::remove_class_wrapper(v).unwrap();
+                    // The payload is an array of field values for blessed objects.
+                    let payload = obj_map
+                        .get(JSON_PAYLOAD_KEY)
+                        .cloned()
+                        .unwrap_or(Value::Null);
 
-        let idl_class = idl::get_class(&classname)?;
+                    let mut map = HashMap::new();
+                    if let Value::Array(mut arr) = payload {
+                        for field in idl_class.fields().values() {
+                            if arr.len() > field.array_pos() {
+                                // No point in storing NULL entries since blessed values
+                                // have a known set of fields.
+                                let val = mem::replace(
+                                    &mut arr[field.array_pos()],
+                                    Value::Null,
+                                );
 
-        let mut map = HashMap::new();
-        for field in idl_class.fields().values() {
-            if list.len() > field.array_pos() {
-                // No point in storing NULL entries since blessed values
-                // have a known set of fields.
-                let val = list[field.array_pos()].take();
+                                if !val.is_null() {
+                                    map.insert(
+                                        field.name().to_string(),
+                                        EgValue::from_json_value(val)?,
+                                    );
+                                }
+                            }
+                        }
+                    }
 
-                if !val.is_null() {
-                    map.insert(field.name().to_string(), EgValue::from_json_value(val)?);
+                    Ok(EgValue::Blessed(BlessedValue {
+                        idl_class: idl_class.clone(),
+                        values: map,
+                    }))
+                } else {
+                    // Vanilla JSON object
+                    let mut map = HashMap::new();
+                    for (k, v) in obj_map {
+                        map.insert(k, EgValue::from_json_value(v)?);
+                    }
+                    Ok(EgValue::Hash(map))
                 }
             }
         }
-
-        Ok(EgValue::Blessed(BlessedValue {
-            idl_class: idl_class.clone(),
-            values: map,
-        }))
     }
 
-    /// Turn an EgValue into a vanilla JsonValue consuming the EgValue.
+    /// Turn an EgValue into a Value consuming the EgValue.
     ///
     /// Blessed objects are serialized into IDL-classed Arrays
-    pub fn into_json_value(self) -> JsonValue {
+    pub fn into_json_value(self) -> Value {
         match self {
-            EgValue::Null => JsonValue::Null,
-            EgValue::Boolean(v) => JsonValue::Boolean(v),
-            EgValue::String(v) => JsonValue::String(v),
-            EgValue::Number(v) => json::from(v),
-            EgValue::Array(mut list) => {
-                let mut list2 = Vec::new();
-                for v in list.drain(..) {
-                    list2.push(v.into_json_value());
-                }
-                json::from(list2)
+            EgValue::Null => Value::Null,
+            EgValue::Boolean(v) => Value::Bool(v),
+            EgValue::String(v) => Value::String(v),
+            EgValue::Number(v) => Value::Number(v),
+            EgValue::Array(list) => {
+                Value::Array(list.into_iter().map(|v| v.into_json_value()).collect())
             }
-            EgValue::Hash(mut o) => {
-                let mut obj = json::object! {};
-                for (k, v) in o.drain() {
-                    obj[k] = v.into_json_value();
+            EgValue::Hash(o) => {
+                let mut map = serde_json::Map::new();
+                for (k, v) in o {
+                    map.insert(k, v.into_json_value());
                 }
-                obj
+                Value::Object(map)
             }
             EgValue::Blessed(mut o) => {
                 let fields = o.idl_class.fields();
@@ -748,18 +768,16 @@ impl EgValue {
                 let mut sorted = fields.values().collect::<Vec<&idl::Field>>();
                 sorted.sort_by_key(|f| f.array_pos());
 
-                let mut array = JsonValue::new_array();
-
+                let mut array = Vec::new();
                 for field in sorted {
                     let v = match o.values.remove(field.name()) {
                         Some(v) => v,
                         None => eg::NULL,
                     };
-
-                    array.push(v.into_json_value()).expect("Is Array");
+                    array.push(v.into_json_value());
                 }
 
-                Self::add_class_wrapper(array, o.idl_class.classname())
+                Self::add_class_wrapper(Value::Array(array), o.idl_class.classname())
             }
         }
     }
@@ -835,7 +853,7 @@ impl EgValue {
         }
     }
 
-    /// Same as JsonValue::is_empty()
+    /// True if the value is considered "empty".
     ///
     /// # Examples
     ///
@@ -846,7 +864,7 @@ impl EgValue {
     /// ```
     pub fn is_empty(&self) -> bool {
         match self {
-            Self::Number(n) => *n == 0,
+            Self::Number(n) => n.as_f64() == Some(0.0),
             Self::String(s) => s.is_empty(),
             Self::Boolean(b) => !b,
             Self::Null => true,
@@ -877,6 +895,8 @@ impl EgValue {
     /// Translates String and Number values into allocated strings.
     ///
     /// None if the value is neither a Number or String.
+    ///
+    /// TODO: rename this function for clarity
     ///
     /// # Examples
     ///
@@ -920,7 +940,7 @@ impl EgValue {
 
     pub fn as_i64(&self) -> Option<i64> {
         match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
+            EgValue::Number(n) => n.as_i64(),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(s) => s.parse::<i64>().ok(),
             _ => None,
@@ -929,7 +949,7 @@ impl EgValue {
 
     pub fn as_u64(&self) -> Option<u64> {
         match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
+            EgValue::Number(n) => n.as_u64(),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(s) => s.parse::<u64>().ok(),
             _ => None,
@@ -938,7 +958,7 @@ impl EgValue {
 
     pub fn as_usize(&self) -> Option<usize> {
         match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
+            EgValue::Number(n) => n.as_u64().and_then(|v| usize::try_from(v).ok()),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(s) => s.parse::<usize>().ok(),
             _ => None,
@@ -947,7 +967,7 @@ impl EgValue {
 
     pub fn as_isize(&self) -> Option<isize> {
         match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
+            EgValue::Number(n) => n.as_i64().and_then(|v| isize::try_from(v).ok()),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(s) => s.parse::<isize>().ok(),
             _ => None,
@@ -956,7 +976,7 @@ impl EgValue {
 
     pub fn as_u16(&self) -> Option<u16> {
         match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
+            EgValue::Number(n) => n.as_u64().and_then(|v| u16::try_from(v).ok()),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(s) => s.parse::<u16>().ok(),
             _ => None,
@@ -965,7 +985,7 @@ impl EgValue {
 
     pub fn as_i16(&self) -> Option<i16> {
         match self {
-            EgValue::Number(n) => (*n).try_into().ok(),
+            EgValue::Number(n) => n.as_i64().and_then(|v| i16::try_from(v).ok()),
             // It's not uncommon to receive numeric strings over the wire.
             EgValue::String(s) => s.parse::<i16>().ok(),
             _ => None,
@@ -974,7 +994,7 @@ impl EgValue {
 
     pub fn as_f64(&self) -> Option<f64> {
         match self {
-            EgValue::Number(n) => Some((*n).into()),
+            EgValue::Number(n) => n.as_f64(),
             EgValue::String(s) => s.parse::<f64>().ok(),
             _ => None,
         }
@@ -1007,7 +1027,7 @@ impl EgValue {
     pub fn boolish(&self) -> bool {
         match self {
             EgValue::Boolean(b) => *b,
-            EgValue::Number(n) => *n != 0,
+            EgValue::Number(n) => n.as_f64() != Some(0.0),
             EgValue::String(s) => !s.is_empty() && !s.starts_with('f'),
             _ => false,
         }
@@ -1285,6 +1305,171 @@ impl<'a> Iterator for EgValueKeys<'a> {
     }
 }
 
+// --- Serde Serialize / Deserialize for EgValue ---
+
+impl serde::Serialize for EgValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            EgValue::Null => serializer.serialize_unit(),
+            EgValue::Boolean(b) => serializer.serialize_bool(*b),
+            EgValue::String(s) => serializer.serialize_str(s),
+            EgValue::Number(n) => n.serialize(serializer),
+            EgValue::Array(list) => {
+                use serde::ser::SerializeSeq;
+                let mut seq = serializer.serialize_seq(Some(list.len()))?;
+                for v in list {
+                    seq.serialize_element(v)?;
+                }
+                seq.end()
+            }
+            EgValue::Hash(map) => {
+                use serde::ser::SerializeMap;
+                let mut m = serializer.serialize_map(Some(map.len()))?;
+                for (k, v) in map {
+                    m.serialize_entry(k, v)?;
+                }
+                m.end()
+            }
+            EgValue::Blessed(b) => {
+                // Wire format: {"__c": classname, "__p": [field_values...]}
+                use serde::ser::SerializeMap;
+                let mut m = serializer.serialize_map(Some(2))?;
+                m.serialize_entry(JSON_CLASS_KEY, b.idl_class.classname())?;
+
+                let fields = b.idl_class.fields();
+                let mut sorted: Vec<&idl::Field> = fields.values().collect();
+                sorted.sort_by_key(|f| f.array_pos());
+
+                let null = EgValue::Null;
+                let values: Vec<&EgValue> = sorted
+                    .iter()
+                    .map(|field| b.values.get(field.name()).unwrap_or(&null))
+                    .collect();
+
+                m.serialize_entry(JSON_PAYLOAD_KEY, &values)?;
+                m.end()
+            }
+        }
+    }
+}
+
+/// Visitor for deserializing JSON into EgValue.
+///
+/// IDL-aware: objects matching the `{"__c": ..., "__p": ...}` class
+/// wrapper pattern are deserialized as `EgValue::Blessed` if the IDL
+/// class is known. Returns a deserialization error for unknown classes.
+/// Use `EgValue::from_json_value_plain()` when IDL awareness is not needed.
+struct EgValueVisitor;
+
+impl<'de> serde::de::Visitor<'de> for EgValueVisitor {
+    type Value = EgValue;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("any valid JSON value")
+    }
+
+    fn visit_bool<E>(self, v: bool) -> Result<EgValue, E> {
+        Ok(EgValue::Boolean(v))
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<EgValue, E> {
+        Ok(EgValue::Number(v.into()))
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<EgValue, E> {
+        Ok(EgValue::Number(v.into()))
+    }
+
+    fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<EgValue, E> {
+        match serde_json::Number::from_f64(v) {
+            Some(n) => Ok(EgValue::Number(n)),
+            None => Ok(EgValue::Null),
+        }
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<EgValue, E> {
+        Ok(EgValue::String(v.to_string()))
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<EgValue, E> {
+        Ok(EgValue::String(v))
+    }
+
+    fn visit_none<E>(self) -> Result<EgValue, E> {
+        Ok(EgValue::Null)
+    }
+
+    fn visit_unit<E>(self) -> Result<EgValue, E> {
+        Ok(EgValue::Null)
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<EgValue, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut list = Vec::new();
+        while let Some(v) = seq.next_element()? {
+            list.push(v);
+        }
+        Ok(EgValue::Array(list))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<EgValue, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut hash: HashMap<String, EgValue> = HashMap::new();
+        while let Some((key, value)) = map.next_entry::<String, EgValue>()? {
+            hash.insert(key, value);
+        }
+
+        // Check for IDL class wrapper: {"__c": "classname", "__p": [...]}
+        let classname = match hash.get(JSON_CLASS_KEY) {
+            Some(EgValue::String(s)) => Some(s.clone()),
+            _ => None,
+        };
+
+        if let Some(classname) = classname {
+            if hash.contains_key(JSON_PAYLOAD_KEY) {
+                let idl_class = idl::get_class(&classname).map_err(|_| {
+                    serde::de::Error::custom(format!("Unknown IDL class: {classname}"))
+                })?;
+
+                let mut values = HashMap::new();
+                if let Some(EgValue::Array(mut arr)) = hash.remove(JSON_PAYLOAD_KEY) {
+                    for field in idl_class.fields().values() {
+                        if arr.len() > field.array_pos() {
+                            let val = mem::replace(&mut arr[field.array_pos()], EgValue::Null);
+                            if !val.is_null() {
+                                values.insert(field.name().to_string(), val);
+                            }
+                        }
+                    }
+                }
+
+                return Ok(EgValue::Blessed(BlessedValue {
+                    idl_class: idl_class.clone(),
+                    values,
+                }));
+            }
+        }
+
+        Ok(EgValue::Hash(hash))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for EgValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(EgValueVisitor)
+    }
+}
+
 impl fmt::Display for EgValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -1370,15 +1555,15 @@ impl PartialEq<EgValue> for bool {
     }
 }
 
-impl From<EgValue> for JsonValue {
-    fn from(v: EgValue) -> JsonValue {
+impl From<EgValue> for Value {
+    fn from(v: EgValue) -> Value {
         v.into_json_value()
     }
 }
 
-impl TryFrom<JsonValue> for EgValue {
+impl TryFrom<Value> for EgValue {
     type Error = EgError;
-    fn try_from(v: JsonValue) -> EgResult<EgValue> {
+    fn try_from(v: Value) -> EgResult<EgValue> {
         EgValue::from_json_value(v)
     }
 }
@@ -1542,7 +1727,10 @@ impl From<Option<i64>> for EgValue {
 
 impl From<f64> for EgValue {
     fn from(s: f64) -> EgValue {
-        EgValue::Number(s.into())
+        match serde_json::Number::from_f64(s) {
+            Some(n) => EgValue::Number(n),
+            None => EgValue::Null, // NaN/Infinity -> Null
+        }
     }
 }
 
@@ -1558,7 +1746,10 @@ impl From<Option<f64>> for EgValue {
 
 impl From<f32> for EgValue {
     fn from(s: f32) -> EgValue {
-        EgValue::Number(s.into())
+        match serde_json::Number::from_f64(s as f64) {
+            Some(n) => EgValue::Number(n),
+            None => EgValue::Null, // NaN/Infinity -> Null
+        }
     }
 }
 
@@ -1645,7 +1836,8 @@ impl IndexMut<usize> for EgValue {
 
 /// Allows index-based access to EgValue Hash and Blessed values.
 ///
-/// Follows the pattern of JsonValue where undefined values are all null's
+/// Allows index-based access to EgValue Hash and Blessed values.
+/// Undefined values return EgValue::Null.
 impl Index<&str> for EgValue {
     type Output = EgValue;
 

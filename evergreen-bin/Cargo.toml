@@ -12,7 +12,6 @@ marctk = "0.7.0"
 log = "0.4.22"
 getopts = "0.2.21"
 rustyline = "15.0.0"
-json = "0.12.4"
 tungstenite = "0.26.1"
 postgres = { version = "0.19.9", features = ["with-chrono-0_4"] }
 postgres-cursor = "0.4.0"

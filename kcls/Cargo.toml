@@ -7,7 +7,7 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 [dependencies]
 evergreen = { path = "../evergreen" }
 marctk = "0.7.0"
-json = "0.12"
+serde_json = "1"
 log = "0.4"
 getopts = "0.2"
 calamine = "0.25"

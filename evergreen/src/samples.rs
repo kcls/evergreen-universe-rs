@@ -79,12 +79,12 @@ impl SampleData {
 
     pub fn create_default_acn(&self, e: &mut Editor) -> EgResult<EgValue> {
         let mut acn = eg::hash! {
-            creator: self.acn_creator,
-            editor: self.acn_creator,
-            record: self.acn_record,
-            owning_lib: self.aou_id,
-            label: self.acn_label.to_string(),
-            label_class: self.acn_label_class,
+            "creator": self.acn_creator,
+            "editor": self.acn_creator,
+            "record": self.acn_record,
+            "owning_lib": self.aou_id,
+            "label": self.acn_label.to_string(),
+            "label_class": self.acn_label_class,
         };
 
         acn.bless("acn")?;
@@ -94,14 +94,14 @@ impl SampleData {
 
     pub fn create_default_acp(&self, e: &mut Editor, acn_id: i64) -> EgResult<EgValue> {
         let mut acp = eg::hash! {
-            call_number: acn_id,
-            creator: self.acn_creator,
-            editor: self.acn_creator,
-            status: ACP_STATUS,
-            circ_lib: self.aou_id,
-            loan_duration: ACP_LOAN_DURATION,
-            fine_level: ACP_FINE_LEVEL,
-            barcode: self.acp_barcode.to_string(),
+            "call_number": acn_id,
+            "creator": self.acn_creator,
+            "editor": self.acn_creator,
+            "status": ACP_STATUS,
+            "circ_lib": self.aou_id,
+            "loan_duration": ACP_LOAN_DURATION,
+            "fine_level": ACP_FINE_LEVEL,
+            "barcode": self.acp_barcode.to_string(),
         };
 
         acp.bless("acp")?;
@@ -112,7 +112,7 @@ impl SampleData {
     pub fn delete_default_acn(&self, e: &mut Editor) -> EgResult<()> {
         let mut acns = e.search(
             "acn",
-            eg::hash! {label: self.acn_label.to_string(), deleted: "f"},
+            eg::hash! {"label": self.acn_label.to_string(), "deleted": "f"},
         )?;
 
         if let Some(acn) = acns.pop() {
@@ -125,7 +125,7 @@ impl SampleData {
     pub fn get_default_acp(&self, e: &mut Editor) -> EgResult<EgValue> {
         e.search(
             "acp",
-            eg::hash! {barcode: self.acp_barcode.to_string(), deleted: "f"},
+            eg::hash! {"barcode": self.acp_barcode.to_string(), "deleted": "f"},
         )?
         .pop()
         .ok_or_else(|| "Cannot find default copy".into())
@@ -149,13 +149,13 @@ impl SampleData {
     /// Create default user with a default card.
     pub fn create_default_au(&self, e: &mut Editor) -> EgResult<EgValue> {
         let mut au = eg::hash! {
-            profile: self.au_profile,
-            usrname: self.au_barcode.to_string(),
-            passwd: self.au_barcode.to_string(),
-            ident_type: self.au_ident_type,
-            first_given_name: "_EG_TEST_",
-            family_name: "_EG_TEST_",
-            home_ou: self.aou_id,
+            "profile": self.au_profile,
+            "usrname": self.au_barcode.to_string(),
+            "passwd": self.au_barcode.to_string(),
+            "ident_type": self.au_ident_type,
+            "first_given_name": "_EG_TEST_",
+            "family_name": "_EG_TEST_",
+            "home_ou": self.aou_id,
         };
 
         au.bless("au")?;
@@ -163,8 +163,8 @@ impl SampleData {
         let mut au = e.create(au)?;
 
         let mut ac = eg::hash! {
-            barcode: self.au_barcode.to_string(),
-            usr: au["id"].clone(),
+            "barcode": self.au_barcode.to_string(),
+            "usr": au["id"].clone(),
         };
 
         ac.bless("ac")?;
@@ -263,13 +263,13 @@ impl SampleData {
 
     /// Purge the default user, including its linked card, transactions, etc.
     pub fn delete_default_au(&self, e: &mut Editor) -> EgResult<()> {
-        let cards = e.search("ac", eg::hash! {barcode: self.au_barcode.to_string()})?;
+        let cards = e.search("ac", eg::hash! {"barcode": self.au_barcode.to_string()})?;
 
         if let Some(ac) = cards.first() {
             // Purge the user, attached card, and any other data
             // linked to the user.
             let query = eg::hash! {
-                from: ["actor.usr_delete", ac["usr"].clone(), EgValue::Null]
+                "from": ["actor.usr_delete", ac["usr"].clone(), EgValue::Null]
             };
 
             e.json_query(query)?;

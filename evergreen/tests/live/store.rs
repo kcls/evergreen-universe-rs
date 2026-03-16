@@ -32,7 +32,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
         .recv()?
         .expect(".create should return the created object");
 
-    //println!("Created: {}", cbt.dump());
+    //println!("Created: {}", cbt.to_json_string()?);
 
     assert!(cbt.id().is_ok());
     tester.timer.log("Billing Type Created");
@@ -44,7 +44,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     )?;
     cbt = req.recv()?.expect("retrieve should return a value");
 
-    //println!("Retrieve found: {}", cbt.dump());
+    //println!("Retrieve found: {}", cbt.to_json_string()?);
 
     assert!(cbt.id().is_ok());
     tester.timer.log("Retrieved Billing Type");
@@ -54,7 +54,7 @@ pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {
     req = ses.request("open-ils.rs-store.direct.config.billing_type.search", query)?;
     cbt = req.recv()?.expect("search should return a value");
 
-    //println!("Search found: {}", cbt.dump());
+    //println!("Search found: {}", cbt.to_json_string()?);
 
     assert!(cbt.id().is_ok());
     assert!(cbt["name"].str().is_ok());

@@ -286,7 +286,7 @@ impl Settings {
         let names = format!("{{{}}}", names.join(","));
 
         let query = eg::hash! {
-            from: [
+            "from": [
                 "actor.get_cascade_setting_batch",
                 names, org_id, user_id, workstation_id
             ]
