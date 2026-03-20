@@ -345,7 +345,7 @@ impl Session {
         };
 
         let flesh = eg::hash! {
-            "order_by": {"mb": "payment_ts DESC"}
+            "order_by": {"mb": "billing_ts DESC"}
         };
 
         let billing = self
