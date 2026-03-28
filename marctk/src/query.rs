@@ -53,23 +53,24 @@ impl From<&str> for FieldQueryMut {
 }
 
 #[derive(Clone, Debug)]
-pub struct ComplexSpecification {
-    tag: String,
+pub struct ComplexSpecification<'a> {
+    tag: &'a str,
     ind1: Option<char>,
     ind2: Option<char>,
-    subfields: Vec<char>,
+    subfields: &'a str,
 }
 
-impl ComplexSpecification {
+impl<'a> ComplexSpecification<'a> {
     pub fn subfield_filter(&self) -> impl Fn(&Subfield, &Field) -> bool + use<'_> {
         |subfield: &Subfield, field: &Field| match subfield.code().chars().next() {
-            Some(first_char) => self.subfields.contains(&first_char) && self.matches_field(field),
+            Some(first_char) => self.subfields.contains(first_char) && self.matches_field(field),
             None => false,
         }
     }
 
+    #[inline]
     pub fn matches_field(&self, field: &Field) -> bool {
-        field.matches_spec(&self.tag) && self.ind1_matches(field) && self.ind2_matches(field)
+        field.matches_spec(self.tag) && self.ind1_matches(field) && self.ind2_matches(field)
     }
 
     fn indicator_matches(
@@ -99,9 +100,8 @@ impl ComplexSpecification {
         Self::indicator_matches(field, self.ind2, Field::ind2)
     }
 
-    fn parse_indicators_and_subfields(
-        remainder: &mut impl Iterator<Item = char>,
-    ) -> (Option<char>, Option<char>, Vec<char>) {
+    fn parse_indicators_and_subfields(spec: &'a str) -> (Option<char>, Option<char>, &'a str) {
+        let mut remainder = spec.chars();
         // if first character is '(', that means that
         // there are indicators specified within the
         // parens
@@ -117,26 +117,31 @@ impl ComplexSpecification {
         if first == Some('(') {
             remainder.next(); // Consume the closing paren
         }
-        let subfields: Vec<char> = match first {
-            Some('(') => remainder.collect(),
-            _ => first.into_iter().chain(remainder).collect(),
+        let subfields = match first {
+            Some('(') => &spec[4..],
+            _ => spec,
         };
 
         (ind1, ind2, subfields)
     }
 }
 
-impl From<&str> for ComplexSpecification {
-    fn from(raw_spec: &str) -> ComplexSpecification {
-        let mut rest = raw_spec.chars();
-        let tag = rest.by_ref().take(3).collect::<String>();
-        let (ind1, ind2, subfields) = Self::parse_indicators_and_subfields(&mut rest);
-        ComplexSpecification {
+#[derive(Debug)]
+pub struct QueryIsBadlyFormatted;
+
+impl<'a> TryFrom<&'a str> for ComplexSpecification<'a> {
+    type Error = QueryIsBadlyFormatted;
+
+    fn try_from(query: &'a str) -> Result<Self, Self::Error> {
+        let tag = query.get(0..3).ok_or(QueryIsBadlyFormatted)?;
+        let rest = query.get(3..).ok_or(QueryIsBadlyFormatted)?;
+        let (ind1, ind2, subfields) = Self::parse_indicators_and_subfields(rest);
+        Ok(ComplexSpecification {
             tag,
             ind1,
             ind2,
             subfields,
-        }
+        })
     }
 }
 
@@ -212,17 +217,17 @@ mod tests {
 
     #[test]
     fn test_can_create_complex_spec() {
-        let spec = ComplexSpecification::from("245a");
+        let spec = ComplexSpecification::try_from("245a").unwrap();
         assert_eq!(spec.tag, "245");
         assert_eq!(spec.ind1, None);
         assert_eq!(spec.ind2, None);
-        assert_eq!(spec.subfields, vec!['a']);
+        assert_eq!(spec.subfields, "a");
 
-        let indicator_spec = ComplexSpecification::from("6xx(01)av");
+        let indicator_spec = ComplexSpecification::try_from("6xx(01)av").unwrap();
         assert_eq!(indicator_spec.tag, "6xx");
         assert_eq!(indicator_spec.ind1, Some('0'));
         assert_eq!(indicator_spec.ind2, Some('1'));
-        assert_eq!(indicator_spec.subfields, vec!['a', 'v']);
+        assert_eq!(indicator_spec.subfields, "av");
     }
 
     #[test]
@@ -231,7 +236,7 @@ mod tests {
         let _ = field.add_subfield("a", "My title");
         let _ = field.add_subfield("b", "My subtitle");
 
-        let spec = ComplexSpecification::from("245a");
+        let spec = ComplexSpecification::try_from("245a").unwrap();
         let mut filtered = field
             .subfields()
             .iter()
@@ -246,12 +251,24 @@ mod tests {
         let _ = field.set_ind1("1");
         let _ = field.set_ind2("4");
 
-        assert!(ComplexSpecification::from("245a").matches_field(&field));
-        assert!(ComplexSpecification::from("2xxa").matches_field(&field));
-        assert!(ComplexSpecification::from("245(14)a").matches_field(&field));
-        assert!(ComplexSpecification::from("245(1*)a").matches_field(&field));
-        assert!(!ComplexSpecification::from("245(00)a").matches_field(&field));
-        assert!(!ComplexSpecification::from("650(14)").matches_field(&field));
+        assert!(ComplexSpecification::try_from("245a")
+            .unwrap()
+            .matches_field(&field));
+        assert!(ComplexSpecification::try_from("2xxa")
+            .unwrap()
+            .matches_field(&field));
+        assert!(ComplexSpecification::try_from("245(14)a")
+            .unwrap()
+            .matches_field(&field));
+        assert!(ComplexSpecification::try_from("245(1*)a")
+            .unwrap()
+            .matches_field(&field));
+        assert!(!ComplexSpecification::try_from("245(00)a")
+            .unwrap()
+            .matches_field(&field));
+        assert!(!ComplexSpecification::try_from("650(14)")
+            .unwrap()
+            .matches_field(&field));
     }
 
     #[test]
@@ -260,7 +277,11 @@ mod tests {
         let _ = field.set_ind1("0");
         let _ = field.set_ind2(" ");
 
-        assert!(ComplexSpecification::from("100(0_)").matches_field(&field));
-        assert!(ComplexSpecification::from("100(0*)").matches_field(&field));
+        assert!(ComplexSpecification::try_from("100(0_)")
+            .unwrap()
+            .matches_field(&field));
+        assert!(ComplexSpecification::try_from("100(0*)")
+            .unwrap()
+            .matches_field(&field));
     }
 }

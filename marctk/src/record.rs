@@ -454,11 +454,10 @@ impl Field {
         if spec.len() != 3 {
             return false;
         };
+        let potential_matches = self.tag().chars().map(|c| [c, 'x', 'X']);
         spec.chars()
-            .zip(self.tag().chars())
-            .all(|(spec_char, tag_char)| {
-                spec_char.eq_ignore_ascii_case(&'x') || spec_char == tag_char
-            })
+            .zip(potential_matches)
+            .all(|(spec_char, matching_chars)| matching_chars.contains(&spec_char))
     }
 }
 
@@ -871,8 +870,10 @@ impl Record {
     /// );
     /// ```
     pub fn extract_partial_fields(&self, query: &str) -> Vec<Field> {
-        let specs: Vec<ComplexSpecification> =
-            query.split(':').map(ComplexSpecification::from).collect();
+        let specs: Vec<ComplexSpecification> = query
+            .split(':')
+            .filter_map(|spec| ComplexSpecification::try_from(spec).ok())
+            .collect();
         let matching_fields = self
             .fields()
             .iter()
@@ -911,9 +912,11 @@ impl Record {
     /// ```
     ///
     /// [`extract_partial_fields`]: crate::Record::extract_partial_fields
-    pub fn extract_values(&self, query: &str) -> Vec<String> {
-        let specs: Vec<ComplexSpecification> =
-            query.split(':').map(ComplexSpecification::from).collect();
+    pub fn extract_values<'a>(&'a self, query: &str) -> Vec<&'a str> {
+        let specs: Vec<ComplexSpecification> = query
+            .split(':')
+            .filter_map(|spec| ComplexSpecification::try_from(spec).ok())
+            .collect();
         let matching_fields = self
             .fields()
             .iter()
@@ -923,7 +926,7 @@ impl Record {
                 .subfields()
                 .iter()
                 .filter(|sf| specs.iter().any(|spec| spec.subfield_filter()(sf, field)))
-                .map(|sf| sf.content.to_owned());
+                .map(|sf| sf.content());
             accumulator.extend(matching_subfield_values);
             accumulator
         })
