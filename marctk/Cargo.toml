@@ -29,6 +29,9 @@ harness = false
 name = "marc_breaker"
 harness = false
 
+[[bench]]
+name = "marc_xml"
+harness = false
 
 [features]
 marc21_bibliographic = []
