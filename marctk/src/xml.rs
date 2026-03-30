@@ -30,7 +30,7 @@ const ESTIMATED_SIZE_OF_XML: usize = 2000;
 /// assert_eq!(xml::escape_xml("<'É'>", true), "&lt;&apos;&#xC9;&apos;&gt;");
 /// ```
 pub fn escape_xml(value: &str, is_attr: bool) -> Cow<'_, str> {
-    if !value.contains(|c: char| ['&', '\\', '"', '>', '<', '~'].contains(&c)) {
+    if !contains_escapable_chars(value) {
         return Cow::Borrowed(value);
     }
     let mut buf = String::with_capacity(value.len());
@@ -54,6 +54,10 @@ pub fn escape_xml(value: &str, is_attr: bool) -> Cow<'_, str> {
     }
 
     Cow::Owned(buf)
+}
+
+fn contains_escapable_chars(value: &str) -> bool {
+    value.contains(|c: char| ['&', '\\', '"', '>', '<'].contains(&c) || c > '~')
 }
 
 /// Append leading spaces for formatted XML.
@@ -446,5 +450,18 @@ mod tests {
             values,
             ["First title".to_string(), "Second title".to_string()]
         );
+    }
+
+    #[test]
+    fn test_can_escape_xml_entities() {
+        // Within an XML attribute
+        assert_eq!(escape_xml("<", true), "&lt;");
+        assert_eq!(escape_xml("&", true), "&amp;");
+        assert_eq!(escape_xml("\"", true), "&quot;");
+
+        // Outside an attribute
+        assert_eq!(escape_xml("<", false), "&lt;");
+        assert_eq!(escape_xml("&", false), "&amp;");
+        assert_eq!(escape_xml("É", false), "&#xC9;");
     }
 }
