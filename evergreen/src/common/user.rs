@@ -96,6 +96,18 @@ pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Ve
     Ok(orgs)
 }
 
+
+/// Returns true if the user has the provided permission at their home
+/// org unit or any work org unit (including descendants).
+pub fn has_perm(e: &mut Editor, user_id: i64, perm: &str, org_unit: i64) -> EgResult<bool> {
+    let dbfunc = "permission.usr_has_perm";
+
+    let query = eg::hash! {"from": [dbfunc, user_id, perm, org_unit]};
+
+    Ok(e.json_query(query)?.pop().map(|v| v.boolish()).unwrap_or(false))
+}
+
+
 /// Returns counts of items out, overdue, etc. for a user.
 pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     match e.retrieve("ocirccount", user_id)? {
