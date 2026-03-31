@@ -122,6 +122,7 @@ pub struct Patron {
     pub expire_date: Option<String>,
     pub net_access: Option<String>,
     pub profile: Option<String>,
+    pub profile_id: Option<i64>,
     pub phone: Option<String>,
     pub screen_msg: Option<String>,
 }
@@ -163,6 +164,7 @@ impl Patron {
             expire_date: None,
             net_access: None,
             profile: None,
+            profile_id: None,
             phone: None,
             screen_msg: None,
         }
@@ -232,6 +234,8 @@ impl Session {
         if let Some(profile) = user["profile"]["name"].as_str() {
             patron.profile = Some(profile.to_string());
         }
+
+        patron.profile_id = user["profile"]["id"].as_i64();
 
         let phone = user["day_phone"].as_str().unwrap_or(
             user["evening_phone"]
@@ -807,11 +811,6 @@ impl Session {
             block_tags
         );
 
-        if !blocked && block_tags.is_empty() {
-            // No blocks, etc. left to inspect.  All done.
-            return Ok(());
-        }
-
         patron.holds_denied = blocked || block_tags.contains("HOLD");
 
         if self.config().setting_is_true("patron_status_permit_loans") {
@@ -828,9 +827,36 @@ impl Session {
         // checkout and holds privilege, since both would be needed for recalls.
         patron.recall_denied = patron.charge_denied || patron.holds_denied;
 
+        if !patron.charge_denied {
+            let maybe_perm = self
+                .config()
+                .settings()
+                .get("patron_charge_ok_permission")
+                .map(|v| v.as_str().map(|v| v.to_string()));
+
+            if let Some(Some(permission)) = maybe_perm {
+                log::info!("{self} checking 'patron_charge_ok_permission' {permission}");
+                let perm_org = self.editor().perm_org();
+
+                let has_perm =
+                    eg::common::user::has_perm(self.editor(), patron.id, &permission, perm_org)?;
+
+                if !has_perm {
+                    log::info!(
+                        "User {} does not have permission '{}'. Blocking checkout",
+                        patron.id,
+                        permission
+                    );
+                    patron.charge_denied = true;
+                }
+            }
+        }
+
         // Matching EG SIPServer.
         // Unknown if it serves a purpose.
-        patron.screen_msg = Some("blocked".to_string());
+        if patron.charge_denied || patron.renew_denied || patron.recall_denied {
+            patron.screen_msg = Some("blocked".to_string());
+        }
 
         Ok(())
     }
