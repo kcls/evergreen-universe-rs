@@ -104,7 +104,9 @@ pub fn has_perm(e: &mut Editor, user_id: i64, perm: &str, org_unit: i64) -> EgRe
 
     let query = eg::hash! {"from": [dbfunc, user_id, perm, org_unit]};
 
-    Ok(e.json_query(query)?.pop().map(|v| v.boolish()).unwrap_or(false))
+    let response = e.json_query(query)?.pop();
+
+    Ok(response.map(|v| v[dbfunc].boolish()).unwrap_or(false))
 }
 
 
