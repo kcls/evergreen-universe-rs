@@ -811,11 +811,6 @@ impl Session {
             block_tags
         );
 
-        if !blocked && block_tags.is_empty() {
-            // No blocks, etc. left to inspect.  All done.
-            return Ok(());
-        }
-
         patron.holds_denied = blocked || block_tags.contains("HOLD");
 
         if self.config().setting_is_true("patron_status_permit_loans") {
@@ -859,7 +854,9 @@ impl Session {
 
         // Matching EG SIPServer.
         // Unknown if it serves a purpose.
-        patron.screen_msg = Some("blocked".to_string());
+        if patron.charge_denied || patron.renew_denied || patron.recall_denied {
+            patron.screen_msg = Some("blocked".to_string());
+        }
 
         Ok(())
     }
