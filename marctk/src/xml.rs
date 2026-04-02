@@ -1,4 +1,5 @@
 //! Routines for reading and writing MARC XML
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -15,6 +16,9 @@ pub const MARCXML_XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instan
 pub const MARCXML_SCHEMA_LOCATION: &str =
     "http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd";
 
+const MARCXML_RECORD_TAG_NO_FORMAT: &str = r#"<record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd">"#;
+const ESTIMATED_SIZE_OF_XML: usize = 2000;
+
 /// Replace non-ASCII characters and special characters with escaped
 /// XML entities.
 ///
@@ -22,11 +26,14 @@ pub const MARCXML_SCHEMA_LOCATION: &str =
 ///
 /// ```
 /// use marctk::xml;
-/// assert_eq!(xml::escape_xml("<'É'>", false).as_str(), "&lt;'&#xC9;'&gt;");
-/// assert_eq!(xml::escape_xml("<'É'>", true).as_str(), "&lt;&apos;&#xC9;&apos;&gt;");
+/// assert_eq!(xml::escape_xml("<'É'>", false), "&lt;'&#xC9;'&gt;");
+/// assert_eq!(xml::escape_xml("<'É'>", true), "&lt;&apos;&#xC9;&apos;&gt;");
 /// ```
-pub fn escape_xml(value: &str, is_attr: bool) -> String {
-    let mut buf = String::new();
+pub fn escape_xml(value: &str, is_attr: bool) -> Cow<'_, str> {
+    if !contains_escapable_chars(value) {
+        return Cow::Borrowed(value);
+    }
+    let mut buf = String::with_capacity(value.len());
     for c in value.chars() {
         if c == '&' {
             buf.push_str("&amp;");
@@ -46,7 +53,11 @@ pub fn escape_xml(value: &str, is_attr: bool) -> String {
         }
     }
 
-    buf
+    Cow::Owned(buf)
+}
+
+fn contains_escapable_chars(value: &str) -> bool {
+    value.contains(|c: char| ['&', '\\', '"', '>', '<'].contains(&c) || c > '~')
 }
 
 /// Append leading spaces for formatted XML.
@@ -322,7 +333,7 @@ impl Record {
 
         let mut xml = match options.with_xml_declaration {
             true => String::from(r#"<?xml version="1.0"?>"#),
-            _ => String::new(),
+            _ => String::with_capacity(ESTIMATED_SIZE_OF_XML),
         };
 
         // Document root
@@ -333,10 +344,7 @@ impl Record {
                 MARCXML_NAMESPACE, MARCXML_XSI_NAMESPACE, MARCXML_SCHEMA_LOCATION
             );
         } else {
-            xml += &format!(
-                r#"<record xmlns="{}" xmlns:xsi="{}" xsi:schemaLocation="{}">"#,
-                MARCXML_NAMESPACE, MARCXML_XSI_NAMESPACE, MARCXML_SCHEMA_LOCATION
-            );
+            xml.push_str(MARCXML_RECORD_TAG_NO_FORMAT);
         }
 
         // Leader
@@ -442,5 +450,18 @@ mod tests {
             values,
             ["First title".to_string(), "Second title".to_string()]
         );
+    }
+
+    #[test]
+    fn test_can_escape_xml_entities() {
+        // Within an XML attribute
+        assert_eq!(escape_xml("<", true), "&lt;");
+        assert_eq!(escape_xml("&", true), "&amp;");
+        assert_eq!(escape_xml("\"", true), "&quot;");
+
+        // Outside an attribute
+        assert_eq!(escape_xml("<", false), "&lt;");
+        assert_eq!(escape_xml("&", false), "&amp;");
+        assert_eq!(escape_xml("É", false), "&#xC9;");
     }
 }
