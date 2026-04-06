@@ -357,6 +357,17 @@ impl Session {
             }
         }
 
+        if evt.textcode() == "COPY_IN_TRANSIT" &&
+            self.config().setting_is_true("checkout.override.COPY_IN_TRANSIT") {
+
+            // Checking out an item in transit requires we first cancel the transit.
+            self.cancel_transit(item_barcode)?;
+
+            // Once the transit is canceled, calling the .override variant 
+            // of checkout (below) should not be necessary, but I'm leaving 
+            // the logic as-is for now to reduce disruption.
+        }
+
         let can_override = self
             .config()
             .setting_is_true(&format!("checkout.override.{}", evt.textcode()));
@@ -391,6 +402,28 @@ impl Session {
         }
 
         Ok(result)
+    }
+
+
+    /// Cancel an open transit
+    fn cancel_transit(&mut self, item_barcode: &str) -> EgResult<()> {
+        log::info!("{self} Canceling transit on item {item_barcode}");
+
+        let params = vec![
+            EgValue::from(self.editor().authtoken().unwrap()),
+            eg::hash! {"barcode": item_barcode}
+        ];
+
+        let resp = self
+            .editor()
+            .client_mut()
+            .send_recv_one("open-ils.circ", "open-ils.circ.transit.abort", params)?;
+
+        if Some(Some(1)) == resp.as_ref().map(|v| v.as_i64()) {
+            Ok(())
+        } else {
+            Err(format!("Failed to cancel transit: {resp:?}").into())
+        }
     }
 
     /// Checkout that runs within the current thread as a direct
