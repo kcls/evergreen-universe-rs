@@ -188,7 +188,7 @@ impl EgValue {
         // Pull the map out of the EgValue::Hash so we can inspect
         // it and eventually consume it.
         let map = match self {
-            Self::Hash(ref mut h) => std::mem::take(h),
+            Self::Hash(h) => std::mem::take(h),
             _ => return Err("Only EgValue::Hash's can be blessed".into()),
         };
 
@@ -221,7 +221,7 @@ impl EgValue {
     /// NO-OP for non-Blessed values.
     pub fn unbless(&mut self) {
         let (idl_class, mut map) = match self {
-            Self::Blessed(ref mut o) => (&o.idl_class, std::mem::take(&mut o.values)),
+            Self::Blessed(o) => (&o.idl_class, std::mem::take(&mut o.values)),
             _ => return,
         };
 
@@ -251,15 +251,15 @@ impl EgValue {
     /// generated Hash as Null values.
     pub fn to_classed_hash(&mut self) {
         let (idl_class, mut map) = match self {
-            Self::Array(ref mut list) => {
+            Self::Array(list) => {
                 list.iter_mut().for_each(|v| v.to_classed_hash());
                 return;
             }
-            Self::Hash(ref mut h) => {
+            Self::Hash(h) => {
                 h.values_mut().for_each(|v| v.to_classed_hash());
                 return;
             }
-            Self::Blessed(ref mut o) => (&o.idl_class, std::mem::take(&mut o.values)),
+            Self::Blessed(o) => (&o.idl_class, std::mem::take(&mut o.values)),
             _ => return,
         };
 
@@ -298,7 +298,7 @@ impl EgValue {
             return Ok(());
         }
 
-        if let Self::Array(ref mut list) = self {
+        if let Self::Array(list) = self {
             for val in list.iter_mut() {
                 val.from_classed_hash()?;
             }
@@ -311,7 +311,7 @@ impl EgValue {
             Some(c) => c,
             None => {
                 // Vanilla, un-classed hash
-                if let Self::Hash(ref mut m) = self {
+                if let Self::Hash(m) = self {
                     for v in m.values_mut() {
                         v.from_classed_hash()?;
                     }
@@ -324,7 +324,7 @@ impl EgValue {
         let idl_class = idl::get_class(classname)?.clone();
 
         let mut map = match self {
-            Self::Hash(ref mut m) => std::mem::take(m),
+            Self::Hash(m) => std::mem::take(m),
             _ => return Ok(()), // can't get here
         };
 
@@ -376,7 +376,7 @@ impl EgValue {
     /// assert_eq!(h["hello3"].len(), 2);
     /// ```
     pub fn scrub_hash_nulls(&mut self) {
-        if let EgValue::Hash(ref mut m) = self {
+        if let EgValue::Hash(m) = self {
             // Build a new map containg the scrubbed values and no
             // NULLs then turn that into the map used by this EGValue.
             let mut newmap = HashMap::new();
@@ -391,7 +391,7 @@ impl EgValue {
             }
 
             let _ = std::mem::replace(m, newmap);
-        } else if let EgValue::Array(ref mut list) = self {
+        } else if let EgValue::Array(list) = self {
             for v in list.iter_mut() {
                 v.scrub_hash_nulls();
             }
@@ -481,9 +481,9 @@ impl EgValue {
     /// ```
     pub fn len(&self) -> usize {
         match self {
-            EgValue::Array(ref l) => l.len(),
-            EgValue::Hash(ref h) => h.len(),
-            EgValue::Blessed(ref b) => b.values.len(),
+            EgValue::Array(l) => l.len(),
+            EgValue::Hash(h) => h.len(),
+            EgValue::Blessed(b) => b.values.len(),
             _ => 0,
         }
     }
@@ -596,7 +596,7 @@ impl EgValue {
     ///
     /// Err if self is not an Array.
     pub fn push(&mut self, v: impl Into<EgValue>) -> EgResult<()> {
-        if let EgValue::Array(ref mut list) = self {
+        if let EgValue::Array(list) = self {
             list.push(v.into());
             Ok(())
         } else {
@@ -608,8 +608,8 @@ impl EgValue {
     /// if this is not an object-typed value.
     pub fn insert(&mut self, key: &str, value: impl Into<EgValue>) -> EgResult<()> {
         match self {
-            EgValue::Hash(ref mut o) => o.insert(key.to_string(), value.into()),
-            EgValue::Blessed(ref mut o) => o.values.insert(key.to_string(), value.into()),
+            EgValue::Hash(o) => o.insert(key.to_string(), value.into()),
+            EgValue::Blessed(o) => o.values.insert(key.to_string(), value.into()),
             _ => return Err(format!("{self} Cannot call insert() on a non-object type").into()),
         };
 
@@ -626,8 +626,8 @@ impl EgValue {
     /// ```
     pub fn has_key(&self, key: &str) -> bool {
         match self {
-            EgValue::Hash(ref o) => o.contains_key(key),
-            EgValue::Blessed(ref o) => o.values.contains_key(key),
+            EgValue::Hash(o) => o.contains_key(key),
+            EgValue::Blessed(o) => o.values.contains_key(key),
             _ => false,
         }
     }
@@ -847,12 +847,12 @@ impl EgValue {
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Number(n) => *n == 0,
-            Self::String(ref s) => s.is_empty(),
+            Self::String(s) => s.is_empty(),
             Self::Boolean(b) => !b,
             Self::Null => true,
-            Self::Array(ref l) => l.is_empty(),
-            Self::Hash(ref h) => h.is_empty(),
-            Self::Blessed(ref h) => h.values.is_empty(),
+            Self::Array(l) => l.is_empty(),
+            Self::Hash(h) => h.is_empty(),
+            Self::Blessed(h) => h.values.is_empty(),
         }
     }
 
@@ -922,7 +922,7 @@ impl EgValue {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<i64>().ok(),
+            EgValue::String(s) => s.parse::<i64>().ok(),
             _ => None,
         }
     }
@@ -931,7 +931,7 @@ impl EgValue {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<u64>().ok(),
+            EgValue::String(s) => s.parse::<u64>().ok(),
             _ => None,
         }
     }
@@ -940,7 +940,7 @@ impl EgValue {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<usize>().ok(),
+            EgValue::String(s) => s.parse::<usize>().ok(),
             _ => None,
         }
     }
@@ -949,7 +949,7 @@ impl EgValue {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<isize>().ok(),
+            EgValue::String(s) => s.parse::<isize>().ok(),
             _ => None,
         }
     }
@@ -958,7 +958,7 @@ impl EgValue {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<u16>().ok(),
+            EgValue::String(s) => s.parse::<u16>().ok(),
             _ => None,
         }
     }
@@ -967,7 +967,7 @@ impl EgValue {
         match self {
             EgValue::Number(n) => (*n).try_into().ok(),
             // It's not uncommon to receive numeric strings over the wire.
-            EgValue::String(ref s) => s.parse::<i16>().ok(),
+            EgValue::String(s) => s.parse::<i16>().ok(),
             _ => None,
         }
     }
@@ -975,7 +975,7 @@ impl EgValue {
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             EgValue::Number(n) => Some((*n).into()),
-            EgValue::String(ref s) => s.parse::<f64>().ok(),
+            EgValue::String(s) => s.parse::<f64>().ok(),
             _ => None,
         }
     }
@@ -1008,7 +1008,7 @@ impl EgValue {
         match self {
             EgValue::Boolean(b) => *b,
             EgValue::Number(n) => *n != 0,
-            EgValue::String(ref s) => !s.is_empty() && !s.starts_with('f'),
+            EgValue::String(s) => !s.is_empty() && !s.starts_with('f'),
             _ => false,
         }
     }
@@ -1019,7 +1019,7 @@ impl EgValue {
     pub fn id(&self) -> EgResult<i64> {
         // If it's Blessed, verify "id" is a valid field so
         // the index lookup doesn't panic.
-        if let EgValue::Blessed(ref o) = self {
+        if let EgValue::Blessed(o) = self {
             if o.idl_class().has_field("id") {
                 self["id"]
                     .as_i64()
@@ -1072,7 +1072,7 @@ impl EgValue {
     }
 
     pub fn pop(&mut self) -> EgValue {
-        if let Self::Array(ref mut list) = self {
+        if let Self::Array(list) = self {
             list.pop().unwrap_or(eg::NULL)
         } else {
             eg::NULL
@@ -1084,7 +1084,7 @@ impl EgValue {
     /// If the index is not present or self is not an Array,
     /// returns EgValue::Null.
     pub fn array_remove(&mut self, index: usize) -> EgValue {
-        if let Self::Array(ref mut list) = self {
+        if let Self::Array(list) = self {
             if list.len() > index {
                 return list.remove(index);
             }
@@ -1095,9 +1095,9 @@ impl EgValue {
     /// Remove a value from an object-like thing and, if found, return
     /// the value to the caller.
     pub fn remove(&mut self, key: &str) -> Option<EgValue> {
-        if let Self::Hash(ref mut map) = self {
+        if let Self::Hash(map) = self {
             map.remove(key)
-        } else if let Self::Blessed(ref mut o) = self {
+        } else if let Self::Blessed(o) = self {
             o.values.remove(key)
         } else {
             None
@@ -1130,8 +1130,8 @@ impl EgValue {
     pub fn entries(&self) -> EgValueEntries<'_> {
         EgValueEntries {
             map_iter: match self {
-                EgValue::Hash(ref o) => Some(o.iter()),
-                EgValue::Blessed(ref o) => Some(o.values.iter()),
+                EgValue::Hash(o) => Some(o.iter()),
+                EgValue::Blessed(o) => Some(o.values.iter()),
                 _ => None,
             },
         }
@@ -1143,8 +1143,8 @@ impl EgValue {
     pub fn entries_mut(&mut self) -> EgValueEntriesMut<'_> {
         EgValueEntriesMut {
             map_iter: match self {
-                EgValue::Hash(ref mut o) => Some(o.iter_mut()),
-                EgValue::Blessed(ref mut o) => Some(o.values.iter_mut()),
+                EgValue::Hash(o) => Some(o.iter_mut()),
+                EgValue::Blessed(o) => Some(o.values.iter_mut()),
                 _ => None,
             },
         }
@@ -1156,8 +1156,8 @@ impl EgValue {
     pub fn keys(&self) -> EgValueKeys<'_> {
         EgValueKeys {
             map_iter: match self {
-                EgValue::Hash(ref o) => Some(o.keys()),
-                EgValue::Blessed(ref o) => Some(o.values.keys()),
+                EgValue::Hash(o) => Some(o.keys()),
+                EgValue::Blessed(o) => Some(o.values.keys()),
                 _ => None,
             },
         }
@@ -1170,7 +1170,7 @@ impl EgValue {
     /// Ignore everything else.
     pub fn deflesh(&mut self) -> EgResult<()> {
         let inner = match self {
-            EgValue::Blessed(ref mut i) => i,
+            EgValue::Blessed(i) => i,
             _ => return Ok(()),
         };
 
@@ -1290,11 +1290,11 @@ impl fmt::Display for EgValue {
         match self {
             EgValue::Null => write!(f, "null"),
             EgValue::Boolean(b) => write!(f, "{b}"),
-            EgValue::String(ref s) => write!(f, "{s}"),
+            EgValue::String(s) => write!(f, "{s}"),
             EgValue::Number(n) => write!(f, "{n}"),
             EgValue::Array(_) => write!(f, "<array>"),
             EgValue::Hash(_) => write!(f, "<hash>"),
-            EgValue::Blessed(ref o) => {
+            EgValue::Blessed(o) => {
                 let mut s = o.idl_class.classname().to_string();
                 if let Some(pkey) = self.pkey_field() {
                     if let Some(pval) = self.pkey_value() {
@@ -1610,7 +1610,7 @@ impl Index<usize> for EgValue {
     /// Returns the EgValue stored in the provided index or EgValue::Null;
     fn index(&self, index: usize) -> &Self::Output {
         match self {
-            Self::Array(ref o) => {
+            Self::Array(o) => {
                 if let Some(v) = o.get(index) {
                     v
                 } else {
@@ -1632,7 +1632,7 @@ impl IndexMut<usize> for EgValue {
         if !self.is_array() {
             *self = EgValue::new_array();
         }
-        if let EgValue::Array(ref mut list) = self {
+        if let EgValue::Array(list) = self {
             while list.len() < index + 1 {
                 list.push(eg::NULL)
             }
@@ -1656,7 +1656,7 @@ impl Index<&str> for EgValue {
     /// contain the named field.
     fn index(&self, key: &str) -> &Self::Output {
         match self {
-            Self::Blessed(ref o) => {
+            Self::Blessed(o) => {
                 if key.starts_with('_') || o.idl_class.has_field(key) {
                     o.values.get(key).unwrap_or(&eg::NULL)
                 } else {
@@ -1668,7 +1668,7 @@ impl Index<&str> for EgValue {
                     panic!("{}", err);
                 }
             }
-            EgValue::Hash(ref hash) => hash.get(key).unwrap_or(&eg::NULL),
+            EgValue::Hash(hash) => hash.get(key).unwrap_or(&eg::NULL),
             // Only Object-y things can be indexed
             _ => &eg::NULL,
         }
@@ -1700,7 +1700,7 @@ impl IndexMut<&str> for EgValue {
                 panic!("{}", err);
             }
 
-            if let Self::Blessed(ref mut o) = self {
+            if let Self::Blessed(o) = self {
                 if !o.values.contains_key(key) {
                     o.values.insert(key.to_string(), eg::NULL);
                 }
@@ -1710,7 +1710,7 @@ impl IndexMut<&str> for EgValue {
                 panic!("Cannot get here");
             }
         } else {
-            if let EgValue::Hash(ref mut hash) = self {
+            if let EgValue::Hash(hash) = self {
                 if hash.get(key).is_none() {
                     hash.insert(key.to_string(), eg::NULL);
                 }

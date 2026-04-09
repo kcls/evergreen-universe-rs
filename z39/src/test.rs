@@ -119,7 +119,7 @@ fn test_payloaduest() {
     let RpnStructure::Op(ref operand) = rpn_query.rpn else {
         panic!();
     };
-    let Operand::AttrTerm(ref term) = operand else {
+    let Operand::AttrTerm(term) = operand else {
         panic!();
     };
     let Term::General(ref isbn) = term.term else {

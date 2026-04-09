@@ -451,7 +451,7 @@ pub fn test_copy_for_hold(
         let try_override = if let Some(ov) = overrides.as_ref() {
             match ov {
                 Overrides::All => true,
-                Overrides::Events(ref list) => list
+                Overrides::Events(list) => list
                     .iter()
                     .map(|e| e.as_str())
                     .collect::<Vec<&str>>()
