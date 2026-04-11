@@ -1,7 +1,7 @@
 [package]
 name = "marctk"
 version = "0.6.1"
-edition = "2021"
+edition = "2024"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 license = "MIT"
 description = "MARC21 Binary, Breaker, and XML Toolkit"
