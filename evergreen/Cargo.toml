@@ -6,8 +6,8 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
 mptc = { path = "../mptc" }
-marctk = { path = "../marctk" }
 sip2 = { path = "../sip2" }
+marctk = "0.7.0"
 rand = "0.8.5"
 log = "0.4.22"
 syslog = "7.0.0"

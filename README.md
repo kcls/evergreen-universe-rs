@@ -17,12 +17,6 @@ other binaries.
 
 [README](./evergreen/README.md)
 
-### MARCTK
-
-Library for reading/writing MARC Binary, MARC XML, and MARC Breaker.
-
-[README](./marctk/README.md)
-
 ### SIP2
 
 SIP2 client library
