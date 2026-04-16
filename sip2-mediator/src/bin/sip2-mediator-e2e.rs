@@ -1,7 +1,7 @@
-use eg::constants as C;
-use eg::samples::SampleData;
 use eg::EgResult;
 use eg::EgValue;
+use eg::constants as C;
+use eg::samples::SampleData;
 use evergreen as eg;
 use std::time::SystemTime;
 

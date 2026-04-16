@@ -1,7 +1,7 @@
-use crate::osrf::client;
-use crate::osrf::method;
 use crate::EgError;
 use crate::EgResult;
+use crate::osrf::client;
+use crate::osrf::method;
 use std::any::Any;
 
 /*

@@ -323,9 +323,10 @@ impl ConfigBuilder {
 
     fn child_node_text(&self, node: &roxmltree::Node, name: &str) -> Option<String> {
         if let Some(tnode) = node.children().find(|n| n.has_tag_name(name))
-            && let Some(text) = tnode.text() {
-                return Some(text.to_string());
-            }
+            && let Some(text) = tnode.text()
+        {
+            return Some(text.to_string());
+        }
         None
     }
 
@@ -445,9 +446,10 @@ impl ConfigBuilder {
         let mut port = DEFAULT_BUS_PORT;
         if let Some(pnode) = node.children().find(|c| c.has_tag_name("port"))
             && let Some(ptext) = pnode.text()
-                && let Ok(p) = ptext.parse::<u16>() {
-                    port = p;
-                }
+            && let Ok(p) = ptext.parse::<u16>()
+        {
+            port = p;
+        }
 
         Ok(BusDomain {
             port,
@@ -478,15 +480,17 @@ impl ConfigBuilder {
                 }
                 "syslog" => {
                     if let Some(f) = child.text()
-                        && let Ok(ff) = syslog::Facility::from_str(f) {
-                            ops.syslog_facility = Some(ff);
-                        }
+                        && let Ok(ff) = syslog::Facility::from_str(f)
+                    {
+                        ops.syslog_facility = Some(ff);
+                    }
                 }
                 "actlog" => {
                     if let Some(f) = child.text()
-                        && let Ok(ff) = syslog::Facility::from_str(f) {
-                            ops.activity_log_facility = Some(ff);
-                        }
+                        && let Ok(ff) = syslog::Facility::from_str(f)
+                    {
+                        ops.activity_log_facility = Some(ff);
+                    }
                 }
                 "loglevel" => {
                     if let Some(level_num) = child.text() {

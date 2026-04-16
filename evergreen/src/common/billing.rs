@@ -1,5 +1,6 @@
 use crate as eg;
 use chrono::Duration;
+use eg::EgValue;
 use eg::common::org;
 use eg::common::penalty;
 use eg::common::settings::Settings;
@@ -8,7 +9,6 @@ use eg::date;
 use eg::editor::Editor;
 use eg::result::EgResult;
 use eg::util;
-use eg::EgValue;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 

@@ -1,7 +1,7 @@
 /// Signal Tracking
 use signal_hook as sigs;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::SystemTime;
 
 pub const SIG_FAST_SHUTDOWN: i32 = sigs::consts::SIGTERM;

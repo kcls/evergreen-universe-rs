@@ -1,10 +1,10 @@
 use crate as eg;
-use eg::common::holds;
-use eg::common::settings::Settings;
-use eg::idl;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use eg::common::holds;
+use eg::common::settings::Settings;
+use eg::idl;
 use marctk as marc;
 use std::collections::HashMap;
 

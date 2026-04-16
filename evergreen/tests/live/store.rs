@@ -1,6 +1,6 @@
 use crate::util;
-use eg::result::EgResult;
 use eg::EgValue;
+use eg::result::EgResult;
 use evergreen as eg;
 
 const CBT_NAME: &str = "open-ils.rs-store-test";

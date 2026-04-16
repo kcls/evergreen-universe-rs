@@ -1,12 +1,12 @@
 /// Main entry point for processing A/T events related to a
 /// given event definition.
 use crate as eg;
-use eg::common::trigger::{Event, EventState};
-use eg::idl;
-use eg::util::thread_id;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use eg::common::trigger::{Event, EventState};
+use eg::idl;
+use eg::util::thread_id;
 use std::fmt;
 use std::process;
 

@@ -1,8 +1,8 @@
 //! Host Settings Module
-use crate::osrf::conf;
 use crate::Client;
 use crate::EgResult;
 use crate::EgValue;
+use crate::osrf::conf;
 use std::sync::OnceLock;
 
 const SETTINGS_TIMEOUT: u64 = 10;

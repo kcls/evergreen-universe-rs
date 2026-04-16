@@ -1,4 +1,5 @@
 use crate as eg;
+use eg::EgValue;
 use eg::common::bib;
 use eg::common::billing;
 use eg::common::circulator::{CircOp, CircPolicy, Circulator, LEGACY_CIRC_EVENT_MAP};
@@ -10,7 +11,6 @@ use eg::constants as C;
 use eg::date;
 use eg::event::EgEvent;
 use eg::result::EgResult;
-use eg::EgValue;
 use std::time::Duration;
 
 /// Performs item checkins
@@ -113,9 +113,10 @@ impl Circulator<'_> {
 
         let mut checkout_time = None;
         if let Some(ct) = self.options.get("checkout_time")
-            && let Some(ct2) = ct.as_str() {
-                checkout_time = Some(ct2.to_string());
-            }
+            && let Some(ct2) = ct.as_str()
+        {
+            checkout_time = Some(ct2.to_string());
+        }
 
         let patron_id = self.patron_id;
         let noncat_type = noncat_type.int()?;
@@ -336,9 +337,10 @@ impl Circulator<'_> {
     fn check_copy_status(&mut self) -> EgResult<()> {
         if let Some(copy) = self.copy.as_ref()
             && let Some(id) = copy["status"]["id"].as_i64()
-                && id == C::COPY_STATUS_IN_TRANSIT {
-                    self.exit_err_on_event_code("COPY_IN_TRANSIT")?;
-                }
+            && id == C::COPY_STATUS_IN_TRANSIT
+        {
+            self.exit_err_on_event_code("COPY_IN_TRANSIT")?;
+        }
         Ok(())
     }
 
@@ -1124,18 +1126,20 @@ impl Circulator<'_> {
 
     fn is_deposit(&self) -> bool {
         if let Some(copy) = self.copy.as_ref()
-            && let Some(amount) = copy["deposit_amount"].as_f64() {
-                return amount > 0.0 && copy["deposit"].boolish();
-            }
+            && let Some(amount) = copy["deposit_amount"].as_f64()
+        {
+            return amount > 0.0 && copy["deposit"].boolish();
+        }
         false
     }
 
     // True if we have a deposit_amount but the desposit flag is false.
     fn is_rental(&self) -> bool {
         if let Some(copy) = self.copy.as_ref()
-            && let Some(amount) = copy["deposit_amount"].as_f64() {
-                return amount > 0.0 && !copy["deposit"].boolish();
-            }
+            && let Some(amount) = copy["deposit_amount"].as_f64()
+        {
+            return amount > 0.0 && !copy["deposit"].boolish();
+        }
         false
     }
 

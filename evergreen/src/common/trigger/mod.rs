@@ -1,11 +1,11 @@
 //! Action/Trigger main entry point.
 use crate as eg;
-use eg::common::org;
-use eg::date;
-use eg::idl;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use eg::common::org;
+use eg::date;
+use eg::idl;
 
 pub mod event;
 pub use event::{Event, EventState};
@@ -270,7 +270,7 @@ pub fn create_passive_events_for_def(
     // Make sure we don't create events that are already represented.
 
     let core_type = event_def["hook"]["core_type"].as_str().unwrap(); // required
-                                                                      //let idl_class = idl::get_class(core_type)?.clone();
+    //let idl_class = idl::get_class(core_type)?.clone();
     let idl_class = idl::get_class(core_type)?;
 
     let pkey_field = idl_class
@@ -299,28 +299,29 @@ pub fn create_passive_events_for_def(
 
     // Skip targets where the user is not opted in.
     if let Some(usr_field) = event_def["usr_field"].as_str()
-        && let Some(setting) = event_def["opt_in_setting"].as_str() {
-            // {"+circ": "usr"}
-            let mut user_matches = eg::hash! {};
-            user_matches[&format!("+{core_type}")] = EgValue::from(usr_field);
+        && let Some(setting) = event_def["opt_in_setting"].as_str()
+    {
+        // {"+circ": "usr"}
+        let mut user_matches = eg::hash! {};
+        user_matches[&format!("+{core_type}")] = EgValue::from(usr_field);
 
-            let opt_filter = eg::hash! {
-                "-exists": {
-                    "from": "aus",
-                    "where": {
-                        "name": setting,
-                        "usr": {"=": user_matches},
-                        "value": "true"
-                    }
+        let opt_filter = eg::hash! {
+            "-exists": {
+                "from": "aus",
+                "where": {
+                    "name": setting,
+                    "usr": {"=": user_matches},
+                    "value": "true"
                 }
-            };
-
-            if filters["-and"].is_array() {
-                filters["-and"].push(opt_filter).expect("Is Array");
-            } else {
-                filters["-and"] = eg::array![opt_filter];
             }
+        };
+
+        if filters["-and"].is_array() {
+            filters["-and"].push(opt_filter).expect("Is Array");
+        } else {
+            filters["-and"] = eg::array![opt_filter];
         }
+    }
 
     log::debug!("Event def {event_def_id} filter is: {}", filters.dump());
 

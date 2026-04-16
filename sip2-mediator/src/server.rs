@@ -6,8 +6,8 @@ use mptc::signals::SignalTracker;
 use std::any::Any;
 use std::net::TcpListener;
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// How often do we wake to check for shutdown signals
 const SIP_SHUTDOWN_POLL_INTERVAL: u64 = 5;

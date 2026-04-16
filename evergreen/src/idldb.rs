@@ -1,11 +1,11 @@
 //! Tools for managing IDL-classed objects/values via SQL.
 use crate as eg;
 use chrono::prelude::*;
+use eg::EgResult;
+use eg::EgValue;
 use eg::db;
 use eg::idl;
 use eg::util::Pager;
-use eg::EgResult;
-use eg::EgValue;
 use pg::types::ToSql;
 use postgres as pg;
 use rust_decimal::Decimal;
@@ -895,7 +895,7 @@ impl Translator {
                     false,
                 )?,
                 EgValue::Blessed(_) => {
-                    return Err("Cannot create JSON filter from a blessed value".into())
+                    return Err("Cannot create JSON filter from a blessed value".into());
                 }
             };
 

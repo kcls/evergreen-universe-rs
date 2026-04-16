@@ -1,10 +1,10 @@
 //! JSON Query Parser
 use crate as eg;
+use eg::EgValue;
 use eg::db;
 use eg::idl;
 use eg::osrf::message;
 use eg::result::EgResult;
-use eg::EgValue;
 use std::sync::Arc;
 
 const JOIN_WITH_AND: &str = "AND";
@@ -244,10 +244,11 @@ impl JsonQueryCompiler {
 
         if let Some(suppress) = idl_field.suppress_controller()
             && let Some(module) = self.controllername.as_ref()
-                && suppress.contains(module) {
-                    // Field is not visible to this module.
-                    return Ok(false);
-                }
+            && suppress.contains(module)
+        {
+            // Field is not visible to this module.
+            return Ok(false);
+        }
 
         Ok(true)
     }
@@ -372,9 +373,10 @@ impl JsonQueryCompiler {
 
             let mut direction = "ASC";
             if let Some(dir) = hash["direction"].as_str()
-                && (dir.starts_with('d') || dir.starts_with('D')) {
-                    direction = "DESC";
-                }
+                && (dir.starts_with('d') || dir.starts_with('D'))
+            {
+                direction = "DESC";
+            }
 
             order_bys.push(format!("{order_by_str} {direction}"));
         }
@@ -574,9 +576,10 @@ impl JsonQueryCompiler {
         for field in idl_class.real_fields_sorted().iter() {
             if self.field_may_be_selected(field.name(), classname)?
                 && let Some(list) = exclude
-                    && list.contains(&field.name()) {
-                        continue;
-                    }
+                && list.contains(&field.name())
+            {
+                continue;
+            }
             fields.push(self.select_one_field(alias, None, field.name(), None, true)?);
         }
 
@@ -913,9 +916,10 @@ impl JsonQueryCompiler {
         if !filter.is_null() {
             let mut op = " AND ";
             if let Some(filter_op) = filter["filter_op"].as_str()
-                && filter_op == "or" {
-                    op = " OR ";
-                }
+                && filter_op == "or"
+            {
+                op = " OR ";
+            }
             sql += op;
             sql += &self.compile_where_for_class(filter, right_alias, JOIN_WITH_AND)?;
         }
@@ -925,10 +929,11 @@ impl JsonQueryCompiler {
         // Add nested JOINs if we have any
         let sub_join = &join_def["join"];
         if !sub_join.is_null()
-            && let Some(sjoin) = self.compile_joins_for_class(right_alias, sub_join)? {
-                sql += " ";
-                sql += &sjoin;
-            }
+            && let Some(sjoin) = self.compile_joins_for_class(right_alias, sub_join)?
+        {
+            sql += " ";
+            sql += &sjoin;
+        }
 
         Ok(sql)
     }

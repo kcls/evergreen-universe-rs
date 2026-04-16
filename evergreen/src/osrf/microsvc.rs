@@ -1,3 +1,4 @@
+use crate::EgResult;
 use crate::init;
 use crate::osrf::addr::BusAddress;
 use crate::osrf::app;
@@ -15,7 +16,6 @@ use crate::osrf::method::ParamCount;
 use crate::osrf::sclient::HostSettings;
 use crate::osrf::session::ServerSession;
 use crate::util;
-use crate::EgResult;
 use mptc::signals::SignalTracker;
 use std::cell::RefMut;
 use std::collections::HashMap;

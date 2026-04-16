@@ -1,10 +1,10 @@
 use crate as eg;
+use eg::EgValue;
 use eg::common::org;
 use eg::common::settings::Settings;
 use eg::date;
 use eg::editor::Editor;
 use eg::result::EgResult;
-use eg::EgValue;
 use std::time::Duration;
 
 /// Create X number of non-cat checkouts.

@@ -1,7 +1,7 @@
 //! Evergreen API Response Events
 use crate as eg;
-use eg::date;
 use eg::EgValue;
+use eg::date;
 use std::fmt;
 
 /// Common argument to API calls that allow for targeted overrides.

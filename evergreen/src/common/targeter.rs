@@ -1038,9 +1038,10 @@ impl<'a> HoldTargeter<'a> {
             // soft_retarget_time and the retarget_time.
 
             if let Some(prev_check_time) = context.hold["prev_check_time"].as_str()
-                && let Some(retarget_time) = self.retarget_time.as_deref() {
-                    soft_retarget = prev_check_time > retarget_time;
-                }
+                && let Some(retarget_time) = self.retarget_time.as_deref()
+            {
+                soft_retarget = prev_check_time > retarget_time;
+            }
         }
 
         let mut retain_prev = false;
@@ -1113,10 +1114,10 @@ impl<'a> HoldTargeter<'a> {
     fn attempt_force_recall_target(&self, context: &mut HoldTargetContext) {
         if let Some(ht) = context.hold["hold_type"].as_str()
             && (ht == "R" || ht == "F")
-                && let Some(c) = context.copies.first() {
-                    context.target = c.id;
-                    log::info!("{self} force/recall hold using copy {}", c.id);
-                
+            && let Some(c) = context.copies.first()
+        {
+            context.target = c.id;
+            log::info!("{self} force/recall hold using copy {}", c.id);
         }
     }
 
@@ -1225,9 +1226,10 @@ impl<'a> HoldTargeter<'a> {
             // we're no longer interested in non-local copies.  Clear
             // the valid_previous_copy if it's not local.
             if let Some(copy) = context.valid_previous_copy.as_ref()
-                && copy.proximity > 0 {
-                    context.valid_previous_copy = None;
-                }
+                && copy.proximity > 0
+            {
+                context.valid_previous_copy = None;
+            }
         }
 
         Ok(None)
@@ -1430,9 +1432,10 @@ impl<'a> HoldTargeter<'a> {
 
         // We also need the proximity for the previous target.
         if let Some(copy) = context.valid_previous_copy.as_mut()
-            && let Some(prox) = flat_map.get(&copy.id) {
-                copy.proximity = *prox;
-            }
+            && let Some(prox) = flat_map.get(&copy.id)
+        {
+            copy.proximity = *prox;
+        }
 
         context.weighted_prox_map = weighted;
 

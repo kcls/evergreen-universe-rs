@@ -1,10 +1,10 @@
 //! Standing penalty utility functions
 use crate as eg;
+use eg::EgValue;
 use eg::common::settings::Settings;
 use eg::common::trigger;
 use eg::editor::Editor;
 use eg::result::EgResult;
-use eg::EgValue;
 
 // Shortcut for unckecked int conversions for values that are known good.
 // We coul compare EgValue's directly, but there's a chance a number may be

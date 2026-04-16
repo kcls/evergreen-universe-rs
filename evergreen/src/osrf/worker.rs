@@ -1,3 +1,4 @@
+use crate::EgResult;
 use crate::osrf::addr::BusAddress;
 use crate::osrf::app;
 use crate::osrf::client::{Client, ClientSingleton};
@@ -13,7 +14,6 @@ use crate::osrf::method::ParamCount;
 use crate::osrf::server::Server;
 use crate::osrf::session::ServerSession;
 use crate::util;
-use crate::EgResult;
 use mptc::signals::SignalTracker;
 use std::cell::RefMut;
 use std::fmt;

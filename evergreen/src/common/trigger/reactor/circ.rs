@@ -1,10 +1,10 @@
 //! Base module for A/T Reactors
 use crate as eg;
-use eg::common::auth;
-use eg::common::{trigger, trigger::Event, trigger::Processor};
 use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
+use eg::common::auth;
+use eg::common::{trigger, trigger::Event, trigger::Processor};
 
 impl Processor<'_> {
     pub fn autorenew(&mut self, events: &mut [&mut Event]) -> EgResult<()> {

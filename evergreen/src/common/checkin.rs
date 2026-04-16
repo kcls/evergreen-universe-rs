@@ -1,5 +1,6 @@
 use crate as eg;
 use chrono::Timelike;
+use eg::EgValue;
 use eg::common::billing;
 use eg::common::circulator::{CircOp, Circulator};
 use eg::common::holds;
@@ -10,7 +11,6 @@ use eg::constants as C;
 use eg::date;
 use eg::event::EgEvent;
 use eg::result::EgResult;
-use eg::EgValue;
 use std::collections::HashSet;
 
 /// Performs item checkins
@@ -430,9 +430,10 @@ impl Circulator<'_> {
         };
 
         if let Some(resp) = self.editor().json_query(query)?.first()
-            && resp["evergreen.can_float"].boolish() {
-                self.set_option_true("can_float");
-            }
+            && resp["evergreen.can_float"].boolish()
+        {
+            self.set_option_true("can_float");
+        }
 
         Ok(())
     }
@@ -564,9 +565,10 @@ impl Circulator<'_> {
     fn check_claims_returned(&mut self) {
         if let Some(circ) = self.circ.as_ref()
             && let Some(sf) = circ["stop_fines"].as_str()
-                && sf == "CLAIMSRETURNED" {
-                    self.add_event_code("CIRC_CLAIMS_RETURNED");
-                }
+            && sf == "CLAIMSRETURNED"
+        {
+            self.add_event_code("CIRC_CLAIMS_RETURNED");
+        }
     }
 
     /// Checks for an existing deposit payment and voids the deposit
@@ -911,14 +913,14 @@ impl Circulator<'_> {
 
         if let Some(ops) = self.options.get("lost_or_lo_billing_options")
             && !self.get_option_bool("void_overdues")
-                && let Some(setting) = ops["ous_restore_overdue"].as_str()
-                    && self
-                        .settings
-                        .get_value_at_org(setting, copy_circ_lib)?
-                        .boolish()
-                    {
-                        self.checkin_handle_lost_or_lo_now_found_restore_od(false)?;
-                    }
+            && let Some(setting) = ops["ous_restore_overdue"].as_str()
+            && self
+                .settings
+                .get_value_at_org(setting, copy_circ_lib)?
+                .boolish()
+        {
+            self.checkin_handle_lost_or_lo_now_found_restore_od(false)?;
+        }
 
         let mut is_circ = false;
         let xact_id = match self.circ.as_ref() {
@@ -967,15 +969,17 @@ impl Circulator<'_> {
 
         let mut void_cost = 0.0;
         if let Some(set) = ops["ous_void_item_cost"].as_str()
-            && let Ok(c) = self.settings.get_value_at_org(set, copy_circ_lib)?.float() {
-                void_cost = c;
-            }
+            && let Ok(c) = self.settings.get_value_at_org(set, copy_circ_lib)?.float()
+        {
+            void_cost = c;
+        }
 
         let mut void_proc_fee = 0.0;
         if let Some(set) = ops["ous_void_proc_fee"].as_str()
-            && let Ok(c) = self.settings.get_value_at_org(set, copy_circ_lib)?.float() {
-                void_proc_fee = c;
-            }
+            && let Ok(c) = self.settings.get_value_at_org(set, copy_circ_lib)?.float()
+        {
+            void_proc_fee = c;
+        }
 
         let void_cost_btype = ops["void_cost_btype"].as_i64().unwrap_or(0);
         let void_fee_btype = ops["void_fee_btype"].as_i64().unwrap_or(0);
@@ -1463,13 +1467,12 @@ impl Circulator<'_> {
 
         if evt.textcode() == "RESERVATION_NOT_FOUND"
             && let Some(cause) = evt.payload()["fail_cause"].as_str()
-                && cause == "not-transferable" {
-                    log::warn!(
-                        "{self} reservation capture attempted against non-transferable item"
-                    );
-                    self.add_event(evt);
-                    return Ok(false);
-                }
+            && cause == "not-transferable"
+        {
+            log::warn!("{self} reservation capture attempted against non-transferable item");
+            self.add_event(evt);
+            return Ok(false);
+        }
 
         if !evt.is_success() {
             // Other non-success events are simply treated as non-captures.
@@ -1710,18 +1713,20 @@ impl Circulator<'_> {
         };
 
         if !self.is_precat_copy()
-            && let Some(rec) = self.editor().retrieve("rmsr", record_id)? {
-                payload["title"] = rec;
-            }
+            && let Some(rec) = self.editor().retrieve("rmsr", record_id)?
+        {
+            payload["title"] = rec;
+        }
 
         if let Some(mut hold) = self.hold.take()
-            && hold["cancel_time"].is_null() {
-                hold["notes"] = EgValue::from(
-                    self.editor()
-                        .search("ahrn", eg::hash! {hold: hold["id"].clone()})?,
-                );
-                payload["hold"] = hold;
-            }
+            && hold["cancel_time"].is_null()
+        {
+            hold["notes"] = EgValue::from(
+                self.editor()
+                    .search("ahrn", eg::hash! {hold: hold["id"].clone()})?,
+            );
+            payload["hold"] = hold;
+        }
 
         if let Some(circ) = self.circ.as_ref() {
             let flesh = eg::hash! {

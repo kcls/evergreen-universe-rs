@@ -4,9 +4,9 @@
 use crate::error::{LocalError, LocalResult};
 use crate::prefs::ImplementationPrefs;
 
+use rasn::AsnType;
 use rasn::ber::de::DecodeErrorKind;
 use rasn::prelude::*;
-use rasn::AsnType;
 
 #[derive(Debug, Clone, PartialEq, Default, AsnType, Decode, Encode)]
 #[rasn(tag(context, 20))]
@@ -779,7 +779,7 @@ impl Message {
                 return Err(LocalError::ProtocolError(format!(
                     "Cannot process message with first byte: {}",
                     bytes[0]
-                )))
+                )));
             }
         };
 

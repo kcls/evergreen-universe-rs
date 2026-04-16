@@ -200,9 +200,10 @@ impl fmt::Display for Circulator<'_> {
         let mut copy_status = "null";
 
         if let Some(p) = &self.patron
-            && let Some(bc) = &p["card"]["barcode"].as_str() {
-                patron_barcode = bc;
-            }
+            && let Some(bc) = &p["card"]["barcode"].as_str()
+        {
+            patron_barcode = bc;
+        }
 
         let copy_barcode = match self.copy_barcode.as_ref() {
             Some(b) => b,
@@ -210,9 +211,10 @@ impl fmt::Display for Circulator<'_> {
         };
 
         if let Some(c) = &self.copy
-            && let Some(s) = c["status"]["name"].as_str() {
-                copy_status = s;
-            }
+            && let Some(s) = c["status"]["name"].as_str()
+        {
+            copy_status = s;
+        }
 
         write!(
             f,
@@ -410,9 +412,10 @@ impl<'a> Circulator<'a> {
         // Avoid duplicate success events.
         // Retain the most recent.
         if evt.is_success()
-            && let Some(pos) = self.events.iter().position(|e| e.is_success()) {
-                self.events.remove(pos);
-            }
+            && let Some(pos) = self.events.iter().position(|e| e.is_success())
+        {
+            self.events.remove(pos);
+        }
 
         self.events.push(evt);
     }
@@ -613,9 +616,10 @@ impl<'a> Circulator<'a> {
 
         let mut copy_state = "NORMAL";
         if let Some(hash) = list.first()
-            && let Some(state) = hash["asset.copy_state"].as_str() {
-                copy_state = state;
-            }
+            && let Some(state) = hash["asset.copy_state"].as_str()
+        {
+            copy_state = state;
+        }
 
         // Avoid creating system copy alerts for "NORMAL" copies.
         if copy_state.eq("NORMAL") {
@@ -1137,9 +1141,10 @@ impl<'a> Circulator<'a> {
     /// True if we found a copy to work on and it's a precat item.
     pub fn is_precat_copy(&self) -> bool {
         if let Some(copy) = self.copy.as_ref()
-            && let Ok(cn) = copy["call_number"].int() {
-                return cn == C::PRECAT_CALL_NUMBER;
-            }
+            && let Ok(cn) = copy["call_number"].int()
+        {
+            return cn == C::PRECAT_CALL_NUMBER;
+        }
         false
     }
 
@@ -1227,9 +1232,10 @@ impl<'a> Circulator<'a> {
 
     pub fn handle_deleted_copy(&mut self) {
         if let Some(c) = self.copy.as_ref()
-            && c["deleted"].boolish() {
-                self.options
-                    .insert(String::from("capture"), "nocapture".into());
-            }
+            && c["deleted"].boolish()
+        {
+            self.options
+                .insert(String::from("capture"), "nocapture".into());
+        }
     }
 }

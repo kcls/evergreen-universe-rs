@@ -1,8 +1,8 @@
+use crate::EgResult;
+use crate::EgValue;
 use crate::osrf::app;
 use crate::osrf::message;
 use crate::osrf::session;
-use crate::EgResult;
-use crate::EgValue;
 use json::JsonValue;
 use std::fmt;
 

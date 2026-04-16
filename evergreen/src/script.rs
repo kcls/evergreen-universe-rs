@@ -1,11 +1,11 @@
 //! Script utilities.
 use crate as eg;
+use eg::Editor;
+use eg::EgResult;
 use eg::common::auth;
 use eg::date;
 use eg::db::DatabaseConnection;
 use eg::init;
-use eg::Editor;
-use eg::EgResult;
 
 const HELP_TEXT: &str = "
 Runner Additions:

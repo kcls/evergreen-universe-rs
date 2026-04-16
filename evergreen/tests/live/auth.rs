@@ -1,7 +1,7 @@
 use crate::util;
+use eg::EgResult;
 use eg::common::auth;
 use eg::osrf::cache::Cache;
-use eg::EgResult;
 use evergreen as eg;
 
 /// Values from EG's opensrf.xml.example

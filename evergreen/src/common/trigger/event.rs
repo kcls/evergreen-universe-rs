@@ -1,6 +1,6 @@
 use crate as eg;
-use eg::result::{EgError, EgResult};
 use eg::EgValue;
+use eg::result::{EgError, EgResult};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -91,7 +91,7 @@ impl Event {
             match EgValue::parse(data) {
                 Ok(d) => Some(d),
                 Err(e) => {
-                    return Err(format!("Invalid user data for event {id}: {e} {data}").into())
+                    return Err(format!("Invalid user data for event {id}: {e} {data}").into());
                 }
             }
         } else {

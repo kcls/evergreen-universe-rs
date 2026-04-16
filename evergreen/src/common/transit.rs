@@ -1,10 +1,10 @@
 use crate as eg;
-use eg::common::holds;
-use eg::constants as C;
 use eg::Editor;
 use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
+use eg::common::holds;
+use eg::constants as C;
 
 /// Cancel a transit
 ///

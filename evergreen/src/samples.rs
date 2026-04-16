@@ -1,9 +1,9 @@
 //! Evergreen sample data and tools
 use crate as eg;
-use eg::constants as C;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use eg::constants as C;
 
 // Sample data based on the Evergreen Concerto sample data set.
 

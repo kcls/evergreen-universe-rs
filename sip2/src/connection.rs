@@ -1,6 +1,6 @@
+use super::Message;
 use super::error::Error;
 use super::spec;
-use super::Message;
 use deunicode::deunicode;
 use std::fmt;
 use std::io::prelude::*;

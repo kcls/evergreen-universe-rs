@@ -151,9 +151,10 @@ impl Server {
         log::debug!("server: removing worker {}", worker_id);
 
         if let Some(worker) = self.workers.remove(worker_id)
-            && let Err(e) = worker.join_handle.join() {
-                log::error!("Worker join failed with: {e:?}");
-            }
+            && let Err(e) = worker.join_handle.join()
+        {
+            log::error!("Worker join failed with: {e:?}");
+        }
         if respawn {
             self.start_workers();
         }

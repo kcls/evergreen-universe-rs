@@ -1,12 +1,12 @@
 //! Connect to OpenSRF/Redis, load host settings, and load the IDL.
+use crate::Client;
+use crate::EgResult;
 use crate::idl;
 use crate::norm::Normalizer;
 use crate::osrf::conf;
 use crate::osrf::conf::LogFile;
 use crate::osrf::logging;
 use crate::osrf::sclient::HostSettings;
-use crate::Client;
-use crate::EgResult;
 use daemonize;
 use std::env;
 use std::fs::File;
@@ -193,9 +193,10 @@ pub fn load_idl() -> EgResult<()> {
     }
 
     if HostSettings::is_loaded()
-        && let Some(fname) = HostSettings::get("/IDL")?.as_str() {
-            return idl::Parser::load_file(fname);
-        }
+        && let Some(fname) = HostSettings::get("/IDL")?.as_str()
+    {
+        return idl::Parser::load_file(fname);
+    }
 
     idl::Parser::load_file(DEFAULT_IDL_PATH)
 }

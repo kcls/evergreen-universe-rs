@@ -105,9 +105,10 @@ impl Request {
         let mut resp: Option<EgValue> = None;
         while !self.complete {
             if let Some(r) = self.recv_with_timeout(timeout)?
-                && resp.is_none() {
-                    resp = Some(r);
-                } // else discard the non-first response.
+                && resp.is_none()
+            {
+                resp = Some(r);
+            } // else discard the non-first response.
         }
 
         Ok(resp)

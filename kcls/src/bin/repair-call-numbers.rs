@@ -1,6 +1,6 @@
-use eg::script;
 use eg::EgResult;
 use eg::EgValue;
+use eg::script;
 use evergreen as eg;
 use std::fs;
 

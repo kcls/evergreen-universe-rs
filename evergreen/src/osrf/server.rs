@@ -1,3 +1,4 @@
+use crate::EgResult;
 use crate::init;
 use crate::osrf::app;
 use crate::osrf::client::Client;
@@ -8,12 +9,11 @@ use crate::osrf::sclient::HostSettings;
 use crate::osrf::session;
 use crate::osrf::worker::{Worker, WorkerState, WorkerStateEvent};
 use crate::util;
-use crate::EgResult;
 use mptc::signals::SignalTracker;
 use std::collections::HashMap;
 use std::env;
-use std::sync::mpsc;
 use std::sync::OnceLock;
+use std::sync::mpsc;
 use std::thread;
 use std::time;
 use std::time::Duration;
@@ -118,29 +118,34 @@ impl Server {
         // Environment vars override values from opensrf.settings
 
         if let Ok(num) = env::var("OSRF_SERVER_MIN_WORKERS")
-            && let Ok(num) = num.parse::<usize>() {
-                min_workers = num;
-            }
+            && let Ok(num) = num.parse::<usize>()
+        {
+            min_workers = num;
+        }
 
         if let Ok(num) = env::var("OSRF_SERVER_MIN_IDLE_WORKERS")
-            && let Ok(num) = num.parse::<usize>() {
-                min_idle_workers = num;
-            }
+            && let Ok(num) = num.parse::<usize>()
+        {
+            min_idle_workers = num;
+        }
 
         if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKERS")
-            && let Ok(num) = num.parse::<usize>() {
-                max_workers = num;
-            }
+            && let Ok(num) = num.parse::<usize>()
+        {
+            max_workers = num;
+        }
 
         if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKER_REQUESTS")
-            && let Ok(num) = num.parse::<usize>() {
-                max_worker_requests = num;
-            }
+            && let Ok(num) = num.parse::<usize>()
+        {
+            max_worker_requests = num;
+        }
 
         if let Ok(num) = env::var("OSRF_SERVER_WORKER_KEEPALIVE")
-            && let Ok(num) = num.parse::<usize>() {
-                worker_keepalive = num;
-            }
+            && let Ok(num) = num.parse::<usize>()
+        {
+            worker_keepalive = num;
+        }
 
         log::info!(
             "Starting service {} with min-workers={} min-idle={} max-workers={} max-requests={} keepalive={}",

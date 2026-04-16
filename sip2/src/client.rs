@@ -1,7 +1,7 @@
 use super::connection::Connection;
 use super::error::Error;
 use super::params::*;
-use super::{spec, util, Field, FixedField, Message};
+use super::{Field, FixedField, Message, spec, util};
 use std::str;
 
 /// Wrapper for Connection which provides a simpler interface for some
@@ -128,9 +128,10 @@ impl Client {
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(bl_val) = resp.get_field_value(spec::F_VALID_PATRON.code)
-            && bl_val == "Y" {
-                return Ok(SipResponse::new(resp, true));
-            }
+            && bl_val == "Y"
+        {
+            return Ok(SipResponse::new(resp, true));
+        }
 
         Ok(SipResponse::new(resp, false))
     }
@@ -147,9 +148,10 @@ impl Client {
         let mut summary: [char; 10] = [' '; 10];
 
         if let Some(idx) = params.summary()
-            && idx < 10 {
-                summary[idx] = 'Y';
-            }
+            && idx < 10
+        {
+            summary[idx] = 'Y';
+        }
 
         let sum_str: String = summary.iter().collect::<String>();
 
@@ -178,9 +180,10 @@ impl Client {
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(bl_val) = resp.get_field_value(spec::F_VALID_PATRON.code)
-            && bl_val == "Y" {
-                return Ok(SipResponse::new(resp, true));
-            }
+            && bl_val == "Y"
+        {
+            return Ok(SipResponse::new(resp, true));
+        }
 
         Ok(SipResponse::new(resp, false))
     }
@@ -207,9 +210,10 @@ impl Client {
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(title_val) = resp.get_field_value(spec::F_TITLE_IDENT.code)
-            && !title_val.is_empty() {
-                return Ok(SipResponse::new(resp, true));
-            }
+            && !title_val.is_empty()
+        {
+            return Ok(SipResponse::new(resp, true));
+        }
 
         Ok(SipResponse::new(resp, false))
     }
@@ -240,9 +244,10 @@ impl Client {
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(status) = resp.fixed_fields().first()
-            && status.value() == "1" {
-                return Ok(SipResponse::new(resp, true));
-            }
+            && status.value() == "1"
+        {
+            return Ok(SipResponse::new(resp, true));
+        }
 
         Ok(SipResponse::new(resp, false))
     }
@@ -267,9 +272,10 @@ impl Client {
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(status) = resp.fixed_fields().first()
-            && status.value() == "1" {
-                return Ok(SipResponse::new(resp, true));
-            }
+            && status.value() == "1"
+        {
+            return Ok(SipResponse::new(resp, true));
+        }
 
         Ok(SipResponse::new(resp, false))
     }
@@ -305,9 +311,10 @@ impl Client {
         let resp = self.connection.sendrecv(&req)?;
 
         if let Some(status) = resp.fixed_fields().first()
-            && status.value() == "1" {
-                return Ok(SipResponse::new(resp, true));
-            }
+            && status.value() == "1"
+        {
+            return Ok(SipResponse::new(resp, true));
+        }
 
         Ok(SipResponse::new(resp, false))
     }

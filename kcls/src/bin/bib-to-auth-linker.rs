@@ -3,13 +3,13 @@
  * script.  It varies from stock Evergreen.  It should be possible to
  * sync with stock Evergreen with additional command line options.
  */
+use eg::EgResult;
+use eg::EgValue;
 use eg::common::bib;
 use eg::common::org;
 use eg::date;
 use eg::norm::Normalizer;
 use eg::script;
-use eg::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 use marctk as marc;
 use std::collections::HashSet;
@@ -478,20 +478,20 @@ impl Worker {
             }
 
             if let Some((_, ind)) = AUTH_TO_BIB_IND2.iter().find(|(t, _)| t == &thesaurus)
-                && ind == &bib_ind2 {
-                    log::debug!(
-                        "Found a match on thesaurus '{thesaurus}' for auth {}",
-                        leader.auth_id
-                    );
+                && ind == &bib_ind2
+            {
+                log::debug!(
+                    "Found a match on thesaurus '{thesaurus}' for auth {}",
+                    leader.auth_id
+                );
 
-                    return Ok(Some(leader.auth_id));
-                }
+                return Ok(Some(leader.auth_id));
+            }
         }
 
-        if is_local
-            && let Some(ldr) = authz_leader {
-                return Ok(Some(ldr.auth_id));
-            }
+        if is_local && let Some(ldr) = authz_leader {
+            return Ok(Some(ldr.auth_id));
+        }
 
         Ok(None)
     }

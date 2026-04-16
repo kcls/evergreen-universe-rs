@@ -53,31 +53,41 @@ fn test_auth_to_auth_linker_script_creates_links(tester: &mut util::Tester) -> E
 
     let links_after_script = tester.editor.search("aalink", eg::hash! {"id": {">": 0}})?;
     assert_eq!(links_after_script.len(), 5);
-    assert!(links_after_script
-        .iter()
-        .any(|link| link["source"] == 84.into()
-            && link["target"] == 82.into()
-            && link["field"] == 25.into()));
-    assert!(links_after_script
-        .iter()
-        .any(|link| link["source"] == 81.into()
-            && link["target"] == 83.into()
-            && link["field"] == 25.into()));
-    assert!(links_after_script
-        .iter()
-        .any(|link| link["source"] == 74.into()
-            && link["target"] == 73.into()
-            && link["field"] == 27.into()));
-    assert!(links_after_script
-        .iter()
-        .any(|link| link["source"] == 93.into()
-            && link["target"] == 87.into()
-            && link["field"] == 25.into()));
-    assert!(links_after_script
-        .iter()
-        .any(|link| link["source"] == 75.into()
-            && link["target"] == 74.into()
-            && link["field"] == 27.into()));
+    assert!(
+        links_after_script
+            .iter()
+            .any(|link| link["source"] == 84.into()
+                && link["target"] == 82.into()
+                && link["field"] == 25.into())
+    );
+    assert!(
+        links_after_script
+            .iter()
+            .any(|link| link["source"] == 81.into()
+                && link["target"] == 83.into()
+                && link["field"] == 25.into())
+    );
+    assert!(
+        links_after_script
+            .iter()
+            .any(|link| link["source"] == 74.into()
+                && link["target"] == 73.into()
+                && link["field"] == 27.into())
+    );
+    assert!(
+        links_after_script
+            .iter()
+            .any(|link| link["source"] == 93.into()
+                && link["target"] == 87.into()
+                && link["field"] == 25.into())
+    );
+    assert!(
+        links_after_script
+            .iter()
+            .any(|link| link["source"] == 75.into()
+                && link["target"] == 74.into()
+                && link["field"] == 27.into())
+    );
     tester
         .timer
         .log("after running the script, we have the correct 5 authority-authority links");

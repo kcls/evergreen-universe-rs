@@ -1,8 +1,8 @@
 use crate::util;
+use eg::EgValue;
 use eg::common::circulator::Circulator;
 use eg::constants as C;
 use eg::result::EgResult;
-use eg::EgValue;
 use evergreen as eg;
 use std::collections::HashMap;
 

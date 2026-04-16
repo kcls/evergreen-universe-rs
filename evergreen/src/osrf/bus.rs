@@ -1,9 +1,9 @@
+use crate::EgResult;
 use crate::osrf::addr::BusAddress;
 use crate::osrf::conf;
 use crate::osrf::logging::Logger;
 use crate::osrf::message::TransportMessage;
 use crate::util;
-use crate::EgResult;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 use std::fmt;
 

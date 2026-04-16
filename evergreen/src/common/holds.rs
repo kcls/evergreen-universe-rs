@@ -1,4 +1,8 @@
 use crate as eg;
+use eg::Editor;
+use eg::EgError;
+use eg::EgResult;
+use eg::EgValue;
 use eg::common::org;
 use eg::common::settings::Settings;
 use eg::common::targeter;
@@ -6,10 +10,6 @@ use eg::common::transit;
 use eg::constants as C;
 use eg::date;
 use eg::event::{EgEvent, Overrides};
-use eg::Editor;
-use eg::EgError;
-use eg::EgResult;
-use eg::EgValue;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

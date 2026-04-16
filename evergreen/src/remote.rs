@@ -502,20 +502,21 @@ impl RemoteAccount {
         }
 
         if self.try_typical_ssh_keys
-            && let Some(home) = env::vars().find(|(k, _)| k == "HOME").map(|(_, v)| v) {
-                let mut path_buf = PathBuf::new();
+            && let Some(home) = env::vars().find(|(k, _)| k == "HOME").map(|(_, v)| v)
+        {
+            let mut path_buf = PathBuf::new();
 
-                path_buf.push(home);
-                path_buf.push(".ssh");
-                path_buf.push("id_rsa");
+            path_buf.push(home);
+            path_buf.push(".ssh");
+            path_buf.push("id_rsa");
 
-                key_files.push(path_buf.as_os_str().to_string_lossy().to_string());
+            key_files.push(path_buf.as_os_str().to_string_lossy().to_string());
 
-                path_buf.pop();
-                path_buf.push("dsa_rsa");
+            path_buf.pop();
+            path_buf.push("dsa_rsa");
 
-                key_files.push(path_buf.as_os_str().to_string_lossy().to_string());
-            }
+            key_files.push(path_buf.as_os_str().to_string_lossy().to_string());
+        }
 
         for key_file in key_files {
             log::debug!("Trying key file {key_file}");

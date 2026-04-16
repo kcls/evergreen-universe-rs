@@ -1,6 +1,6 @@
-use crate::osrf::sclient::HostSettings;
 use crate::EgResult;
 use crate::EgValue;
+use crate::osrf::sclient::HostSettings;
 use memcache;
 use std::cell::RefCell;
 use std::collections::HashMap;

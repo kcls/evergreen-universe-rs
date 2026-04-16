@@ -1,13 +1,13 @@
 use super::conf;
-use eg::osrf::logging;
 use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
+use eg::osrf::logging;
 use evergreen as eg;
 use std::fmt;
 use std::net;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// How often do we wake up from blocking on our sip socket socket to check
 /// for shutdown, etc. signals.
@@ -189,10 +189,11 @@ impl Session {
 
         if !self.is_ready.load(Ordering::Relaxed)
             && let Some(account) = self.heartbeat_account.as_ref()
-                && account == sip_user {
-                    log::debug!("Rejecting SIP login for {account} in non-ready mode");
-                    return Ok(false);
-                }
+            && account == sip_user
+        {
+            log::debug!("Rejecting SIP login for {account} in non-ready mode");
+            return Ok(false);
+        }
 
         Ok(true)
     }

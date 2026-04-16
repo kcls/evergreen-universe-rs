@@ -1,6 +1,6 @@
 use crate::util;
-use eg::osrf::cache::Cache;
 use eg::EgResult;
+use eg::osrf::cache::Cache;
 use evergreen as eg;
 
 pub fn run_live_tests(tester: &mut util::Tester) -> EgResult<()> {

@@ -1,10 +1,10 @@
 use crate as eg;
-use chrono::prelude::Datelike;
 use chrono::Duration;
-use eg::date;
+use chrono::prelude::Datelike;
 use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
+use eg::date;
 
 /// Apply a variety of DB transforms to an org unit and return
 /// the calculated org unit IDs.

@@ -1,10 +1,10 @@
 use crate as eg;
-use eg::common::circulator::{CircOp, Circulator};
-use eg::common::holds;
-use eg::date;
 use eg::EgEvent;
 use eg::EgResult;
 use eg::EgValue;
+use eg::common::circulator::{CircOp, Circulator};
+use eg::common::holds;
+use eg::date;
 
 /// Performs item checkins
 impl Circulator<'_> {
@@ -155,22 +155,24 @@ impl Circulator<'_> {
                 .editor()
                 .retrieve("cgf", "circ.opac_renewal.use_original_circ_lib")?
                 .take()
-                && setting["enabled"].boolish() {
-                    self.circ_lib = orig_circ_lib;
-                    self.settings.set_org_id(orig_circ_lib);
-                    return Ok(orig_circ_lib);
-                }
+            && setting["enabled"].boolish()
+        {
+            self.circ_lib = orig_circ_lib;
+            self.settings.set_org_id(orig_circ_lib);
+            return Ok(orig_circ_lib);
+        }
 
         if is_desk
             && let Some(setting) = self
                 .editor()
                 .retrieve("cgf", "circ.desk_renewal.use_original_circ_lib")?
                 .take()
-                && setting["enabled"].boolish() {
-                    self.circ_lib = orig_circ_lib;
-                    self.settings.set_org_id(orig_circ_lib);
-                    return Ok(orig_circ_lib);
-                }
+            && setting["enabled"].boolish()
+        {
+            self.circ_lib = orig_circ_lib;
+            self.settings.set_org_id(orig_circ_lib);
+            return Ok(orig_circ_lib);
+        }
 
         // Shouldn't get here, but maybe possible.
         Ok(self.circ_lib)

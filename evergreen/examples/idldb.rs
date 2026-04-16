@@ -1,8 +1,8 @@
+use eg::EgValue;
 use eg::db::DatabaseConnection;
 use eg::idl;
 use eg::idldb::{FleshDef, IdlClassSearch, IdlClassUpdate, OrderBy, OrderByDir, Translator};
 use eg::util::Pager;
-use eg::EgValue;
 use evergreen as eg;
 use std::env;
 
