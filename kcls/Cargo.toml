@@ -5,8 +5,8 @@ edition = "2021"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
-marctk = { path = "../marctk" }
 evergreen = { path = "../evergreen" }
+marctk = "0.7.0"
 json = "0.12"
 log = "0.4"
 getopts = "0.2"

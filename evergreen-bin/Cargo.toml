@@ -6,9 +6,9 @@ authors = ["Bill Erickson <berickxx@gmail.com>"]
 
 [dependencies]
 mptc = { path = "../mptc" }
-marctk = { path = "../marctk" }
 sip2 = { path = "../sip2" }
 evergreen = { path = "../evergreen" }
+marctk = "0.7.0"
 log = "0.4.22"
 getopts = "0.2.21"
 rustyline = "15.0.0"
