@@ -26,11 +26,10 @@ pub fn thread_id() -> u64 {
     let id = format!("{:?}", thread::current().id());
     let mut parts = id.split(&['(', ')']);
 
-    if let Some(id) = parts.nth(1) {
-        if let Ok(idnum) = id.parse::<u64>() {
+    if let Some(id) = parts.nth(1)
+        && let Ok(idnum) = id.parse::<u64>() {
             return idnum;
         }
-    }
 
     0
 }
@@ -64,11 +63,10 @@ pub fn random_number(size: u8) -> String {
 pub fn json_isize(value: &JsonValue) -> Option<isize> {
     if let Some(i) = value.as_isize() {
         return Some(i);
-    } else if let Some(s) = value.as_str() {
-        if let Ok(i2) = s.parse::<isize>() {
+    } else if let Some(s) = value.as_str()
+        && let Ok(i2) = s.parse::<isize>() {
             return Some(i2);
-        }
-    };
+        };
 
     None
 }
@@ -87,11 +85,10 @@ pub fn json_isize(value: &JsonValue) -> Option<isize> {
 pub fn json_usize(value: &JsonValue) -> Option<usize> {
     if let Some(i) = value.as_usize() {
         return Some(i);
-    } else if let Some(s) = value.as_str() {
-        if let Ok(i2) = s.parse::<usize>() {
+    } else if let Some(s) = value.as_str()
+        && let Ok(i2) = s.parse::<usize>() {
             return Some(i2);
-        }
-    };
+        };
 
     None
 }

@@ -117,35 +117,30 @@ impl Server {
 
         // Environment vars override values from opensrf.settings
 
-        if let Ok(num) = env::var("OSRF_SERVER_MIN_WORKERS") {
-            if let Ok(num) = num.parse::<usize>() {
+        if let Ok(num) = env::var("OSRF_SERVER_MIN_WORKERS")
+            && let Ok(num) = num.parse::<usize>() {
                 min_workers = num;
             }
-        }
 
-        if let Ok(num) = env::var("OSRF_SERVER_MIN_IDLE_WORKERS") {
-            if let Ok(num) = num.parse::<usize>() {
+        if let Ok(num) = env::var("OSRF_SERVER_MIN_IDLE_WORKERS")
+            && let Ok(num) = num.parse::<usize>() {
                 min_idle_workers = num;
             }
-        }
 
-        if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKERS") {
-            if let Ok(num) = num.parse::<usize>() {
+        if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKERS")
+            && let Ok(num) = num.parse::<usize>() {
                 max_workers = num;
             }
-        }
 
-        if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKER_REQUESTS") {
-            if let Ok(num) = num.parse::<usize>() {
+        if let Ok(num) = env::var("OSRF_SERVER_MAX_WORKER_REQUESTS")
+            && let Ok(num) = num.parse::<usize>() {
                 max_worker_requests = num;
             }
-        }
 
-        if let Ok(num) = env::var("OSRF_SERVER_WORKER_KEEPALIVE") {
-            if let Ok(num) = num.parse::<usize>() {
+        if let Ok(num) = env::var("OSRF_SERVER_WORKER_KEEPALIVE")
+            && let Ok(num) = num.parse::<usize>() {
                 worker_keepalive = num;
             }
-        }
 
         log::info!(
             "Starting service {} with min-workers={} min-idle={} max-workers={} max-requests={} keepalive={}",

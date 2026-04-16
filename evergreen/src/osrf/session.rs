@@ -104,11 +104,10 @@ impl Request {
     pub fn first_with_timeout(&mut self, timeout: u64) -> EgResult<Option<EgValue>> {
         let mut resp: Option<EgValue> = None;
         while !self.complete {
-            if let Some(r) = self.recv_with_timeout(timeout)? {
-                if resp.is_none() {
+            if let Some(r) = self.recv_with_timeout(timeout)?
+                && resp.is_none() {
                     resp = Some(r);
                 } // else discard the non-first response.
-            }
         }
 
         Ok(resp)

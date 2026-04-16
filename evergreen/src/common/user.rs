@@ -37,14 +37,13 @@ pub fn verify_migrated_password(
 
     let salt_list = e.json_query(query)?;
 
-    if let Some(hash) = salt_list.first() {
-        if let Some(salt) = hash["actor.get_salt"].as_str() {
+    if let Some(hash) = salt_list.first()
+        && let Some(salt) = hash["actor.get_salt"].as_str() {
             let combined = format!("{}{}", salt, pass_hash);
             let digested = format!("{:x}", md5::compute(combined));
 
             return verify_password(e, user_id, &digested, PW_TYPE_MAIN);
         }
-    }
 
     Ok(false)
 }

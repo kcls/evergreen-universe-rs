@@ -386,12 +386,11 @@ impl Editor {
     /// Start a new transaction, connecting to a worker if necessary.
     pub fn xact_begin(&mut self) -> EgResult<()> {
         self.connect()?;
-        if let Some(id) = self.request_np(&self.app_method("transaction.begin"))? {
-            if let Some(id_str) = id.as_str() {
+        if let Some(id) = self.request_np(&self.app_method("transaction.begin"))?
+            && let Some(id_str) = id.as_str() {
                 log::debug!("New transaction started with id {}", id_str);
                 self.xact_id = Some(id_str.to_string());
             }
-        }
         Ok(())
     }
 
@@ -428,12 +427,11 @@ impl Editor {
 
     /// Start a stateful conversation with a worker.
     pub fn connect(&mut self) -> EgResult<()> {
-        if let Some(ref ses) = self.session {
-            if ses.connected() {
+        if let Some(ref ses) = self.session
+            && ses.connected() {
                 // Already connected.
                 return Ok(());
             }
-        }
         self.session().connect()?;
         Ok(())
     }
@@ -534,11 +532,10 @@ impl Editor {
     /// communication is only strictly necessary when connecting to
     /// start a cstore, etc. transaction.
     fn session(&mut self) -> &mut ClientSession {
-        if let Some(ref ses) = self.session {
-            if ses.connected() {
+        if let Some(ref ses) = self.session
+            && ses.connected() {
                 return self.session.as_mut().unwrap();
             }
-        }
         self.session = Some(self.client.session(self.personality().into()));
         self.session.as_mut().unwrap()
     }
@@ -547,11 +544,10 @@ impl Editor {
     /// "::" with "." so the value matches how it's formatted in
     /// cstore, etc. API calls.
     fn get_fieldmapper(&self, value: &EgValue) -> EgResult<String> {
-        if let Some(cls) = value.idl_class() {
-            if let Some(fm) = cls.fieldmapper() {
+        if let Some(cls) = value.idl_class()
+            && let Some(fm) = cls.fieldmapper() {
                 return Ok(fm.replace("::", "."));
             }
-        }
         Err(format!("Cannot determine fieldmapper from {}", value.dump()).into())
     }
 

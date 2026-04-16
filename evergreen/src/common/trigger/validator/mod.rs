@@ -58,13 +58,11 @@ impl Processor<'_> {
             return Ok(false);
         }
 
-        if self.param_value("min_target_age").is_some() {
-            if let Some(fname) = self.param_value_as_str("target_age_field") {
-                if fname == "xact_start" {
+        if self.param_value("min_target_age").is_some()
+            && let Some(fname) = self.param_value_as_str("target_age_field")
+                && fname == "xact_start" {
                     return self.min_passive_target_age(event);
                 }
-            }
-        }
 
         Ok(true)
     }
@@ -101,19 +99,16 @@ impl Processor<'_> {
             return Ok(false);
         }
 
-        if let Some(stop_fines) = event.target()["stop_fines"].as_str() {
-            if stop_fines == "MAXFINES" || stop_fines == "LONGOVERDUE" {
+        if let Some(stop_fines) = event.target()["stop_fines"].as_str()
+            && (stop_fines == "MAXFINES" || stop_fines == "LONGOVERDUE") {
                 return Ok(false);
             }
-        }
 
-        if self.param_value("min_target_age").is_some() {
-            if let Some(fname) = self.param_value_as_str("target_age_field") {
-                if fname == "xact_start" {
+        if self.param_value("min_target_age").is_some()
+            && let Some(fname) = self.param_value_as_str("target_age_field")
+                && fname == "xact_start" {
                     return self.min_passive_target_age(event);
                 }
-            }
-        }
 
         // due_date is a required string field.
         let due_date = event.target()["due_date"].as_str().unwrap();

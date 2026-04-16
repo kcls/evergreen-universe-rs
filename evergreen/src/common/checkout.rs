@@ -112,11 +112,10 @@ impl Circulator<'_> {
         };
 
         let mut checkout_time = None;
-        if let Some(ct) = self.options.get("checkout_time") {
-            if let Some(ct2) = ct.as_str() {
+        if let Some(ct) = self.options.get("checkout_time")
+            && let Some(ct2) = ct.as_str() {
                 checkout_time = Some(ct2.to_string());
             }
-        }
 
         let patron_id = self.patron_id;
         let noncat_type = noncat_type.int()?;
@@ -335,13 +334,11 @@ impl Circulator<'_> {
     }
 
     fn check_copy_status(&mut self) -> EgResult<()> {
-        if let Some(copy) = self.copy.as_ref() {
-            if let Some(id) = copy["status"]["id"].as_i64() {
-                if id == C::COPY_STATUS_IN_TRANSIT {
+        if let Some(copy) = self.copy.as_ref()
+            && let Some(id) = copy["status"]["id"].as_i64()
+                && id == C::COPY_STATUS_IN_TRANSIT {
                     self.exit_err_on_event_code("COPY_IN_TRANSIT")?;
                 }
-            }
-        }
         Ok(())
     }
 
@@ -1126,21 +1123,19 @@ impl Circulator<'_> {
     }
 
     fn is_deposit(&self) -> bool {
-        if let Some(copy) = self.copy.as_ref() {
-            if let Some(amount) = copy["deposit_amount"].as_f64() {
+        if let Some(copy) = self.copy.as_ref()
+            && let Some(amount) = copy["deposit_amount"].as_f64() {
                 return amount > 0.0 && copy["deposit"].boolish();
             }
-        }
         false
     }
 
     // True if we have a deposit_amount but the desposit flag is false.
     fn is_rental(&self) -> bool {
-        if let Some(copy) = self.copy.as_ref() {
-            if let Some(amount) = copy["deposit_amount"].as_f64() {
+        if let Some(copy) = self.copy.as_ref()
+            && let Some(amount) = copy["deposit_amount"].as_f64() {
                 return amount > 0.0 && !copy["deposit"].boolish();
             }
-        }
         false
     }
 

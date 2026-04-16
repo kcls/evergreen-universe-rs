@@ -1019,13 +1019,12 @@ impl EgValue {
     pub fn id(&self) -> EgResult<i64> {
         // If it's Blessed, verify "id" is a valid field so
         // the index lookup doesn't panic.
-        if let EgValue::Blessed(o) = self {
-            if o.idl_class().has_field("id") {
+        if let EgValue::Blessed(o) = self
+            && o.idl_class().has_field("id") {
                 self["id"]
                     .as_i64()
                     .ok_or_else(|| format!("{self} has no valid ID"))?;
             }
-        }
         self["id"]
             .as_i64()
             .ok_or_else(|| format!("{self} has no valid ID").into())
@@ -1052,21 +1051,19 @@ impl EgValue {
     }
 
     pub fn pkey_info(&self) -> Option<(&idl::Field, &EgValue)> {
-        if let Some(f) = self.pkey_field() {
-            if let Some(v) = self.pkey_value() {
+        if let Some(f) = self.pkey_field()
+            && let Some(v) = self.pkey_value() {
                 return Some((f, v));
             }
-        }
         None
     }
 
     /// Value stored in the reporter:selector field if set.
     pub fn selector_value(&self) -> Option<&EgValue> {
-        if let EgValue::Blessed(b) = self {
-            if let Some(selector) = b.idl_class.selector() {
+        if let EgValue::Blessed(b) = self
+            && let Some(selector) = b.idl_class.selector() {
                 return Some(&self[selector]);
             }
-        }
 
         None
     }
@@ -1084,11 +1081,10 @@ impl EgValue {
     /// If the index is not present or self is not an Array,
     /// returns EgValue::Null.
     pub fn array_remove(&mut self, index: usize) -> EgValue {
-        if let Self::Array(list) = self {
-            if list.len() > index {
+        if let Self::Array(list) = self
+            && list.len() > index {
                 return list.remove(index);
             }
-        }
         eg::NULL
     }
 
@@ -1296,11 +1292,10 @@ impl fmt::Display for EgValue {
             EgValue::Hash(_) => write!(f, "<hash>"),
             EgValue::Blessed(o) => {
                 let mut s = o.idl_class.classname().to_string();
-                if let Some(pkey) = self.pkey_field() {
-                    if let Some(pval) = self.pkey_value() {
+                if let Some(pkey) = self.pkey_field()
+                    && let Some(pval) = self.pkey_value() {
                         s += &format!(" {}={pval}", pkey.name());
                     }
-                }
                 if let Some(selector) = self.selector_value() {
                     s += &format!(" label={selector}");
                 }

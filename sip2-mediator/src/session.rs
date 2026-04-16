@@ -187,14 +187,12 @@ impl Session {
         // Capture the SIP username for session ogging.
         self.sip_user = Some(sip_user.to_string());
 
-        if !self.is_ready.load(Ordering::Relaxed) {
-            if let Some(account) = self.heartbeat_account.as_ref() {
-                if account == sip_user {
+        if !self.is_ready.load(Ordering::Relaxed)
+            && let Some(account) = self.heartbeat_account.as_ref()
+                && account == sip_user {
                     log::debug!("Rejecting SIP login for {account} in non-ready mode");
                     return Ok(false);
                 }
-            }
-        }
 
         Ok(true)
     }

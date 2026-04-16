@@ -501,8 +501,8 @@ impl RemoteAccount {
             key_files.push(keyfile.display().to_string());
         }
 
-        if self.try_typical_ssh_keys {
-            if let Some(home) = env::vars().find(|(k, _)| k == "HOME").map(|(_, v)| v) {
+        if self.try_typical_ssh_keys
+            && let Some(home) = env::vars().find(|(k, _)| k == "HOME").map(|(_, v)| v) {
                 let mut path_buf = PathBuf::new();
 
                 path_buf.push(home);
@@ -516,7 +516,6 @@ impl RemoteAccount {
 
                 key_files.push(path_buf.as_os_str().to_string_lossy().to_string());
             }
-        }
 
         for key_file in key_files {
             log::debug!("Trying key file {key_file}");

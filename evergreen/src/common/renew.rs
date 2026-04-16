@@ -150,33 +150,27 @@ impl Circulator<'_> {
             .unwrap_or(&eg::NULL)
             .boolish();
 
-        if is_opac || is_auto {
-            if let Some(setting) = self
+        if (is_opac || is_auto)
+            && let Some(setting) = self
                 .editor()
                 .retrieve("cgf", "circ.opac_renewal.use_original_circ_lib")?
                 .take()
-            {
-                if setting["enabled"].boolish() {
+                && setting["enabled"].boolish() {
                     self.circ_lib = orig_circ_lib;
                     self.settings.set_org_id(orig_circ_lib);
                     return Ok(orig_circ_lib);
                 }
-            }
-        }
 
-        if is_desk {
-            if let Some(setting) = self
+        if is_desk
+            && let Some(setting) = self
                 .editor()
                 .retrieve("cgf", "circ.desk_renewal.use_original_circ_lib")?
                 .take()
-            {
-                if setting["enabled"].boolish() {
+                && setting["enabled"].boolish() {
                     self.circ_lib = orig_circ_lib;
                     self.settings.set_org_id(orig_circ_lib);
                     return Ok(orig_circ_lib);
                 }
-            }
-        }
 
         // Shouldn't get here, but maybe possible.
         Ok(self.circ_lib)

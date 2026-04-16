@@ -63,13 +63,11 @@ impl Logger {
     }
 
     fn find_app_name() -> String {
-        if let Ok(p) = std::env::current_exe() {
-            if let Some(f) = p.file_name() {
-                if let Some(n) = f.to_str() {
+        if let Ok(p) = std::env::current_exe()
+            && let Some(f) = p.file_name()
+                && let Some(n) = f.to_str() {
                     return n.to_string();
                 }
-            }
-        }
 
         eprintln!("Cannot determine executable name.  See set_application()");
         "opensrf".to_string()
@@ -238,14 +236,13 @@ impl log::Log for Logger {
             if w.send(message.as_bytes()).is_ok() {
                 return;
             }
-        } else if let conf::LogFile::Filename(ref name) = self.logfile {
-            if let Ok(mut file) = fs::File::options().create(true).append(true).open(name) {
+        } else if let conf::LogFile::Filename(ref name) = self.logfile
+            && let Ok(mut file) = fs::File::options().create(true).append(true).open(name) {
                 message += "\n";
                 if file.write_all(message.as_bytes()).is_ok() {
                     return;
                 }
             }
-        }
 
         // If all else fails, print the log message.
         // We also end up here if our log file is "stdout"

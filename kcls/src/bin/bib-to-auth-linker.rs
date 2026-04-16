@@ -477,8 +477,8 @@ impl Worker {
                 authz_leader = Some(leader.clone());
             }
 
-            if let Some((_, ind)) = AUTH_TO_BIB_IND2.iter().find(|(t, _)| t == &thesaurus) {
-                if ind == &bib_ind2 {
+            if let Some((_, ind)) = AUTH_TO_BIB_IND2.iter().find(|(t, _)| t == &thesaurus)
+                && ind == &bib_ind2 {
                     log::debug!(
                         "Found a match on thesaurus '{thesaurus}' for auth {}",
                         leader.auth_id
@@ -486,14 +486,12 @@ impl Worker {
 
                     return Ok(Some(leader.auth_id));
                 }
-            }
         }
 
-        if is_local {
-            if let Some(ldr) = authz_leader {
+        if is_local
+            && let Some(ldr) = authz_leader {
                 return Ok(Some(ldr.auth_id));
             }
-        }
 
         Ok(None)
     }

@@ -119,11 +119,10 @@ impl DatabaseConnectionBuilder {
             self.database = params.opt_str("db-name");
         }
 
-        if self.port.is_none() && params.opt_defined("db-port") {
-            if let Some(v) = params.opt_str("db-port") {
+        if self.port.is_none() && params.opt_defined("db-port")
+            && let Some(v) = params.opt_str("db-port") {
                 self.port = Some(v.parse::<u16>().unwrap());
             }
-        }
     }
 
     /// # Example

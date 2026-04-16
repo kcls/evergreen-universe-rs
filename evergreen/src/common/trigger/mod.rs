@@ -298,8 +298,8 @@ pub fn create_passive_events_for_def(
     }
 
     // Skip targets where the user is not opted in.
-    if let Some(usr_field) = event_def["usr_field"].as_str() {
-        if let Some(setting) = event_def["opt_in_setting"].as_str() {
+    if let Some(usr_field) = event_def["usr_field"].as_str()
+        && let Some(setting) = event_def["opt_in_setting"].as_str() {
             // {"+circ": "usr"}
             let mut user_matches = eg::hash! {};
             user_matches[&format!("+{core_type}")] = EgValue::from(usr_field);
@@ -321,7 +321,6 @@ pub fn create_passive_events_for_def(
                 filters["-and"] = eg::array![opt_filter];
             }
         }
-    }
 
     log::debug!("Event def {event_def_id} filter is: {}", filters.dump());
 
