@@ -26,7 +26,7 @@ impl error::Error for SipJsonError {
 impl fmt::Display for SipJsonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SipJsonError::JsonError(ref err) => err.fmt(f),
+            SipJsonError::JsonError(err) => err.fmt(f),
             SipJsonError::MessageFormatError(s) => {
                 write!(f, "SIP message could not be translated to/from JSON: {}", s)
             }

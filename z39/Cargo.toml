@@ -1,7 +1,7 @@
 [package]
 name = "z39"
 version = "0.1.2"
-edition = "2021"
+edition = "2024"
 authors = ["Bill Erickson <berickxx@gmail.com>"]
 license = "MIT"
 description = "Z39.50 Types and ASN.1 Messages"
