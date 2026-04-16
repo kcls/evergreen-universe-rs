@@ -14,11 +14,11 @@ repository = "https://github.com/kcls/evergreen-universe-rs"
 chrono = "0.4.39"
 deunicode = "1.6.0"
 getopts = "0.2.21"
-json = { version = "0.12.4", optional = true }
+serde_json = { version = "1", optional = true }
 log = "0.4.22"
 
 [[bin]]
 name = "sip2-client-cli"
 
 [features]
-json = ["dep:json"]
+json = ["dep:serde_json"]
