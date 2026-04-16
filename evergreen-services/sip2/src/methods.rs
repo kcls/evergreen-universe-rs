@@ -9,13 +9,9 @@ use eg::osrf::session::ServerSession;
 use evergreen as eg;
 use sip2;
 
-/// Convert a sip2::Message response to an EgValue by serializing
-/// through a JSON string (bridging json::JsonValue -> serde_json::Value).
+/// Convert a sip2::Message response to an EgValue.
 fn sip_msg_to_eg_value(msg: &sip2::Message) -> EgResult<EgValue> {
-    let json_str = msg.to_json();
-    let serde_val: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Error parsing SIP response JSON: {e}"))?;
-    EgValue::from_json_value(serde_val)
+    EgValue::from_json_value(msg.to_json_value())
 }
 
 // Import our local app module
@@ -105,7 +101,7 @@ pub fn dispatch_sip_request(
 
     let seskey = seskey_param.str()?;
 
-    let sip_msg = sip2::Message::from_json(&sip_msg_param.to_json_string()?)
+    let sip_msg = sip2::Message::from_json_value(sip_msg_param.into_json_value())
         .map_err(|e| format!("Error parsing SIP message: {e}"))?;
 
     let mut editor = Editor::new(worker.client());
