@@ -107,6 +107,29 @@ pub static METHODS: &[StaticMethodDef] = &[
             },
         ],
     },
+    StaticMethodDef {
+        name: "district-of-residence",
+        desc: "Returns the name of the reciprocal library district for the provided lat/long where appropriate",
+        param_count: ParamCount::Exactly(3),
+        handler: district_of_residence,
+        params: &[
+            StaticParam {
+                name: "Session Token",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                name: "Latitude",
+                datatype: ParamDataType::Numeric,
+                desc: "Numeric value between -90 and 90; e.g. 47.54030395464964",
+            },
+            StaticParam {
+                name: "Longitude",
+                datatype: ParamDataType::Numeric,
+                desc: "Numeric value between -180 and 180; e.g. -122.05041577546649",
+            },
+        ],
+    },
 ];
 
 /// Build a set of SDK options with our authentication values.
@@ -307,6 +330,40 @@ pub fn autocomplete(
 ///
 /// TODO configs and file locations
 pub fn home_org(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
+) -> EgResult<()> {
+    let worker = app::AddrsWorker::downcast(worker)?;
+
+    let _sestoken = method.param(0).str()?;
+    let lat = method.param(1).float()?;
+    let long = method.param(2).float()?;
+    let mut editor = Editor::new(worker.client());
+
+    let query = eg::hash! {
+        "select": {"aou": ["id", "shortname"]},
+        "from": {"aou": "aout"},
+        "where": {"+aout": {"can_have_users": "t"}}
+    };
+
+    let org_list = editor.json_query(query)?;
+
+    for org in org_list {
+        let code = org["shortname"].string()?;
+        let shapefile = format!("{DEFAULT_ADDR_DATA_DIR}/shapefiles/home-orgs/{code}/{code}.shp");
+
+        if shapefile_contains(&shapefile, lat, long)? {
+            return session.respond(org.id()?);
+        }
+    }
+
+    Ok(())
+}
+
+/// Determine if the provided lat/long exists within any of the library district 
+/// residence shapefiles.
+pub fn district_of_residence(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: message::MethodCall,
