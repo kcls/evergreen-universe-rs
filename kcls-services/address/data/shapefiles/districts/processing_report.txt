@@ -1,0 +1,71 @@
+King County Library System Reciprocal Areas Processing Report
+============================================================
+Generated: 2025-07-23 13:00:16
+Exclusion holes created: Yes
+
+Successfully processed 10 library systems
+
+
+Seattle Public Library:
+  - Seattle (city)
+
+NCW Libraries:
+  - Chelan (county)
+  - Douglas (county) [Excludes: Mansfield, Rock Island]
+  - Ferry (county)
+  - Grant (county) [Excludes: Hartline, Marlin]
+  - Okanogan (county) [Excludes: Conconully]
+
+North Olympic Library System:
+  - Clallam (county)
+
+Fort Vancouver Regional Library:
+  - Clark (county) [Excludes: Camas]
+  - Woodland (city) Note: Only Woodland from Cowlitz County
+  - Klickitat (county)
+  - Skamania (county)
+
+Timberland Regional Library:
+  - Grays Harbor (county) [Excludes: Ocean Shores]
+  - Lewis (county) [Excludes: Mossy Rock, Napavine, Pe Ell, Vader]
+  - Mason (county)
+  - Pacific (county)
+  - Thurston (county)
+
+Sno-Isle Regional Library:
+  - Island (county)
+  - Snohomish (county) [Excludes: Woodway]
+
+Kitsap Regional Library:
+  - Kitsap (county)
+
+Jefferson County Libraries:
+  - Jefferson (county)
+
+Pierce County Libraries:
+  - Pierce (county) [Excludes: Carbonado, Fircrest, Roy, Ruston] Note: Tacoma residents must have valid Tacoma Public Library card first
+
+Everett Public Library:
+  - Snohomish (county) [Excludes: Woodway]
+  - Everett (city)
+
+
+Excluded Areas (Total: 18):
+  - Hunts Point (from King County)
+  - Yarrow Point (from King County)
+  - Mansfield (from Douglas County)
+  - Rock Island (from Douglas County)
+  - Hartline (from Grant County)
+  - Conconully (from Okanogan County)
+  - Camas (from Clark County)
+  - Ocean Shores (from Grays Harbor County)
+  - Mossy Rock (from Lewis County)
+  - Napavine (from Lewis County)
+  - Pe Ell (from Lewis County)
+  - Vader (from Lewis County)
+  - Woodway (from Snohomish County)
+  - Carbonado (from Pierce County)
+  - Fircrest (from Pierce County)
+  - Roy (from Pierce County)
+  - Ruston (from Pierce County)
+  - Woodway (from Snohomish County)

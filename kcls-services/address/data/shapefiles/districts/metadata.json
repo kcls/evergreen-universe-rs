@@ -1,0 +1,165 @@
+{
+  "title": "King County Library System Reciprocal Agreement Areas",
+  "description": "GIS shapefiles for all counties and library systems with reciprocal borrowing agreements with KCLS",
+  "created": "2025-07-23T13:00:16.538480",
+  "source": "U.S. Census Bureau TIGER/Line Shapefiles 2024",
+  "coordinate_system": "WGS84 (EPSG:4326)",
+  "exclusion_handling": "Created holes in county geometries",
+  "data_directories": {
+    "counties": "C:\\Users\\bbonner\\kcls_reciprocal_shapefiles\\tl_2024_us_county",
+    "places": "C:\\Users\\bbonner\\kcls_reciprocal_shapefiles\\tl_2024_53_place"
+  },
+  "output_directory": "C:\\Users\\bbonner\\kcls_reciprocal_shapefiles\\output",
+  "files_created": {
+    "individual_systems": "Shapefiles for each library system",
+    "composite": "all_kcls_reciprocal_areas.shp - All included areas",
+    "exclusions": "kcls_excluded_areas.shp - All excluded cities",
+    "geojson": "GeoJSON versions of above for web mapping"
+  },
+  "reciprocal_areas": {
+    "within_king_county": {
+      "Seattle Public Library": {
+        "county": "King",
+        "city": "Seattle",
+        "state": "WA",
+        "county_exclusions": [
+          "Hunts Point",
+          "Yarrow Point"
+        ]
+      }
+    },
+    "outside_king_county": {
+      "NCW Libraries": {
+        "counties": [
+          "Chelan",
+          "Douglas",
+          "Ferry",
+          "Grant",
+          "Okanogan"
+        ],
+        "state": "WA",
+        "exclusions": {
+          "Douglas": [
+            "Mansfield",
+            "Rock Island"
+          ],
+          "Grant": [
+            "Hartline",
+            "Marlin"
+          ],
+          "Okanogan": [
+            "Conconully"
+          ]
+        }
+      },
+      "North Olympic Library System": {
+        "counties": [
+          "Clallam"
+        ],
+        "state": "WA"
+      },
+      "Fort Vancouver Regional Library": {
+        "counties": [
+          "Clark",
+          "Cowlitz",
+          "Klickitat",
+          "Skamania"
+        ],
+        "state": "WA",
+        "notes": "Cowlitz - only Woodland",
+        "exclusions": {
+          "Clark": [
+            "Camas"
+          ]
+        },
+        "special_cases": {
+          "Cowlitz": "only_woodland"
+        }
+      },
+      "Timberland Regional Library": {
+        "counties": [
+          "Grays Harbor",
+          "Lewis",
+          "Mason",
+          "Pacific",
+          "Thurston"
+        ],
+        "state": "WA",
+        "exclusions": {
+          "Grays Harbor": [
+            "Ocean Shores"
+          ],
+          "Lewis": [
+            "Mossy Rock",
+            "Napavine",
+            "Pe Ell",
+            "Vader"
+          ]
+        }
+      },
+      "Sno-Isle Regional Library": {
+        "counties": [
+          "Island",
+          "Snohomish"
+        ],
+        "state": "WA",
+        "exclusions": {
+          "Snohomish": [
+            "Woodway"
+          ]
+        }
+      },
+      "Kitsap Regional Library": {
+        "counties": [
+          "Kitsap"
+        ],
+        "state": "WA"
+      },
+      "Jefferson County Libraries": {
+        "counties": [
+          "Jefferson"
+        ],
+        "state": "WA",
+        "systems": [
+          "Jefferson County Rural Library District",
+          "Port Townsend Public Library"
+        ]
+      },
+      "Pierce County Libraries": {
+        "counties": [
+          "Pierce"
+        ],
+        "state": "WA",
+        "systems": [
+          "Milton Public Library",
+          "Pierce County Library System",
+          "Puyallup Public Library",
+          "Tacoma Public Library"
+        ],
+        "exclusions": {
+          "Pierce": [
+            "Carbonado",
+            "Fircrest",
+            "Roy",
+            "Ruston"
+          ]
+        },
+        "special_notes": {
+          "Pierce": "Tacoma residents must have valid Tacoma Public Library card first"
+        }
+      },
+      "Everett Public Library": {
+        "counties": [
+          "Snohomish"
+        ],
+        "city": "Everett",
+        "state": "WA",
+        "exclusions": {
+          "Snohomish": [
+            "Woodway"
+          ]
+        }
+      }
+    }
+  }
+}
