@@ -9,7 +9,7 @@ use std::any::Any;
 // Import our local methods module.
 use crate::methods;
 
-const APPNAME: &str = "open-ils.rs-addrs";
+const APPNAME: &str = "kcls.address";
 
 /// Our main application class.
 pub struct AddrsApplication {}

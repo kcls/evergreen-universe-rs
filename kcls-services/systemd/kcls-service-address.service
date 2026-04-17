@@ -1,5 +1,5 @@
 [Unit]
-Description=Evergreen Service open-ils.rs-addrs
+Description=Evergreen Service kcls.address
 
 [Service]
 Type=simple
