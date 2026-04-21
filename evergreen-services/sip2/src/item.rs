@@ -193,13 +193,8 @@ impl Session {
             return Ok(());
         }
 
-        let Some(org_unit) = self.config().setting_value("msg17_stamp_transit_org_unit") else {
-            log::warn!("{self} msg17_stamp_transit: msg17_stamp_transit_org_unit required");
-            return Ok(());
-        };
-
-        let Some(org_id) = org_unit.as_i64() else {
-            log::warn!("{self} msg17_stamp_transit_org_unit invalid: {org_unit}");
+        let Some(org_id) = self.editor().requestor_ws_ou() else {
+            log::warn!("{self} msg17_stamp_transit requires a workstation org unit");
             return Ok(());
         };
 
