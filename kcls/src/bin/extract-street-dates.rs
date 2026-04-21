@@ -47,7 +47,7 @@ Example:
 struct StreetDateRecord {
     invoice_number: String,
     ean: String,
-    pub_date: String,
+    street_date: String,
 }
 
 struct ApplyStats {
@@ -180,7 +180,7 @@ fn apply_street_dates(
                 if let Some(mut existing_attr) = existing_street_dates.into_iter().next() {
                     // Street date already exists - check if it needs updating
                     let current_value = existing_attr["attr_value"].str()?;
-                    let new_value = record.pub_date.trim();
+                    let new_value = record.street_date.trim();
 
                     if current_value != new_value {
                         println!(
@@ -196,7 +196,7 @@ fn apply_street_dates(
                 } else {
                     println!(
                         "Creating street date for lineitem {}: {}",
-                        li_id, record.pub_date
+                        li_id, record.street_date
                     );
                     let attr = eg::blessed! {
                         "_classname": "acqlia",
@@ -204,7 +204,7 @@ fn apply_street_dates(
                         "definition": street_date_def_id,
                         "attr_type": "lineitem_attr_definition",
                         "attr_name": "street_date",
-                        "attr_value": record.pub_date.clone(),
+                        "attr_value": record.street_date.clone(),
                     }?;
 
                     scripter.editor_mut().create(attr)?;
@@ -267,11 +267,9 @@ fn process_excel_file(file_path: &str) -> Result<Vec<StreetDateRecord>, String> 
     // Find the column indices for our target fields
     let invoice_col = find_column_index(&headers, &["invoice number"]);
     let ean_col = find_column_index(&headers, &["ean", "isbn", "barcode"]);
-    let pub_date_col = find_column_index(
+    let street_date_col = find_column_index(
         &headers,
         &[
-            "pub date",
-            "publication date",
             "street date",
             "release date",
         ],
@@ -280,7 +278,7 @@ fn process_excel_file(file_path: &str) -> Result<Vec<StreetDateRecord>, String> 
     println!("\nColumn mapping:");
     println!("  Invoice Number: {:?}", invoice_col);
     println!("  EAN: {:?}", ean_col);
-    println!("  Pub Date: {:?}", pub_date_col);
+    println!("  Street Date: {:?}", street_date_col);
 
     // Process data rows (skip header row)
     for (_row_idx, row) in range.rows().enumerate().skip(1) {
@@ -295,7 +293,7 @@ fn process_excel_file(file_path: &str) -> Result<Vec<StreetDateRecord>, String> 
             .map(|cell| cell.to_string())
             .unwrap_or_default();
 
-        let pub_date = pub_date_col
+        let street_date = street_date_col
             .and_then(|col| row.get(col))
             .map(|cell| {
                 // Try to parse cell string as a number (Excel date serial)
@@ -311,11 +309,12 @@ fn process_excel_file(file_path: &str) -> Result<Vec<StreetDateRecord>, String> 
             .unwrap_or_default();
 
         // Only add records that have at least some data
-        if !invoice.is_empty() || !ean.is_empty() || !pub_date.is_empty() {
+        if !invoice.is_empty() || !ean.is_empty() || !street_date.is_empty() {
+            // println!("Found street date '{street_date}' for EAN {ean}");
             records.push(StreetDateRecord {
                 invoice_number: invoice,
                 ean,
-                pub_date,
+                street_date,
             });
         }
     }
