@@ -361,34 +361,85 @@ pub fn home_org(
     Ok(())
 }
 
-/// Determine if the provided lat/long exists within any of the library district 
-/// residence shapefiles.
+
+/// TODO create a config map in the EG db or similar and load these dynamically
+struct DistrictShapefileEntry {
+	file_code: &'static str,
+	district_name: &'static str,
+}
+
+const DISTRICT_SHAPFILES: &[DistrictShapefileEntry] = &[
+    // Will we need these?
+    // all_kcls_reciprocal_areas
+    // kcls_excluded_areas
+
+	DistrictShapefileEntry { 
+		file_code: "everett_public_library", 
+        district_name: "Everett Public Library",
+    },
+	DistrictShapefileEntry { 
+		file_code: "fort_vancouver_regional_library", 
+        district_name: "Fort Vancouver Regional Library"
+    },
+	DistrictShapefileEntry { 
+		file_code: "jefferson_county_libraries", 
+        district_name: "Jefferson County Rural Library District"
+    },
+	DistrictShapefileEntry { 
+		file_code: "kitsap_regional_library", 
+        district_name: "Kitsap Regional Library"
+    },
+	DistrictShapefileEntry { 
+		file_code: "ncw_libraries", 
+        district_name: "NCW Libraries"
+    },
+	DistrictShapefileEntry { 
+		file_code: "north_olympic_library_system", 
+        district_name: "North Olympic Library System"
+    },
+
+    // TODO
+
+    // Port Townsend Public Library
+    // Puyallup Public Library
+    // Tacoma Public Library
+
+	DistrictShapefileEntry { 
+		file_code: "pierce_county_libraries", 
+        district_name: "Pierce County Library System"
+    },
+	DistrictShapefileEntry { 
+		file_code: "seattle_public_library", 
+        district_name: "Seattle Public Library"
+    },
+	DistrictShapefileEntry { 
+		file_code: "sno-isle_regional_library", 
+        district_name: "Sno-Isle Regional Library"
+    },
+	DistrictShapefileEntry { 
+		file_code: "timberland_regional_library", 
+        district_name: "Timberland Regional Library"
+    },
+];
+
+
+/// Determine if the provided lat/long exists within any of the library 
+/// district of residence shapefiles.
 pub fn district_of_residence(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let worker = app::AddrsWorker::downcast(worker)?;
+    let _worker = app::AddrsWorker::downcast(worker)?;
 
     let _sestoken = method.param(0).str()?;
     let lat = method.param(1).float()?;
     let long = method.param(2).float()?;
-    let mut editor = Editor::new(worker.client());
 
-    let query = eg::hash! {
-        "select": {"aou": ["id", "shortname"]},
-        "from": {"aou": "aout"},
-        "where": {"+aout": {"can_have_users": "t"}}
-    };
-
-    let org_list = editor.json_query(query)?;
-
-    for org in org_list {
-        let code = org["shortname"].string()?;
-        let shapefile = format!("{DEFAULT_ADDR_DATA_DIR}/shapefiles/home-orgs/{code}/{code}.shp");
-
+    for file in DISTRICT_SHAPFILES {
+        let shapefile = format!("{DEFAULT_ADDR_DATA_DIR}/shapefiles/districts/{}.shp", file.file_code);
         if shapefile_contains(&shapefile, lat, long)? {
-            return session.respond(org.id()?);
+            return session.respond(file.district_name);
         }
     }
 
@@ -400,10 +451,7 @@ fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
     log::debug!("Inspecting shapefile {shapefile} for lat={lat} and long={long}");
 
     if !Path::new(shapefile).exists() {
-        // Assumption here is not every branch will have a shapefile in place.
-        // If not, avoid returning an error.
-        log::debug!("No such shapefile: {shapefile}");
-
+        log::warn!("No such shapefile: {shapefile}");
         return Ok(false);
     }
 
