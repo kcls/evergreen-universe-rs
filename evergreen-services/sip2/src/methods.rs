@@ -9,11 +9,6 @@ use eg::osrf::session::ServerSession;
 use evergreen as eg;
 use sip2;
 
-/// Convert a sip2::Message response to an EgValue.
-fn sip_msg_to_eg_value(msg: &sip2::Message) -> EgResult<EgValue> {
-    EgValue::from_json_value(msg.to_json_value())
-}
-
 // Import our local app module
 use crate::app;
 use crate::session::Config;
@@ -110,12 +105,12 @@ pub fn dispatch_sip_request(
 
     if msg_code == "93" {
         let response = handle_login(&mut editor, seskey, sip_msg)?;
-        let value = sip_msg_to_eg_value(&response)?;
+        let value = EgValue::try_from(response.to_json_value())?;
 
         return session.respond_complete(value);
     } else if msg_code == "99" {
         let response = handle_sc_status(&mut editor, seskey, sip_msg)?;
-        let value = sip_msg_to_eg_value(&response)?;
+        let value = EgValue::try_from(response.to_json_value())?;
 
         return session.respond_complete(value);
     }
@@ -128,7 +123,7 @@ pub fn dispatch_sip_request(
 
                 let response = sip2::Message::from_ff_values("XT", &[]).unwrap();
 
-                let value = sip_msg_to_eg_value(&response)?;
+                let value = EgValue::try_from(response.to_json_value())?;
                 return session.respond_complete(value);
             }
 
@@ -152,7 +147,7 @@ pub fn dispatch_sip_request(
         _ => return Err(format!("SIP message '{msg_code}' not implemented").into()),
     };
 
-    let value = sip_msg_to_eg_value(&response)?;
+    let value = EgValue::try_from(response.to_json_value())?;
 
     session.respond_complete(value)
 }

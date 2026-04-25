@@ -720,7 +720,7 @@ impl Session {
             obj["transport_error"] = serde_json::Value::from(true);
         }
 
-        let msg_json = serde_json::to_string(&obj).unwrap_or_else(|e| e.to_string());
+        let msg_json = serde_json::to_string(&obj).map_err(|e| e.to_string())?;
 
         log::trace!("{self} replying with message: {msg_json}");
 

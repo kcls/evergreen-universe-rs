@@ -2,7 +2,6 @@ use crate::EgResult;
 use crate::EgValue;
 use crate::osrf::sclient::HostSettings;
 use memcache;
-use serde_json;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -55,8 +54,7 @@ impl CacheConnection {
     ///
     /// If the timeout is 0, the default timeout for the connection type is used.
     fn set(&self, key: &str, value: EgValue, mut timeout: u32) -> EgResult<()> {
-        let value =
-            serde_json::to_string(&value.into_json_value()).unwrap_or_else(|e| e.to_string());
+        let value = value.to_json_string()?;
         let byte_count = value.len();
 
         log::debug!("{self} caching {byte_count} bytes at key={key}");
@@ -85,11 +83,7 @@ impl CacheConnection {
         };
 
         if let Some(value) = result {
-            let obj = serde_json::from_str::<serde_json::Value>(&value)
-                .map_err(|e| format!("Cached JSON parse failure on key {key}: {e} [{value}]"))?;
-
-            let v = EgValue::try_from(obj)?;
-
+            let v = EgValue::parse(&value)?;
             return Ok(Some(v));
         }
 
@@ -156,8 +150,7 @@ impl Cache {
                 Err(e) => {
                     return Err(format!(
                         "Cannot connect to memcache with config: {} : {e}",
-                        serde_json::to_string(&config.clone().into_json_value())
-                            .unwrap_or_else(|e| e.to_string())
+                        config.to_json_string()?,
                     )
                     .into());
                 }

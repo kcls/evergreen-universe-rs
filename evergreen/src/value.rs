@@ -1432,8 +1432,8 @@ impl<'de> serde::de::Visitor<'de> for EgValueVisitor {
             _ => None,
         };
 
-        if let Some(classname) = classname {
-            if hash.contains_key(JSON_PAYLOAD_KEY) {
+        if let Some(classname) = classname
+            && hash.contains_key(JSON_PAYLOAD_KEY) {
                 let idl_class = idl::get_class(&classname).map_err(|_| {
                     serde::de::Error::custom(format!("Unknown IDL class: {classname}"))
                 })?;
@@ -1455,7 +1455,6 @@ impl<'de> serde::de::Visitor<'de> for EgValueVisitor {
                     values,
                 }));
             }
-        }
 
         Ok(EgValue::Hash(hash))
     }
