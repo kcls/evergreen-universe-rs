@@ -266,8 +266,8 @@ impl serde::Serialize for Payload {
 }
 
 impl Payload {
-    pub fn into_json_value(self) -> Value {
-        serde_json::to_value(&self).unwrap_or(Value::Null)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
 }
 
@@ -423,8 +423,8 @@ impl TransportMessage {
         Ok(tmsg)
     }
 
-    pub fn into_json_value(self) -> Value {
-        serde_json::to_value(&self).unwrap_or(Value::Null)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
 }
 
@@ -620,9 +620,10 @@ impl Message {
         }
     }
 
-    pub fn into_json_value(self) -> Value {
-        serde_json::to_value(&self).unwrap_or(Value::Null)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
+
 }
 
 /// Serialization helper for the inner payload of an osrfResult.
@@ -709,9 +710,10 @@ impl Result {
         Ok(Result::new(stat, stat_str, &msg_class, content))
     }
 
-    pub fn into_json_value(self) -> Value {
-        serde_json::to_value(&self).unwrap_or(Value::Null)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
+
 }
 
 impl serde::Serialize for Result {
@@ -778,9 +780,10 @@ impl Status {
         Ok(Status::new(stat, stat_str, &msg_class))
     }
 
-    pub fn into_json_value(self) -> Value {
-        serde_json::to_value(&self).unwrap_or(Value::Null)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
+
 }
 
 impl serde::Serialize for Status {
@@ -886,9 +889,10 @@ impl MethodCall {
         self.params.get(index).unwrap_or(&EG_NULL)
     }
 
-    pub fn into_json_value(self) -> Value {
-        serde_json::to_value(&self).unwrap_or(Value::Null)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
+
 }
 
 impl serde::Serialize for MethodCall {

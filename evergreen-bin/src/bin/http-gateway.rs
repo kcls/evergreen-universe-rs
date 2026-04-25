@@ -266,16 +266,7 @@ impl GatewayHandler {
                     | eg::osrf::message::MessageStatus::Continue => {
                         // Keep reading in case there's more data in the message.
                     }
-                    _ => {
-                        let msg = format!(
-                            "Unsupported message status: '{}' {}",
-                            stat.status(),
-                            serde_json::to_string(&stat.clone().into_json_value())
-                                .unwrap_or_else(|e| e.to_string())
-                        );
-
-                        return Err(msg.into());
-                    }
+                    _ => return Err(format!("Unsupported message status: '{}'", stat.status()).into()),
                 }
             }
         }

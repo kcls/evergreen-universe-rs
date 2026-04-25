@@ -281,7 +281,7 @@ impl Bus {
     /// Sends a TransportMessage to the specified BusAddress, regardless
     /// of what value is in the msg.to() field.
     fn send_internal(&mut self, msg: TransportMessage, recipient: Option<&str>) -> EgResult<()> {
-        let mut json_val = msg.into_json_value();
+        let mut json_val = msg.to_json_value()?;
 
         // Play a little inside baseball here and tag the message
         // with our log trace.  This way the layers above don't have
