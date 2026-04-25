@@ -706,7 +706,7 @@ impl Session {
             }
 
             if let serde_json::Value::Array(ref mut arr) = body {
-                arr.push(msg.into_json_value());
+                arr.push(msg.to_json_value().map_err(|e| e.to_string())?);
             }
         }
 

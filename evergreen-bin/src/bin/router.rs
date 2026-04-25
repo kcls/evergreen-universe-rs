@@ -789,8 +789,7 @@ impl Router {
                 _ => {
                     return Err(format!(
                         "Router cannot process message: {}",
-                        serde_json::to_string(&tm.into_json_value())
-                            .unwrap_or_else(|e| e.to_string())
+                        serde_json::to_string(&tm).unwrap_or_else(|e| e.to_string())
                     )
                     .into())
                 }
@@ -861,8 +860,7 @@ impl Router {
             None => {
                 return Err(format!(
                     "No router command present: {}",
-                    serde_json::to_string(&tm.into_json_value())
-                        .unwrap_or_else(|e| e.to_string())
+                    serde_json::to_string(&tm).unwrap_or_else(|e| e.to_string())
                 )
                 .into());
             }
