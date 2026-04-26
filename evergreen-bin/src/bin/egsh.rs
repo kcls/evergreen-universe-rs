@@ -967,8 +967,9 @@ impl Shell {
 
         let dumped = if self.json_as_wire_protocal {
             if self.json_print_depth == 0 {
-                serde_json::to_string(&obj.into_json_value()).expect("JSON Dump")
+                obj.to_json_string()?
             } else {
+                // Use the serde pretty-ifier
                 serde_json::to_string_pretty(&obj.into_json_value()).expect("JSON Dump")
             }
         } else {
