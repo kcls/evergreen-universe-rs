@@ -675,6 +675,29 @@ impl EgValue {
     ///
     /// Returns an Err if the value is shaped like an IDL object
     /// but contains an unrecognized class name.
+    ///
+    /// ```
+    /// use evergreen::EgValue;
+    ///
+    /// let v = EgValue::from_json_value(serde_json::json!(null)).unwrap();
+    /// assert!(v.is_null());
+    ///
+    /// let v = EgValue::from_json_value(serde_json::json!(true)).unwrap();
+    /// assert_eq!(v.as_bool(), Some(true));
+    ///
+    /// let v = EgValue::from_json_value(serde_json::json!(99)).unwrap();
+    /// assert_eq!(v.as_int(), Some(99));
+    ///
+    /// let v = EgValue::from_json_value(serde_json::json!("hello")).unwrap();
+    /// assert_eq!(v.as_str(), Some("hello"));
+    ///
+    /// let v = EgValue::from_json_value(serde_json::json!([1, 2, 3])).unwrap();
+    /// assert_eq!(v.len(), 3);
+    /// assert_eq!(v[1].as_int(), Some(2));
+    ///
+    /// let v = EgValue::from_json_value(serde_json::json!({"key": "val"})).unwrap();
+    /// assert_eq!(v["key"].as_str(), Some("val"));
+    /// ```
     pub fn from_json_value(v: Value) -> EgResult<EgValue> {
         match v {
             Value::Null
@@ -683,68 +706,75 @@ impl EgValue {
             | Value::String(_) => Ok(EgValue::from_json_value_plain(v)),
 
             Value::Array(list) => {
-                let mut val_list = Vec::new();
+                let mut val_list = Vec::with_capacity(list.len());
                 for v in list {
                     val_list.push(EgValue::from_json_value(v)?);
                 }
                 Ok(EgValue::Array(val_list))
             }
 
-            Value::Object(obj_map) => {
-                // Check for IDL class wrapper
-                if let (Some(classname), Some(_)) = (
-                    obj_map.get(JSON_CLASS_KEY).and_then(|v| v.as_str()),
-                    obj_map.get(JSON_PAYLOAD_KEY),
-                ) {
-                    let classname = classname.to_string();
-                    let idl_class = idl::get_class(&classname)?;
+            Value::Object(mut obj_map) => {
+                let classname = obj_map
+                    .get(JSON_CLASS_KEY)
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
-                    // The payload is an array of field values for blessed objects.
-                    let payload = obj_map
-                        .get(JSON_PAYLOAD_KEY)
-                        .cloned()
-                        .unwrap_or(Value::Null);
+                if let Some(classname) = classname {
+                    if let Some(payload) = obj_map.remove(JSON_PAYLOAD_KEY) {
+                        let idl_class = idl::get_class(&classname)?;
 
-                    let mut map = HashMap::new();
-                    if let Value::Array(mut arr) = payload {
-                        for field in idl_class.fields().values() {
-                            if arr.len() > field.array_pos() {
-                                // No point in storing NULL entries since blessed values
-                                // have a known set of fields.
-                                let val = mem::replace(
-                                    &mut arr[field.array_pos()],
-                                    Value::Null,
-                                );
-
+                        let mut map = HashMap::new();
+                        if let Value::Array(arr) = payload {
+                            let sorted = idl_class.fields_sorted();
+                            for (name, val) in sorted.iter().zip(arr) {
                                 if !val.is_null() {
                                     map.insert(
-                                        field.name().to_string(),
+                                        name.clone(),
                                         EgValue::from_json_value(val)?,
                                     );
                                 }
                             }
                         }
-                    }
 
-                    Ok(EgValue::Blessed(BlessedValue {
-                        idl_class: idl_class.clone(),
-                        values: map,
-                    }))
-                } else {
-                    // Vanilla JSON object
-                    let mut map = HashMap::new();
-                    for (k, v) in obj_map {
-                        map.insert(k, EgValue::from_json_value(v)?);
+                        return Ok(EgValue::Blessed(BlessedValue {
+                            idl_class: idl_class.clone(),
+                            values: map,
+                        }));
                     }
-                    Ok(EgValue::Hash(map))
                 }
+
+                let mut map = HashMap::with_capacity(obj_map.len());
+                for (k, v) in obj_map {
+                    map.insert(k, EgValue::from_json_value(v)?);
+                }
+                Ok(EgValue::Hash(map))
             }
         }
     }
 
     /// Turn an EgValue into a Value consuming the EgValue.
     ///
-    /// Blessed objects are serialized into IDL-classed Arrays
+    /// Blessed objects are serialized into IDL-classed Arrays.
+    ///
+    /// ```
+    /// use evergreen::EgValue;
+    /// use serde_json::Value;
+    ///
+    /// let v = EgValue::from(42);
+    /// assert_eq!(v.into_json_value(), serde_json::json!(42));
+    ///
+    /// let v = EgValue::from("hello");
+    /// assert_eq!(v.into_json_value(), serde_json::json!("hello"));
+    ///
+    /// let v = EgValue::Null;
+    /// assert_eq!(v.into_json_value(), Value::Null);
+    ///
+    /// let v = evergreen::array!["a", "b"];
+    /// assert_eq!(v.into_json_value(), serde_json::json!(["a", "b"]));
+    ///
+    /// let v = evergreen::hash!{"name": "alice", "age": 30};
+    /// assert_eq!(v.into_json_value(), serde_json::json!({"name": "alice", "age": 30}));
+    /// ```
     pub fn into_json_value(self) -> Value {
         match self {
             EgValue::Null => Value::Null,
@@ -755,25 +785,17 @@ impl EgValue {
                 Value::Array(list.into_iter().map(|v| v.into_json_value()).collect())
             }
             EgValue::Hash(o) => {
-                let mut map = serde_json::Map::new();
+                let mut map = serde_json::Map::with_capacity(o.len());
                 for (k, v) in o {
                     map.insert(k, v.into_json_value());
                 }
                 Value::Object(map)
             }
             EgValue::Blessed(mut o) => {
-                let fields = o.idl_class.fields();
-
-                // Translate the fields hash into a sorted array
-                let mut sorted = fields.values().collect::<Vec<&idl::Field>>();
-                sorted.sort_by_key(|f| f.array_pos());
-
-                let mut array = Vec::new();
-                for field in sorted {
-                    let v = match o.values.remove(field.name()) {
-                        Some(v) => v,
-                        None => eg::NULL,
-                    };
+                let sorted = o.idl_class.fields_sorted();
+                let mut array = Vec::with_capacity(sorted.len());
+                for name in sorted {
+                    let v = o.values.remove(name.as_str()).unwrap_or(eg::NULL);
                     array.push(v.into_json_value());
                 }
 
@@ -1339,14 +1361,11 @@ impl serde::Serialize for EgValue {
                 let mut m = serializer.serialize_map(Some(2))?;
                 m.serialize_entry(JSON_CLASS_KEY, b.idl_class.classname())?;
 
-                let fields = b.idl_class.fields();
-                let mut sorted: Vec<&idl::Field> = fields.values().collect();
-                sorted.sort_by_key(|f| f.array_pos());
-
+                let sorted = b.idl_class.fields_sorted();
                 let null = EgValue::Null;
                 let values: Vec<&EgValue> = sorted
                     .iter()
-                    .map(|field| b.values.get(field.name()).unwrap_or(&null))
+                    .map(|name| b.values.get(name.as_str()).unwrap_or(&null))
                     .collect();
 
                 m.serialize_entry(JSON_PAYLOAD_KEY, &values)?;
