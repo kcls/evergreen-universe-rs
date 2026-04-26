@@ -78,8 +78,8 @@ impl GatewayHandler {
         // We could make the various read/parsers return something
         // more meaningful to separate, e.g., 4XX and 5XX errors.
         let mut response = eg::hash! {
-            status: 400,
-            payload: [],
+            "status": 400,
+            "payload": [],
         };
 
         let mut http_req = None;
@@ -114,7 +114,7 @@ impl GatewayHandler {
             }
         }
 
-        let data = response.dump();
+        let data = response.to_json_string()?;
         let length = format!("Content-Length: {}", data.len());
 
         let leader = if response["status"] == EgValue::Number(200.into()) {
@@ -266,7 +266,7 @@ impl GatewayHandler {
                     | eg::osrf::message::MessageStatus::Continue => {
                         // Keep reading in case there's more data in the message.
                     }
-                    _ => return Err(stat.clone().into_json_value().dump().into()),
+                    _ => return Err(format!("Unsupported message status: '{}'", stat.status()).into()),
                 }
             }
         }
@@ -430,7 +430,7 @@ impl GatewayHandler {
                 "method" => method = Some(v.to_string()),
                 "service" => service = Some(v.to_string()),
                 "param" => {
-                    let jval = json::parse(&v)
+                    let jval = serde_json::from_str(&v)
                         .map_err(|e| format!("Cannot parse parameter: {e} : {v}"))?;
 
                     let val = if format.is_hash() {

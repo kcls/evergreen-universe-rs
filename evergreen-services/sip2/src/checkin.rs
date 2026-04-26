@@ -214,7 +214,7 @@ impl Session {
             false => "open-ils.circ.checkin",
         };
 
-        log::info!("{self} checking in items with args: {}", args.dump());
+        log::info!("{self} checking in items with args: {}", args.to_json_string()?);
 
         let params = vec![EgValue::from(self.editor().authtoken().unwrap()), args];
 
@@ -231,7 +231,7 @@ impl Session {
         log::info!(
             "{self} Checkin of {} returned: {}",
             item.barcode,
-            resp.dump()
+            resp.to_json_string()?
         );
 
         let evt_json = if resp.is_array() {

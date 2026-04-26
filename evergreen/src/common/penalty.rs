@@ -20,7 +20,7 @@ pub fn calculate_penalties(
     only_penalties: Option<&Vec<EgValue>>,
 ) -> EgResult<()> {
     let query = eg::hash! {
-        from: [
+        "from": [
             "actor.calculate_system_penalties",
             user_id, context_org
         ]

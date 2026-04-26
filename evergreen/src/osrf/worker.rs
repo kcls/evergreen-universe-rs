@@ -502,7 +502,7 @@ impl Worker {
                         return self.reply_bad_request(&format!(
                             "Invalid paramter type: wanted={} got={}",
                             param_def.datatype,
-                            param_val.clone().dump()
+                            param_val.to_json_string()?
                         ));
                     }
                 } else {

@@ -105,12 +105,12 @@ pub fn dispatch_sip_request(
 
     if msg_code == "93" {
         let response = handle_login(&mut editor, seskey, sip_msg)?;
-        let value = EgValue::from_json_value(response.to_json_value())?;
+        let value = EgValue::try_from(response.to_json_value())?;
 
         return session.respond_complete(value);
     } else if msg_code == "99" {
         let response = handle_sc_status(&mut editor, seskey, sip_msg)?;
-        let value = EgValue::from_json_value(response.to_json_value())?;
+        let value = EgValue::try_from(response.to_json_value())?;
 
         return session.respond_complete(value);
     }
@@ -123,7 +123,7 @@ pub fn dispatch_sip_request(
 
                 let response = sip2::Message::from_ff_values("XT", &[]).unwrap();
 
-                let value = EgValue::from_json_value(response.to_json_value())?;
+                let value = EgValue::try_from(response.to_json_value())?;
                 return session.respond_complete(value);
             }
 
@@ -147,7 +147,7 @@ pub fn dispatch_sip_request(
         _ => return Err(format!("SIP message '{msg_code}' not implemented").into()),
     };
 
-    let value = EgValue::from_json_value(response.to_json_value())?;
+    let value = EgValue::try_from(response.to_json_value())?;
 
     session.respond_complete(value)
 }

@@ -138,10 +138,10 @@ pub fn calc_hold_shelf_expire_time(
 /// targets the provided copy.
 pub fn captured_hold_for_copy(editor: &mut Editor, copy_id: i64) -> EgResult<Option<EgValue>> {
     let query = eg::hash! {
-        current_copy: copy_id,
-        capture_time: {"!=": eg::NULL},
-        fulfillment_time: eg::NULL,
-        cancel_time: eg::NULL,
+        "current_copy": copy_id,
+        "capture_time": {"!=": eg::NULL},
+        "fulfillment_time": eg::NULL,
+        "cancel_time": eg::NULL,
     };
 
     Ok(editor.search("ahr", query)?.pop())
@@ -159,8 +159,8 @@ pub fn find_nearest_permitted_hold(
 
     // Fetch the appropriatly fleshed copy.
     let flesh = eg::hash! {
-        flesh: 1,
-        flesh_fields: {
+        "flesh": 1,
+        "flesh_fields": {
             "acp": ["call_number"],
         }
     };
@@ -572,7 +572,7 @@ pub fn json_query_order_by_targetable() -> EgValue {
     eg::array! [
         {"class": "pgt", "field": "hold_priority"},
         {"class": "ahr", "field": "cut_in_line",
-            "direction": "desc", "transform": "coalesce", params: vec!["f"]},
+            "direction": "desc", "transform": "coalesce", "params": vec!["f"]},
         {"class": "ahr", "field": "selection_depth", "direction": "desc"},
         {"class": "ahr", "field": "request_time"}
     ]
@@ -657,7 +657,7 @@ pub fn related_to_copy(
             "+acp": {"id": copy_id},
             "+ahr": {
                 "cancel_time": eg::NULL,
-                "fulfillment_time" => eg::NULL,
+                "fulfillment_time": eg::NULL,
             }
         },
         "order_by": json_query_order_by_targetable(),
