@@ -270,6 +270,7 @@ pub struct Class {
 
     fieldmapper: Option<String>,
     fields: HashMap<String, Field>,
+    fields_sorted: Vec<String>,
     links: HashMap<String, Link>,
     tablename: Option<String>,
     source_definition: Option<String>,
@@ -305,6 +306,9 @@ impl Class {
     }
     pub fn fields(&self) -> &HashMap<String, Field> {
         &self.fields
+    }
+    pub fn fields_sorted(&self) -> &[String] {
+        &self.fields_sorted
     }
     pub fn fieldmapper(&self) -> Option<&str> {
         self.fieldmapper.as_deref()
@@ -492,6 +496,7 @@ impl Parser {
             classname: name.to_string(),
             source_definition: None,
             fields: HashMap::new(),
+            fields_sorted: Vec::new(),
             links: HashMap::new(),
             selector: None,
             pkey: None,
@@ -532,6 +537,10 @@ impl Parser {
         }
 
         self.add_auto_fields(&mut class, field_array_pos);
+
+        let mut sorted: Vec<&Field> = class.fields.values().collect();
+        sorted.sort_by_key(|f| f.array_pos());
+        class.fields_sorted = sorted.into_iter().map(|f| f.name.clone()).collect();
 
         self.classes
             .insert(class.classname.to_string(), Arc::new(class));
