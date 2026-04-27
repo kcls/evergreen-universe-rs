@@ -20,10 +20,6 @@ use serde_json;
 use smarty_rust_sdk;
 use tokio;
 
-use geo::prelude::Contains;
-use shapefile::record::*;
-use std::path::Path;
-
 use smarty_rust_sdk::sdk::authentication::SecretKeyCredential;
 use smarty_rust_sdk::sdk::batch::Batch;
 use smarty_rust_sdk::sdk::options::Options;
@@ -42,8 +38,9 @@ const ADDR_LOOKUP_ERROR: &str = "Address lookup error";
 // TODO: Add to systemd config
 const DEFAULT_ADDR_DATA_DIR: &str = "/usr/local/share/evergreen/address-data";
 
-// Import our local app module
+// Import our local modules
 use crate::app;
+use crate::shapefile_util::shapefile_contains;
 
 /// List of method definitions we know at compile time.
 pub static METHODS: &[StaticMethodDef] = &[
@@ -446,33 +443,3 @@ pub fn district_of_residence(
     Ok(())
 }
 
-/// Returns true if the shapefile provided contains the lat/long provided.
-fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> EgResult<bool> {
-    log::debug!("Inspecting shapefile {shapefile} for lat={lat} and long={long}");
-
-    if !Path::new(shapefile).exists() {
-        log::warn!("No such shapefile: {shapefile}");
-        return Ok(false);
-    }
-
-    let mut reader = shapefile::Reader::from_path(shapefile)
-        .map_err(|e| format!("Cannot read shapefile: {shapefile}: {e}"))?;
-
-    let point = Point::new(long, lat); // x, y
-
-    for shape_record in reader.iter_shapes_and_records() {
-        let (shape, _record) = shape_record
-            .map_err(|e| format!("Cannot extract shape/record from {shapefile}: {e}"))?;
-
-        if let Shape::Polygon(poly) = shape {
-            let geo_poly: geo::MultiPolygon<f64> = poly.into();
-            let geo_point: geo::Point<f64> = point.into();
-
-            if geo_poly.contains(&geo_point) {
-                return Ok(true);
-            }
-        }
-    }
-
-    Ok(false)
-}

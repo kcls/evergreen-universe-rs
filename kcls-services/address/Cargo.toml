@@ -17,4 +17,7 @@ shapefile = {version = "0.7.0", features = ["geo-types"]}
 name = "kcls-service-address"
 path = "src/main.rs"
 
+[dev-dependencies]
+serde_json = "1.0.140"
+
 

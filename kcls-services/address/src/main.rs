@@ -4,6 +4,7 @@ use evergreen as eg;
 use std::env;
 pub mod app;
 pub mod methods;
+pub mod shapefile_util;
 
 fn main() {
     let service = Box::new(app::AddrsApplication::new());

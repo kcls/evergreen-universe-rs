@@ -1,0 +1,453 @@
+{
+  "_comment": "Test points for shapefile containment testing. Add new entries to test additional locations without recompiling. expected_home_orgs and expected_districts are optional; when present, the assertion test verifies exact matches.",
+  "points": [
+    {
+      "name": "Bellevue Library",
+      "lat": 47.6156,
+      "long": -122.1972,
+      "description": "Downtown Bellevue, KCLS BE service area",
+      "expected_home_orgs": ["BE"],
+      "expected_districts": []
+    },
+    {
+      "name": "Auburn Library",
+      "lat": 47.3068,
+      "long": -122.2145,
+      "description": "Auburn city center, KCLS AU service area",
+      "expected_home_orgs": ["AU"],
+      "expected_districts": []
+    },
+    {
+      "name": "Bothell Library",
+      "lat": 47.7608,
+      "long": -122.2050,
+      "description": "Downtown Bothell, KCLS BO service area",
+      "expected_home_orgs": ["BO"],
+      "expected_districts": []
+    },
+    {
+      "name": "Burien Library",
+      "lat": 47.4699,
+      "long": -122.3434,
+      "description": "Burien city center, KCLS BU service area",
+      "expected_home_orgs": ["BU"],
+      "expected_districts": []
+    },
+    {
+      "name": "Covington Library",
+      "lat": 47.3720,
+      "long": -122.0966,
+      "description": "Covington, KCLS CO service area",
+      "expected_home_orgs": ["CO"],
+      "expected_districts": []
+    },
+    {
+      "name": "Federal Way Library",
+      "lat": 47.3155,
+      "long": -122.3120,
+      "description": "Federal Way, matched home-org F3",
+      "expected_home_orgs": ["F3"],
+      "expected_districts": []
+    },
+    {
+      "name": "Issaquah Library",
+      "lat": 47.5310,
+      "long": -122.0340,
+      "description": "Downtown Issaquah, KCLS IS service area",
+      "expected_home_orgs": ["IS"],
+      "expected_districts": []
+    },
+    {
+      "name": "Kent Library",
+      "lat": 47.3810,
+      "long": -122.2348,
+      "description": "Kent city center, KCLS KT service area",
+      "expected_home_orgs": ["KT"],
+      "expected_districts": []
+    },
+    {
+      "name": "Kirkland Library",
+      "lat": 47.6814,
+      "long": -122.2087,
+      "description": "Downtown Kirkland, matched home-org KL",
+      "expected_home_orgs": ["KL"],
+      "expected_districts": []
+    },
+    {
+      "name": "Mercer Island Library",
+      "lat": 47.5699,
+      "long": -122.2222,
+      "description": "Mercer Island, KCLS MI service area",
+      "expected_home_orgs": ["MI"],
+      "expected_districts": []
+    },
+    {
+      "name": "Redmond Library",
+      "lat": 47.6697,
+      "long": -122.1236,
+      "description": "Downtown Redmond, KCLS RE service area",
+      "expected_home_orgs": ["RE"],
+      "expected_districts": []
+    },
+    {
+      "name": "Renton Library",
+      "lat": 47.4820,
+      "long": -122.2168,
+      "description": "Renton city center, KCLS RN service area",
+      "expected_home_orgs": ["RN"],
+      "expected_districts": []
+    },
+    {
+      "name": "Sammamish Library",
+      "lat": 47.6163,
+      "long": -122.0356,
+      "description": "Sammamish, KCLS SA service area",
+      "expected_home_orgs": ["SA"],
+      "expected_districts": []
+    },
+    {
+      "name": "Shoreline Library",
+      "lat": 47.7560,
+      "long": -122.3484,
+      "description": "Shoreline, KCLS SH service area",
+      "expected_home_orgs": ["SH"],
+      "expected_districts": []
+    },
+    {
+      "name": "Snoqualmie Library",
+      "lat": 47.5295,
+      "long": -121.8253,
+      "description": "Snoqualmie, KCLS SN service area",
+      "expected_home_orgs": ["SN"],
+      "expected_districts": []
+    },
+    {
+      "name": "Tukwila Library",
+      "lat": 47.4744,
+      "long": -122.2609,
+      "description": "Tukwila, KCLS TU service area",
+      "expected_home_orgs": ["TU"],
+      "expected_districts": []
+    },
+    {
+      "name": "Vashon Library",
+      "lat": 47.4473,
+      "long": -122.4547,
+      "description": "Vashon Island, KCLS VS service area",
+      "expected_home_orgs": ["VS"],
+      "expected_districts": []
+    },
+    {
+      "name": "Woodinville Library",
+      "lat": 47.7534,
+      "long": -122.1572,
+      "description": "Woodinville, KCLS WL service area",
+      "expected_home_orgs": ["WL"],
+      "expected_districts": []
+    },
+    {
+      "name": "Maple Valley Library",
+      "lat": 47.3924,
+      "long": -122.0417,
+      "description": "Maple Valley - no shapefile match found; needs investigation"
+    },
+    {
+      "name": "Kenmore Library",
+      "lat": 47.7570,
+      "long": -122.2440,
+      "description": "Kenmore, KCLS KM service area",
+      "expected_home_orgs": ["KM"],
+      "expected_districts": []
+    },
+    {
+      "name": "North Bend Library",
+      "lat": 47.4957,
+      "long": -121.7868,
+      "description": "North Bend, KCLS NB service area",
+      "expected_home_orgs": ["NB"],
+      "expected_districts": []
+    },
+    {
+      "name": "Newcastle Library",
+      "lat": 47.5301,
+      "long": -122.1640,
+      "description": "Newcastle, KCLS NC service area",
+      "expected_home_orgs": ["NC"],
+      "expected_districts": []
+    },
+    {
+      "name": "Enumclaw Library",
+      "lat": 47.2044,
+      "long": -121.9916,
+      "description": "Enumclaw, KCLS EN service area",
+      "expected_home_orgs": ["EN"],
+      "expected_districts": []
+    },
+    {
+      "name": "Carnation Library",
+      "lat": 47.6500,
+      "long": -121.9140,
+      "description": "Carnation, KCLS CA service area",
+      "expected_home_orgs": ["CA"],
+      "expected_districts": []
+    },
+    {
+      "name": "Duvall Library",
+      "lat": 47.7423,
+      "long": -121.9856,
+      "description": "Duvall, KCLS DU service area",
+      "expected_home_orgs": ["DU"],
+      "expected_districts": []
+    },
+    {
+      "name": "Fall City Library",
+      "lat": 47.5672,
+      "long": -121.8896,
+      "description": "Fall City, KCLS FC service area",
+      "expected_home_orgs": ["FC"],
+      "expected_districts": []
+    },
+    {
+      "name": "Black Diamond Library",
+      "lat": 47.3085,
+      "long": -122.0033,
+      "description": "Black Diamond, KCLS BD service area",
+      "expected_home_orgs": ["BD"],
+      "expected_districts": []
+    },
+    {
+      "name": "Skykomish Library",
+      "lat": 47.7130,
+      "long": -121.3575,
+      "description": "Skykomish, KCLS SK service area",
+      "expected_home_orgs": ["SK"],
+      "expected_districts": []
+    },
+
+    {
+      "name": "Downtown Seattle",
+      "lat": 47.6062,
+      "long": -122.3321,
+      "description": "Central Seattle, Seattle Public Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+    },
+    {
+      "name": "Capitol Hill Seattle",
+      "lat": 47.6253,
+      "long": -122.3222,
+      "description": "Capitol Hill, Seattle Public Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+    },
+    {
+      "name": "University District Seattle",
+      "lat": 47.6583,
+      "long": -122.3130,
+      "description": "U-District, Seattle Public Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+    },
+    {
+      "name": "West Seattle",
+      "lat": 47.5614,
+      "long": -122.3871,
+      "description": "West Seattle, Seattle Public Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+    },
+    {
+      "name": "Ballard Seattle",
+      "lat": 47.6677,
+      "long": -122.3846,
+      "description": "Ballard neighborhood, Seattle Public Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+    },
+
+    {
+      "name": "Tacoma Downtown",
+      "lat": 47.2529,
+      "long": -122.4443,
+      "description": "Downtown Tacoma, Pierce County Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+    },
+    {
+      "name": "Puyallup",
+      "lat": 47.1854,
+      "long": -122.2929,
+      "description": "Puyallup, Pierce County area",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+    },
+    {
+      "name": "Lakewood",
+      "lat": 47.1718,
+      "long": -122.5185,
+      "description": "Lakewood, Pierce County area",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+    },
+
+    {
+      "name": "Everett Downtown",
+      "lat": 47.9790,
+      "long": -122.2021,
+      "description": "Downtown Everett - overlaps everett_public_library and sno-isle_regional_library",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+    },
+    {
+      "name": "Marysville",
+      "lat": 48.0518,
+      "long": -122.1770,
+      "description": "Marysville - overlaps everett_public_library and sno-isle_regional_library",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+    },
+    {
+      "name": "Edmonds",
+      "lat": 47.8107,
+      "long": -122.3774,
+      "description": "Edmonds - overlaps everett_public_library and sno-isle_regional_library",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+    },
+    {
+      "name": "Lynnwood",
+      "lat": 47.8209,
+      "long": -122.3151,
+      "description": "Lynnwood - overlaps everett_public_library and sno-isle_regional_library",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+    },
+
+    {
+      "name": "Bremerton",
+      "lat": 47.5673,
+      "long": -122.6326,
+      "description": "Downtown Bremerton, Kitsap Regional Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "kitsap_regional_library"]
+    },
+    {
+      "name": "Silverdale",
+      "lat": 47.6444,
+      "long": -122.6950,
+      "description": "Silverdale, Kitsap Regional Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "kitsap_regional_library"]
+    },
+
+    {
+      "name": "Port Townsend",
+      "lat": 48.1170,
+      "long": -122.7585,
+      "description": "Port Townsend, Jefferson County Libraries district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "jefferson_county_libraries"]
+    },
+
+    {
+      "name": "Sequim",
+      "lat": 48.0797,
+      "long": -123.1016,
+      "description": "Sequim, North Olympic Library System district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "north_olympic_library_system"]
+    },
+    {
+      "name": "Port Angeles",
+      "lat": 48.1184,
+      "long": -123.4307,
+      "description": "Port Angeles, North Olympic Library System district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "north_olympic_library_system"]
+    },
+
+    {
+      "name": "Olympia",
+      "lat": 47.0379,
+      "long": -122.9007,
+      "description": "Olympia, Timberland Regional Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "timberland_regional_library"]
+    },
+    {
+      "name": "Centralia",
+      "lat": 46.7162,
+      "long": -122.9543,
+      "description": "Centralia, Timberland Regional Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "timberland_regional_library"]
+    },
+
+    {
+      "name": "Vancouver WA",
+      "lat": 45.6387,
+      "long": -122.6615,
+      "description": "Vancouver WA, Fort Vancouver Regional Library district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "fort_vancouver_regional_library"]
+    },
+
+    {
+      "name": "Wenatchee",
+      "lat": 47.4235,
+      "long": -120.3103,
+      "description": "Wenatchee, NCW Libraries district",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "ncw_libraries"]
+    },
+
+    {
+      "name": "Portland OR",
+      "lat": 45.5152,
+      "long": -122.6784,
+      "description": "Portland, Oregon - should not be in any service area",
+      "expected_home_orgs": [],
+      "expected_districts": []
+    },
+    {
+      "name": "Spokane WA",
+      "lat": 47.6588,
+      "long": -117.4260,
+      "description": "Spokane - should not be in any service area",
+      "expected_home_orgs": [],
+      "expected_districts": []
+    },
+    {
+      "name": "Yakima WA",
+      "lat": 46.6021,
+      "long": -120.5059,
+      "description": "Yakima - should not be in any service area",
+      "expected_home_orgs": [],
+      "expected_districts": []
+    },
+    {
+      "name": "Pacific Ocean",
+      "lat": 47.0000,
+      "long": -130.0000,
+      "description": "Middle of the Pacific Ocean - no service area",
+      "expected_home_orgs": [],
+      "expected_districts": []
+    },
+    {
+      "name": "Eastern WA Farmland",
+      "lat": 47.0000,
+      "long": -119.0000,
+      "description": "Rural eastern Washington - inside NCW's large coverage area",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "ncw_libraries"]
+    },
+    {
+      "name": "Mount Rainier Summit",
+      "lat": 46.8523,
+      "long": -121.7603,
+      "description": "Mount Rainier summit - falls within Pierce County district boundary",
+      "expected_home_orgs": [],
+      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+    }
+  ]
+}
