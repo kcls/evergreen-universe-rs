@@ -230,7 +230,7 @@
       "long": -122.3321,
       "description": "Central Seattle, Seattle Public Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+      "expected_districts": ["_KCLS", "Seattle_Public_Library"]
     },
     {
       "name": "Capitol Hill Seattle",
@@ -238,7 +238,7 @@
       "long": -122.3222,
       "description": "Capitol Hill, Seattle Public Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+      "expected_districts": ["_KCLS", "Seattle_Public_Library"]
     },
     {
       "name": "University District Seattle",
@@ -246,7 +246,7 @@
       "long": -122.3130,
       "description": "U-District, Seattle Public Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+      "expected_districts": ["_KCLS", "Seattle_Public_Library"]
     },
     {
       "name": "West Seattle",
@@ -254,7 +254,7 @@
       "long": -122.3871,
       "description": "West Seattle, Seattle Public Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+      "expected_districts": ["_KCLS", "Seattle_Public_Library"]
     },
     {
       "name": "Ballard Seattle",
@@ -262,7 +262,7 @@
       "long": -122.3846,
       "description": "Ballard neighborhood, Seattle Public Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "seattle_public_library"]
+      "expected_districts": ["_KCLS", "Seattle_Public_Library"]
     },
 
     {
@@ -271,7 +271,7 @@
       "long": -122.4443,
       "description": "Downtown Tacoma, Pierce County Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+      "expected_districts": ["_KCLS", "Pierce_County_Library_System"]
     },
     {
       "name": "Puyallup",
@@ -279,7 +279,7 @@
       "long": -122.2929,
       "description": "Puyallup, Pierce County area",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+      "expected_districts": ["_KCLS", "Pierce_County_Library_System"]
     },
     {
       "name": "Lakewood",
@@ -287,7 +287,7 @@
       "long": -122.5185,
       "description": "Lakewood, Pierce County area",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+      "expected_districts": ["_KCLS", "Pierce_County_Library_System"]
     },
 
     {
@@ -296,7 +296,7 @@
       "long": -122.2021,
       "description": "Downtown Everett - overlaps everett_public_library and sno-isle_regional_library",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+      "expected_districts": ["_KCLS", "Everett_Public_Library", "Sno-Isle_Regional_Library"]
     },
     {
       "name": "Marysville",
@@ -304,7 +304,7 @@
       "long": -122.1770,
       "description": "Marysville - overlaps everett_public_library and sno-isle_regional_library",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+      "expected_districts": ["_KCLS", "Everett_Public_Library", "Sno-Isle_Regional_Library"]
     },
     {
       "name": "Edmonds",
@@ -312,7 +312,7 @@
       "long": -122.3774,
       "description": "Edmonds - overlaps everett_public_library and sno-isle_regional_library",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+      "expected_districts": ["_KCLS", "Everett_Public_Library", "Sno-Isle_Regional_Library"]
     },
     {
       "name": "Lynnwood",
@@ -320,7 +320,7 @@
       "long": -122.3151,
       "description": "Lynnwood - overlaps everett_public_library and sno-isle_regional_library",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "everett_public_library", "sno-isle_regional_library"]
+      "expected_districts": ["_KCLS", "Everett_Public_Library", "Sno-Isle_Regional_Library"]
     },
 
     {
@@ -329,7 +329,7 @@
       "long": -122.6326,
       "description": "Downtown Bremerton, Kitsap Regional Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "kitsap_regional_library"]
+      "expected_districts": ["_KCLS", "Kitsap_Regional_Library"]
     },
     {
       "name": "Silverdale",
@@ -337,7 +337,7 @@
       "long": -122.6950,
       "description": "Silverdale, Kitsap Regional Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "kitsap_regional_library"]
+      "expected_districts": ["_KCLS", "Kitsap_Regional_Library"]
     },
 
     {
@@ -346,7 +346,7 @@
       "long": -122.7585,
       "description": "Port Townsend, Jefferson County Libraries district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "jefferson_county_libraries"]
+      "expected_districts": ["_KCLS", "Jefferson_County_Rural_Library_District"]
     },
 
     {
@@ -355,7 +355,7 @@
       "long": -123.1016,
       "description": "Sequim, North Olympic Library System district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "north_olympic_library_system"]
+      "expected_districts": ["_KCLS", "North_Olympic_Library_System"]
     },
     {
       "name": "Port Angeles",
@@ -363,7 +363,7 @@
       "long": -123.4307,
       "description": "Port Angeles, North Olympic Library System district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "north_olympic_library_system"]
+      "expected_districts": ["_KCLS", "North_Olympic_Library_System"]
     },
 
     {
@@ -372,7 +372,7 @@
       "long": -122.9007,
       "description": "Olympia, Timberland Regional Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "timberland_regional_library"]
+      "expected_districts": ["_KCLS", "Timberland_Regional_Library"]
     },
     {
       "name": "Centralia",
@@ -380,7 +380,7 @@
       "long": -122.9543,
       "description": "Centralia, Timberland Regional Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "timberland_regional_library"]
+      "expected_districts": ["_KCLS", "Timberland_Regional_Library"]
     },
 
     {
@@ -389,7 +389,7 @@
       "long": -122.6615,
       "description": "Vancouver WA, Fort Vancouver Regional Library district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "fort_vancouver_regional_library"]
+      "expected_districts": ["_KCLS", "Fort_Vancouver_Regional_Library"]
     },
 
     {
@@ -398,7 +398,7 @@
       "long": -120.3103,
       "description": "Wenatchee, NCW Libraries district",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "ncw_libraries"]
+      "expected_districts": ["_KCLS", "NCW_Libraries"]
     },
 
     {
@@ -439,7 +439,7 @@
       "long": -119.0000,
       "description": "Rural eastern Washington - inside NCW's large coverage area",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "ncw_libraries"]
+      "expected_districts": ["_KCLS", "NCW_Libraries"]
     },
     {
       "name": "Mount Rainier Summit",
@@ -447,7 +447,7 @@
       "long": -121.7603,
       "description": "Mount Rainier summit - falls within Pierce County district boundary",
       "expected_home_orgs": [],
-      "expected_districts": ["all_kcls_reciprocal_areas", "pierce_county_libraries"]
+      "expected_districts": ["_KCLS", "Pierce_County_Library_System"]
     }
   ]
 }
