@@ -111,6 +111,17 @@ impl Session {
             if let Some(date) = hold["shelf_expire_time"].as_str() {
                 let pu_date = date::parse_datetime(date)?;
                 hold_pickup_date_op = Some(sip2::util::sip_date_from_dt(&pu_date));
+
+            } else if let Some(interval) = self
+                .org_settings()
+                .get_value("circ.holds.default_shelf_expire_interval")?
+                .to_string() 
+            {
+                let expire_dt = date::add_interval(date::now(), &interval)?;
+
+                log::info!("Calculated hold shelf expire time is {expire_dt}");
+
+                hold_pickup_date_op = Some(expire_dt.format(DEFAULT_DUE_DATE_FORMAT).to_string());
             }
 
             if let Some(bc) = hold["usr"]["card"]["barcode"].as_str() {
