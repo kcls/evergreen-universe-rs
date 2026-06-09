@@ -107,6 +107,7 @@ impl Session {
             hold_queue_length = 1; // copying SIPServer
 
             dest_location = hold["pickup_lib"]["shortname"].string()?;
+            let dest_location_id = hold["pickup_lib"].id()?;
 
             if let Some(date) = hold["shelf_expire_time"].as_str() {
                 let pu_date = date::parse_datetime(date)?;
@@ -114,14 +115,18 @@ impl Session {
 
             } else if let Some(interval) = self
                 .org_settings()
-                .get_value("circ.holds.default_shelf_expire_interval")?
+                .get_value_at_org("circ.holds.default_shelf_expire_interval", dest_location_id)?
                 .to_string() 
             {
+                log::info!("Shelf expire interval at {dest_location_id} is {interval}");
+
                 let expire_dt = date::add_interval(date::now(), &interval)?;
 
                 log::info!("Calculated hold shelf expire time is {expire_dt}");
 
-                hold_pickup_date_op = Some(expire_dt.format(DEFAULT_DUE_DATE_FORMAT).to_string());
+                hold_pickup_date_op = Some(sip2::util::sip_date_from_dt(&expire_dt));
+            } else {
+                log::info!("Org unit {dest_location_id} has no circ.holds.default_shelf_expire_interval value");
             }
 
             if let Some(bc) = hold["usr"]["card"]["barcode"].as_str() {
