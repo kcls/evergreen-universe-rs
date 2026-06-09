@@ -6,6 +6,7 @@ use eg::osrf::cache::Cache;
 use evergreen as eg;
 use std::collections::HashMap;
 use std::fmt;
+use eg::common::settings::Settings as OrgSettings;
 
 // TODO session auth caching and storage.
 //
@@ -122,6 +123,7 @@ pub struct Session {
     seskey: String,
     sip_account: EgValue,
     config: Config,
+    org_settings: OrgSettings,
 
     /// Any time we encounter a new org unit, add it here.
     org_cache: HashMap<i64, EgValue>,
@@ -142,6 +144,7 @@ impl Session {
     pub fn new(editor: &Editor, seskey: &str, sip_account: EgValue) -> EgResult<Self> {
         let mut editor = editor.clone();
         let config = Session::load_config(&mut editor, sip_account["setting_group"].int()?)?;
+        let org_settings = OrgSettings::new(&editor);
 
         log::debug!("Session {seskey} loaded config: {:?}", config);
 
@@ -150,12 +153,17 @@ impl Session {
             editor,
             sip_account,
             config,
+            org_settings,
             org_cache: HashMap::new(),
         })
     }
 
     pub fn org_cache(&self) -> &HashMap<i64, EgValue> {
         &self.org_cache
+    }
+
+    pub fn org_settings(&mut self) -> &mut OrgSettings {
+        &mut self.org_settings
     }
 
     pub fn org_cache_mut(&mut self) -> &mut HashMap<i64, EgValue> {
