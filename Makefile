@@ -131,12 +131,12 @@ build-kcls-services:
 build-kcls-services-release:
 	cargo build -j ${BUILD_THREADS} --package kcls-service-address --release
 
-install-kcls-services:
+install-kcls-services: install-kcls-services-config
 	cp ./target/debug/kcls-service-address ${BIN_DIR}/
 	mkdir -p ${SHARE_DIR}/address-data
 	cp -r ./kcls-services/address/data/shapefiles ${SHARE_DIR}/address-data/
 
-install-kcls-services-release:
+install-kcls-services-release: install-kcls-services-config
 	cp ./target/release/kcls-service-address ${BIN_DIR}/
 	mkdir -p ${SHARE_DIR}/address-data
 	cp -r ./kcls-services/address/data/shapefiles ${SHARE_DIR}/address-data/
