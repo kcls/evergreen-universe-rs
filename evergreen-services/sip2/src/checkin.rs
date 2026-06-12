@@ -199,15 +199,13 @@ impl Session {
             }
         }
 
-        if let Some(sn) = checkin_loc_op
-            && let Some(org) = self.org_from_sn(sn)?
-        {
-            args["circ_lib"] = org["id"].clone();
+        let mut checkin_lib = self.editor().perm_org();
+
+        if let Some(sn) = checkin_loc_op && let Some(org) = self.org_from_sn(sn)?  {
+            checkin_lib = org.id()?;
         }
 
-        if !args.has_key("circ_lib") {
-            args["circ_lib"] = EgValue::from(self.editor().perm_org());
-        }
+        args["circ_lib"] = checkin_lib.into();
 
         let method = match ovride {
             true => "open-ils.circ.checkin.override",
@@ -301,7 +299,7 @@ impl Session {
             }
         }
 
-        self.handle_checkin_hold(&evt, &mut result)?;
+        self.handle_checkin_hold(&evt, &mut result, checkin_lib)?;
 
         if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
             result.ok = true;
@@ -356,20 +354,17 @@ impl Session {
             }
         }
 
+        let mut checkin_lib = self.editor().perm_org();
+
         if let Some(sn) = checkin_loc_op {
             if let Some(org) = self.org_from_sn(sn)? {
-                options.insert("circ_lib".to_string(), org["id"].clone());
+                checkin_lib = org.id()?;
             } else {
                 log::warn!("Unknown org unit provided for current location: {sn}");
             }
         }
 
-        if !options.contains_key("circ_lib") {
-            options.insert(
-                "circ_lib".to_string(),
-                EgValue::from(self.editor().perm_org()),
-            );
-        }
+        options.insert("circ_lib".to_string(), checkin_lib.into());
 
         log::info!("{self} checkin with params: {:?}", options);
 
@@ -459,7 +454,7 @@ impl Session {
             }
         }
 
-        self.handle_checkin_hold(evt, &mut result)?;
+        self.handle_checkin_hold(evt, &mut result, checkin_lib)?;
 
         if evt.textcode().eq("SUCCESS") || evt.textcode().eq("NO_CHANGE") {
             result.ok = true;
@@ -484,6 +479,7 @@ impl Session {
         &mut self,
         evt: &eg::event::EgEvent,
         result: &mut CheckinResult,
+        checkin_lib: i64,
     ) -> EgResult<()> {
         let rh = &evt.payload()["remote_hold"];
         let lh = &evt.payload()["hold"];
@@ -521,7 +517,7 @@ impl Session {
             }
         }
 
-        if pickup_lib_id == self.editor().perm_org() {
+        if pickup_lib_id == checkin_lib {
             result.alert_type = Some(sip2::spec::CheckinAlert::LocalHold);
         } else {
             result.alert_type = Some(sip2::spec::CheckinAlert::RemoteHold);
