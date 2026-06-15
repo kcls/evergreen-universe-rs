@@ -339,14 +339,14 @@ pub fn home_org(
     let mut editor = Editor::new(worker.client());
 
     let query = eg::hash! {
-        "select": {"aou": ["id", "shortname"]},
-        "from": {"aou": "aout"},
+        "select": {"aou": ["id", "shortname"], "aouc": ["latitude", "longitude"]},
+        "from": {"aou": {"aout": {}, "aouc": {}}},
         "where": {"+aout": {"can_have_users": "t"}}
     };
 
     let org_list = editor.json_query(query)?;
 
-    for org in org_list {
+    for org in &org_list {
         let code = org["shortname"].string()?;
         let shapefile = format!("{DEFAULT_ADDR_DATA_DIR}/shapefiles/home-orgs/{code}/{code}.shp");
 
@@ -355,7 +355,51 @@ pub fn home_org(
         }
     }
 
+    // Provided lat/long does not match the direct coverage area of any
+    // branch.  Find the closest branch as the crow flies.
+
+    let mut closest: Option<(i64, f64)> = None;
+
+    for org in &org_list {
+        let org_id = org.id()?;
+        let latitude = org["latitude"].float()?;
+        let longitude = org["longitude"].float()?;
+
+        let distance = crow_flies_distance(lat, long, latitude, longitude);
+
+        log::info!(
+            "Testing {lat}/{long} values at branch {org_id} => \
+             {latitude}/{longitude} (distance {distance:.3}km)"
+        );
+
+        if closest.map(|(_, best)| distance < best).unwrap_or(true) {
+            closest = Some((org_id, distance));
+        }
+    }
+
+    if let Some((org_id, _)) = closest {
+        return session.respond(org_id);
+    }
+
     Ok(())
+}
+
+/// Great-circle distance in kilometers between two lat/long points
+/// (haversine formula).
+///
+/// Used to pick the nearest branch when an address falls outside every
+/// branch's coverage shapefile.  Only relative ordering matters here, so
+/// the choice of units (km) is arbitrary.
+fn crow_flies_distance(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    const EARTH_RADIUS_KM: f64 = 6371.0;
+
+    let d_lat = (lat2 - lat1).to_radians();
+    let d_lon = (lon2 - lon1).to_radians();
+
+    let a = (d_lat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (d_lon / 2.0).sin().powi(2);
+
+    EARTH_RADIUS_KM * 2.0 * a.sqrt().asin()
 }
 
 
