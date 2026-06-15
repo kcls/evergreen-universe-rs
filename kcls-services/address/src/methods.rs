@@ -29,8 +29,10 @@ use smarty_rust_sdk::us_autocomplete_pro_api::client::USAutocompleteProClient;
 use smarty_rust_sdk::us_street_api;
 use smarty_rust_sdk::us_street_api::client::USStreetAddressClient;
 
-const MAX_RESULT_CANDIDATES: i64 = 5;
-const MAX_AUTO_RESULTS: i32 = 5;
+const MAX_LOOKUP_RESULTS: i64 = 100;
+const DEFAULT_LOOKUP_RESULTS: i64 = 5;
+const MAX_AUTOCOMPLETE_RESULTS: i32 = 100;
+const DEFAULT_AUTOCOMPLETE_RESULTS: i32 = 5;
 
 /// Generic error to return to the caller.
 const ADDR_LOOKUP_ERROR: &str = "Address lookup error";
@@ -47,7 +49,7 @@ pub static METHODS: &[StaticMethodDef] = &[
     StaticMethodDef {
         name: "lookup",
         desc: "Get details for the provided address",
-        param_count: ParamCount::Exactly(2),
+        param_count: ParamCount::Range(2, 3),
         handler: lookup,
         params: &[
             StaticParam {
@@ -59,6 +61,11 @@ pub static METHODS: &[StaticMethodDef] = &[
                 name: "Search",
                 datatype: ParamDataType::Object,
                 desc: "",
+            },
+            StaticParam {
+                name: "Limit",
+                datatype: ParamDataType::Number,
+                desc: "Maximum results to return",
             },
         ],
     },
@@ -171,10 +178,15 @@ pub fn lookup(
     let _sestoken = method.param(0).str()?;
     let search = method.param(1);
 
+    let mut max_candidates = DEFAULT_LOOKUP_RESULTS;
+    if let Some(Some(v)) = method.params().get(2).map(|v| v.as_i64()) {
+        max_candidates = std::cmp::min(v, MAX_LOOKUP_RESULTS);
+    }
+
     // TODO verify sestoken
 
     let mut lookup = us_street_api::lookup::Lookup {
-        max_candidates: MAX_RESULT_CANDIDATES,
+        max_candidates,
         match_strategy: us_street_api::lookup::MatchStrategy::Enhanced,
         ..Default::default()
     };
@@ -268,9 +280,14 @@ pub fn autocomplete(
         .to_string()
         .ok_or("autocomplete 'search' required'")?;
 
+    let max_results = std::cmp::min(
+        search["limit"].as_i32().unwrap_or(DEFAULT_AUTOCOMPLETE_RESULTS),
+        MAX_AUTOCOMPLETE_RESULTS
+    );
+
     let mut lookup = us_autocomplete_pro_api::lookup::Lookup {
         search: search_str,
-        max_results: MAX_AUTO_RESULTS,
+        max_results,
         ..Default::default()
     };
 
