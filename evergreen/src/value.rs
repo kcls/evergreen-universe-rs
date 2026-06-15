@@ -1005,6 +1005,15 @@ impl EgValue {
         }
     }
 
+    pub fn as_i32(&self) -> Option<i32> {
+        match self {
+            EgValue::Number(n) => n.as_i64().and_then(|v| i32::try_from(v).ok()),
+            // It's not uncommon to receive numeric strings over the wire.
+            EgValue::String(s) => s.parse::<i32>().ok(),
+            _ => None,
+        }
+    }
+
     pub fn as_i16(&self) -> Option<i16> {
         match self {
             EgValue::Number(n) => n.as_i64().and_then(|v| i16::try_from(v).ok()),
