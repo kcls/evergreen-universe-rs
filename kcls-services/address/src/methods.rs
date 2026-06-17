@@ -269,7 +269,7 @@ pub fn autocomplete(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let _worker = app::AddrsWorker::downcast(worker)?;
+    let worker = app::AddrsWorker::downcast(worker)?;
 
     let _sestoken = method.param(0).str()?;
     let search = method.param(1);
@@ -286,7 +286,7 @@ pub fn autocomplete(
     );
 
     let mut lookup = us_autocomplete_pro_api::lookup::Lookup {
-        search: search_str,
+        search: search_str.clone(),
         max_results,
         ..Default::default()
     };
@@ -325,15 +325,93 @@ pub fn autocomplete(
         ADDR_LOOKUP_ERROR
     })?;
 
-    for suggestion in lookup.results.suggestions {
-        log::debug!("Got record: {suggestion:?}");
+    let mut suggestions = Vec::new();
 
-        // Assumes Smarty returns serde-serializable data.
-        let s = serde_json::to_string(&suggestion).unwrap();
+    for suggestion in &lookup.results.suggestions {
+        log::info!("Got record: {suggestion:?}");
 
-        // There's no direct crosswalk from serde json to vanilla
-        // json, so do the stringify+parse dance.
-        session.respond(EgValue::parse(&s)?)?;
+        let jv = serde_json::to_value(suggestion)
+            .map_err(|e| format!("Cannot translate suggestion to json value: {e}"))?;
+
+        suggestions.push(EgValue::from_json_value(jv)?);
+    }
+
+    let mut editor = Editor::new(worker.client());
+    append_autocomplete_exceptions(&mut editor, &mut suggestions, &search_str)?;
+
+    suggestions.sort_by_key(|a| a["street_line"].as_str().unwrap_or("").to_string());
+
+    for sug in suggestions.drain(..) {
+        session.respond(sug)?;
+    }
+
+    Ok(())
+}
+
+/// Add addresses from the local address exception table which match
+/// to the caller's search string.
+fn append_autocomplete_exceptions(
+    editor: &mut Editor,
+    suggestions: &mut Vec<EgValue>,
+    search_str: &str
+) -> EgResult<()> {
+
+    let search_normalized = search_str
+        .replace(',', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_lowercase();
+
+    // This could be more efficient.
+    // However we'd have to do an ilike prefix search on the full
+    // address string, not just e.g. street1, with handling for empty values, etc.
+    // At time of writing, the list of addresses exceptions is very small.
+    let exceptions = editor.search_with_ops(
+        "cuae",
+        eg::hash! {"enabled": "t"},
+        eg::hash! {
+            "flesh": 1,
+            "flesh_fields": {"cuae": ["district_of_residence"]},
+        }
+    )?;
+
+    for addr in &exceptions {
+
+        let mut street_line = addr["street1"].as_str().unwrap_or("").to_string();
+        if let Some(s2) = addr["street2"].as_str() && !s2.is_empty() {
+            if !street_line.is_empty() {
+                street_line += " ";
+            }
+            street_line += s2;
+        }
+
+        // Fuzzy match the caller's search string.  This is less
+        // sophisticated than Smarty's matching.  May need some
+        // additional smarts.
+        if street_line.to_lowercase().starts_with(&search_normalized) {
+            log::info!("Found local address exception search='{search_normalized}' exception='{street_line}'");
+
+            let mut response = eg::hash! {
+                "is_exception": true,
+                "exception_id": addr.id()?,
+                "is_allowed": addr["is_allowed"].boolish(),
+                "street_line": street_line,
+                "city": addr["city"].as_str().unwrap_or(""),
+                "state": addr["state"].as_str().unwrap_or(""),
+                "zipcode": addr["post_code"].as_str().unwrap_or(""),
+            };
+
+            // Only allowed (i.e. non-blocked) addresses contain the needed
+            // values to create an account.
+            if addr["is_allowed"].boolish() {
+                response["home_ou"] = addr["home_ou"].clone();
+                response["district_of_residence"] = addr["district_of_residence"]["name"].clone();
+            }
+
+            suggestions.push(response);
+        }
     }
 
     Ok(())
@@ -341,8 +419,6 @@ pub fn autocomplete(
 
 /// Find the best/closest home library given the provided lat/long values based
 /// on predefined shapefiles.
-///
-/// TODO configs and file locations
 pub fn home_org(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
