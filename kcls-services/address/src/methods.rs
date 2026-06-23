@@ -342,6 +342,11 @@ fn append_autocomplete_exceptions(
                 response["district_of_residence"] = addr["district_of_residence"]["name"].clone();
             }
 
+            // If an address provided by the API matches the address exception,
+            // remove the API version.
+            suggestions.retain(|addr| 
+                addr["street_line"].as_str().unwrap_or("").to_lowercase() != street_line.to_lowercase());
+
             suggestions.push(response);
         }
     }
