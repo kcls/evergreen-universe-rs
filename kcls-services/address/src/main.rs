@@ -5,6 +5,7 @@ use std::env;
 pub mod app;
 pub mod methods;
 pub mod shapefile_util;
+pub mod smarty;
 
 fn main() {
     let service = Box::new(app::AddrsApplication::new());
