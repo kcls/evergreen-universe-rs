@@ -34,9 +34,30 @@ const DEFAULT_ADDR_DATA_DIR: &str = "/usr/local/share/evergreen/address-data";
 // Import our local modules
 use crate::app;
 use crate::shapefile_util::shapefile_contains;
+use crate::turnstile;
+// NOTE: the session-token module is referenced via crate::session::* to
+// avoid colliding with the ServerSession parameter named `session`.
 
 /// List of method definitions we know at compile time.
 pub static METHODS: &[StaticMethodDef] = &[
+    StaticMethodDef {
+        name: "session.create",
+        desc: "Verify a CAPTCHA response and mint a short-lived session token",
+        param_count: ParamCount::Range(1, 2),
+        handler: session_create,
+        params: &[
+            StaticParam {
+                name: "CAPTCHA Response",
+                datatype: ParamDataType::String,
+                desc: "Turnstile response token from the browser widget",
+            },
+            StaticParam {
+                name: "Remote IP",
+                datatype: ParamDataType::String,
+                desc: "Optional client IP address",
+            },
+        ],
+    },
     StaticMethodDef {
         name: "lookup",
         desc: "Get details for the provided address",
@@ -127,6 +148,35 @@ pub static METHODS: &[StaticMethodDef] = &[
     },
 ];
 
+/// Verify a CAPTCHA response and mint a short-lived session token.
+///
+/// The returned token must be supplied as the session-token parameter on
+/// subsequent sensitive calls (autocomplete, lookup, home-org,
+/// district-of-residence) and on patron registration.
+pub fn session_create(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
+) -> EgResult<()> {
+    let _worker = app::AddrsWorker::downcast(worker)?;
+
+    let response = method.param(0).str()?;
+    let remoteip = method.params().get(1).and_then(|v| v.as_str());
+
+    if !turnstile::verify(response, remoteip)? {
+        return Err("CAPTCHA verification failed".into());
+    }
+
+    let (token, expires_in) = crate::session::create()?;
+
+    session.respond(eg::hash! {
+        "token": token,
+        "expires_in": expires_in,
+    })?;
+
+    Ok(())
+}
+
 /// Find detailed information on a specific address.
 ///
 /// # Reference
@@ -139,15 +189,14 @@ pub fn lookup(
 ) -> EgResult<()> {
     let _worker = app::AddrsWorker::downcast(worker)?;
 
-    let _sestoken = method.param(0).str()?;
+    let sestoken = method.param(0).str()?;
+    crate::session::verify(sestoken)?;
     let search = method.param(1);
 
     let mut candidates = DEFAULT_LOOKUP_RESULTS;
     if let Some(Some(v)) = method.params().get(2).map(|v| v.as_i64()) {
         candidates = std::cmp::min(v, MAX_LOOKUP_RESULTS);
     }
-
-    // TODO verify sestoken
 
     // For now, support and map a specific subset of search options,
     // partly to limit control (e.g. candidates) but also to avoid
@@ -232,10 +281,9 @@ pub fn autocomplete(
 ) -> EgResult<()> {
     let worker = app::AddrsWorker::downcast(worker)?;
 
-    let _sestoken = method.param(0).str()?;
+    let sestoken = method.param(0).str()?;
+    crate::session::verify(sestoken)?;
     let search = method.param(1);
-
-    // TODO verify sestoken
 
     let search_str = search["search"]
         .to_string()
@@ -386,7 +434,8 @@ pub fn home_org(
 ) -> EgResult<()> {
     let worker = app::AddrsWorker::downcast(worker)?;
 
-    let _sestoken = method.param(0).str()?;
+    let sestoken = method.param(0).str()?;
+    crate::session::verify(sestoken)?;
     let lat = method.param(1).float()?;
     let long = method.param(2).float()?;
     let mut editor = Editor::new(worker.client());
@@ -465,7 +514,8 @@ pub fn district_of_residence(
 ) -> EgResult<()> {
     let _worker = app::AddrsWorker::downcast(worker)?;
 
-    let _sestoken = method.param(0).str()?;
+    let sestoken = method.param(0).str()?;
+    crate::session::verify(sestoken)?;
     let lat = method.param(1).float()?;
     let long = method.param(2).float()?;
 

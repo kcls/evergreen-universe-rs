@@ -100,6 +100,8 @@ impl ApplicationWorker for AddrsWorker {
 
     fn worker_start(&mut self, client: Client) -> EgResult<()> {
         self.client = Some(client);
+        // Session tokens (CAPTCHA gate) live in the shared "global" cache.
+        eg::osrf::cache::Cache::init_cache("global")?;
         Ok(())
     }
 

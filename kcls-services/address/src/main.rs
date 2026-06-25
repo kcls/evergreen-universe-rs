@@ -4,8 +4,10 @@ use evergreen as eg;
 use std::env;
 pub mod app;
 pub mod methods;
+pub mod session;
 pub mod shapefile_util;
 pub mod smarty;
+pub mod turnstile;
 
 fn main() {
     let service = Box::new(app::AddrsApplication::new());
