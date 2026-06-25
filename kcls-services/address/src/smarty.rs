@@ -161,6 +161,8 @@ impl SmartyClient {
         let status = response.status();
         let body = response.text().map_err(|e| SmartyError::Http(e.to_string()))?;
 
+        log::info!("Smarty returned: {body}");
+
         if !status.is_success() {
             return Err(SmartyError::Api { status: status.as_u16(), body });
         }
@@ -265,7 +267,21 @@ pub struct StreetMetadata {
     pub precision: String,
     #[serde(default)]
     pub zip_type: String,
+    pub rdi: String,
+    pub record_type: String,
 }
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct StreetAnalysis {
+	pub dpv_match_code: String,
+	pub dpv_footnotes: String,
+	pub dpv_cmra: String,
+	pub dpv_vacant: String,
+	pub dpv_no_stat: String,
+	pub active: String,
+	pub footnotes: Option<String>,
+}
+
 
 /// A single matched candidate for a looked-up address.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -282,4 +298,5 @@ pub struct StreetCandidate {
     pub components: StreetComponents,
     #[serde(default)]
     pub metadata: StreetMetadata,
+    pub analysis: StreetAnalysis,
 }

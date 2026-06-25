@@ -186,8 +186,31 @@ pub fn lookup(
     })?;
 
     for candidate in &candidates {
-        let jv = serde_json::to_value(candidate)
+        // https://www.smarty.com/docs/apis/us-street-api/reference
+        let mut is_viable_residential = true;
+
+        let is_viable_mailing = if candidate.metadata.rdi == "Commercial" {
+            is_viable_residential = false;
+            false
+        } else {
+            true
+        };
+
+        if ["G", "P"].contains(&candidate.metadata.record_type.as_str()) {
+            // General Delivery (held at post office) or PO Box.
+            is_viable_residential = false;
+        }
+
+        if candidate.analysis.dpv_cmra == "Y" {
+            // Commercial Mail Receiving Agency
+            is_viable_residential = false;
+        }
+
+        let mut jv = serde_json::to_value(candidate)
             .map_err(|e| format!("Cannot translate candidate to json value: {e}"))?;
+
+        jv["is_viable_residential"] = is_viable_residential.into();
+        jv["is_viable_mailing"] = is_viable_mailing.into();
 
         log::debug!("Got lookup result: {jv}");
 
