@@ -30,6 +30,7 @@ pub struct Item {
     pub media_type: String,
     pub hold_pickup_date: Option<String>,
     pub hold_patron_barcode: Option<String>,
+    pub hold_patron_name: Option<String>,
     pub circ_patron_id: Option<i64>,
     pub active_transit_id: Option<i64>,
 }
@@ -101,6 +102,7 @@ impl Session {
 
         let mut hold_pickup_date_op: Option<String> = None;
         let mut hold_patron_barcode_op: Option<String> = None;
+        let mut hold_patron_name_op: Option<String> = None;
         let mut hold_queue_length = 0;
 
         if let Some(hold) = self.get_copy_hold(&copy, &transit_op, copy_status)? {
@@ -131,6 +133,10 @@ impl Session {
 
             if let Some(bc) = hold["usr"]["card"]["barcode"].as_str() {
                 hold_patron_barcode_op = Some(bc.to_string());
+            }
+
+            if hold["usr"].is_object() {
+               hold_patron_name_op = Some(self.format_user_name(&hold["usr"]));
             }
         }
 
@@ -190,6 +196,7 @@ impl Session {
             media_type: media_type.to_string(),
             hold_pickup_date: hold_pickup_date_op,
             hold_patron_barcode: hold_patron_barcode_op,
+            hold_patron_name: hold_patron_name_op,
             circ_patron_id,
             active_transit_id,
             record_id: copy["call_number"]["record"].int()?,

@@ -320,6 +320,7 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<s
 
     resp.maybe_add_field("CM", item.hold_pickup_date.as_deref());
     resp.maybe_add_field("CY", item.hold_patron_barcode.as_deref());
+    resp.maybe_add_field("DA", item.hold_patron_name.as_deref());
     resp.maybe_add_field("AH", item.due_date.as_deref());
 
     Ok(resp)
