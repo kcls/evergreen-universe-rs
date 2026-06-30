@@ -213,6 +213,7 @@ fn read_options() -> getopts::Matches {
     opts.optopt("", "patron-password", "Patron Password", "");
     opts.optopt("", "item-barcode", "Item Barcode", "");
     opts.optopt("", "location-code", "Location Code", "");
+    opts.optopt("", "current-location-code", "Current Location Code", "");
     opts.optopt("", "repeat", "Repeat Count", "");
     opts.optopt("", "sleep", "Sleep Time (millis)", "");
     opts.optopt("", "parallel", "Parallel Count", "");
@@ -256,6 +257,11 @@ fn setup_params(options: &getopts::Matches) -> ParamSet {
     if let Some(ref location) = options.opt_str("location-code") {
         params.set_location(location);
     }
+
+    if let Some(ref current_location) = options.opt_str("current-location-code") {
+        params.set_current_location(current_location);
+    }
+
 
     // Collect some params up front for ease of use.
     if let Some(ref item_id) = options.opt_str("item-barcode") {

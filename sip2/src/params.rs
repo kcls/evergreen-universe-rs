@@ -11,6 +11,7 @@ pub struct ParamSet {
     sip_user: Option<String>,
     sip_pass: Option<String>,
     location: Option<String>,
+    current_location: Option<String>, // AP field
     patron_id: Option<String>,
     patron_pwd: Option<String>,
     item_id: Option<String>,
@@ -50,6 +51,7 @@ impl ParamSet {
             sip_user: None,
             sip_pass: None,
             location: None,
+            current_location: None,
             patron_id: None,
             patron_pwd: None,
             item_id: None,
@@ -79,6 +81,10 @@ impl ParamSet {
     pub fn location(&self) -> Option<&str> {
         self.location.as_deref()
     }
+    pub fn current_location(&self) -> Option<&str> {
+        self.current_location.as_deref()
+    }
+
     pub fn patron_id(&self) -> Option<&str> {
         self.patron_id.as_deref()
     }
@@ -135,6 +141,11 @@ impl ParamSet {
         self.location = Some(value.to_string());
         self
     }
+    pub fn set_current_location(&mut self, value: &str) -> &mut Self {
+        self.current_location = Some(value.to_string());
+        self
+    }
+
     pub fn set_patron_id(&mut self, value: &str) -> &mut Self {
         self.patron_id = Some(value.to_string());
         self

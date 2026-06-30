@@ -268,6 +268,7 @@ impl Client {
 
         req.maybe_add_field(spec::F_INSTITUTION_ID.code, params.institution());
         req.maybe_add_field(spec::F_TERMINAL_PWD.code, params.terminal_pwd());
+        req.maybe_add_field(spec::F_CURRENT_LOCATION.code, params.current_location());
 
         let resp = self.connection.sendrecv(&req)?;
 
