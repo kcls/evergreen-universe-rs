@@ -1,9 +1,9 @@
 use super::session::DEFAULT_DUE_DATE_FORMAT;
 use crate::session::Session;
-use eg::EgResult;
-use eg::EgValue;
 use eg::constants as C;
 use eg::date;
+use eg::EgResult;
+use eg::EgValue;
 use evergreen as eg;
 use std::fmt;
 
@@ -114,7 +114,6 @@ impl Session {
             if let Some(date) = hold["shelf_expire_time"].as_str() {
                 let pu_date = date::parse_datetime(date)?;
                 hold_pickup_date_op = Some(sip2::util::sip_date_from_dt(&pu_date));
-
             } else if let Some(interval) = self
                 .org_settings()
                 .get_value_at_org("circ.holds.default_shelf_expire_interval", dest_location_id)?
@@ -136,7 +135,7 @@ impl Session {
             }
 
             if hold["usr"].is_object() {
-               hold_patron_name_op = Some(self.format_user_name(&hold["usr"]));
+                hold_patron_name_op = Some(self.format_user_name(&hold["usr"]));
             }
         }
 
@@ -208,8 +207,8 @@ impl Session {
     /// transit hop occurred.
     ///
     /// If the msg17_stamp_transit is enabled and the active SIP account has
-    /// a workstation org unit, update the transit source to the org unit and
-    /// update the send time to now.
+    /// a workstation org unit, close the open transit and create a new one
+    /// indicating the intermediate hop.  I.e. relay the transit.
     ///
     /// Also updates the copy editor and edit_date to indicate copy-related
     /// activity.
@@ -223,44 +222,52 @@ impl Session {
             return Ok(());
         };
 
-        // Fetch standalone, non-fleshed transits and copies for update.
-        // Note there is no reason (at present) to force a refetch of
-        // the transit or copy info after update, since SIP responses do
-        // not include the affected data (transit source / dates).
-        let mut transit = self
+        let transit = self
             .editor()
             .retrieve("atc", transit_id)?
             .ok_or_else(|| self.editor().die_event())?;
 
+        // Verify it makes sense to relay the transit.
         if transit["source"].int()? == org_id {
             log::info!("{self} msg17_stamp_transit source org unit already matches");
             return Ok(());
         }
+
+        if transit["dest"].int()? == org_id {
+            log::info!("{self} msg17_stamp_transit dest org unit is here");
+            return Ok(());
+        }
+
+        self.editor().xact_begin()?;
+
+        // Relay the transit, creating a new transit.  No need to
+        // catpure the new results since they are not of interest
+        // to the calling code -- the transit destination and copy
+        // disposition are unchanged.
+        self.editor()
+            .json_query(eg::hash! {"from": ["action.relay_copy_transit", transit_id, org_id]})?;
 
         let mut copy = self
             .editor()
             .retrieve("acp", copy_id)?
             .ok_or_else(|| self.editor().die_event())?;
 
-        self.editor().xact_begin()?;
-
-        transit["source"] = org_id.into();
-        transit["source_send_time"] = "now".into();
+        let copy_id = copy.id()?;
 
         copy["edit_date"] = "now".into();
-        copy["editor"] = self.editor().requestor_id().unwrap().into(); // auth required here
+        copy["editor"] = self.editor().requestor_id()?.into();
+
+        self.editor().update(copy)?;
+        self.editor().commit()?;
 
         log::info!(
-            "Stamping transit hop for item {} at {} for transit {}",
-            copy.id()?,
+            "Relayed transit for item {} at {} and source transit {}",
+            copy_id,
             org_id,
             transit_id
         );
 
-        self.editor().update(transit)?;
-        self.editor().update(copy)?;
-
-        self.editor().commit()
+        Ok(())
     }
 
     /// Find an active hold linked to the copy.  The copy must be on
