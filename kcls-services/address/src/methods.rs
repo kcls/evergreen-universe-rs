@@ -350,7 +350,7 @@ pub fn autocomplete(
         // Fitler any suggestions which represent the office address
         // of multi-unit locations.
         // NOTE: This is hacky and may need some love.
-        if search["exclude_ofc"].as_bool().unwrap_or_false() 
+        if search["exclude_ofc"].as_bool().unwrap_or(false) 
             && suggestion.secondary.to_lowercase().contains("ofc") {
             log::info!("Skipping multi-until office address");
             continue;
