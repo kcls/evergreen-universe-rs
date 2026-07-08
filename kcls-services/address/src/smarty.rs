@@ -10,12 +10,12 @@
 //! an async runtime.
 //!
 //! # References
-//! * <https://www.smarty.com/docs/apis/us-autocomplete-pro-api/reference>
+//! * <https://www.smarty.com/docs/apis/us-autocomplete/reference>
 //! * <https://www.smarty.com/docs/apis/us-street-api/reference>
 
 use serde::{Deserialize, Serialize};
 
-const AUTOCOMPLETE_URL: &str = "https://us-autocomplete-pro.api.smarty.com/lookup";
+const AUTOCOMPLETE_URL: &str = "https://us-autocomplete.api.smarty.com/v2/lookup";
 const STREET_URL: &str = "https://us-street.api.smarty.com/street-address";
 
 /// Errors surfaced by the Smarty client.
@@ -106,6 +106,12 @@ impl SmartyClient {
             params.push(("prefer_states", req.prefer_states.join(";")));
         }
 
+        // Comma-separated list of address types to exclude (e.g.
+        // "po-box,commercial").
+        if let Some(exclude) = &req.exclude {
+            params.push(("exclude", exclude.clone()));
+        }
+
         let response: AutocompleteResponse = self.get_json(AUTOCOMPLETE_URL, &params)?;
 
         Ok(response.suggestions)
@@ -119,9 +125,6 @@ impl SmartyClient {
             ("street", req.street.clone()),
         ];
 
-        if let Some(v) = &req.street2 {
-            params.push(("street2", v.clone()));
-        }
         if let Some(v) = &req.secondary {
             params.push(("secondary", v.clone()));
         }
@@ -179,12 +182,15 @@ impl SmartyClient {
 pub struct AutocompleteRequest {
     pub search: String,
     pub max_results: Option<u32>,
-    /// Secondary expansion selector, formatted as
-    /// `street_line secondary (entries) city state zipcode`.
+    /// Secondary expansion selector: the `entry_id` of the suggestion to
+    /// expand (v2 API).
     pub selected: Option<String>,
     pub include_only_states: Vec<String>,
     pub include_only_zip_codes: Vec<String>,
     pub prefer_states: Vec<String>,
+    /// Comma-separated list of address types to exclude from results
+    /// (base-address, commercial, residential, po-box, military).
+    pub exclude: Option<String>,
 }
 
 /// A single autocomplete suggestion.
@@ -200,10 +206,18 @@ pub struct AutocompleteSuggestion {
     pub state: String,
     #[serde(default)]
     pub zipcode: String,
-    /// Count of secondary (unit/apartment) addresses; > 0 means the
-    /// suggestion can be expanded via `AutocompleteRequest::selected`.
+    /// Count of secondary (unit/apartment) addresses; > 1 means the
+    /// suggestion is an expandable group (see `entry_id`).
     #[serde(default)]
     pub entries: i64,
+    /// Identifier of an expandable secondary group (present when entries > 1);
+    /// pass it as `AutocompleteRequest::selected` to expand the group (v2).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub entry_id: String,
+    /// Identifier of a single, non-expandable address (present when the
+    /// suggestion is not a group) (v2).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub smarty_key: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -219,7 +233,6 @@ struct AutocompleteResponse {
 #[derive(Debug, Default)]
 pub struct LookupRequest {
     pub street: String,
-    pub street2: Option<String>,
     pub secondary: Option<String>,
     pub city: Option<String>,
     pub state: Option<String>,
@@ -280,6 +293,7 @@ pub struct StreetAnalysis {
 	pub dpv_no_stat: String,
 	pub active: String,
 	pub footnotes: Option<String>,
+    pub enhanced_match: Option<String>,
 }
 
 

@@ -210,8 +210,8 @@ pub fn lookup(
     if let Some(street) = search["street"].as_str() {
         req.street = street.to_string();
     }
-    if let Some(street2) = search["street2"].as_str() {
-        req.street2 = Some(street2.to_string());
+    if let Some(secondary) = search["secondary"].as_str() && !secondary.is_empty() {
+        req.secondary = Some(secondary.to_string());
     }
     if let Some(city) = search["city"].as_str() {
         req.city = Some(city.to_string());
@@ -224,6 +224,8 @@ pub fn lookup(
         req.zipcode = Some(zipcode);
     }
 
+    log::info!("lookup() calling smarty with {req:?}");
+
     let client = SmartyClient::from_env().map_err(|e| {
         log::error!("{e}");
         ADDR_LOOKUP_ERROR
@@ -233,6 +235,19 @@ pub fn lookup(
         log::error!("Error sending address query: {e}");
         ADDR_LOOKUP_ERROR
     })?;
+
+    // TODO when an address contains entries (e.g. apts) the API
+    // returns a pair of matching addresses like this:
+    //
+    // { street_line: "6218 S 253rd Pl", secondary: "",    city: "Kent", state: "WA", zipcode: "98032", entries: 0 }
+    // { street_line: "6218 S 253rd Pl", secondary: "Apt", city: "Kent", state: "WA", zipcode: "98032", entries: 8 }
+    //
+    // We only want to return the address which has entries > 0 here so the 
+    // user does not see the same address twice (and is forced to enter
+    // or select a unit/apt number).  I see no indication on the Smarty
+    // site we can prevent this duplication ... presumably the version 
+    // with entries=0 is also a valid address?  Well, it's not valid
+    // in these parts!
 
     for candidate in &candidates {
         // https://www.smarty.com/docs/apis/us-street-api/reference
@@ -261,6 +276,13 @@ pub fn lookup(
         jv["is_viable_residential"] = is_viable_residential.into();
         jv["is_viable_mailing"] = is_viable_mailing.into();
 
+        if let Some(eh) = &candidate.analysis.enhanced_match
+            && eh.contains("postal-match")
+            && !eh.contains("unknown-secondary")
+            && !eh.contains("missing-secondary") {
+            jv["has_valid_secondary"] = true.into();
+        }
+
         log::debug!("Got lookup result: {jv}");
 
         session.respond(EgValue::from_json_value(jv)?)?;
@@ -273,7 +295,7 @@ pub fn lookup(
 ///
 /// # Reference
 ///
-/// * <https://www.smarty.com/docs/apis/us-autocomplete-pro-api/reference>
+/// * <https://www.smarty.com/docs/apis/us-autocomplete/reference>
 pub fn autocomplete(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
@@ -312,10 +334,15 @@ pub fn autocomplete(
         req.include_only_zip_codes = vec![zip.to_string()];
     }
 
-    // Optional secondary (unit/apartment) expansion selector, formatted as
-    // "street_line secondary (entries) city state zipcode".
+    // Optional secondary (unit/apartment) expansion selector: the entry_id
+    // of the suggestion to expand (v2).
     if let Some(selected) = search["selected"].as_str() {
         req.selected = Some(selected.to_string());
+    }
+
+    // Optional comma-separated list of address types to exclude.
+    if let Some(exclude) = search["exclude"].as_str() {
+        req.exclude = Some(exclude.to_string());
     }
 
     let client = SmartyClient::from_env().map_err(|e| {
