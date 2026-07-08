@@ -236,19 +236,6 @@ pub fn lookup(
         ADDR_LOOKUP_ERROR
     })?;
 
-    // TODO when an address contains entries (e.g. apts) the API
-    // returns a pair of matching addresses like this:
-    //
-    // { street_line: "6218 S 253rd Pl", secondary: "",    city: "Kent", state: "WA", zipcode: "98032", entries: 0 }
-    // { street_line: "6218 S 253rd Pl", secondary: "Apt", city: "Kent", state: "WA", zipcode: "98032", entries: 8 }
-    //
-    // We only want to return the address which has entries > 0 here so the 
-    // user does not see the same address twice (and is forced to enter
-    // or select a unit/apt number).  I see no indication on the Smarty
-    // site we can prevent this duplication ... presumably the version 
-    // with entries=0 is also a valid address?  Well, it's not valid
-    // in these parts!
-
     for candidate in &candidates {
         // https://www.smarty.com/docs/apis/us-street-api/reference
         let mut is_viable_residential = true;
@@ -359,6 +346,15 @@ pub fn autocomplete(
 
     for suggestion in &results {
         log::info!("Got record: {suggestion:?}");
+        
+        // Fitler any suggestions which represent the office address
+        // of multi-unit locations.
+        // NOTE: This is hacky and may need some love.
+        if search["exclude_ofc"].as_bool().unwrap_or_false() 
+            && suggestion.secondary.to_lowercase().contains("ofc") {
+            log::info!("Skipping multi-until office address");
+            continue;
+        }
 
         let jv = serde_json::to_value(suggestion)
             .map_err(|e| format!("Cannot translate suggestion to json value: {e}"))?;

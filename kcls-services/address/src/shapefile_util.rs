@@ -4,7 +4,7 @@ use std::path::Path;
 
 /// Returns true if the shapefile at the given path contains the provided lat/long.
 pub fn shapefile_contains(shapefile: &str, lat: f64, long: f64) -> Result<bool, String> {
-    log::debug!("Inspecting shapefile {shapefile} for lat={lat} and long={long}");
+    // log::debug!("Inspecting shapefile {shapefile} for lat={lat} and long={long}");
 
     if !Path::new(shapefile).exists() {
         log::debug!("No such shapefile: {shapefile}");
