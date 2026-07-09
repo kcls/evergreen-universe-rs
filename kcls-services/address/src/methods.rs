@@ -212,11 +212,35 @@ pub fn lookup(
     session: &mut ServerSession,
     method: message::MethodCall,
 ) -> EgResult<()> {
-    let _worker = app::AddrsWorker::downcast(worker)?;
+    let worker = app::AddrsWorker::downcast(worker)?;
 
     let sestoken = method.param(0).str()?;
     crate::session::verify(sestoken)?;
     let search = method.param(1);
+
+    // Short-circuit blocked (is_allowed=false) address exceptions before
+    // calling the address provider.  A blocked address is not viable for
+    // residential or mailing use, so report that and return early.
+    let mut editor = Editor::new(worker.client());
+    let ex_search = AddressSearch {
+        street1: opt_str(&search["street"]),
+        street2: opt_str(&search["secondary"]),
+        city: opt_str(&search["city"]),
+        state: opt_str(&search["state"]),
+        // zipcode may arrive as a number.
+        post_code: search["zipcode"].to_string().filter(|s| !s.is_empty()),
+    };
+
+    let blocked = matching_exceptions(&mut editor, &ex_search, Some(false))?;
+    if !blocked["best"].is_null() {
+        let mut resp = blocked["best"].clone();
+        resp["is_exception"] = true.into();
+        resp["is_viable_residential"] = false.into();
+        resp["is_viable_mailing"] = false.into();
+        log::info!("lookup() matched a blocked address exception; not viable");
+        session.respond(resp)?;
+        return Ok(());
+    }
 
     let mut candidates = DEFAULT_LOOKUP_RESULTS;
     if let Some(Some(v)) = method.params().get(2).map(|v| v.as_i64()) {

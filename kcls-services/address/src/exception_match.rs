@@ -12,7 +12,8 @@
 //!   exactly (1 point each).
 //! * street1 / street2, when present on both sides, match when the in-database
 //!   value starts with the searched value (street1 = 3 points; street2 = 5
-//!   points, but only when street1 also matched, else 0).
+//!   points, but only when street1 also matched, else 0).  A searched street2
+//!   also matches with its leading designator removed (e.g. "Apt 4" -> "4").
 //! * If no street2 is supplied, a secondary is derived from street1 by
 //!   splitting on "apt", "unit", "bldg", or "#".
 //! * Any present-on-both field that fails its comparison excludes the record.
@@ -98,6 +99,34 @@ fn match_prefix(search: &Option<String>, db: &Option<String>) -> FieldMatch {
     }
 }
 
+/// Match street2, trying the searched value as-is and, if that fails, again
+/// with a leading secondary designator ("apt", "unit", "bldg", "#") removed --
+/// so a searched "Apt 4" also matches an in-database "4".
+fn match_street2(search: &Option<String>, db: &Option<String>) -> FieldMatch {
+    let direct = match_prefix(search, db);
+    if direct != FieldMatch::Miss {
+        // Null (empty on a side) or Positive: nothing more to try.
+        return direct;
+    }
+
+    // Direct comparison missed; retry with the designator stripped.
+    if let Some(stripped) = search.as_deref().and_then(strip_designator) {
+        if match_prefix(&Some(stripped), db) == FieldMatch::Positive {
+            return FieldMatch::Positive;
+        }
+    }
+
+    FieldMatch::Miss
+}
+
+/// Return the portion of `value` after a secondary designator, or None when it
+/// has no designator (or nothing follows it).
+fn strip_designator(value: &str) -> Option<String> {
+    find_designator(value)
+        .map(|(idx, len)| value[idx + len..].trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Find the earliest secondary designator in `street1`.  Word designators
 /// ("apt", "unit", "bldg") must be bounded by non-alphanumerics; "#" matches
 /// anywhere.  Returns (byte offset, byte length) of the designator.
@@ -163,7 +192,7 @@ fn score_record(search: &AddressSearch, rec: &ExceptionRecord) -> Option<i32> {
     let state = match_exact(&search.state, &rec.state);
     let post = match_exact(&search.post_code, &rec.post_code);
     let s1 = match_prefix(&search.street1, &rec.street1);
-    let s2 = match_prefix(&search.street2, &rec.street2);
+    let s2 = match_street2(&search.street2, &rec.street2);
 
     if city == FieldMatch::Miss
         || state == FieldMatch::Miss
@@ -285,6 +314,22 @@ mod tests {
         let se2 = search(s("123 main"), s("4"), None, None, None);
         let re2 = rec(2, s("123 Main St"), s("4B"), None, None, None);
         assert_eq!(match_exceptions(&se2, &[re2]).best, Some(ExceptionMatch { id: 2, score: 8 }));
+    }
+
+    #[test]
+    fn provided_street2_matches_with_or_without_designator() {
+        // DB stores the bare secondary; a searched street2 that includes the
+        // designator still matches (as-is fails, stripped succeeds).
+        let re = rec(1, s("123 Main St"), s("4"), None, None, None);
+
+        let with_designator = search(s("123 main"), s("Apt 4"), None, None, None);
+        assert_eq!(match_exceptions(&with_designator, &[re.clone()]).best,
+            Some(ExceptionMatch { id: 1, score: 8 }));
+
+        // The bare value still matches too.
+        let bare = search(s("123 main"), s("4"), None, None, None);
+        assert_eq!(match_exceptions(&bare, &[re]).best,
+            Some(ExceptionMatch { id: 1, score: 8 }));
     }
 
     #[test]
