@@ -33,8 +33,10 @@ const DEFAULT_ADDR_DATA_DIR: &str = "/usr/local/share/evergreen/address-data";
 
 // Import our local modules
 use crate::app;
+use crate::exception_match::{AddressSearch, ExceptionRecord};
 use crate::shapefile_util::shapefile_contains;
 use crate::turnstile;
+use std::collections::HashMap;
 // NOTE: the session-token module is referenced via crate::session::* to
 // avoid colliding with the ServerSession parameter named `session`.
 
@@ -143,6 +145,29 @@ pub static METHODS: &[StaticMethodDef] = &[
                 name: "Longitude",
                 datatype: ParamDataType::Numeric,
                 desc: "Numeric value between -180 and 180; e.g. -122.05041577546649",
+            },
+        ],
+    },
+    StaticMethodDef {
+        name: "exception.matches",
+        desc: "Find address-exception rows matching the provided address",
+        param_count: ParamCount::Range(2, 3),
+        handler: exception_matches,
+        params: &[
+            StaticParam {
+                name: "Session Token",
+                datatype: ParamDataType::String,
+                desc: "",
+            },
+            StaticParam {
+                name: "Address",
+                datatype: ParamDataType::Object,
+                desc: "Object with street1, street2, city, state, post_code",
+            },
+            StaticParam {
+                name: "Is Allowed Filter",
+                datatype: ParamDataType::Boolish,
+                desc: "Filter on is_allowed: unset/null = no filter, true = allowed only, false = blocked only",
             },
         ],
     },
@@ -362,8 +387,24 @@ pub fn autocomplete(
         suggestions.push(EgValue::from_json_value(jv)?);
     }
 
+    // Append the best-matching local address exception (if any), replacing an
+    // API suggestion for the same address.
     let mut editor = Editor::new(worker.client());
-    append_autocomplete_exceptions(&mut editor, &mut suggestions, &search_str)?;
+    let ex_search = AddressSearch {
+        street1: Some(search_str.clone()),
+        ..Default::default()
+    };
+    let ex_result = matching_exceptions(&mut editor, &ex_search, Some(true))?;
+
+    if !ex_result["best"].is_null() {
+        let suggestion = exception_to_suggestion(&ex_result["best"]);
+        let street_line = suggestion["street_line"].as_str().unwrap_or("");
+
+        suggestions.retain(|s|
+            s["street_line"].as_str().unwrap_or("").to_lowercase() != street_line);
+
+        suggestions.push(suggestion);
+    }
 
     suggestions.sort_by_key(|a| a["street_line"].as_str().unwrap_or("").to_string());
 
@@ -374,78 +415,175 @@ pub fn autocomplete(
     Ok(())
 }
 
-/// Add addresses from the local address exception table which match
-/// to the caller's search string.
-fn append_autocomplete_exceptions(
-    editor: &mut Editor,
-    suggestions: &mut Vec<EgValue>,
-    search_str: &str
+/// Convert an exception match (as built by `exception_response`) into an
+/// autocomplete suggestion.
+fn exception_to_suggestion(exc: &EgValue) -> EgValue {
+    let street1 = exc["street1"].as_str().unwrap_or("");
+    let street2 = exc["street2"].as_str().unwrap_or("");
+
+    let mut street_line = street1.to_string();
+    if !street2.is_empty() {
+        if !street_line.is_empty() {
+            street_line += " ";
+        }
+        street_line += street2;
+    }
+
+    let mut suggestion = eg::hash! {
+        "is_exception": true,
+        "exception_id": exc["exception_id"].clone(),
+        "is_allowed": exc["is_allowed"].clone(),
+        "street_line": street_line,
+        "secondary": exc["street2"].clone(),
+        "city": exc["city"].clone(),
+        "state": exc["state"].clone(),
+        "zipcode": exc["post_code"].clone(),
+        "entries": 0,
+    };
+
+    // Allowed exceptions carry the home org / district needed downstream.
+    if exc["is_allowed"].boolish() {
+        suggestion["home_ou"] = exc["home_ou"].clone();
+        suggestion["district_of_residence"] = exc["district_of_residence"].clone();
+    }
+
+    suggestion
+}
+
+/// Search the local address-exception table (cuae) for rows matching the
+/// provided address.  Returns the best match plus any other matches.  The
+/// scoring/matching rules live in the exception_match module.
+pub fn exception_matches(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: message::MethodCall,
 ) -> EgResult<()> {
+    let worker = app::AddrsWorker::downcast(worker)?;
 
-    let search_normalized = search_str
-        .replace(',', " ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim()
-        .to_lowercase();
+    let sestoken = method.param(0).str()?;
+    crate::session::verify(sestoken)?;
 
-    // This could be more efficient.
-    // However we'd have to do an ilike prefix search on the full
-    // address string, not just e.g. street1, with handling for empty values, etc.
-    // At time of writing, the list of addresses exceptions is very small.
+    let addr = method.param(1);
+
+    let search = AddressSearch {
+        street1: opt_str(&addr["street1"]),
+        street2: opt_str(&addr["street2"]),
+        city: opt_str(&addr["city"]),
+        state: opt_str(&addr["state"]),
+        post_code: opt_str(&addr["post_code"]),
+    };
+
+    // Optional third param filters on is_allowed: unset/null = no filter,
+    // true = allowed only, false = blocked only.
+    let allowed = match method.params().get(2) {
+        Some(v) if !v.is_null() => Some(v.boolish()),
+        _ => None,
+    };
+
+    let mut editor = Editor::new(worker.client());
+
+    let result = matching_exceptions(&mut editor, &search, allowed)?;
+
+    session.respond(result)?;
+
+    Ok(())
+}
+
+/// Search the cuae table for address-exception rows matching `search` and
+/// return an object with the best match and the other matches.  `allowed`
+/// filters on is_allowed: None = no filter, Some(true) = allowed only,
+/// Some(false) = blocked only.
+///
+/// This does no session-token verification, so callers that have already
+/// verified the token (e.g. autocomplete) can invoke it directly.
+pub fn matching_exceptions(
+    editor: &mut Editor,
+    search: &AddressSearch,
+    allowed: Option<bool>,
+) -> EgResult<EgValue> {
+    let mut query = eg::hash! {"enabled": "t"};
+    match allowed {
+        Some(true) => query["is_allowed"] = "t".into(),
+        Some(false) => query["is_allowed"] = "f".into(),
+        None => {}
+    }
+
     let exceptions = editor.search_with_ops(
         "cuae",
-        eg::hash! {"enabled": "t"},
+        query,
         eg::hash! {
             "flesh": 1,
             "flesh_fields": {"cuae": ["district_of_residence"]},
-        }
+        },
     )?;
 
-    for addr in &exceptions {
+    // Map id -> row and build the pure records passed to the matcher.
+    let mut by_id: HashMap<i64, &EgValue> = HashMap::new();
+    let mut records: Vec<ExceptionRecord> = Vec::new();
 
-        let mut street_line = addr["street1"].as_str().unwrap_or("").to_string();
-        if let Some(s2) = addr["street2"].as_str() && !s2.is_empty() {
-            if !street_line.is_empty() {
-                street_line += " ";
-            }
-            street_line += s2;
-        }
-
-        // Fuzzy match the caller's search string.  This is less
-        // sophisticated than Smarty's matching.  May need some
-        // additional smarts.
-        if street_line.to_lowercase().starts_with(&search_normalized) {
-            log::info!("Found local address exception search='{search_normalized}' exception='{street_line}'");
-
-            let mut response = eg::hash! {
-                "is_exception": true,
-                "exception_id": addr.id()?,
-                "is_allowed": addr["is_allowed"].boolish(),
-                "street_line": street_line,
-                "city": addr["city"].as_str().unwrap_or(""),
-                "state": addr["state"].as_str().unwrap_or(""),
-                "zipcode": addr["post_code"].as_str().unwrap_or(""),
-            };
-
-            // Only allowed (i.e. non-blocked) addresses contain the needed
-            // values to create an account.
-            if addr["is_allowed"].boolish() {
-                response["home_ou"] = addr["home_ou"].clone();
-                response["district_of_residence"] = addr["district_of_residence"]["name"].clone();
-            }
-
-            // If an address provided by the API matches the address exception,
-            // remove the API version.
-            suggestions.retain(|addr| 
-                addr["street_line"].as_str().unwrap_or("").to_lowercase() != street_line.to_lowercase());
-
-            suggestions.push(response);
-        }
+    for exc in &exceptions {
+        let id = exc["id"].as_i64().unwrap_or(0);
+        by_id.insert(id, exc);
+        records.push(ExceptionRecord {
+            id,
+            street1: opt_str(&exc["street1"]),
+            street2: opt_str(&exc["street2"]),
+            city: opt_str(&exc["city"]),
+            state: opt_str(&exc["state"]),
+            post_code: opt_str(&exc["post_code"]),
+        });
     }
 
-    Ok(())
+    let result = crate::exception_match::match_exceptions(search, &records);
+
+    let best = match result.best {
+        Some(m) => {
+            let exc = *by_id.get(&m.id).ok_or("exception id map error")?;
+            exception_response(exc, m.score)?
+        }
+        None => EgValue::Null,
+    };
+
+    let mut others: Vec<EgValue> = Vec::new();
+    for m in &result.others {
+        let exc = *by_id.get(&m.id).ok_or("exception id map error")?;
+        others.push(exception_response(exc, m.score)?);
+    }
+
+    Ok(eg::hash! {
+        "best": best,
+        "matches": others,
+    })
+}
+
+/// A string field value, or None when null/empty.
+fn opt_str(value: &EgValue) -> Option<String> {
+    value
+        .as_str()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Build the response object for a single matched exception.
+fn exception_response(exc: &EgValue, score: i32) -> EgResult<EgValue> {
+    let mut resp = eg::hash! {
+        "exception_id": exc["id"].clone(),
+        "is_allowed": exc["is_allowed"].boolish(),
+        "score": score,
+        "street1": exc["street1"].clone(),
+        "street2": exc["street2"].clone(),
+        "city": exc["city"].clone(),
+        "state": exc["state"].clone(),
+        "post_code": exc["post_code"].clone(),
+    };
+
+    // Only allowed exceptions carry the values needed to create an account.
+    if exc["is_allowed"].boolish() {
+        resp["home_ou"] = exc["home_ou"].clone();
+        resp["district_of_residence"] = exc["district_of_residence"]["name"].clone();
+    }
+
+    Ok(resp)
 }
 
 /// Find the best/closest home library given the provided lat/long values based

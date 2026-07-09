@@ -3,6 +3,7 @@ use eg::osrf::server::Server;
 use evergreen as eg;
 use std::env;
 pub mod app;
+pub mod exception_match;
 pub mod methods;
 pub mod session;
 pub mod shapefile_util;
