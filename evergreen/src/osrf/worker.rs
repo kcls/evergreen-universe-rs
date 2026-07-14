@@ -264,11 +264,16 @@ impl Worker {
                     return Ok((false, false));
                 }
 
+                // Set active while we clean up.  Will shortly be followed by set_idle().
+                self.set_active()?;
+
+                // Timed out -- all done.
+                self.connected = false;
+
                 // Caller failed to send a message within the keepliave interval.
                 log::warn!("{selfstr} timeout waiting on request while connected");
 
                 self.reply_with_status(MessageStatus::Timeout, "Timeout")?;
-                self.set_active()?;
 
                 return Ok((true, false)); // work occurred
             }
