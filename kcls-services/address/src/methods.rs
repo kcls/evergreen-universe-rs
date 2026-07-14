@@ -654,7 +654,7 @@ pub fn home_org(
 
         let distance = crow_flies_distance(lat, long, latitude, longitude);
 
-        log::info!(
+        log::debug!(
             "Testing {lat}/{long} values at branch {org_id} => \
              {latitude}/{longitude} (distance {distance:.3}km)"
         );
