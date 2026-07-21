@@ -1,9 +1,9 @@
 use crate::osrf::logging;
 use crate::util;
 use crate::{EgResult, EgValue};
+use serde_json::Value;
 use std::cell::RefCell;
 use std::fmt;
-use serde_json::Value;
 
 const DEFAULT_TIMEZONE: &str = "America/New_York";
 const DEFAULT_API_LEVEL: u8 = 1;
@@ -623,7 +623,6 @@ impl Message {
     pub fn to_json_value(&self) -> EgResult<Value> {
         serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
-
 }
 
 /// Serialization helper for the inner payload of an osrfResult.
@@ -713,7 +712,6 @@ impl Result {
     pub fn to_json_value(&self) -> EgResult<Value> {
         serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
-
 }
 
 impl serde::Serialize for Result {
@@ -783,7 +781,6 @@ impl Status {
     pub fn to_json_value(&self) -> EgResult<Value> {
         serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
-
 }
 
 impl serde::Serialize for Status {
@@ -892,7 +889,6 @@ impl MethodCall {
     pub fn to_json_value(&self) -> EgResult<Value> {
         serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
-
 }
 
 impl serde::Serialize for MethodCall {

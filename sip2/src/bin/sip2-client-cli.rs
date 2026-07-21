@@ -262,7 +262,6 @@ fn setup_params(options: &getopts::Matches) -> ParamSet {
         params.set_current_location(current_location);
     }
 
-
     // Collect some params up front for ease of use.
     if let Some(ref item_id) = options.opt_str("item-barcode") {
         params.set_item_id(item_id);

@@ -399,16 +399,28 @@ impl JsonQueryCompiler {
             qtype = "INTERSECT";
             &query["intersect"]
         } else {
-            return Err(format!("Invalid UNION/INTERSECT/EXCEPT query: {}", query.to_json_string()?).into());
+            return Err(format!(
+                "Invalid UNION/INTERSECT/EXCEPT query: {}",
+                query.to_json_string()?
+            )
+            .into());
         };
 
         if !query["order_by"].is_null() {
-            return Err(format!("ORDER BY not supported for query type: {}", query.to_json_string()?).into());
+            return Err(format!(
+                "ORDER BY not supported for query type: {}",
+                query.to_json_string()?
+            )
+            .into());
         }
 
         // At this point we're guaranteed it's an array.
         if query_array.len() < 2 {
-            return Err(format!("Invalid query array for query type: {}", query.to_json_string()?).into());
+            return Err(format!(
+                "Invalid query array for query type: {}",
+                query.to_json_string()?
+            )
+            .into());
         }
 
         if qtype == "EXCEPT" && query_array.len() > 2 {
@@ -422,7 +434,11 @@ impl JsonQueryCompiler {
         let mut sql = String::new();
         for (idx, hash) in query_array.members().enumerate() {
             if !hash.is_object() {
-                return Err(format!("Invalid sub-query for query type: {}", query.to_json_string()?).into());
+                return Err(format!(
+                    "Invalid sub-query for query type: {}",
+                    query.to_json_string()?
+                )
+                .into());
             }
 
             if idx > 0 {
@@ -1239,7 +1255,11 @@ impl JsonQueryCompiler {
         value: &EgValue,
     ) -> EgResult<String> {
         if value.is_object() || value.is_array() {
-            return Err(format!("Invalid simple search predicate: {}", value.to_json_string()?).into());
+            return Err(format!(
+                "Invalid simple search predicate: {}",
+                value.to_json_string()?
+            )
+            .into());
         }
 
         let prefix = format!(r#""{class_alias}".{field_name}"#);
@@ -1377,7 +1397,7 @@ impl JsonQueryCompiler {
         }
 
         if value_def.is_empty() {
-            return Err(format!("Empty IN list for field {field_name}"))?;
+            Err(format!("Empty IN list for field {field_name}"))?;
         }
 
         let mut values = Vec::new();
@@ -1487,12 +1507,18 @@ impl JsonQueryCompiler {
     /// ["actor.org_unit_ancestor_setting_batch", "4", "{circ.course_materials_opt_in}"]
     fn compile_function_from(&mut self, from_def: &EgValue) -> EgResult<String> {
         if from_def.is_empty() || !from_def.is_array() {
-            return Err(format!("Invalid FROM function spec: {}", from_def.to_json_string()?).into());
+            return Err(
+                format!("Invalid FROM function spec: {}", from_def.to_json_string()?).into(),
+            );
         }
 
         let func_name = match from_def[0].as_str() {
             Some(f) => self.check_identifier(f)?.to_string(),
-            None => return Err(format!("Invalid function name: {}", from_def[0].to_json_string()?).into()),
+            None => {
+                return Err(
+                    format!("Invalid function name: {}", from_def[0].to_json_string()?).into(),
+                );
+            }
         };
 
         let mut sql = func_name.to_string();
@@ -1513,11 +1539,13 @@ impl JsonQueryCompiler {
                 } else if value.is_number() {
                     params.push(value.to_string().unwrap());
                 } else {
-                    return Err(format!("Invalid function parameter: {}", value.to_json_string()?).into());
+                    return Err(
+                        format!("Invalid function parameter: {}", value.to_json_string()?).into(),
+                    );
                 };
             }
 
-            sql += &format!("({})", &params.join(", "));
+            sql += &format!("({})", params.join(", "));
         }
 
         Ok(sql)

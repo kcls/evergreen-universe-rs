@@ -487,7 +487,7 @@ impl Worker {
         if !ParamCount::matches(pcount, param_count as u8) {
             return self.reply_bad_request(&format!(
                 "Invalid param count sent: method={} sent={} needed={}",
-                api_name, param_count, &pcount,
+                api_name, param_count, pcount,
             ));
         }
 

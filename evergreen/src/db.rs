@@ -446,7 +446,7 @@ impl DatabaseConnection {
 
     pub fn xact_commit(&mut self) -> EgResult<()> {
         if !self.in_transaction {
-            return Err("DatabaseConnection has no transaction to commit".to_string())?;
+            Err("DatabaseConnection has no transaction to commit".to_string())?;
         }
         self.in_transaction = false;
         match self.client().execute("COMMIT", &[]) {

@@ -201,7 +201,9 @@ impl Session {
 
         let mut checkin_lib = self.editor().perm_org();
 
-        if let Some(sn) = checkin_loc_op && let Some(org) = self.org_from_sn(sn)?  {
+        if let Some(sn) = checkin_loc_op
+            && let Some(org) = self.org_from_sn(sn)?
+        {
             checkin_lib = org.id()?;
         }
 
@@ -212,7 +214,10 @@ impl Session {
             false => "open-ils.circ.checkin",
         };
 
-        log::info!("{self} checking in items with args: {}", args.to_json_string()?);
+        log::info!(
+            "{self} checking in items with args: {}",
+            args.to_json_string()?
+        );
 
         let params = vec![EgValue::from(self.editor().authtoken().unwrap()), args];
 

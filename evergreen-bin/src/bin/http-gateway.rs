@@ -294,7 +294,11 @@ impl GatewayHandler {
                     | eg::osrf::message::MessageStatus::Continue => {
                         // Keep reading in case there's more data in the message.
                     }
-                    _ => return Err(format!("Unsupported message status: '{}'", stat.status()).into()),
+                    _ => {
+                        return Err(
+                            format!("Unsupported message status: '{}'", stat.status()).into()
+                        )
+                    }
                 }
             }
         }
@@ -432,9 +436,9 @@ impl GatewayHandler {
     fn parse_request(&self, http_req: ParsedHttpRequest) -> EgResult<ParsedGatewayRequest> {
         let url_params = match http_req.body {
             // POST params are in the body
-            Some(b) => format!("{}?{}", DUMMY_BASE_URL, &b),
+            Some(b) => format!("{}?{}", DUMMY_BASE_URL, b),
             // GET Params are in the path.
-            None => format!("{}{}", DUMMY_BASE_URL, &http_req.path),
+            None => format!("{}{}", DUMMY_BASE_URL, http_req.path),
         };
 
         let parsed_url =

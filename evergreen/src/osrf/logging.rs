@@ -221,7 +221,7 @@ impl log::Log for Logger {
                 true => format!("<{}>", severity),
                 _ => date::now().format("%F %T%.3f").to_string() + " ",
             },
-            &self.application,
+            self.application,
             levelname,
             process::id(),
             target,

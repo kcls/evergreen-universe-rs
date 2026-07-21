@@ -267,13 +267,7 @@ fn process_excel_file(file_path: &str) -> Result<Vec<StreetDateRecord>, String> 
     // Find the column indices for our target fields
     let invoice_col = find_column_index(&headers, &["invoice number"]);
     let ean_col = find_column_index(&headers, &["ean", "isbn", "barcode"]);
-    let street_date_col = find_column_index(
-        &headers,
-        &[
-            "street date",
-            "release date",
-        ],
-    );
+    let street_date_col = find_column_index(&headers, &["street date", "release date"]);
 
     println!("\nColumn mapping:");
     println!("  Invoice Number: {:?}", invoice_col);

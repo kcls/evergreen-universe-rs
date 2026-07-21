@@ -700,10 +700,9 @@ impl EgValue {
     /// ```
     pub fn from_json_value(v: Value) -> EgResult<EgValue> {
         match v {
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_) => Ok(EgValue::from_json_value_plain(v)),
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+                Ok(EgValue::from_json_value_plain(v))
+            }
 
             Value::Array(list) => {
                 let mut val_list = Vec::with_capacity(list.len());
@@ -719,28 +718,25 @@ impl EgValue {
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
 
-                if let Some(classname) = classname {
-                    if let Some(payload) = obj_map.remove(JSON_PAYLOAD_KEY) {
-                        let idl_class = idl::get_class(&classname)?;
+                if let Some(classname) = classname
+                    && let Some(payload) = obj_map.remove(JSON_PAYLOAD_KEY)
+                {
+                    let idl_class = idl::get_class(&classname)?;
 
-                        let mut map = HashMap::new();
-                        if let Value::Array(arr) = payload {
-                            let sorted = idl_class.fields_sorted();
-                            for (name, val) in sorted.iter().zip(arr) {
-                                if !val.is_null() {
-                                    map.insert(
-                                        name.clone(),
-                                        EgValue::from_json_value(val)?,
-                                    );
-                                }
+                    let mut map = HashMap::new();
+                    if let Value::Array(arr) = payload {
+                        let sorted = idl_class.fields_sorted();
+                        for (name, val) in sorted.iter().zip(arr) {
+                            if !val.is_null() {
+                                map.insert(name.clone(), EgValue::from_json_value(val)?);
                             }
                         }
-
-                        return Ok(EgValue::Blessed(BlessedValue {
-                            idl_class: idl_class.clone(),
-                            values: map,
-                        }));
                     }
+
+                    return Ok(EgValue::Blessed(BlessedValue {
+                        idl_class: idl_class.clone(),
+                        values: map,
+                    }));
                 }
 
                 let mut map = HashMap::with_capacity(obj_map.len());
@@ -1461,28 +1457,28 @@ impl<'de> serde::de::Visitor<'de> for EgValueVisitor {
         };
 
         if let Some(classname) = classname
-            && hash.contains_key(JSON_PAYLOAD_KEY) {
-                let idl_class = idl::get_class(&classname).map_err(|_| {
-                    serde::de::Error::custom(format!("Unknown IDL class: {classname}"))
-                })?;
+            && hash.contains_key(JSON_PAYLOAD_KEY)
+        {
+            let idl_class = idl::get_class(&classname)
+                .map_err(|_| serde::de::Error::custom(format!("Unknown IDL class: {classname}")))?;
 
-                let mut values = HashMap::new();
-                if let Some(EgValue::Array(mut arr)) = hash.remove(JSON_PAYLOAD_KEY) {
-                    for field in idl_class.fields().values() {
-                        if arr.len() > field.array_pos() {
-                            let val = mem::replace(&mut arr[field.array_pos()], EgValue::Null);
-                            if !val.is_null() {
-                                values.insert(field.name().to_string(), val);
-                            }
+            let mut values = HashMap::new();
+            if let Some(EgValue::Array(mut arr)) = hash.remove(JSON_PAYLOAD_KEY) {
+                for field in idl_class.fields().values() {
+                    if arr.len() > field.array_pos() {
+                        let val = mem::replace(&mut arr[field.array_pos()], EgValue::Null);
+                        if !val.is_null() {
+                            values.insert(field.name().to_string(), val);
                         }
                     }
                 }
-
-                return Ok(EgValue::Blessed(BlessedValue {
-                    idl_class: idl_class.clone(),
-                    values,
-                }));
             }
+
+            return Ok(EgValue::Blessed(BlessedValue {
+                idl_class: idl_class.clone(),
+                values,
+            }));
+        }
 
         Ok(EgValue::Hash(hash))
     }

@@ -37,7 +37,7 @@ pub struct BusAddress {
 
 impl fmt::Display for BusAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Address={}", &self.full)
+        write!(f, "Address={}", self.full)
     }
 }
 
@@ -150,9 +150,9 @@ impl BusAddress {
     pub fn for_client(username: &str, domain: &str) -> Self {
         let remainder = format!(
             "{}:{}:{}",
-            &gethostname().into_string().unwrap(),
+            gethostname().into_string().unwrap(),
             process::id(),
-            &util::random_number(6)
+            util::random_number(6)
         );
 
         let full = format!(

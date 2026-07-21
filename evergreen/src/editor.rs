@@ -552,7 +552,11 @@ impl Editor {
         {
             return Ok(fm.replace("::", "."));
         }
-        Err(format!("Cannot determine fieldmapper from {}", value.to_json_string()?).into())
+        Err(format!(
+            "Cannot determine fieldmapper from {}",
+            value.to_json_string()?
+        )
+        .into())
     }
 
     fn get_fieldmapper_from_classname(&self, classname: &str) -> EgResult<String> {
@@ -680,7 +684,10 @@ impl Editor {
 
         if let Some(resp) = self.request(&method, object)? {
             if let Some(pkey) = resp.pkey_value() {
-                log::info!("Created new {fmapper} object with pkey: {}", pkey.to_json_string()?);
+                log::info!(
+                    "Created new {fmapper} object with pkey: {}",
+                    pkey.to_json_string()?
+                );
             } else {
                 // Don't think we can get here, but mabye.
                 log::debug!("Created new {fmapper} object: {resp:?}");

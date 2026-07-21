@@ -209,8 +209,8 @@ fn process_batch(options: IngestOptions, mut connection: DatabaseConnection, ids
         "{:?} processing {} records: {}..{}",
         thread::current().id(),
         idlen,
-        &ids[0],
-        &ids[idlen - 1],
+        ids[0],
+        ids[idlen - 1],
     );
 
     connection.connect().unwrap();

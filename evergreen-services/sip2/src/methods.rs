@@ -285,7 +285,6 @@ fn handle_item_info(sip_ses: &mut Session, sip_msg: sip2::Message) -> EgResult<s
         sip_ses.stamp_transit_hop(item.id, transit_id)?;
     }
 
-
     let cur_set = sip_ses.config().settings().get("currency");
     let currency = if let Some(cur) = cur_set {
         cur.str()?

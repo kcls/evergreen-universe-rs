@@ -5,8 +5,8 @@ use crate::osrf::logging::Logger;
 use crate::osrf::message::TransportMessage;
 use crate::util;
 use redis::{Commands, ConnectionAddr, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
-use std::fmt;
 use serde_json::Value;
+use std::fmt;
 
 /// Manages a Redis connection.
 pub struct Bus {
@@ -163,11 +163,7 @@ impl Bus {
 
     /// Returns at most one JSON value pulled from the queue or None if
     /// the list pop times out or the pop is interrupted by a signal.
-    fn recv_one_value(
-        &mut self,
-        timeout: u64,
-        recipient: Option<&str>,
-    ) -> EgResult<Option<Value>> {
+    fn recv_one_value(&mut self, timeout: u64, recipient: Option<&str>) -> EgResult<Option<Value>> {
         let json_string = match self.recv_one_chunk(timeout, recipient)? {
             Some(s) => s,
             None => {

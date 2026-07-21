@@ -323,7 +323,10 @@ pub fn create_passive_events_for_def(
         }
     }
 
-    log::debug!("Event def {event_def_id} filter is: {}", filters.to_json_string()?);
+    log::debug!(
+        "Event def {event_def_id} filter is: {}",
+        filters.to_json_string()?
+    );
 
     editor.set_timeout(3600); // 1hr
 

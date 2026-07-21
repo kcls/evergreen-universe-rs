@@ -721,7 +721,7 @@ impl Translator {
         if count > 0 {
             sql += " ORDER BY";
             for order_by in order {
-                sql += &format!(" {} {}", &order_by.field, &order_by.dir);
+                sql += &format!(" {} {}", order_by.field, order_by.dir);
                 count -= 1;
                 if count > 0 {
                     sql += ",";

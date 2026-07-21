@@ -1,9 +1,9 @@
 use super::session::DEFAULT_DUE_DATE_FORMAT;
 use crate::session::Session;
-use eg::constants as C;
-use eg::date;
 use eg::EgResult;
 use eg::EgValue;
+use eg::constants as C;
+use eg::date;
 use evergreen as eg;
 use std::fmt;
 
@@ -127,7 +127,9 @@ impl Session {
 
                 hold_pickup_date_op = Some(sip2::util::sip_date_from_dt(&expire_dt));
             } else {
-                log::info!("Org unit {dest_location_id} has no circ.holds.default_shelf_expire_interval value");
+                log::info!(
+                    "Org unit {dest_location_id} has no circ.holds.default_shelf_expire_interval value"
+                );
             }
 
             if let Some(bc) = hold["usr"]["card"]["barcode"].as_str() {

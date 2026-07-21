@@ -2,11 +2,11 @@ use eg::Editor;
 use eg::EgResult;
 use eg::EgValue;
 use eg::common::auth;
+use eg::common::settings::Settings as OrgSettings;
 use eg::osrf::cache::Cache;
 use evergreen as eg;
 use std::collections::HashMap;
 use std::fmt;
-use eg::common::settings::Settings as OrgSettings;
 
 // TODO session auth caching and storage.
 //

@@ -334,7 +334,7 @@ impl Class {
     /// Vec of non-virutal fields.
     pub fn real_fields(&self) -> Vec<&Field> {
         let mut fields: Vec<&Field> = Vec::new();
-        for (_, field) in self.fields().iter() {
+        for field in self.fields().values() {
             if !field.is_virtual() {
                 fields.push(field);
             }

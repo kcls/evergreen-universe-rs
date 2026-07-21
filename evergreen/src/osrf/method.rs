@@ -74,7 +74,7 @@ pub enum ParamDataType {
     String,
     Number,
     Array,
-    Object, // EgValue::Hash/Blessed or other object-y thing
+    Object,  // EgValue::Hash/Blessed or other object-y thing
     Numeric, // number or stringy number
     Boolish,
     Scalar, // Not an Object or Array.

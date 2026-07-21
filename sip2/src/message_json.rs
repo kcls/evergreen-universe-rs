@@ -147,9 +147,10 @@ impl Message {
     pub fn from_json_value(json_value: serde_json::Value) -> Result<Message, SipJsonError> {
         // Start with a message that's just the code plus fixed fields
         // as a SIP string.
-        let mut strbuf = json_value["code"].as_str().ok_or_else(|| {
-            SipJsonError::MessageFormatError("Message requires a code".to_string())
-        })?.to_string();
+        let mut strbuf = json_value["code"]
+            .as_str()
+            .ok_or_else(|| SipJsonError::MessageFormatError("Message requires a code".to_string()))?
+            .to_string();
 
         if let Some(ff_array) = json_value["fixed_fields"].as_array() {
             for ff in ff_array {
@@ -189,7 +190,8 @@ impl Message {
                         } else {
                             return Err(SipJsonError::MessageFormatError(format!(
                                 "Message is not correctly formatted: {}",
-                                serde_json::to_string(&json_value).unwrap_or_else(|e| e.to_string())
+                                serde_json::to_string(&json_value)
+                                    .unwrap_or_else(|e| e.to_string())
                             )));
                         }
                     }

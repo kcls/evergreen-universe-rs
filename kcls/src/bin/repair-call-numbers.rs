@@ -121,7 +121,10 @@ fn trim_one_label(scripter: &mut script::Runner, mut vol: EgValue, dry_run: bool
     if response.as_int() == Some(1) {
         println!("Successfully updated call number {vol_id}");
     } else {
-        println!("Update failed for {vol_id} :\n{}", response.to_json_string()?);
+        println!(
+            "Update failed for {vol_id} :\n{}",
+            response.to_json_string()?
+        );
     }
 
     Ok(())
