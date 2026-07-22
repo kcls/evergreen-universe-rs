@@ -124,7 +124,7 @@ pub fn map_to_mvr(editor: &mut Editor, bib_id: i64) -> EgResult<EgValue> {
         None => return Err(format!("Bib {bib_id} has no display attributes").into()),
     };
 
-    let mut mvr = eg::hash! {"doc_id": bib_id};
+    let mut mvr = eg::hash! { "doc_id": bib_id };
 
     let idl_class = idl::get_class("mvr")?;
 
@@ -202,19 +202,19 @@ impl RecordSummary {
         let copy_counts = std::mem::take(&mut self.copy_counts);
 
         eg::hash! {
-            id: self.id,
-            record: self.record.take(),
-            display: self.display.into_value(),
-            record_note_count: self.record_note_count,
-            attributes: self.attributes.take(),
-            copy_counts: EgValue::from(copy_counts),
-            hold_count: self.hold_count,
-            urls: urls,
-            has_holdable_copy: self.has_holdable_copy,
+            "id": self.id,
+            "record": self.record.take(),
+            "display": self.display.into_value(),
+            "record_note_count": self.record_note_count,
+            "attributes": self.attributes.take(),
+            "copy_counts": EgValue::from(copy_counts),
+            "hold_count": self.hold_count,
+            "urls": urls,
+            "has_holdable_copy": self.has_holdable_copy,
             // TODO
-            staff_view_metabib_attributes: eg::hash!{},
+            "staff_view_metabib_attributes": eg::hash!{},
             // TODO
-            staff_view_metabib_records: eg::array! [],
+            "staff_view_metabib_records": eg::array! [],
         }
     }
 }
@@ -295,10 +295,10 @@ pub struct RecordUrl {
 impl RecordUrl {
     pub fn into_value(self) -> EgValue {
         eg::hash! {
-            href: self.href,
-            label: self.label,
-            notes: self.notes,
-            ind2: self.ind2
+            "href": self.href,
+            "label": self.label,
+            "notes": self.notes,
+            "ind2": self.ind2
         }
     }
 }

@@ -727,7 +727,7 @@ impl Shell {
         self.args_min_length(args, 2)?;
 
         let authtoken = match &self.auth_session {
-            Some(s) => EgValue::from(s.token()).dump(),
+            Some(s) => EgValue::from(s.token()).to_json_string()?,
             None => return Err("reqauth requires an auth token".to_string()),
         };
 
@@ -967,9 +967,10 @@ impl Shell {
 
         let dumped = if self.json_as_wire_protocal {
             if self.json_print_depth == 0 {
-                obj.into_json_value().dump()
+                obj.to_json_string()?
             } else {
-                obj.into_json_value().pretty(self.json_print_depth)
+                // Use the serde pretty-ifier
+                serde_json::to_string_pretty(&obj.into_json_value()).expect("JSON Dump")
             }
         } else {
             obj.to_classed_hash();
@@ -977,7 +978,7 @@ impl Shell {
                 obj.scrub_hash_nulls();
             }
             if self.json_print_depth == 0 {
-                obj.dump()
+                obj.to_json_string()?
             } else {
                 obj.pretty(self.json_print_depth)
             }
@@ -986,7 +987,7 @@ impl Shell {
         println!("{SEPARATOR}");
         println!("{dumped}");
 
-        Ok(()) // TODO remove?
+        Ok(())
     }
 
     fn print_idl_object(&mut self, obj: &EgValue) -> Result<(), String> {
@@ -994,6 +995,7 @@ impl Shell {
 
         let idl_class = obj
             .idl_class()
+            // TODO deprecate dump()
             .ok_or_else(|| format!("Not an IDL object value: {}", obj.dump()))?;
 
         // Get the max field name length for improved formatting.

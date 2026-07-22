@@ -1,6 +1,5 @@
 use crate::EgResult;
 use crate::EgValue;
-use json::JsonValue;
 use rand::Rng;
 use socket2::{Domain, Socket, Type};
 use std::collections::HashSet;
@@ -55,45 +54,33 @@ pub fn random_number(size: u8) -> String {
 ///
 /// ```
 /// use evergreen::util;
-/// use json;
-/// let v = json::from(-123);
+/// let v = serde_json::json!(-123);
 /// assert_eq!(util::json_isize(&v), Some(-123));
-/// let v = json::from("hello");
+/// let v = serde_json::json!("hello");
 /// assert_eq!(util::json_isize(&v), None);
 /// ```
-pub fn json_isize(value: &JsonValue) -> Option<isize> {
-    if let Some(i) = value.as_isize() {
-        return Some(i);
-    } else if let Some(s) = value.as_str()
-        && let Ok(i2) = s.parse::<isize>()
-    {
-        return Some(i2);
-    };
-
-    None
+pub fn json_isize(value: &serde_json::Value) -> Option<isize> {
+    value
+        .as_i64()
+        .map(|i| i as isize)
+        .or_else(|| value.as_str().and_then(|s| s.parse::<isize>().ok()))
 }
 
-/// Converts a JSON number or string to an usize if possible
+/// Converts a JSON number or string to a usize if possible
 /// ```
 /// use evergreen::util;
-/// use json;
-/// let v = json::from(-123);
+/// let v = serde_json::json!(-123);
 /// assert_eq!(util::json_usize(&v), None);
-/// let v = json::from("hello");
+/// let v = serde_json::json!("hello");
 /// assert_eq!(util::json_usize(&v), None);
-/// let v = json::from(12321);
+/// let v = serde_json::json!(12321);
 /// assert_eq!(util::json_usize(&v), Some(12321));
 /// ```
-pub fn json_usize(value: &JsonValue) -> Option<usize> {
-    if let Some(i) = value.as_usize() {
-        return Some(i);
-    } else if let Some(s) = value.as_str()
-        && let Ok(i2) = s.parse::<usize>()
-    {
-        return Some(i2);
-    };
-
-    None
+pub fn json_usize(value: &serde_json::Value) -> Option<usize> {
+    value
+        .as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .or_else(|| value.as_str().and_then(|s| s.parse::<usize>().ok()))
 }
 
 /// Simple seconds-based countdown timer.
@@ -165,7 +152,7 @@ pub fn stringify_params(method: &str, params: &[EgValue], log_protect: &[String]
     } else {
         params
             .iter()
-            // EgValue.dump() consumes the value, hence the clone.
+            // TODO deprecate dump()
             .map(|p| p.clone().dump())
             .collect::<Vec<_>>()
             .join(" ")

@@ -6,10 +6,10 @@ fn main() -> eg::EgResult<()> {
     let mut editor = eg::Editor::new(&client);
 
     let filter = eg::hash! {
-        "checkin_time": json::JsonValue::Null,
+        "checkin_time": eg::EgValue::Null,
         "-or": [
             {"stop_fines" : ["MAXFINES", "LONGOVERDUE"]},
-            {"stop_fines" : json::JsonValue::Null}
+            {"stop_fines" : eg::EgValue::Null}
         ],
         "-not": {
             "-exists": {

@@ -324,7 +324,7 @@ pub fn bill_payment_map_for_xact(
         "order_by": {
             "mb": {
                 "billing_ts": {
-                    "direction": "asc"
+                    "direction": "asc",
                 }
             }
         }
@@ -775,13 +775,13 @@ pub fn generate_fines_for_xact(
         current_fine_total += this_billing_amount;
 
         let bill = eg::hash! {
-            xact: xact_id,
-            note: "System Generated Overdue Fine",
-            billing_type: "Overdue materials",
-            btype: C::BTYPE_OVERDUE_MATERIALS,
-            amount: this_billing_amount / 100.0,
-            period_start: date::to_iso(&period_start),
-            period_end: date::to_iso(&period_end),
+            "xact": xact_id,
+            "note": "System Generated Overdue Fine",
+            "billing_type": "Overdue materials",
+            "btype": C::BTYPE_OVERDUE_MATERIALS,
+            "amount": this_billing_amount / 100.0,
+            "period_start": date::to_iso(&period_start),
+            "period_end": date::to_iso(&period_end),
         };
 
         let bill = EgValue::create("mb", bill)?;

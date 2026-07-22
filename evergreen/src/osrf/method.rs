@@ -3,7 +3,7 @@ use crate::EgValue;
 use crate::osrf::app;
 use crate::osrf::message;
 use crate::osrf::session;
-use json::JsonValue;
+use serde_json::Value;
 use std::fmt;
 
 pub type MethodHandler = fn(
@@ -74,7 +74,7 @@ pub enum ParamDataType {
     String,
     Number,
     Array,
-    Object, // JsonValue::Object or other object-y thing
+    Object, // EgValue::Hash/Blessed or other object-y thing
     Boolish,
     Scalar, // Not an Object or Array.
     Any,
@@ -133,14 +133,14 @@ pub struct Param {
 
 impl Param {
     pub fn to_eg_value(&self) -> EgValue {
-        EgValue::from_json_value_plain(json::object! {
+        EgValue::from_json_value_plain(serde_json::json!({
             "name": self.name.as_str(),
             "datatype": self.datatype.to_string(),
             "desc": match self.desc.as_ref() {
-                Some(d) => d.as_str().into(),
-                _ => JsonValue::Null,
+                Some(d) => Value::String(d.to_string()),
+                _ => Value::Null,
             }
-        })
+        }))
     }
 }
 
@@ -267,17 +267,17 @@ impl MethodDef {
             }
         }
 
-        EgValue::from_json_value_plain(json::object! {
+        EgValue::from_json_value_plain(serde_json::json!({
             "api_name": self.name(),
             "argc": self.param_count().to_string(),
             "params": pa.into_json_value(),
             // All Rust methods are streaming.
-            "stream": JsonValue::Boolean(true),
+            "stream": Value::Bool(true),
             "desc": match self.desc() {
-                Some(d) => d.into(),
-                _ => JsonValue::Null,
+                Some(d) => Value::String(d.to_string()),
+                _ => Value::Null,
             }
-        })
+        }))
     }
 
     /// Produces e.g. "foo.bar.baz('param1', 'param2')"

@@ -46,12 +46,12 @@ impl HostSettings {
         }
     }
 
-    /// Returns the full host settings config as a JsonValue.
+    /// Returns the full host settings config as an EgValue.
     pub fn settings(&self) -> &EgValue {
         &self.settings
     }
 
-    /// Returns the JsonValue at the specified path.
+    /// Returns the EgValue at the specified path.
     ///
     /// Panics of the host config has not yet been retrieved.
     ///
@@ -63,7 +63,7 @@ impl HostSettings {
 
         let mut value = hsets.settings();
         for part in slashpath.split('/') {
-            value = &value[part]; // -> JsonValue::Null if key is not found.
+            value = &value[part]; // -> EgValue::Null if key is not found.
         }
 
         Ok(value)

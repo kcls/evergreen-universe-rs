@@ -1,9 +1,9 @@
 use crate::osrf::logging;
 use crate::util;
 use crate::{EgResult, EgValue};
-use json::JsonValue;
 use std::cell::RefCell;
 use std::fmt;
+use serde_json::Value;
 
 const DEFAULT_TIMEZONE: &str = "America/New_York";
 const DEFAULT_API_LEVEL: u8 = 1;
@@ -232,6 +232,16 @@ impl MessageStatus {
     }
 }
 
+/// Helper struct for serializing the OpenSRF `{"__c": class, "__p": payload}`
+/// wire format via serde derive.
+#[derive(serde::Serialize)]
+struct ClassWrapper<'a, T: serde::Serialize> {
+    #[serde(rename = "__c")]
+    class: &'a str,
+    #[serde(rename = "__p")]
+    payload: T,
+}
+
 /// The message payload is the core of the message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
@@ -241,27 +251,39 @@ pub enum Payload {
     NoPayload,
 }
 
-impl Payload {
-    pub fn into_json_value(self) -> JsonValue {
+impl serde::Serialize for Payload {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
         match self {
-            Payload::Method(pl) => pl.into_json_value(),
-            Payload::Result(pl) => pl.into_json_value(),
-            Payload::Status(pl) => pl.into_json_value(),
-            Payload::NoPayload => JsonValue::Null,
+            Payload::Method(pl) => pl.serialize(serializer),
+            Payload::Result(pl) => pl.serialize(serializer),
+            Payload::Status(pl) => pl.serialize(serializer),
+            Payload::NoPayload => serializer.serialize_none(),
         }
+    }
+}
+
+impl Payload {
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
 }
 
 /// Message envelope containing one or more Messages, routing
 /// details, and other metadata.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize)]
 pub struct TransportMessage {
     to: String,
     from: String,
     thread: String,
     osrf_xid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     router_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     router_class: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     router_reply: Option<String>,
     body: Vec<Message>,
 }
@@ -359,7 +381,7 @@ impl TransportMessage {
     /// Create a TransportMessage from a JSON object, consuming the JSON value.
     ///
     /// Returns None if the JSON value cannot be coerced into a TransportMessage.
-    pub fn from_json_value(mut json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
+    pub fn from_json_value(mut json_obj: Value, raw_data_mode: bool) -> EgResult<Self> {
         let err = || "Invalid TransportMessage".to_string();
 
         let to = json_obj["to"].as_str().ok_or_else(err)?;
@@ -387,7 +409,7 @@ impl TransportMessage {
 
         let body = json_obj["body"].take();
 
-        if let JsonValue::Array(arr) = body {
+        if let Value::Array(arr) = body {
             for body in arr {
                 tmsg.body_mut()
                     .push(Message::from_json_value(body, raw_data_mode)?);
@@ -401,35 +423,24 @@ impl TransportMessage {
         Ok(tmsg)
     }
 
-    pub fn into_json_value(mut self) -> JsonValue {
-        let mut body: Vec<JsonValue> = Vec::new();
-
-        while !self.body.is_empty() {
-            body.push(self.body.remove(0).into_json_value());
-        }
-
-        let mut obj = json::object! {
-            to: self.to(),
-            from: self.from(),
-            thread: self.thread(),
-            osrf_xid: self.osrf_xid(),
-            body: body,
-        };
-
-        if let Some(rc) = self.router_command() {
-            obj["router_command"] = rc.into();
-        }
-
-        if let Some(rc) = self.router_class() {
-            obj["router_class"] = rc.into();
-        }
-
-        if let Some(rc) = self.router_reply() {
-            obj["router_reply"] = rc.into();
-        }
-
-        obj
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
+}
+
+/// Serialization helper for the inner payload of an osrfMessage.
+#[derive(serde::Serialize)]
+struct MessageWirePayload<'a> {
+    #[serde(rename = "threadTrace")]
+    thread_trace: usize,
+    #[serde(rename = "type")]
+    mtype: &'a str,
+    locale: String,
+    timezone: &'a str,
+    api_level: u8,
+    ingress: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    payload: Option<&'a Payload>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -440,6 +451,42 @@ pub struct Message {
     api_level: u8,
     ingress: Option<String>,
     payload: Payload,
+}
+
+impl serde::Serialize for Message {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let mtype: &str = self.mtype.into();
+
+        let ingress = self.ingress().map(|s| s.to_string()).unwrap_or_else(|| {
+            let mut val = String::new();
+            THREAD_INGRESS.with(|lc| val = lc.borrow().to_string());
+            val
+        });
+
+        let payload_ref = match &self.payload {
+            Payload::NoPayload => None,
+            p => Some(p),
+        };
+
+        let inner = MessageWirePayload {
+            thread_trace: self.thread_trace,
+            mtype,
+            locale: thread_locale(),
+            timezone: self.timezone(),
+            api_level: self.api_level,
+            ingress,
+            payload: payload_ref,
+        };
+
+        ClassWrapper {
+            class: OSRF_MESSAGE_CLASS,
+            payload: inner,
+        }
+        .serialize(serializer)
+    }
 }
 
 impl Message {
@@ -501,7 +548,7 @@ impl Message {
     /// Creates a Message from a JSON value, consuming the JSON value.
     ///
     /// Returns Err if the JSON value cannot be coerced into a Message.
-    pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
+    pub fn from_json_value(json_obj: Value, raw_data_mode: bool) -> EgResult<Self> {
         let err = || "Invalid JSON Message".to_string();
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
@@ -536,7 +583,10 @@ impl Message {
             msg.set_ingress(ing);
         }
 
-        if let Some(al) = msg_hash["api_level"].as_u8() {
+        if let Some(al) = msg_hash["api_level"]
+            .as_u64()
+            .and_then(|n| u8::try_from(n).ok())
+        {
             msg.set_api_level(al);
         }
 
@@ -545,7 +595,7 @@ impl Message {
 
     fn payload_from_json_value(
         mtype: MessageType,
-        payload_obj: JsonValue,
+        payload_obj: Value,
         raw_data_mode: bool,
     ) -> EgResult<Payload> {
         match mtype {
@@ -570,33 +620,19 @@ impl Message {
         }
     }
 
-    pub fn into_json_value(self) -> JsonValue {
-        let mtype: &str = self.mtype.into();
-
-        let mut obj = json::object! {
-            threadTrace: self.thread_trace,
-            type: mtype,
-            locale: thread_locale(),
-            timezone: self.timezone(),
-            api_level: self.api_level(),
-        };
-
-        if let Some(ing) = self.ingress() {
-            obj["ingress"] = ing.into();
-        } else {
-            // Pull the ingress from the value stored in the thread.
-            // It will use the default if none is set.
-            THREAD_INGRESS.with(|lc| obj["ingress"] = lc.borrow().as_str().into());
-        }
-
-        match self.payload {
-            // Avoid adding the "payload" key for non-payload messages.
-            Payload::NoPayload => {}
-            _ => obj["payload"] = self.payload.into_json_value(),
-        }
-
-        EgValue::add_class_wrapper(obj, OSRF_MESSAGE_CLASS)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
+
+}
+
+/// Serialization helper for the inner payload of an osrfResult.
+#[derive(serde::Serialize)]
+struct ResultWirePayload<'a> {
+    status: &'a str,
+    #[serde(rename = "statusCode")]
+    status_code: isize,
+    content: &'a EgValue,
 }
 
 /// Delivers a single API response.
@@ -653,7 +689,7 @@ impl Result {
         &self.status_label
     }
 
-    pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
+    pub fn from_json_value(json_obj: Value, raw_data_mode: bool) -> EgResult<Self> {
         let err = || "Invalid Result message".to_string();
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
@@ -674,15 +710,35 @@ impl Result {
         Ok(Result::new(stat, stat_str, &msg_class, content))
     }
 
-    pub fn into_json_value(mut self) -> JsonValue {
-        let obj = json::object! {
-            status: self.status_label(),
-            statusCode: self.status as isize,
-            content: self.content.take().into_json_value(),
-        };
-
-        EgValue::add_class_wrapper(obj, &self.msg_class)
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
     }
+
+}
+
+impl serde::Serialize for Result {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        ClassWrapper {
+            class: &self.msg_class,
+            payload: ResultWirePayload {
+                status: self.status_label(),
+                status_code: self.status as isize,
+                content: &self.content,
+            },
+        }
+        .serialize(serializer)
+    }
+}
+
+/// Serialization helper for the inner payload of a Status message.
+#[derive(serde::Serialize)]
+struct StatusWirePayload<'a> {
+    status: &'a str,
+    #[serde(rename = "statusCode")]
+    status_code: isize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -709,7 +765,7 @@ impl Status {
         &self.status_label
     }
 
-    pub fn from_json_value(json_obj: JsonValue) -> EgResult<Self> {
+    pub fn from_json_value(json_obj: Value) -> EgResult<Self> {
         let err = || "Invalid Status message".to_string();
 
         let (msg_class, msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
@@ -724,13 +780,25 @@ impl Status {
         Ok(Status::new(stat, stat_str, &msg_class))
     }
 
-    pub fn into_json_value(self) -> JsonValue {
-        let obj = json::object! {
-            "status": self.status_label(),
-            "statusCode": self.status as isize,
-        };
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
+    }
 
-        EgValue::add_class_wrapper(obj, &self.msg_class)
+}
+
+impl serde::Serialize for Status {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        ClassWrapper {
+            class: &self.msg_class,
+            payload: StatusWirePayload {
+                status: self.status_label(),
+                status_code: self.status as isize,
+            },
+        }
+        .serialize(serializer)
     }
 }
 
@@ -742,6 +810,13 @@ impl fmt::Display for Status {
             self.status, self.msg_class, self.status_label
         )
     }
+}
+
+/// Serialization helper for the inner payload of an osrfMethod.
+#[derive(serde::Serialize)]
+struct MethodCallWirePayload<'a> {
+    method: &'a str,
+    params: &'a Vec<EgValue>,
 }
 
 /// A single API request with method name and parameters.
@@ -761,8 +836,8 @@ impl MethodCall {
         }
     }
 
-    /// Create a Method from a JsonValue.
-    pub fn from_json_value(json_obj: JsonValue, raw_data_mode: bool) -> EgResult<Self> {
+    /// Create a Method from a Value.
+    pub fn from_json_value(json_obj: Value, raw_data_mode: bool) -> EgResult<Self> {
         let err = || "Invalid MethodCall message".to_string();
 
         let (msg_class, mut msg_hash) = EgValue::remove_class_wrapper(json_obj).ok_or_else(err)?;
@@ -770,7 +845,7 @@ impl MethodCall {
         let method = msg_hash["method"].as_str().ok_or_else(err)?.to_string();
 
         let mut params = Vec::new();
-        if let JsonValue::Array(mut vec) = msg_hash["params"].take() {
+        if let Value::Array(mut vec) = msg_hash["params"].take() {
             while !vec.is_empty() {
                 if raw_data_mode {
                     params.push(EgValue::from_json_value_plain(vec.remove(0)));
@@ -814,18 +889,24 @@ impl MethodCall {
         self.params.get(index).unwrap_or(&EG_NULL)
     }
 
-    pub fn into_json_value(mut self) -> JsonValue {
-        let mut params: Vec<JsonValue> = Vec::new();
+    pub fn to_json_value(&self) -> EgResult<Value> {
+        serde_json::to_value(self).map_err(|e| e.to_string().into())
+    }
 
-        while !self.params.is_empty() {
-            params.push(self.params.remove(0).into_json_value());
+}
+
+impl serde::Serialize for MethodCall {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        ClassWrapper {
+            class: &self.msg_class,
+            payload: MethodCallWirePayload {
+                method: &self.method,
+                params: &self.params,
+            },
         }
-
-        let obj = json::object! {
-            "method": self.method(),
-            "params": params
-        };
-
-        EgValue::add_class_wrapper(obj, &self.msg_class)
+        .serialize(serializer)
     }
 }

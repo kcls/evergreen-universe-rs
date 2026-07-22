@@ -110,8 +110,8 @@ impl LoginArgs {
         let lt: &str = self.login_type().into();
 
         let mut jv = eg::hash! {
-            username: self.username(),
-            password: self.password(),
+            "username": self.username(),
+            "password": self.password(),
             "type": lt,
         };
 

@@ -218,10 +218,12 @@ impl Session {
     fn osrf_round_trip(&mut self, msg: sip2::Message) -> EgResult<sip2::Message> {
         logging::Logger::mk_log_trace();
 
-        let msg_json = msg.to_json_value();
+        let msg_json_str = msg.to_json();
 
-        log::debug!("{self} posting message: {msg_json}");
+        log::debug!("{self} posting message: {msg_json_str}");
 
+        let msg_json: serde_json::Value = serde_json::from_str(&msg_json_str)
+            .map_err(|e| format!("Error parsing SIP JSON: {e}"))?;
         let msg_val = EgValue::from_json_value(msg_json)?;
 
         let params = vec![EgValue::from(self.key.as_str()), msg_val];
@@ -238,7 +240,7 @@ impl Session {
             return Err(format!("SIP request failed with event: {evt}").into());
         }
 
-        match sip2::Message::from_json_value(response.into()) {
+        match sip2::Message::from_json(&response.to_json_string()?) {
             Ok(m) => Ok(m),
             Err(e) => Err(format!("{self} error translating JSON to SIP: {e}").into()),
         }

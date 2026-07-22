@@ -297,7 +297,7 @@ impl Editor {
         }
     }
 
-    /// Returns our last event as JSON or JsonValue::Null if we have
+    /// Returns our last event as an EgValue or EgValue::Null if we have
     /// no last event.
     pub fn event(&self) -> EgValue {
         match self.last_event() {
@@ -470,11 +470,11 @@ impl Editor {
                 if pkv.is_null() {
                     buf.push_str("<new object>");
                 } else {
-                    buf.push_str(&pkv.dump());
+                    buf.push_str(&pkv.dump()); // TODO deprecate dump()
                 }
             } else {
                 // Not an IDL object, likely a scalar value.
-                buf.push_str(&p.dump());
+                buf.push_str(&p.dump()); // TODO deprecate dump()
             }
 
             buf.push(' ');
@@ -552,7 +552,7 @@ impl Editor {
         {
             return Ok(fm.replace("::", "."));
         }
-        Err(format!("Cannot determine fieldmapper from {}", value.dump()).into())
+        Err(format!("Cannot determine fieldmapper from {}", value.to_json_string()?).into())
     }
 
     fn get_fieldmapper_from_classname(&self, classname: &str) -> EgResult<String> {
@@ -680,7 +680,7 @@ impl Editor {
 
         if let Some(resp) = self.request(&method, object)? {
             if let Some(pkey) = resp.pkey_value() {
-                log::info!("Created new {fmapper} object with pkey: {}", pkey.dump());
+                log::info!("Created new {fmapper} object with pkey: {}", pkey.to_json_string()?);
             } else {
                 // Don't think we can get here, but mabye.
                 log::debug!("Created new {fmapper} object: {resp:?}");
@@ -696,7 +696,7 @@ impl Editor {
 
     /// Delete an IDL Object.
     ///
-    /// Response is the PKEY value as a JsonValue.
+    /// Response is the PKEY value as an EgValue.
     pub fn delete(&mut self, object: EgValue) -> EgResult<EgValue> {
         if !self.has_xact_id() {
             return Err("Transaction required for DELETE".into());

@@ -118,8 +118,6 @@ impl FleshDef {
     /// ```
     /// use evergreen as eg;
     /// use eg::idldb::FleshDef;
-    /// use json;
-    ///
     /// let obj = eg::hash! {
     ///   "flesh": -1, "flesh_fields": {"au": ["home_ou", "profile"]}
     /// };
@@ -137,7 +135,7 @@ impl FleshDef {
             for name in field_names.members() {
                 let n = name
                     .as_str()
-                    .ok_or_else(|| format!("Invalid flesh definition: {}", obj.dump()))?;
+                    .ok_or_else(|| format!("Invalid flesh definition: {}", obj.dump()))?; // TODO deprecate dump()
                 list.push(n.to_string());
             }
 
@@ -332,7 +330,7 @@ impl Translator {
 
             object
                 .pkey_value()
-                .ok_or_else(|| format!("Object has no pkey value: {}", object.dump()))?
+                .ok_or_else(|| format!("Object has no pkey value: {}", object.dump()))? // TODO deprecate dump()
         } else {
             //search_value = object[fieldname].clone();
             &object[fieldname]
@@ -341,7 +339,7 @@ impl Translator {
         if !search_value.is_string() && !search_value.is_number() {
             return Err(format!(
                 "Class {classname} cannot flesh field {fieldname} on value: {}",
-                search_value.dump()
+                search_value.to_json_string()?
             )
             .into());
         }
@@ -420,7 +418,7 @@ impl Translator {
     /// Get the IDL Class representing to the provided object.
     pub fn get_idl_class_from_object<'a>(&self, obj: &'a EgValue) -> EgResult<&'a Arc<idl::Class>> {
         obj.idl_class()
-            .ok_or_else(|| format!("Not an IDL object: {}", obj.dump()).into())
+            .ok_or_else(|| format!("Not an IDL object: {}", obj.dump()).into()) // TODO deprecate dump()
     }
 
     /// Create an IDL object in the database
@@ -855,7 +853,7 @@ impl Translator {
         if !filter.is_object() {
             return Err(format!(
                 "Translator class filter must be an object: {}",
-                filter.dump()
+                filter.to_json_string()?
             )
             .into());
         }

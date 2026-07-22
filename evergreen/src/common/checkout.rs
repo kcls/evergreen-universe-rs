@@ -1091,7 +1091,7 @@ impl Circulator<'_> {
         let circ = self.circ.as_ref().unwrap().clone();
         let clone = EgValue::create("circ", circ)?;
 
-        log::debug!("{self} creating circulation {}", clone.dump());
+        log::debug!("{self} creating circulation {}", clone.to_json_string()?);
 
         // Put it in the DB
         self.circ = Some(self.editor().create(clone)?);

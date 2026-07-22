@@ -28,7 +28,7 @@ pub fn verify_migrated_password(
     let pass_hash = computed.as_deref().unwrap_or(password);
 
     let query = eg::hash! {
-        from: [
+        "from": [
             "actor.get_salt",
             user_id,
             PW_TYPE_MAIN,
@@ -59,7 +59,7 @@ pub fn verify_password(
     pw_type: &str,
 ) -> EgResult<bool> {
     let query = eg::hash! {
-        from: [
+        "from": [
             "actor.verify_passwd",
             user_id,
             pw_type,
@@ -83,7 +83,7 @@ pub fn verify_password(
 pub fn has_work_perm_at(e: &mut Editor, user_id: i64, perm: &str) -> EgResult<Vec<i64>> {
     let dbfunc = "permission.usr_has_perm_at_all";
 
-    let query = eg::hash! { from: [dbfunc, user_id, perm] };
+    let query = eg::hash! { "from": [dbfunc, user_id, perm] };
 
     let values = e.json_query(query)?;
 
@@ -121,12 +121,12 @@ pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
         None => {
             // There will be no response if the user has no open circs.
             Ok(eg::hash! {
-                out: 0,
-                overdue: 0,
-                lost: 0,
-                claims_returned: 0,
-                long_overdue: 0,
-                total_count: 0,
+                "out": 0,
+                "overdue": 0,
+                "lost": 0,
+                "claims_returned": 0,
+                "long_overdue": 0,
+                "total_count": 0,
             })
         }
     }
@@ -134,7 +134,7 @@ pub fn open_checkout_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
 
 /// Returns a summary of fines owed by a user
 pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
-    let mut fines_list = e.search("mous", eg::hash! {usr: user_id})?;
+    let mut fines_list = e.search("mous", eg::hash! {"usr": user_id})?;
 
     if let Some(mut fines) = fines_list.pop() {
         fines.unbless();
@@ -142,10 +142,10 @@ pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     } else {
         // Not all users have a fines summary row in the database.
         Ok(eg::hash! {
-            balance_owed: 0,
-            total_owed: 0,
-            total_paid: 0,
-            usr: user_id
+            "balance_owed": 0,
+            "total_owed": 0,
+            "total_paid": 0,
+            "usr": user_id
         })
     }
 }
@@ -153,12 +153,12 @@ pub fn fines_summary(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
 /// Returns a total/ready hold counts for a user.
 pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
     let query = eg::hash! {
-        select: {ahr: ["pickup_lib", "current_shelf_lib", "behind_desk"]},
-        from: "ahr",
-        where: {
-            usr: user_id,
-            fulfillment_time: EgValue::Null,
-            cancel_time: EgValue::Null,
+        "select": {"ahr": ["pickup_lib", "current_shelf_lib", "behind_desk"]},
+        "from": "ahr",
+        "where": {
+            "usr": user_id,
+            "fulfillment_time": EgValue::Null,
+            "cancel_time": EgValue::Null,
         }
     };
 
@@ -177,5 +177,5 @@ pub fn active_hold_counts(e: &mut Editor, user_id: i64) -> EgResult<EgValue> {
         }
     }
 
-    Ok(eg::hash! {total: total, ready: ready})
+    Ok(eg::hash! {"total": total, "ready": ready})
 }

@@ -6,7 +6,7 @@ use eg::EgValue;
 
 pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<EgValue> {
     let query = eg::hash! {
-        from: ["action.summarize_all_circ_chain", circ_id]
+        "from": ["action.summarize_all_circ_chain", circ_id]
     };
 
     if let Some(circ) = e.json_query(query)?.pop() {
@@ -18,7 +18,7 @@ pub fn summarize_circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<EgValue> {
 
 pub fn circ_chain(e: &mut Editor, circ_id: i64) -> EgResult<Vec<EgValue>> {
     let query = eg::hash! {
-        from: ["action.all_circ_chain", circ_id]
+        "from": ["action.all_circ_chain", circ_id]
     };
 
     let mut circ_list = e.json_query(query)?;

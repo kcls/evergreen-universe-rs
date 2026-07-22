@@ -60,7 +60,7 @@ pub fn main() -> EgResult<()> {
 
     v.unbless();
 
-    println!("v = {}", v.dump());
+    println!("v = {}", v.to_json_string()?);
 
     let v = client
         .send_recv_one(

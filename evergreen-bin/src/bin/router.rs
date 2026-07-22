@@ -72,13 +72,13 @@ impl ServiceInstance {
         &self.register_time
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
+    fn to_json_value(&self) -> serde_json::Value {
+        serde_json::json!({
             "route_count": self.route_count,
             "address": self.address().as_str(),
             "listen_address": self.listen_address().as_str(),
             "register_time": date::to_iso(self.register_time()),
-        }
+        })
     }
 }
 
@@ -157,15 +157,15 @@ impl ServiceEntry {
         }
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
+    fn to_json_value(&self) -> serde_json::Value {
+        serde_json::json!({
             "name": self.name(),
             "route_count": self.route_count,
             "instances": self.instances()
                 .iter()
                 .map(|s| s.to_json_value())
-                .collect::<Vec<json::JsonValue>>()
-        }
+                .collect::<Vec<serde_json::Value>>()
+        })
     }
 }
 
@@ -260,15 +260,15 @@ impl RouterDomain {
         }
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
+    fn to_json_value(&self) -> serde_json::Value {
+        serde_json::json!({
             "domain": self.domain(),
             "route_count": self.route_count(),
             "services": self.services()
                 .iter()
                 .map(|s| s.to_json_value())
-                .collect::<Vec<json::JsonValue>>()
-        }
+                .collect::<Vec<serde_json::Value>>()
+        })
     }
 
     /// Connect to the Redis instance on our primary domain.
@@ -386,15 +386,15 @@ impl Router {
         &self.remote_domains
     }
 
-    fn to_json_value(&self) -> json::JsonValue {
-        json::object! {
+    fn to_json_value(&self) -> serde_json::Value {
+        serde_json::json!({
             "listen_address": self.listen_address.as_str(),
             "primary_domain": self.primary_domain().to_json_value(),
             "remote_domains": self.remote_domains()
                 .iter()
                 .map(|s| s.to_json_value())
-                .collect::<Vec<json::JsonValue>>()
-        }
+                .collect::<Vec<serde_json::Value>>()
+        })
     }
 
     /// Find or create a new RouterDomain entry.
@@ -789,7 +789,7 @@ impl Router {
                 _ => {
                     return Err(format!(
                         "Router cannot process message: {}",
-                        tm.into_json_value().clone().dump()
+                        serde_json::to_string(&tm).unwrap_or_else(|e| e.to_string())
                     )
                     .into())
                 }
@@ -831,7 +831,10 @@ impl Router {
         Ok(())
     }
 
-    fn process_router_api_request(&mut self, m: &message::MethodCall) -> EgResult<json::JsonValue> {
+    fn process_router_api_request(
+        &mut self,
+        m: &message::MethodCall,
+    ) -> EgResult<serde_json::Value> {
         match m.method() {
             "opensrf.router.info.class.list" => {
                 // Caller wants a list of service names
@@ -843,7 +846,7 @@ impl Router {
                     .map(|s| s.name())
                     .collect();
 
-                Ok(json::from(names))
+                Ok(serde_json::json!(names))
             }
             "opensrf.router.info.summarize" => Ok(self.to_json_value()),
             _ => Err(format!("Router cannot handle api {}", m.method()).into()),
@@ -855,9 +858,11 @@ impl Router {
         let router_command = match tm.router_command() {
             Some(s) => s,
             None => {
-                return Err(
-                    format!("No router command present: {}", tm.into_json_value().dump()).into(),
-                );
+                return Err(format!(
+                    "No router command present: {}",
+                    serde_json::to_string(&tm).unwrap_or_else(|e| e.to_string())
+                )
+                .into());
             }
         };
 

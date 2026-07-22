@@ -11,7 +11,7 @@ pub enum SipJsonError {
     MessageFormatError(String),
 
     /// Data cannot be successfully minipulated as JSON
-    JsonError(json::Error),
+    JsonError(serde_json::Error),
 }
 
 impl error::Error for SipJsonError {
@@ -40,7 +40,6 @@ impl Message {
     /// ```
     /// use sip2::{Message, Field, FixedField};
     /// use sip2::spec;
-    /// use json;
     ///
     /// let msg = Message::new(
     ///     &spec::M_LOGIN,
@@ -55,14 +54,14 @@ impl Message {
     /// );
     ///
     /// let json_val = msg.to_json_value();
-    /// let expected = json::object!{
+    /// let expected = serde_json::json!({
     ///   "code":"93",
     ///   "fixed_fields":["0","0"],
-    ///   "fields":[{"CN":"sip_username"},{"CO":"sip_password"}]};
+    ///   "fields":[{"CN":"sip_username"},{"CO":"sip_password"}]});
     ///
     /// assert_eq!(expected, json_val);
     /// ```
-    pub fn to_json_value(&self) -> json::JsonValue {
+    pub fn to_json_value(&self) -> serde_json::Value {
         let ff: Vec<String> = self
             .fixed_fields()
             .iter()
@@ -77,11 +76,11 @@ impl Message {
             fields.push(map);
         }
 
-        json::object! {
+        serde_json::json!({
             "code": self.spec().code,
             "fixed_fields": ff,
             "fields": fields
-        }
+        })
     }
 
     /// Translate a SIP Message into a JSON string.
@@ -110,7 +109,7 @@ impl Message {
     /// assert_eq!(true, true);
     /// ```
     pub fn to_json(&self) -> String {
-        self.to_json_value().dump()
+        serde_json::to_string(&self.to_json_value()).expect("JSON serialization")
     }
 
     /// Translate a JSON object into a SIP Message.
@@ -120,7 +119,6 @@ impl Message {
     /// ```
     /// use sip2::{Message, Field, FixedField};
     /// use sip2::spec;
-    /// use json;
     ///
     /// let expected = Message::new(
     ///     &spec::M_LOGIN,
@@ -134,35 +132,37 @@ impl Message {
     ///     ]
     /// );
     ///
-    /// let json_val = json::object!{
+    /// let json_val = serde_json::json!({
     ///   "code":"93",
     ///   "fixed_fields":["0",0],
-    ///   "fields":[{"CN":"sip_username"},{"CO":"sip_password"}]};
+    ///   "fields":[{"CN":"sip_username"},{"CO":"sip_password"}]});
     ///
     /// let msg = Message::from_json_value(json_val).unwrap();
     ///
     /// assert_eq!(expected, msg);
     ///
-    /// let m = Message::from_json_value(json::object! {"code":"93","fixed_fields":[{"bad":"news"}]});
+    /// let m = Message::from_json_value(serde_json::json!({"code":"93","fixed_fields":[{"bad":"news"}]}));
     /// assert!(m.is_err());
     /// ```
-    pub fn from_json_value(mut json_value: json::JsonValue) -> Result<Message, SipJsonError> {
+    pub fn from_json_value(json_value: serde_json::Value) -> Result<Message, SipJsonError> {
         // Start with a message that's just the code plus fixed fields
         // as a SIP string.
-        let mut strbuf = json_value["code"].take_string().ok_or_else(|| {
+        let mut strbuf = json_value["code"].as_str().ok_or_else(|| {
             SipJsonError::MessageFormatError("Message requires a code".to_string())
-        })?;
+        })?.to_string();
 
-        for ff in json_value["fixed_fields"].members() {
-            if let Some(s) = ff.as_str() {
-                strbuf += s;
-            } else if ff.is_number() {
-                strbuf += &format!("{ff}");
-            } else {
-                return Err(SipJsonError::MessageFormatError(format!(
-                    "Fixed field values must be JSON strings or numbers: {}",
-                    ff.dump()
-                )));
+        if let Some(ff_array) = json_value["fixed_fields"].as_array() {
+            for ff in ff_array {
+                if let Some(s) = ff.as_str() {
+                    strbuf += s;
+                } else if ff.is_number() {
+                    strbuf += &format!("{ff}");
+                } else {
+                    return Err(SipJsonError::MessageFormatError(format!(
+                        "Fixed field values must be JSON strings or numbers: {}",
+                        serde_json::to_string(ff).unwrap_or_else(|e| e.to_string())
+                    )));
+                }
             }
         }
 
@@ -174,21 +174,25 @@ impl Message {
         let mut msg = Message::from_sip(&strbuf).map_err(|e| {
             SipJsonError::MessageFormatError(format!(
                 "Message is not correctly formatted: {e} {}",
-                json_value.dump()
+                serde_json::to_string(&json_value).unwrap_or_else(|e| e.to_string())
             ))
         })?;
 
-        for field in json_value["fields"].members() {
-            for (code, value) in field.entries() {
-                if let Some(s) = value.as_str() {
-                    msg.add_field(code, s);
-                } else if value.is_number() {
-                    msg.add_field(code, &format!("{value}"));
-                } else {
-                    return Err(SipJsonError::MessageFormatError(format!(
-                        "Message is not correctly formatted: {}",
-                        json_value.dump()
-                    )));
+        if let Some(fields_array) = json_value["fields"].as_array() {
+            for field in fields_array {
+                if let Some(obj) = field.as_object() {
+                    for (code, value) in obj.iter() {
+                        if let Some(s) = value.as_str() {
+                            msg.add_field(code, s);
+                        } else if value.is_number() {
+                            msg.add_field(code, &format!("{value}"));
+                        } else {
+                            return Err(SipJsonError::MessageFormatError(format!(
+                                "Message is not correctly formatted: {}",
+                                serde_json::to_string(&json_value).unwrap_or_else(|e| e.to_string())
+                            )));
+                        }
+                    }
                 }
             }
         }
@@ -201,7 +205,6 @@ impl Message {
     /// ```
     /// use sip2::{Message, Field, FixedField};
     /// use sip2::spec;
-    /// use json;
     ///
     /// let expected = Message::new(
     ///     &spec::M_LOGIN,
@@ -228,7 +231,7 @@ impl Message {
     /// assert_eq!(expected, msg);
     /// ```
     pub fn from_json(msg_json: &str) -> Result<Message, SipJsonError> {
-        let json_value: json::JsonValue = match json::parse(msg_json) {
+        let json_value: serde_json::Value = match serde_json::from_str(msg_json) {
             Ok(v) => v,
             Err(e) => {
                 return Err(SipJsonError::JsonError(e));

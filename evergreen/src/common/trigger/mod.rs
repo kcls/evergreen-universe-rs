@@ -108,7 +108,7 @@ pub fn create_event_for_object_and_def(
     event["target"] = pkey.clone();
 
     if let Some(udata) = user_data {
-        event["user_data"] = EgValue::from(udata.dump());
+        event["user_data"] = EgValue::from(udata.to_json_string()?);
     }
 
     event.bless("atev")?;
@@ -323,7 +323,7 @@ pub fn create_passive_events_for_def(
         }
     }
 
-    log::debug!("Event def {event_def_id} filter is: {}", filters.dump());
+    log::debug!("Event def {event_def_id} filter is: {}", filters.to_json_string()?);
 
     editor.set_timeout(3600); // 1hr
 

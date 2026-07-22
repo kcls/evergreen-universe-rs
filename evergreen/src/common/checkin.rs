@@ -175,9 +175,9 @@ impl Circulator<'_> {
     /// status if there's a matching transit.
     fn fix_broken_transit_status(&mut self) -> EgResult<()> {
         let query = eg::hash! {
-            target_copy: self.copy()["id"].clone(),
-            dest_recv_time: EgValue::Null,
-            cancel_time: EgValue::Null,
+            "target_copy": self.copy()["id"].clone(),
+            "dest_recv_time": EgValue::Null,
+            "cancel_time": EgValue::Null,
         };
 
         let mut results = self.editor().search("atc", query)?;
@@ -189,7 +189,7 @@ impl Circulator<'_> {
 
         if self.copy_status() != C::COPY_STATUS_IN_TRANSIT {
             log::warn!("{self} Copy has an open transit, but incorrect status");
-            let changes = eg::hash! {status: C::COPY_STATUS_IN_TRANSIT};
+            let changes = eg::hash! {"status": C::COPY_STATUS_IN_TRANSIT};
             self.update_copy(changes)?;
         }
 
@@ -278,7 +278,7 @@ impl Circulator<'_> {
             return Ok(());
         }
 
-        let query = eg::hash! {target_copy: EgValue::from(self.copy_id)};
+        let query = eg::hash! {"target_copy": EgValue::from(self.copy_id)};
         let parts = self.editor().search("acpm", query)?;
         let parts = parts
             .into_iter()
@@ -421,7 +421,7 @@ impl Circulator<'_> {
             .ok_or_else(|| self.editor().die_event())?;
 
         let query = eg::hash! {
-            from: [
+            "from": [
                 "evergreen.can_float",
                 float_group["id"].clone(),
                 self.copy()["circ_lib"].clone(),
@@ -457,9 +457,9 @@ impl Circulator<'_> {
 
         // Create a new copy inventory row.
         let aci = eg::hash! {
-            inventory_date: "now",
-            inventory_workstation: ws_id,
-            copy: self.copy()["id"].clone(),
+            "inventory_date": "now",
+            "inventory_workstation": ws_id,
+            "copy": self.copy()["id"].clone(),
         };
 
         self.editor().create(aci)?;
@@ -555,7 +555,7 @@ impl Circulator<'_> {
                 && status != C::COPY_STATUS_IN_TRANSIT
                 && status != next_status)
         {
-            self.update_copy(eg::hash! {status: EgValue::from(next_status)})?;
+            self.update_copy(eg::hash! {"status": EgValue::from(next_status)})?;
         }
 
         Ok(())
@@ -580,9 +580,9 @@ impl Circulator<'_> {
         };
 
         let query = eg::hash! {
-            btype: C::BTYPE_DEPOSIT,
-            voided: "f",
-            xact: circ_id,
+            "btype": C::BTYPE_DEPOSIT,
+            "voided": "f",
+            "xact": circ_id,
         };
 
         let mut results = self.editor().search("mb", query)?;
@@ -719,11 +719,11 @@ impl Circulator<'_> {
         log::info!("{self} processing LOST checkin...");
 
         let billing_options = eg::hash! {
-            ous_void_item_cost: "circ.void_lost_on_checkin",
-            ous_void_proc_fee: "circ.void_lost_proc_fee_on_checkin",
-            ous_restore_overdue: "circ.restore_overdue_on_lost_return",
-            void_cost_btype: C::BTYPE_LOST_MATERIALS,
-            void_fee_btype: C::BTYPE_LOST_MATERIALS_PROCESSING_FEE,
+            "ous_void_item_cost": "circ.void_lost_on_checkin",
+            "ous_void_proc_fee": "circ.void_lost_proc_fee_on_checkin",
+            "ous_restore_overdue": "circ.restore_overdue_on_lost_return",
+            "void_cost_btype": C::BTYPE_LOST_MATERIALS,
+            "void_fee_btype": C::BTYPE_LOST_MATERIALS_PROCESSING_FEE,
         };
 
         self.options
@@ -739,12 +739,12 @@ impl Circulator<'_> {
     /// Collect params and call checkin_handle_lost_or_long_overdue()
     fn checkin_handle_long_overdue(&mut self) -> EgResult<()> {
         let billing_options = eg::hash! {
-            is_longoverdue: true,
-            ous_void_item_cost: "circ.void_longoverdue_on_checkin",
-            ous_void_proc_fee: "circ.void_longoverdue_proc_fee_on_checkin",
-            ous_restore_overdue: "circ.restore_overdue_on_longoverdue_return",
-            void_cost_btype: C::BTYPE_LONG_OVERDUE_MATERIALS,
-            void_fee_btype: C::BTYPE_LONG_OVERDUE_MATERIALS_PROCESSING_FEE,
+            "is_longoverdue": true,
+            "ous_void_item_cost": "circ.void_longoverdue_on_checkin",
+            "ous_void_proc_fee": "circ.void_longoverdue_proc_fee_on_checkin",
+            "ous_restore_overdue": "circ.restore_overdue_on_longoverdue_return",
+            "void_cost_btype": C::BTYPE_LONG_OVERDUE_MATERIALS,
+            "void_fee_btype": C::BTYPE_LONG_OVERDUE_MATERIALS_PROCESSING_FEE,
         };
 
         self.options
@@ -1067,7 +1067,7 @@ impl Circulator<'_> {
         let circ_id = circ.id()?;
         let void_max = circ["max_fine"].float()?;
 
-        let query = eg::hash! {xact: circ_id, btype: C::BTYPE_OVERDUE_MATERIALS};
+        let query = eg::hash! {"xact": circ_id, "btype": C::BTYPE_OVERDUE_MATERIALS};
         let ops = eg::hash! {"order_by": {"mb": "billing_ts desc"}};
         let overdues = self.editor().search_with_ops("mb", query, ops)?;
 
@@ -1206,7 +1206,7 @@ impl Circulator<'_> {
         }
 
         let mut payload = eg::hash! {
-            transit: self.transit.as_ref().unwrap().clone()
+            "transit": self.transit.as_ref().unwrap().clone()
         };
 
         if let Some(ht) = self.hold_transit.as_ref() {
@@ -1257,7 +1257,7 @@ impl Circulator<'_> {
 
         if hold["hold_type"].as_str().unwrap() == "R" {
             // hold_type required
-            self.update_copy(eg::hash! {status: C::COPY_STATUS_CATALOGING})?;
+            self.update_copy(eg::hash! {"status": C::COPY_STATUS_CATALOGING})?;
             self.clear_option("fake_hold_dest");
             // no further processing needed.
             self.set_option_true("noop");
@@ -1319,7 +1319,7 @@ impl Circulator<'_> {
             return Ok(false);
         }
 
-        // json::* knows if two EgValue's are the same.
+        // Check if two EgValue's are the same.
         if suppress_for_here != suppress_for_dest {
             return Ok(false);
         }
@@ -1723,7 +1723,7 @@ impl Circulator<'_> {
         {
             hold["notes"] = EgValue::from(
                 self.editor()
-                    .search("ahrn", eg::hash! {hold: hold["id"].clone()})?,
+                    .search("ahrn", eg::hash! {"hold": hold["id"].clone()})?,
             );
             payload["hold"] = hold;
         }

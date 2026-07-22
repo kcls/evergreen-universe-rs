@@ -242,11 +242,11 @@ impl EgEvent {
     /// use eg::EgValue;
     ///
     /// let jv = eg::hash! {
-    ///     code: EgValue::from(100),
-    ///     textcode: EgValue::from("SUCCESS"),
-    ///     ilsperm: EgValue::from("STAFF_LOGIN"),
-    ///     ilspermloc: 1,
-    ///     foo: EgValue::from("bar"),
+    ///     "code": EgValue::from(100),
+    ///     "textcode": EgValue::from("SUCCESS"),
+    ///     "ilsperm": EgValue::from("STAFF_LOGIN"),
+    ///     "ilspermloc": 1,
+    ///     "foo": EgValue::from("bar"),
     /// };
     ///
     /// let evt = EgEvent::parse(&jv).expect("Event Parsing Failed");
@@ -256,7 +256,7 @@ impl EgEvent {
     /// assert!(evt.ad_hoc().unwrap().has_key("foo"));
     ///
     /// let jv2 = eg::hash! {
-    ///     howdy: EgValue::from(123)
+    ///     "howdy": EgValue::from(123)
     /// };
     ///
     /// let evt_op = EgEvent::parse(&jv2);
