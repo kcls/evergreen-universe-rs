@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Generate Washington State library district service-area shapefiles.
 
@@ -100,24 +102,36 @@ def main() -> None:
         raise RuntimeError("Camas (PLACEFP=09480) not found")
     print(f"Camas found: {camas.iloc[0]['NAMELSAD']}")
 
+    hunts_point = places[places["PLACEFP"] == "32755"]
+    if hunts_point.empty:
+        raise RuntimeError("Hunts Point (PLACEFP=32755) not found")
+    print(f"Hunts Point found: {hunts_point.iloc[0]['NAMELSAD']}")
+
+    yarrow_point = places[places["PLACEFP"] == "80150"]
+    if yarrow_point.empty:
+        raise RuntimeError("Yarrow Point (PLACEFP=80150) not found")
+    print(f"Yarrow Point found: {yarrow_point.iloc[0]['NAMELSAD']}")
+
     from shapely.ops import unary_union
 
     # ==========================================================================
     # _KCLS — King County Library System
     #   Counties: King
     #   Added cities: Bothell, Auburn (extend beyond King County boundary)
-    #   Excluded cities: Seattle
+    #   Excluded cities: Seattle, Hunts Point, Yarrow Point
     # ==========================================================================
     king_geom = king.geometry.iloc[0]
     seattle_geom = seattle.geometry.iloc[0]
     diff_geom = king_geom.difference(seattle_geom)
+    diff_geom = diff_geom.difference(hunts_point.geometry.iloc[0])
+    diff_geom = diff_geom.difference(yarrow_point.geometry.iloc[0])
     print(f"Difference computed. Result type: {diff_geom.geom_type}")
 
     combined = unary_union([diff_geom, bothell.geometry.iloc[0], auburn.geometry.iloc[0]])
     print(f"Combined geometry type: {combined.geom_type}")
 
     result = gpd.GeoDataFrame(
-        {"NAME": ["King County + Bothell + Auburn (excl. Seattle)"]},
+        {"NAME": ["King County + Bothell + Auburn (excl. Seattle, Hunts Point, Yarrow Point)"]},
         geometry=[combined],
         crs=king.crs,
     )
