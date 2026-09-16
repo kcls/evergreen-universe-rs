@@ -634,7 +634,10 @@ pub fn home_org(
     let query = eg::hash! {
         "select": {"aou": ["id", "shortname"], "aouc": ["latitude", "longitude"]},
         "from": {"aou": {"aout": {}, "aouc": {}}},
-        "where": {"+aout": {"can_have_users": "t"}}
+        "where": {
+            "+aou": {"opac_visible": "t"},
+            "+aout": {"can_have_users": "t"}
+        }
     };
 
     let org_list = editor.json_query(query)?;
