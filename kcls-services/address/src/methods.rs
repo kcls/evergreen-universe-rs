@@ -291,7 +291,7 @@ pub fn lookup(
         // https://www.smarty.com/docs/apis/us-street-api/reference
         let mut is_viable_residential = true;
 
-        let is_viable_mailing = if candidate.metadata.rdi == "Commercial" {
+        let is_viable_mailing = if candidate.metadata.rdi.as_deref() == Some("Commercial") {
             is_viable_residential = false;
             false
         } else {

@@ -292,7 +292,7 @@ pub struct StreetMetadata {
     pub precision: String,
     #[serde(default)]
     pub zip_type: String,
-    pub rdi: String,
+    pub rdi: Option<String>,
     pub record_type: String,
 }
 
