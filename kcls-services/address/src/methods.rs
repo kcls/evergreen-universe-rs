@@ -757,3 +757,48 @@ pub fn district_of_residence(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Org unit coordinates: (name, lat, long)
+    const ORG_UNITS: [(&str, f64, f64); 2] = [
+        ("north", 47.53059160, -122.03696864),
+        ("south", 47.45087780, -122.15464056),
+    ];
+
+    /// Returns the name of the closest org unit to the provided point,
+    /// asserting each computed distance (km) matches its expected value.
+    fn closest_org_unit(lat: f64, long: f64, expected_km: [f64; 2]) -> &'static str {
+        let mut closest: Option<(&str, f64)> = None;
+
+        for ((name, org_lat, org_long), expected) in ORG_UNITS.iter().zip(expected_km) {
+            let distance = crow_flies_distance(lat, long, *org_lat, *org_long);
+
+            assert!(
+                (distance - expected).abs() < 0.01,
+                "{name}: expected ~{expected} km, got {distance}"
+            );
+
+            match closest {
+                Some((_, d)) if d <= distance => {}
+                _ => closest = Some((name, distance)),
+            }
+        }
+
+        closest.unwrap().0
+    }
+
+    #[test]
+    fn crow_flies_finds_closest_org_unit() {
+        let closest = closest_org_unit(47.48277444513673, -122.09235723136948, [6.75, 5.87]);
+        assert_eq!(closest, "south");
+    }
+
+    #[test]
+    fn crow_flies_finds_closest_org_unit_nearby_point() {
+        let closest = closest_org_unit(47.48335, -122.0924, [6.70, 5.91]);
+        assert_eq!(closest, "south");
+    }
+}
