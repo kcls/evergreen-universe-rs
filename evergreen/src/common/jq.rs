@@ -354,22 +354,21 @@ impl JsonQueryCompiler {
                 return Err(format!("Field '{field_name}' is not valid in ORDER BY").into());
             }
 
-            let order_by_str;
-            if !hash["transform"].is_null() {
-                order_by_str = self.select_one_field(
+            let order_by_str = if !hash["transform"].is_null() {
+                self.select_one_field(
                     class_alias,
                     None, // field alias
                     field_name,
                     Some(hash),
                     false,
-                )?;
+                )?
             } else if !hash["compare"].is_null() {
                 // "compare": {"!=" : {"+acn": "owning_lib"}}
-                order_by_str = self.search_predicate(class_alias, field_name, &hash["compare"])?;
+                self.search_predicate(class_alias, field_name, &hash["compare"])?
             } else {
                 // Simple field order-by
-                order_by_str = format!(r#""{class_alias}".{field_name}"#);
-            }
+                format!(r#""{class_alias}".{field_name}"#)
+            };
 
             let mut direction = "ASC";
             if let Some(dir) = hash["direction"].as_str()
