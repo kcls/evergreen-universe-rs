@@ -12,6 +12,5 @@ repository = "https://github.com/kcls/evergreen-universe-rs"
 
 [dependencies]
 rasn = "0.22.2"
-log = "0.4.25"
 strum = "0.26.3"
 strum_macros = "0.26.3"
