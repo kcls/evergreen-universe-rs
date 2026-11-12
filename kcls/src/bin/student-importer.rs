@@ -1,25 +1,25 @@
-use chrono::Datelike; // date.year()
-use eg::date;
-use eg::script;
+use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use eg::EgResult;
 use eg::EgValue;
+use eg::date::{self, EgDate};
+use eg::script;
 use evergreen as eg;
-use regex::Captures;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
-use std::fs::File;
-use std::io::BufReader;
-use std::io::Read;
-use std::path::Path;
-use std::time::Duration;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
 const HELP_TEXT: &str = r#"
 Import students, teachers, and classroom accounts from a CSV file.
 
+Rows that cannot be imported are logged and written to <file>.err.csv
+in the output directory, then processing continues with the next row.
+Summary counts are written to <file>.sum.csv.
+
 Example:
 
-kcls-student-importer --staff-account 4953211 --district-code 405 --teacher /tmp/403.teacher.2025-03-06.csv
+kcls-student-importer --staff-account 4953211 --district-code 405 --teacher /tmp/405.teacher.2025-03-06.csv
 
 Options:
 
@@ -31,9 +31,22 @@ Options:
 
     --classroom
         Process CSV file entries as classroom accounts.
+        Cannot be combined with --teacher.
+
+    --college
+        Process CSV file entries as college accounts.
+
+    --home-ou
+        Org unit ID of the home library used for all accounts in the
+        file.  Only use this if the home org unit for a batch does not
+        match the default org unit for the district code.
+
+    --out-dir [.]
+        Directory where the summary and error files are written.
 
     --purge
         Purge (permanently delete) every account in the CSV file.
+        Requires typing "yes" to confirm.
 
     --force-new
         Force the creation of new accounts when the number of new accounts
@@ -68,26 +81,31 @@ const ALERT_TYPE: u32 = 20; // "Alerting note, no Blocks" standing penalty
 // KCLS org unit for penalty application
 const ROOT_ORG: u32 = 1;
 
-// If more than this ration of students in a file are new accounts,
-// block the import for manual review.
-const MAX_NEW_RATIO: f32 = 0.8;
+/// If more than this ratio of accounts in a file are new, block the
+/// import for manual review.
+const MAX_NEW_RATIO: f64 = 0.5;
 
-/// If the number of new accounts is less than this value, avoid enforcing
-/// the new-accounts ratio.
+/// The new-accounts ratio is only enforced when the number of new
+/// accounts exceeds this value.
 ///
 /// This is useful when files contain only new accounts, which is
 /// atypical, but can happen.
 const MAX_ALLOW_NEW_UNCHECKED: usize = 100;
 
-const STUDENT_ID_REGEX: &str = r#"[^a-zA-Z0-9_\-\.]"#;
-const COLLEGE_ID_REGEX: &str = r#"[^a-zA-Z0-9]"#;
+/// K12 IDs keep only "word" characters.
+const NON_WORD_REGEX: &str = r#"[^\w]"#;
+/// College IDs (from email addresses) keep a minimal ASCII set.
+const COLLEGE_ID_REGEX: &str = r#"[^a-z0-9_\-\.]"#;
 const DOB_REGEX: &str = r#"^\d{4}-\d{2}-\d{2}$"#;
-/// We allow schools to send DoB values in US-style mm/dd/yyyy
-const DOB_US_REGEX: &str = r#"^(\d{1,2})/(\d{1,2})/(\d{4})$"#;
+/// We allow schools to send DoB values in US-style mm/dd/yyyy.
+///
+/// Unanchored so values with a trailing time, as some spreadsheet
+/// exports produce, are still accepted.
+const DOB_US_REGEX: &str = r#"(\d{1,2})/(\d{1,2})/(\d{4})"#;
 
 const TEACHER_EXPIRE_INTERVAL: &str = "10 years";
 const COLLEGE_EXPIRE_INTERVAL: &str = "4 years";
-const STUDENT_EXPIRE_AGE: u16 = 21; // years
+const STUDENT_EXPIRE_AGE: i32 = 21; // years
 
 // Map of district code to home org unit id.
 const HOME_OU_MAP: &[(&str, u32)] = &[
@@ -129,42 +147,476 @@ const HOME_OU_MAP: &[(&str, u32)] = &[
     ("wms", 1493), // Woodinville Montessori (Bothell)
     ("dit", 1533), // DigiPen Institute of Technology (Redmond)
     ("hfs", 1490), // Holy Family School (Auburn)
+    ("eas", 1513), // Eastside Community School (Issaquah)
+    ("wps", 1533), // Willow's Prep (Redmond)
+    ("tes", 1535), // The Evergreen School (Shoreline)
     ("frs", 1529), // Forest Ridge School of the Sacred Heart (Newport Way)
 ];
 
-/// Collection of precompiled regexes.
+/// One CSV row, keyed on column name.  Values are trimmed and empty
+/// values are omitted.
+type Row = HashMap<String, String>;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum AccountType {
+    Student,
+    Teacher,
+    Classroom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum FailureType {
+    Trans,
+    Create,
+    Delete,
+}
+
+impl FailureType {
+    /// Matches the err_type values written by the Perl importer.
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Trans => "trans",
+            Self::Create => "create",
+            Self::Delete => "delete",
+        }
+    }
+}
+
+/// A CSV row that could not be processed.
+#[derive(Debug)]
+struct Failure {
+    line: u64,
+    row: Row,
+    failure_type: FailureType,
+    message: String,
+}
+
+/// A CSV row with a usable barcode.
+#[derive(Debug)]
+struct Account {
+    line: u64,
+    barcode: String,
+    /// Source data plus the normalized student_id and barcode.
+    row: Row,
+}
+
+impl Account {
+    fn failure(&self, failure_type: FailureType, message: String) -> Failure {
+        Failure {
+            line: self.line,
+            row: self.row.clone(),
+            failure_type,
+            message,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ParsedFile {
+    accounts: Vec<Account>,
+    failures: Vec<Failure>,
+}
+
+#[derive(Debug, Default)]
+struct Stats {
+    total: usize,
+    trans: usize,
+    create: usize,
+    delete: usize,
+    trans_err: usize,
+    create_err: usize,
+    delete_err: usize,
+}
+
+impl Stats {
+    /// Summary file contents.
+    ///
+    /// Columns are sorted by name and include the always-zero update
+    /// counts so the file layout matches what the Perl importer wrote.
+    fn summary_csv(&self) -> String {
+        let cols = [
+            ("create", self.create),
+            ("create_err", self.create_err),
+            ("delete", self.delete),
+            ("delete_err", self.delete_err),
+            ("total", self.total),
+            ("trans", self.trans),
+            ("trans_err", self.trans_err),
+            ("update", 0),
+            ("update_err", 0),
+        ];
+
+        let header: Vec<&str> = cols.iter().map(|(k, _)| *k).collect();
+        let values: Vec<String> = cols.iter().map(|(_, v)| v.to_string()).collect();
+
+        format!("{}\n{}\n", header.join(","), values.join(","))
+    }
+}
+
+/// Translated account data, ready to insert.
+#[derive(Debug)]
+struct PatronData {
+    first_given_name: String,
+    second_given_name: Option<String>,
+    family_name: String,
+    dob: NaiveDate,
+    expire_date: EgDate,
+    passwd: String,
+}
+
+/// Data normalization and translation rules.
 ///
-/// Keeping them separate for ease of testing.
-struct LocalRegexes {
-    student_id_regex: Regex,
+/// Kept separate from the Importer so they can be tested without an
+/// Evergreen connection.
+///
+/// The normalization rules may seem arbitrary.  It's all grandfathered
+/// in, and barcodes must match those already generated for existing
+/// accounts.
+struct Rules {
+    account_type: AccountType,
+    is_college: bool,
+    district_code: String,
+    non_word_regex: Regex,
     college_id_regex: Regex,
     dob_regex: Regex,
     dob_us_regex: Regex,
 }
 
-impl LocalRegexes {
-    fn compile() -> Self {
+impl Rules {
+    fn new(account_type: AccountType, is_college: bool, district_code: &str) -> Self {
         Self {
+            account_type,
+            is_college,
+            district_code: district_code.to_string(),
+            non_word_regex: Regex::new(NON_WORD_REGEX).unwrap(),
+            college_id_regex: Regex::new(COLLEGE_ID_REGEX).unwrap(),
             dob_regex: Regex::new(DOB_REGEX).unwrap(),
             dob_us_regex: Regex::new(DOB_US_REGEX).unwrap(),
-            student_id_regex: Regex::new(STUDENT_ID_REGEX).unwrap(),
-            college_id_regex: Regex::new(COLLEGE_ID_REGEX).unwrap(),
+        }
+    }
+
+    /// Parse a CSV file into accounts and rows that failed.
+    ///
+    /// Returns Err if the file as a whole is unusable.
+    fn parse_csv(&self, bytes: &[u8]) -> EgResult<ParsedFile> {
+        let text =
+            std::str::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {e}"))?;
+
+        let mut reader = csv::ReaderBuilder::new()
+            .flexible(true)
+            .from_reader(text.as_bytes());
+
+        let headers = reader
+            .headers()
+            .map_err(|e| format!("Error parsing CSV header: {e}"))?
+            .clone();
+
+        let id_idx = headers
+            .iter()
+            .position(|h| h == "student_id")
+            .ok_or("CSV file has no student_id column")?;
+
+        let mut seen = HashSet::new();
+        let mut accounts = Vec::new();
+        let mut failures = Vec::new();
+
+        for result in reader.records() {
+            let record = result.map_err(|e| format!("Error parsing CSV file: {e}"))?;
+            let line = record.position().map(|p| p.line()).unwrap_or(0);
+
+            let mut row = Row::new();
+            for (name, value) in headers.iter().zip(record.iter()) {
+                let value = value.trim();
+                if !value.is_empty() {
+                    row.insert(name.to_string(), value.to_string());
+                }
+            }
+
+            let raw_id = record.get(id_idx).unwrap_or("");
+
+            let Some(student_id) = self.normalize_student_id(raw_id) else {
+                failures.push(Failure {
+                    line,
+                    row,
+                    failure_type: FailureType::Trans,
+                    message: format!("No usable student_id value: '{raw_id}'"),
+                });
+                continue;
+            };
+
+            let barcode = self.barcode(&student_id);
+
+            if !seen.insert(barcode.clone()) {
+                log::info!("Skipping duplicate barcode {barcode} on line {line}");
+                continue;
+            }
+
+            row.insert("student_id".to_string(), student_id);
+            row.insert("barcode".to_string(), barcode.clone());
+
+            accounts.push(Account { line, barcode, row });
+        }
+
+        Ok(ParsedFile { accounts, failures })
+    }
+
+    /// Clean up a raw student_id value.
+    ///
+    /// Returns None if nothing usable remains.
+    fn normalize_student_id(&self, raw: &str) -> Option<String> {
+        if raw.trim().is_empty() {
+            return None;
+        }
+
+        let mut id = raw.to_string();
+
+        // Teacher IDs are left-padded with zeros to 4 characters.  The
+        // padding is applied to the raw value, before cleanup, because
+        // that's what the Perl importer did and existing barcodes must
+        // be reproduced exactly.
+        if self.account_type == AccountType::Teacher && id.chars().count() < 4 {
+            id = format!("{id:0>4}");
+        }
+
+        if self.is_college {
+            // College IDs are email addresses.  Remove the domain,
+            // lowercase, and keep a minimal set of ASCII characters.
+            if let Some(idx) = id.find('@') {
+                id.truncate(idx);
+            }
+
+            id = self
+                .college_id_regex
+                .replace_all(&id.to_ascii_lowercase(), "")
+                .into_owned();
+        } else {
+            id = self.non_word_regex.replace_all(&id, "").into_owned();
+
+            if self.account_type == AccountType::Teacher {
+                // K12 teacher IDs, which can be alphanumeric, are upper
+                // case.  Student IDs retain the provided case.
+                id = id.to_uppercase();
+            }
+        }
+
+        (!id.is_empty()).then_some(id)
+    }
+
+    /// Generate a barcode from the district code and normalized student ID.
+    fn barcode(&self, student_id: &str) -> String {
+        let mut barcode = if self.is_college {
+            self.district_code.to_uppercase()
+        } else {
+            self.district_code.clone()
+        };
+
+        if self.account_type == AccountType::Teacher {
+            if self.is_college {
+                barcode = format!("E{barcode}");
+            } else {
+                barcode.push('t');
+            }
+        }
+
+        barcode + student_id
+    }
+
+    /// The last 4 characters of the student ID.
+    fn password(&self, student_id: &str) -> String {
+        let chars: Vec<char> = student_id.chars().collect();
+        chars[chars.len().saturating_sub(4)..].iter().collect()
+    }
+
+    /// Parse an ISO or mm/dd/yyyy date of birth.
+    fn parse_dob(&self, raw: Option<&str>) -> Result<NaiveDate, String> {
+        let raw = raw.ok_or("No data present for required field dob")?;
+
+        let iso = match self.dob_us_regex.captures(raw) {
+            Some(caps) => format!("{}-{:0>2}-{:0>2}", &caps[3], &caps[1], &caps[2]),
+            None => raw.to_string(),
+        };
+
+        if !self.dob_regex.is_match(&iso) {
+            return Err(format!("Invalid dob: '{raw}'"));
+        }
+
+        NaiveDate::parse_from_str(&iso, "%Y-%m-%d").map_err(|e| format!("Invalid dob '{raw}': {e}"))
+    }
+
+    /// Translate a CSV row into account data.
+    ///
+    /// Returns a description of every problem found on failure.
+    fn translate(&self, row: &Row, now: EgDate) -> Result<PatronData, String> {
+        let mut errors = Vec::new();
+
+        let mut required = |field: &str| {
+            let value = row.get(field).map(|v| v.to_uppercase());
+            if value.is_none() {
+                errors.push(format!("No data present for required field {field}"));
+            }
+            value
+        };
+
+        let first_given_name = required("first_given_name");
+        let family_name = required("family_name");
+
+        let dob = match self.account_type {
+            // Dates of birth don't matter for adult/generic cards.
+            AccountType::Teacher | AccountType::Classroom => NaiveDate::from_ymd_opt(1900, 1, 1),
+            AccountType::Student => match self.parse_dob(row.get("dob").map(|s| s.as_str())) {
+                Ok(d) => Some(d),
+                Err(e) => {
+                    errors.push(e);
+                    None
+                }
+            },
+        };
+
+        let (Some(first_given_name), Some(family_name), Some(dob)) =
+            (first_given_name, family_name, dob)
+        else {
+            return Err(errors.join("; "));
+        };
+
+        let expire_date = self
+            .expire_date(now, dob)
+            .map_err(|e| format!("Cannot calculate expire date: {e}"))?;
+
+        // parse_csv guarantees a student_id value.
+        let passwd = self.password(&row["student_id"]);
+
+        Ok(PatronData {
+            first_given_name,
+            second_given_name: row.get("second_given_name").map(|v| v.to_uppercase()),
+            family_name,
+            dob,
+            expire_date,
+            passwd,
+        })
+    }
+
+    fn expire_date(&self, now: EgDate, dob: NaiveDate) -> EgResult<EgDate> {
+        match self.account_type {
+            AccountType::Teacher | AccountType::Classroom => {
+                date::add_interval(now, TEACHER_EXPIRE_INTERVAL)
+            }
+            AccountType::Student if self.is_college => {
+                date::add_interval(now, COLLEGE_EXPIRE_INTERVAL)
+            }
+            AccountType::Student => student_expire_date(now, dob),
         }
     }
 }
 
+/// Students expire on the July 1 after they reach STUDENT_EXPIRE_AGE.
+///
+/// The expire date is capped at STUDENT_EXPIRE_AGE - 2 years out, which
+/// guards against bogus (e.g. future) dates of birth.  If the computed
+/// date has already passed, use the next July 1.
+fn student_expire_date(now: EgDate, dob: NaiveDate) -> EgResult<EgDate> {
+    let now_year = now.year();
+    let max_years_out = STUDENT_EXPIRE_AGE - 2;
+
+    let mut expire_year = (dob.year() + STUDENT_EXPIRE_AGE).min(now_year + max_years_out);
+
+    // Birthdays after July 1 push the expire date into the following year.
+    if dob.month() > 7 || (dob.month() == 7 && dob.day() > 1) {
+        expire_year += 1;
+    }
+
+    let mut expire_date = july_first(expire_year)?;
+
+    if expire_date < now {
+        let year = if now.month() < 7 {
+            now_year
+        } else {
+            now_year + 1
+        };
+        expire_date = july_first(year)?;
+    }
+
+    Ok(expire_date)
+}
+
+/// July 1 at 6am local time.
+///
+/// The hour reduces the chance of DST/time zone conversions in external
+/// clients displaying the date as June 30.
+fn july_first(year: i32) -> EgResult<EgDate> {
+    let date = Local
+        .with_ymd_and_hms(year, 7, 1, 6, 0, 0)
+        .single()
+        .ok_or_else(|| format!("Invalid expire year: {year}"))?;
+
+    Ok(date.fixed_offset())
+}
+
+/// True if the number of new accounts is suspiciously high.
+fn new_ratio_exceeded(all_count: usize, new_count: usize) -> bool {
+    all_count > 0
+        && new_count > MAX_ALLOW_NEW_UNCHECKED
+        && (new_count as f64 / all_count as f64) > MAX_NEW_RATIO
+}
+
+/// File name minus any .csv extension, used to name the result files.
+fn result_file_stem(file_name: &str) -> &str {
+    let len = file_name.len();
+    if len > 4
+        && file_name.is_char_boundary(len - 4)
+        && file_name[len - 4..].eq_ignore_ascii_case(".csv")
+    {
+        &file_name[..len - 4]
+    } else {
+        file_name
+    }
+}
+
+/// Write the failures as CSV: the source columns plus csv_line,
+/// err_msg, and err_type, sorted by column name.
+fn write_failures_csv(writer: impl Write, failures: &[Failure]) -> EgResult<()> {
+    let mut columns: BTreeSet<&str> = failures
+        .iter()
+        .flat_map(|f| f.row.keys().map(|k| k.as_str()))
+        .collect();
+
+    columns.extend(["csv_line", "err_msg", "err_type"]);
+
+    let mut writer = csv::Writer::from_writer(writer);
+    let err = |e: csv::Error| format!("Error writing failures file: {e}");
+
+    if !failures.is_empty() {
+        writer.write_record(&columns).map_err(err)?;
+    }
+
+    for failure in failures {
+        let line = failure.line.to_string();
+        let values = columns.iter().map(|col| match *col {
+            "csv_line" => line.as_str(),
+            "err_msg" => failure.message.as_str(),
+            "err_type" => failure.failure_type.as_str(),
+            _ => failure.row.get(*col).map(|v| v.as_str()).unwrap_or(""),
+        });
+        writer.write_record(values).map_err(err)?;
+    }
+
+    writer
+        .flush()
+        .map_err(|e| format!("Error writing failures file: {e}"))?;
+
+    Ok(())
+}
+
 struct Importer {
-    file_name: String,
     runner: script::Runner,
-    district_code: String,
+    rules: Rules,
+    file_name: String,
     home_ou: u32,
+    out_dir: PathBuf,
     test_file: bool,
-    is_teacher: bool,
-    is_classroom: bool,
-    is_college: bool,
     is_purge: bool,
     is_force_new: bool,
-    regexes: LocalRegexes,
+    stats: Stats,
+    failures: Vec<Failure>,
 }
 
 impl fmt::Display for Importer {
@@ -174,50 +626,129 @@ impl fmt::Display for Importer {
 }
 
 impl Importer {
+    fn announce(&self, msg: &str) {
+        self.runner.announce(msg);
+    }
+
+    /// Log a problem to log::warn! and STDERR without exiting.
+    fn warn(&self, msg: &str) {
+        let pfx = format!("{LOG_PREFIX} [{}]", self.rules.district_code);
+        eprintln!("{} {pfx} {msg}", date::now().format("%F %T%.3f"));
+        log::warn!("{pfx} {msg}");
+    }
+
+    /// Log a failed row and add it to the failures file.
+    fn record_failure(&mut self, failure: Failure) {
+        let barcode = failure
+            .row
+            .get("barcode")
+            .map(|b| b.as_str())
+            .unwrap_or("<none>");
+
+        self.warn(&format!(
+            "{self} {} failed for line {} barcode {barcode}: {}",
+            failure.failure_type.as_str(),
+            failure.line,
+            failure.message
+        ));
+
+        match failure.failure_type {
+            FailureType::Trans => self.stats.trans_err += 1,
+            FailureType::Create => self.stats.create_err += 1,
+            FailureType::Delete => self.stats.delete_err += 1,
+        }
+
+        self.failures.push(failure);
+    }
+
     /// Process a CSV file
     fn process_file(&mut self, file_path: &Path) -> EgResult<()> {
-        let file =
-            File::open(file_path).map_err(|e| format!("Cannot open file: {file_path:?} {e}"))?;
+        let bytes =
+            std::fs::read(file_path).map_err(|e| format!("Cannot read file: {file_path:?} {e}"))?;
 
-        self.process_csv(BufReader::new(file))
+        let parsed = self.rules.parse_csv(&bytes)?;
+
+        self.stats.total = parsed.accounts.len() + parsed.failures.len();
+
+        for failure in parsed.failures {
+            self.record_failure(failure);
+        }
+
+        if self.is_purge {
+            self.purge_accounts(&parsed.accounts);
+        } else {
+            self.create_accounts(&parsed.accounts)?;
+        }
+
+        self.write_result_files()?;
+
+        self.announce(&format!(
+            "{self} created {} new accounts for {}",
+            self.stats.create, self.rules.district_code
+        ));
+
+        Ok(())
     }
 
-    #[cfg(test)]
-    /// Process a CSV string
-    fn process_string(&mut self, csv: &str) -> EgResult<()> {
-        self.process_csv(BufReader::new(csv.as_bytes()))
-    }
-
-    fn process_csv(&mut self, reader: impl Read) -> EgResult<()> {
-        let accounts = self.load_csv_data(reader)?;
-
-        let (new_barcodes, existing_barcodes) = self.group_barcodes(&accounts)?;
+    fn create_accounts(&mut self, accounts: &[Account]) -> EgResult<()> {
+        let new_barcodes = self.find_new_barcodes(accounts)?;
 
         let new_count = new_barcodes.len();
-        let all_count = new_count + existing_barcodes.len();
+        let all_count = accounts.len();
 
-        self.runner.announce(&format!(
+        self.announce(&format!(
             "{self} contains {new_count} new accounts out of {all_count} total"
         ));
 
-        if self.is_purge {
-            return self.purge_accounts(existing_barcodes);
+        if new_ratio_exceeded(all_count, new_count) {
+            if self.is_force_new {
+                self.announce("New account ratio exceeded; continuing in --force-new mode");
+            } else {
+                self.runner.exit(
+                    1,
+                    &format!(
+                        "{self} number of new accounts ({new_count}) out of total \
+                        ({all_count}) exceeds the ratio {MAX_NEW_RATIO}.  \
+                        Use --force-new to override"
+                    ),
+                );
+            }
         }
 
-        self.runner
-            .announce(&format!("Found {new_count} new barcodes"));
+        let now = date::now();
 
-        self.check_new_accounts_ratio(all_count, new_count);
+        for account in accounts {
+            if !new_barcodes.contains(&account.barcode) {
+                // Account updates are not supported.
+                continue;
+            }
 
-        for hash in accounts {
-            let barcode = hash.get("barcode").unwrap(); // set above
+            let data = match self.rules.translate(&account.row, now) {
+                Ok(d) => d,
+                Err(e) => {
+                    self.record_failure(account.failure(FailureType::Trans, e));
+                    continue;
+                }
+            };
 
-            if new_barcodes.contains(barcode) {
-                let patron = self.create_account(hash)?;
-                if self.test_file {
-                    self.log_account(&patron);
-                } else {
-                    self.insert_account(patron)?;
+            self.stats.trans += 1;
+
+            let result = self
+                .patron_value(account, &data)
+                .and_then(|patron| self.insert_account(patron, &account.barcode, &data));
+
+            match result {
+                Ok(Some(id)) => {
+                    self.stats.create += 1;
+                    self.announce(&format!(
+                        "Created account for {} with id {id}",
+                        account.barcode
+                    ));
+                }
+                Ok(None) => {} // --test-file
+                Err(e) => {
+                    let _ = self.runner.editor_mut().rollback();
+                    self.record_failure(account.failure(FailureType::Create, e.to_string()));
                 }
             }
         }
@@ -225,207 +756,119 @@ impl Importer {
         Ok(())
     }
 
-    /// Returns the loaded account data as a list of hashes.
-    fn load_csv_data(&self, reader: impl Read) -> EgResult<Vec<HashMap<String, String>>> {
-        let mut reader = csv::Reader::from_reader(reader);
-
-        let mut accounts: Vec<HashMap<String, String>> = Vec::new();
-
-        // Read all of the accounts from file up front so we can
-        // get a count of how many new users we're creating.
-        // Derive the barcode for each along the way.
-        for row_result in reader.deserialize() {
-            let mut hash: HashMap<String, String> =
-                row_result.map_err(|e| format!("Error parsing CSV file: {e}"))?;
-
-            let barcode = self.apply_barcode(&mut hash)?;
-
-            if !accounts
-                .iter()
-                .map(|a| a.get("barcode").unwrap())
-                .any(|b| b == &barcode)
-            {
-                accounts.push(hash);
-            }
-        }
-
-        Ok(accounts)
-    }
-
-    fn log_account(&self, patron: &EgValue) {
-        let mut phash = patron.clone();
-        phash.to_classed_hash();
-        phash.scrub_hash_nulls();
-        self.runner.announce(&phash.dump());
-    }
-
-    /// Permanently delete all accounts related to the provided barcodes.
-    fn purge_accounts(&mut self, mut barcodes: Vec<String>) -> EgResult<()> {
-        self.runner
-            .announce(&format!("Purging {} accounts", barcodes.len()));
-
-        for barcode in barcodes.drain(..) {
-            self.runner.announce(&format!("Purging account {barcode}"));
-
-            if self.test_file {
-                continue;
-            }
-
-            let card_op = self
-                .runner
-                .editor_mut()
-                .search("ac", eg::hash! {"barcode": barcode})?
-                .pop();
-
-            if let Some(card) = card_op {
-                self.runner.editor_mut().xact_begin()?;
-
-                self.runner.editor_mut().json_query(eg::hash! {
-                    "from": [
-                        "actor.usr_delete",
-                        card["usr"].int()?,
-                        EgValue::Null,
-                    ]
-                })?;
-
-                self.runner.editor_mut().commit()?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Verify the number of new accounts does not exceed the configured
-    /// MAX_NEW_RATIO.  
-    ///
-    /// Exits the program if the ratio is exceeded.
-    fn check_new_accounts_ratio(&self, all_count: usize, new_count: usize) {
-        if self.is_force_new {
-            self.runner.announce("Running in --force-new mode");
-            return;
-        }
-
-        if new_count < MAX_ALLOW_NEW_UNCHECKED {
-            // No checks required.
-            return;
-        }
-
-        let ratio = new_count as f32 / all_count as f32;
-
-        if ratio < MAX_NEW_RATIO {
-            // Below the ratio, all good.
-            return;
-        }
-
-        // Ratio exceeded.  Log and exit.
-        self.runner.exit(
-            1,
-            &format!(
-                r#"
-                Ratio ({ratio}) of new accounts ({new_count}) to 
-                existing accounts ({all_count}) exceeds the MAX_NEW_RATIO 
-                ({MAX_NEW_RATIO}) value.  Use --force-new to override"#
-            ),
-        );
-    }
-
-    /// Split the set of barcodes into new and existing, where existing
-    /// barcodes are present in actor.card.
-    fn group_barcodes(
-        &mut self,
-        accounts: &[HashMap<String, String>],
-    ) -> EgResult<(Vec<String>, Vec<String>)> {
-        // Search for the ones we do have, then return the remainders.
-        let mut existing_barcodes = Vec::new();
-
-        let all_barcodes: Vec<&String> =
-            accounts.iter().map(|a| a.get("barcode").unwrap()).collect();
+    /// Returns the barcodes which match neither an existing card barcode
+    /// nor an existing username, either of which would cause the
+    /// insert to fail.
+    fn find_new_barcodes(&mut self, accounts: &[Account]) -> EgResult<HashSet<String>> {
+        let all_barcodes: Vec<&str> = accounts.iter().map(|a| a.barcode.as_str()).collect();
+        let mut existing = HashSet::new();
 
         // This has the potential to be a large number of barcodes.
         // Chunk the lookups into manageable groups.
         for batch in all_barcodes.chunks(250) {
-            // eg::hash! (thus JsonValue) doesn't support From<&std::string::String>
-            let batch = batch.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
-
-            let query = eg::hash! {
+            let card_query = eg::hash! {
                 "select": {"ac": ["barcode"]},
                 "from": "ac",
                 "where": {"+ac": {"barcode": {"in": batch}}}
             };
 
-            let existing = self.runner.editor_mut().json_query(query)?;
+            for card in self.runner.editor_mut().json_query(card_query)? {
+                // string() coerces numeric values.
+                existing.insert(card["barcode"].string()?);
+            }
 
-            // Use .string() here since it coerces numeric barcodes
-            // into strings.  Panics if a barcode value (from the database)
-            // is not stringifiable.
-            let mut existing: Vec<String> = existing
-                .iter()
-                .map(|e| e["barcode"].string().expect("barcodes stringify"))
-                .collect();
+            let user_query = eg::hash! {
+                "select": {"au": ["usrname"]},
+                "from": "au",
+                "where": {"+au": {"usrname": {"in": batch}}}
+            };
 
-            existing_barcodes.append(&mut existing);
-        }
-
-        let mut new_barcodes = Vec::new();
-
-        for barcode in all_barcodes {
-            if !existing_barcodes.contains(barcode) {
-                new_barcodes.push(barcode.to_string());
+            for user in self.runner.editor_mut().json_query(user_query)? {
+                existing.insert(user["usrname"].string()?);
             }
         }
 
-        Ok((new_barcodes, existing_barcodes))
+        Ok(all_barcodes
+            .into_iter()
+            .filter(|b| !existing.contains(*b))
+            .map(|b| b.to_string())
+            .collect())
     }
 
-    /// Create the new user account and add it to the database along with
-    /// its addresses, alerts, etc.
-    fn create_account(&mut self, hash: HashMap<String, String>) -> EgResult<EgValue> {
-        // Translate our hash to an EgValue to prep for cleanup and insert.
+    /// Build the actor.usr object.
+    fn patron_value(&self, account: &Account, data: &PatronData) -> EgResult<EgValue> {
+        let (juvenile, profile, ident_type, ident_value) = match self.rules.account_type {
+            AccountType::Student => (
+                "t",
+                STUDENT_PROFILE,
+                STUDENT_IDENT_TYPE,
+                account.row["student_id"].as_str(),
+            ),
+            AccountType::Teacher => (
+                "f",
+                TEACHER_PROFILE,
+                STUDENT_IDENT_TYPE,
+                account.row["student_id"].as_str(),
+            ),
+            AccountType::Classroom => (
+                "f",
+                CLASSROOM_PROFILE,
+                CLASSROOM_IDENT_TYPE,
+                CLASSROOM_IDENT_VALUE,
+            ),
+        };
 
-        let mut patron = eg::blessed! {
-            // '_barcode' because it's not a field on the 'au' class.
-            // This allows us to skip field name enforcement.
-            "_barcode": hash.get("barcode").unwrap().as_str(),
-            "_student_id": hash.get("student_id").unwrap().as_str(),
-            "_classname": "au"
-        }?;
-
-        // Required for everyone.
-        // "student_id" has already been verified and "dob" is sometimes optional.
-        for field in ["family_name", "first_given_name"] {
-            patron[field] = hash
-                .get(field)
-                .ok_or_else(|| format!("field '{field}' is required: {hash:?}"))?
-                .to_uppercase()
-                .into();
+        eg::blessed! {
+            "_classname": "au",
+            "usrname": account.barcode.as_str(),
+            // Required on actor.usr even though the real password is
+            // applied separately via modify_main_password.
+            "passwd": data.passwd.as_str(),
+            "home_ou": self.home_ou,
+            "net_access_level": STUDENT_NET_ACCESS,
+            "juvenile": juvenile,
+            "profile": profile,
+            "ident_type": ident_type,
+            "ident_value": ident_value,
+            "first_given_name": data.first_given_name.as_str(),
+            "second_given_name": data.second_given_name.as_deref(),
+            "family_name": data.family_name.as_str(),
+            "dob": data.dob.format("%F").to_string(),
+            "expire_date": date::to_iso(&data.expire_date),
         }
-
-        // Optional middle name
-        if let Some(mname) = hash.get("second_given_name") {
-            patron["second_given_name"] = mname.as_str().into();
-        }
-
-        self.apply_field_values(&hash, &mut patron)?;
-
-        Ok(patron)
     }
 
-    /// Send the account data off to the APIs for database insertion.
-    fn insert_account(&mut self, mut patron: EgValue) -> EgResult<()> {
-        // Start with actor.usr
+    /// Insert the account along with its address, card, and alerts.
+    ///
+    /// Returns the new user ID, or None in --test-file mode.  On error
+    /// the caller is responsible for rolling back the transaction.
+    fn insert_account(
+        &mut self,
+        patron: EgValue,
+        barcode: &str,
+        data: &PatronData,
+    ) -> EgResult<Option<i64>> {
+        if self.test_file {
+            let mut dump = patron.clone();
+            dump.to_classed_hash();
+            dump.scrub_hash_nulls();
+            self.announce(&format!("Would create {barcode}: {}", dump.dump()));
+            return Ok(None);
+        }
 
-        // Password will likely be numeric.
-        let password = patron["passwd"].string()?;
-        let barcode = patron.remove("_barcode").unwrap();
+        let staff_account = self.runner.staff_account();
+        let alert1_msg = match self.rules.account_type {
+            AccountType::Student => STUDENT_ALERT_MSG,
+            AccountType::Teacher => TEACHER_ALERT_MSG,
+            AccountType::Classroom => CLASSROOM_ALERT_MSG,
+        };
 
-        self.runner.editor_mut().xact_begin()?;
+        let editor = self.runner.editor_mut();
 
-        let mut new_patron = self.runner.editor_mut().create(patron)?;
+        editor.xact_begin()?;
+
+        let mut new_patron = editor.create(patron)?;
         let patron_id = new_patron.id()?;
-
-        self.runner.announce(&format!(
-            "Created account for {barcode} with id {patron_id}"
-        ));
 
         let addr = eg::blessed! {
             "_classname": "aua",
@@ -438,7 +881,7 @@ impl Importer {
             "within_city_limits": "f",
         }?;
 
-        let new_addr = self.runner.editor_mut().create(addr)?;
+        let new_addr = editor.create(addr)?;
 
         let card = eg::blessed! {
             "_classname": "ac",
@@ -446,282 +889,119 @@ impl Importer {
             "usr": patron_id,
         }?;
 
-        let new_card = self.runner.editor_mut().create(card)?;
+        let new_card = editor.create(card)?;
 
-        let alert1_msg = if self.is_classroom {
-            CLASSROOM_ALERT_MSG
-        } else if self.is_teacher {
-            TEACHER_ALERT_MSG
-        } else {
-            STUDENT_ALERT_MSG
-        };
+        for msg in [alert1_msg, ALERT2_MSG] {
+            let message = eg::blessed! {
+                "_classname": "aum",
+                "usr": patron_id,
+                "title": msg,
+                "message": msg,
+                "sending_lib": ROOT_ORG,
+                "editor": staff_account,
+            }?;
 
-        let message = eg::blessed! {
-            "_classname": "aum",
-            "usr": patron_id,
-            "title": alert1_msg,
-            "message": alert1_msg,
-            "sending_lib": ROOT_ORG,
-            "editor": self.runner.staff_account(),
-        }?;
+            let new_message = editor.create(message)?;
 
-        let new_message_1 = self.runner.editor_mut().create(message)?;
+            let alert = eg::blessed! {
+                "_classname": "ausp",
+                "usr": patron_id,
+                "org_unit": ROOT_ORG,
+                "standing_penalty": ALERT_TYPE,
+                "usr_message": new_message.id()?,
+            }?;
 
-        let alert_1 = eg::blessed! {
-            "_classname": "ausp",
-            "usr": patron_id,
-            "org_unit": ROOT_ORG,
-            "standing_penalty": ALERT_TYPE,
-            "usr_message": new_message_1.id()?,
-        }?;
-
-        let _ = self.runner.editor_mut().create(alert_1)?;
-
-        let message = eg::blessed! {
-            "_classname": "aum",
-            "usr": patron_id,
-            "title": ALERT2_MSG,
-            "message": ALERT2_MSG,
-            "sending_lib": ROOT_ORG,
-            "editor": self.runner.staff_account(),
-        }?;
-
-        let new_message_2 = self.runner.editor_mut().create(message)?;
-
-        let alert_2 = eg::blessed! {
-            "_classname": "ausp",
-            "usr": patron_id,
-            "org_unit": ROOT_ORG,
-            "standing_penalty": ALERT_TYPE,
-            "usr_message": new_message_2.id()?,
-        }?;
-
-        let _ = self.runner.editor_mut().create(alert_2)?;
+            editor.create(alert)?;
+        }
 
         new_patron["card"] = new_card.id()?.into();
         new_patron["billing_address"] = new_addr.id()?.into();
         new_patron["mailing_address"] = new_addr.id()?.into();
 
-        self.runner.editor_mut().update(new_patron)?;
+        editor.update(new_patron)?;
 
-        eg::common::user::modify_main_password(self.runner.editor_mut(), patron_id, &password)?;
+        eg::common::user::modify_main_password(editor, patron_id, &data.passwd)?;
 
-        self.runner.editor_mut().commit()?;
+        editor.commit()?;
 
-        Ok(())
+        Ok(Some(patron_id))
     }
 
-    /// Extract values from the source hash and translate them into
-    /// our patron object, normalizing and applying defaults on the way.
-    fn apply_field_values(
-        &self,
-        hash: &HashMap<String, String>,
-        patron: &mut EgValue,
-    ) -> EgResult<()> {
-        // Password is initially set to last 4 characters of the barcode.
-        // string() to avoid mut borrow conflicts
-        let barcode = patron["_barcode"].string()?;
+    /// Permanently delete all accounts related to the provided barcodes.
+    fn purge_accounts(&mut self, accounts: &[Account]) {
+        self.announce(&format!("Purging {} accounts", accounts.len()));
 
-        // barcodes have 3-char district codes plus a non-empty student_id.
-        // "passwd" field is still required on actor.usr even though
-        // the password ultimately ends up in a different table.
-        patron["passwd"] = barcode[(barcode.len() - 4)..].into();
+        for account in accounts {
+            let barcode = &account.barcode;
 
-        patron["usrname"] = barcode.into();
-        patron["home_ou"] = self.home_ou.into();
-        patron["net_access_level"] = STUDENT_NET_ACCESS.into();
-
-        if self.is_teacher {
-            patron["juvenile"] = "f".into();
-            patron["profile"] = TEACHER_PROFILE.into();
-            patron["ident_type"] = STUDENT_IDENT_TYPE.into();
-            patron["ident_value"] = patron.remove("_student_id").unwrap();
-        } else if self.is_classroom {
-            patron["juvenile"] = "f".into();
-            patron["profile"] = CLASSROOM_PROFILE.into();
-            patron["ident_type"] = CLASSROOM_IDENT_TYPE.into();
-            patron["ident_value"] = CLASSROOM_IDENT_VALUE.into();
-        } else {
-            patron["juvenile"] = "t".into();
-            patron["profile"] = STUDENT_PROFILE.into();
-            patron["ident_type"] = STUDENT_IDENT_TYPE.into();
-            patron["ident_value"] = patron.remove("_student_id").unwrap();
-        }
-
-        self.set_dob(hash, patron)?;
-        self.set_expire_date(patron)?;
-
-        Ok(())
-    }
-
-    /// Extract + normalize the dob or apply a default.
-    fn set_dob(&self, hash: &HashMap<String, String>, patron: &mut EgValue) -> EgResult<()> {
-        // We don't care about dates of birth for adults/generic cards.
-        if self.is_teacher || self.is_classroom {
-            patron["dob"] = "1900-01-01".into();
-            return Ok(());
-        }
-
-        let dob = hash
-            .get("dob")
-            .ok_or_else(|| format!("'dob' value is required: {hash:?}"))?
-            .trim();
-
-        // Translate mm/dd/yyyy into ISO.
-        let dob = self.regexes.dob_us_regex.replace(dob, |caps: &Captures| {
-            // caps[0] is the full source string
-            format!("{}-{:0>1}-{:0>1}", &caps[3], &caps[1], &caps[2])
-        });
-
-        if !self.regexes.dob_regex.is_match(&dob) {
-            return Err(format!("DOB format is invalid: {dob}").into());
-        }
-
-        patron["dob"] = dob.into_owned().into();
-
-        Ok(())
-    }
-
-    /// Calculate and apply the patron expire_date value.
-    fn set_expire_date(&self, patron: &mut EgValue) -> EgResult<()> {
-        let now_date = date::now(); // local timezone
-        let now_year = now_date.year() as u32;
-
-        if self.is_teacher || self.is_classroom {
-            patron["expire_date"] =
-                date::to_iso(&date::add_interval(now_date, TEACHER_EXPIRE_INTERVAL)?).into();
-
-            return Ok(());
-        }
-
-        if self.is_college {
-            patron["expire_date"] =
-                date::to_iso(&date::add_interval(now_date, COLLEGE_EXPIRE_INTERVAL)?).into();
-
-            return Ok(());
-        }
-
-        // Student accounts expire based on student age.
-        let birth_year = &patron["dob"].str()?[..4]; // ISO YYYY-MM-DDDD
-
-        let birth_year: u16 = birth_year
-            .parse()
-            .map_err(|_| format!("Invalid date of birth year: {birth_year}"))?;
-
-        // Can underflow
-        let mut age_years: i32 = now_year as i32 - birth_year as i32;
-
-        // The DoB for any account whose birth date is older than the
-        // expire age or less than 2 years old is coerced into that
-        // range so we can ensure a reasonable expire date.
-        if age_years > (STUDENT_EXPIRE_AGE - 1).into() {
-            age_years = (STUDENT_EXPIRE_AGE - 1).into();
-        } else if age_years < 2 {
-            age_years = 2;
-        }
-
-        let expire_year = now_year + (STUDENT_EXPIRE_AGE - age_years as u16) as u32;
-
-        let mut now_date = now_date;
-        let mut expire_date = None;
-
-        // date.with_year() can fail if the calculated date is invalid.
-        // Give it a few tries.
-        for _ in 0..5 {
-            expire_date = now_date.with_year(expire_year as i32);
-            if expire_date.is_some() {
-                break;
+            if self.test_file {
+                self.announce(&format!("Would purge account {barcode}"));
+                continue;
             }
-            // Add 1 day.  from_days() is not yet finalized.
-            now_date += Duration::from_secs(86400);
-        }
 
-        let expire_date =
-            expire_date.ok_or_else(|| format!("Cannot generate expire date from {now_date}"))?;
-
-        patron["expire_date"] = date::to_iso(&expire_date).into();
-
-        Ok(())
-    }
-
-    /// Normalize the student_id value and use it with the district
-    /// code to generate the patron barcode.
-    ///
-    /// Returns a copy of the generated barcode.
-    ///
-    /// The normalization rules may seem arbitrary.  It's all grandfathered in.
-    fn apply_barcode(&self, hash: &mut HashMap<String, String>) -> EgResult<String> {
-        let mut student_id = hash
-            .get("student_id")
-            .map(|s| s.trim())
-            .map(|s| s.to_string())
-            .ok_or("student_id column/value required")?;
-
-        // If an ID contains an @, presumably denoting a full email address,
-        // remove it and everything after it.
-        if let Some(idx) = student_id.find('@') {
-            student_id = student_id[..idx].to_string();
-        }
-
-        if self.is_college {
-            student_id = self
-                .regexes
-                .college_id_regex
-                .replace_all(&student_id, "")
-                .into_owned();
-
-            // College accounts are forced into lowercase.
-            student_id = student_id.to_ascii_lowercase();
-        } else {
-            // K12 teachers and students
-            student_id = self
-                .regexes
-                .student_id_regex
-                .replace_all(&student_id, "")
-                .into_owned();
-
-            if self.is_teacher {
-                // Left-pad teacher barcodes with 0s to they are at least 4 chars long
-                if student_id.len() < 4 {
-                    student_id = format!("{student_id:0>4}");
+            match self.purge_account(barcode) {
+                Ok(Some(user_id)) => {
+                    self.stats.delete += 1;
+                    self.announce(&format!("Purged account {barcode} (ID {user_id})"));
                 }
-
-                // K12 teachers are uppercased.
-                student_id = student_id.to_ascii_uppercase();
+                Ok(None) => self.announce(&format!("No account to purge with barcode {barcode}")),
+                Err(e) => {
+                    let _ = self.runner.editor_mut().rollback();
+                    self.record_failure(account.failure(FailureType::Delete, e.to_string()));
+                }
             }
         }
-
-        // Make sure we still have something to work with after cleanup.
-        if student_id.is_empty() {
-            return Err(format!("student_id column/value required: {hash:?}").into());
-        }
-
-        let mut barcode = self.district_code.to_string();
-
-        if self.is_college {
-            barcode = barcode.to_uppercase();
-        }
-
-        if self.is_teacher {
-            if self.is_college {
-                barcode = format!("E{barcode}");
-            } else {
-                barcode += "t";
-            }
-        }
-
-        let barcode = barcode + &student_id;
-
-        hash.insert("barcode".to_string(), barcode.clone());
-
-        Ok(barcode)
     }
+
+    /// Returns the ID of the purged user, None if no user was found.
+    fn purge_account(&mut self, barcode: &str) -> EgResult<Option<i64>> {
+        let editor = self.runner.editor_mut();
+
+        let Some(card) = editor.search("ac", eg::hash! {"barcode": barcode})?.pop() else {
+            return Ok(None);
+        };
+
+        let user_id = card["usr"].int()?;
+
+        editor.xact_begin()?;
+        editor.json_query(eg::hash! {"from": ["actor.usr_delete", user_id, EgValue::Null]})?;
+        editor.commit()?;
+
+        Ok(Some(user_id))
+    }
+
+    fn write_result_files(&self) -> EgResult<()> {
+        let stem = result_file_stem(&self.file_name);
+        let sum_path = self.out_dir.join(format!("{stem}.sum.csv"));
+        let err_path = self.out_dir.join(format!("{stem}.err.csv"));
+
+        std::fs::write(&sum_path, self.stats.summary_csv())
+            .map_err(|e| format!("Cannot write summary file {sum_path:?}: {e}"))?;
+
+        let err_file = std::fs::File::create(&err_path)
+            .map_err(|e| format!("Cannot create error file {err_path:?}: {e}"))?;
+
+        write_failures_csv(err_file, &self.failures)
+    }
+}
+
+/// Purging requires typing "yes" in full.
+fn confirm_purge() -> bool {
+    print!(
+        "\nPurge every account in the CSV file?  This is irreversible!\nType 'yes' to continue: "
+    );
+    let _ = io::stdout().flush();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).is_ok() && input.trim() == "yes"
 }
 
 fn main() {
     let mut ops = getopts::Options::new();
 
     ops.optopt("", "district-code", "", "");
+    ops.optopt("", "home-ou", "", "");
+    ops.optopt("", "out-dir", "", "");
     ops.optflag("", "teacher", "");
     ops.optflag("", "college", "");
     ops.optflag("", "classroom", "");
@@ -772,41 +1052,51 @@ fn main() {
         return runner.exit(1, &format!("Valid file name required: {file_path:?}"));
     };
 
-    let is_teacher = runner.params().opt_present("teacher");
-    let is_college = runner.params().opt_present("college");
-    let is_classroom = runner.params().opt_present("classroom");
-    let is_force_new = runner.params().opt_present("force-new");
-    let test_file = runner.params().opt_present("test-file");
-    let is_purge = runner.params().opt_present("purge");
+    let params = runner.params();
 
-    let Some(home_ou) = HOME_OU_MAP
-        .iter()
-        .find(|(code, _)| *code == district_code)
-        .map(|(_, ou)| *ou)
-    else {
-        return runner.exit(1, &format!("Unknown district: {district_code}"));
+    let account_type = match (
+        params.opt_present("teacher"),
+        params.opt_present("classroom"),
+    ) {
+        (true, true) => return runner.exit(1, "--teacher and --classroom are mutually exclusive"),
+        (true, false) => AccountType::Teacher,
+        (false, true) => AccountType::Classroom,
+        (false, false) => AccountType::Student,
     };
 
-    if is_purge
-        && !runner
-            .prompt("Purging all accounts.  This cannot be undone.")
-            .unwrap()
-    {
-        return;
+    let is_college = params.opt_present("college");
+    let is_force_new = params.opt_present("force-new");
+    let test_file = params.opt_present("test-file");
+    let is_purge = params.opt_present("purge");
+    let out_dir = PathBuf::from(params.opt_str("out-dir").unwrap_or(".".to_string()));
+    let home_ou_param = params.opt_str("home-ou");
+
+    let home_ou = match home_ou_param {
+        Some(ou) => match ou.parse::<u32>() {
+            Ok(ou) => ou,
+            Err(e) => return runner.exit(1, &format!("Invalid --home-ou value '{ou}': {e}")),
+        },
+        None => match HOME_OU_MAP.iter().find(|(code, _)| *code == district_code) {
+            Some((_, ou)) => *ou,
+            None => return runner.exit(1, &format!("Unknown district: {district_code}")),
+        },
+    };
+
+    if is_purge && !confirm_purge() {
+        return runner.exit(1, "Purge cancelled");
     }
 
     let mut importer = Importer {
         runner,
+        rules: Rules::new(account_type, is_college, &district_code),
+        file_name: file_name.to_string(),
         home_ou,
+        out_dir,
         test_file,
         is_purge,
         is_force_new,
-        is_teacher,
-        is_college,
-        is_classroom,
-        regexes: LocalRegexes::compile(),
-        file_name: file_name.to_string(),
-        district_code: district_code.to_string(),
+        stats: Stats::default(),
+        failures: Vec::new(),
     };
 
     if let Err(e) = importer.process_file(file_path) {
@@ -818,37 +1108,346 @@ fn main() {
 }
 
 #[cfg(test)]
-const TEST_OK_CSV: &str = r#"
-student_id,first_given_name,family_name,dob
-0000,first-name1,family-name1,2020-01-01,
-0001,first-name2,family-name2,2030-01-01,
-0002,first-name3,family-name3,2010-01-01,
-0003,first-name4,family-name4,1900-01-01,
-"#;
+mod tests {
+    use super::*;
 
-#[cfg(test)]
-fn test_create_k12() {
-    let options = script::Options::default();
-    let mut runner = script::Runner::init(options).unwrap().unwrap();
+    fn rules(account_type: AccountType, is_college: bool) -> Rules {
+        Rules::new(account_type, is_college, "405")
+    }
 
-    let mut importer = Importer {
-        runner,
-        home_ou: 1234,
-        test_file: true,
-        is_purge: false,
-        is_force_new: false,
-        is_teacher: false,
-        is_college: false,
-        is_classroom: false,
-        regexes: LocalRegexes::compile(),
-        file_name: "<STRING>".to_string(),
-        district_code: "210".to_string(),
-    };
+    fn local(y: i32, m: u32, d: u32) -> EgDate {
+        Local
+            .with_ymd_and_hms(y, m, d, 12, 0, 0)
+            .single()
+            .unwrap()
+            .fixed_offset()
+    }
 
-    //importer.
+    fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
 
-    let reader = BufReader::new(TEST_OK_CSV.as_bytes());
-    let accounts = importer.load_csv_data(reader).unwrap();
+    fn row(pairs: &[(&str, &str)]) -> Row {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
 
-    assert_eq!(accounts.len(), TEST_OK_CSV.split('\n').count() - 1);
+    /// Normalized student ID and barcode, or None.
+    fn barcode_for(rules: &Rules, raw: &str) -> Option<(String, String)> {
+        rules.normalize_student_id(raw).map(|id| {
+            let bc = rules.barcode(&id);
+            (id, bc)
+        })
+    }
+
+    #[test]
+    fn student_barcodes() {
+        let r = rules(AccountType::Student, false);
+        // Case is preserved; non-word characters, including '.' and
+        // '-', are removed.
+        assert_eq!(
+            barcode_for(&r, " ab-12.3_4 "),
+            Some(("ab123_4".into(), "405ab123_4".into()))
+        );
+        // Short student IDs are not padded.
+        assert_eq!(barcode_for(&r, "12"), Some(("12".into(), "40512".into())));
+        assert_eq!(barcode_for(&r, ""), None);
+        assert_eq!(barcode_for(&r, "   "), None);
+        assert_eq!(barcode_for(&r, "--"), None);
+    }
+
+    #[test]
+    fn teacher_barcodes() {
+        let r = rules(AccountType::Teacher, false);
+        assert_eq!(
+            barcode_for(&r, "ab12"),
+            Some(("AB12".into(), "405tAB12".into()))
+        );
+        assert_eq!(
+            barcode_for(&r, "7"),
+            Some(("0007".into(), "405t0007".into()))
+        );
+        // Padding happens before cleanup, matching the Perl importer.
+        assert_eq!(
+            barcode_for(&r, "1-2"),
+            Some(("012".into(), "405t012".into()))
+        );
+        // An empty ID is not padded into a valid one.
+        assert_eq!(barcode_for(&r, " "), None);
+    }
+
+    #[test]
+    fn classroom_barcodes() {
+        let r = rules(AccountType::Classroom, false);
+        assert_eq!(
+            barcode_for(&r, "ab1"),
+            Some(("ab1".into(), "405ab1".into()))
+        );
+    }
+
+    #[test]
+    fn college_barcodes() {
+        let r = Rules::new(AccountType::Student, true, "grc");
+        assert_eq!(
+            barcode_for(&r, "John.Smith-Jr_2@grc.edu"),
+            Some(("john.smith-jr_2".into(), "GRCjohn.smith-jr_2".into()))
+        );
+        // Non-ASCII characters are removed.
+        assert_eq!(
+            barcode_for(&r, "José"),
+            Some(("jos".into(), "GRCjos".into()))
+        );
+        assert_eq!(barcode_for(&r, "@grc.edu"), None);
+
+        let r = Rules::new(AccountType::Teacher, true, "grc");
+        assert_eq!(
+            barcode_for(&r, "Prof.X@grc.edu"),
+            Some(("prof.x".into(), "EGRCprof.x".into()))
+        );
+        // College teacher IDs are padded too, before the domain is removed.
+        assert_eq!(
+            barcode_for(&r, "ab"),
+            Some(("00ab".into(), "EGRC00ab".into()))
+        );
+    }
+
+    #[test]
+    fn passwords() {
+        let r = rules(AccountType::Student, false);
+        assert_eq!(r.password("123456"), "3456");
+        assert_eq!(r.password("12"), "12");
+    }
+
+    #[test]
+    fn dob_parsing() {
+        let r = rules(AccountType::Student, false);
+        assert_eq!(r.parse_dob(Some("2010-01-05")), Ok(ymd(2010, 1, 5)));
+        assert_eq!(r.parse_dob(Some("1/5/2010")), Ok(ymd(2010, 1, 5)));
+        assert_eq!(r.parse_dob(Some("12/25/2010")), Ok(ymd(2010, 12, 25)));
+        assert_eq!(r.parse_dob(Some("1/5/2010 0:00")), Ok(ymd(2010, 1, 5)));
+        assert!(r.parse_dob(Some("2010-1-5")).is_err());
+        assert!(r.parse_dob(Some("13/45/2010")).is_err());
+        assert!(r.parse_dob(Some("2010-02-30")).is_err());
+        assert!(r.parse_dob(Some("yesterday")).is_err());
+        assert!(r.parse_dob(None).is_err());
+    }
+
+    #[test]
+    fn student_expire_dates() {
+        let march = local(2026, 3, 15);
+        let expire = |now, dob| student_expire_date(now, dob).unwrap();
+
+        // July 1 of the year they turn 21.
+        assert_eq!(expire(march, ymd(2010, 3, 1)), july_first(2031).unwrap());
+        assert_eq!(expire(march, ymd(2010, 7, 1)), july_first(2031).unwrap());
+
+        // Birthdays after July 1 roll into the next year.
+        assert_eq!(expire(march, ymd(2010, 7, 2)), july_first(2032).unwrap());
+        assert_eq!(expire(march, ymd(2010, 12, 31)), july_first(2032).unwrap());
+
+        // Already 21 or older: next July 1.
+        assert_eq!(expire(march, ymd(2000, 1, 1)), july_first(2026).unwrap());
+        assert_eq!(
+            expire(local(2026, 8, 1), ymd(2000, 1, 1)),
+            july_first(2027).unwrap()
+        );
+
+        // Bogus/future DoBs are capped at 19 years out, before the
+        // birthday adjustment, matching the Perl importer.
+        assert_eq!(expire(march, ymd(2030, 1, 1)), july_first(2045).unwrap());
+        assert_eq!(expire(march, ymd(2030, 9, 1)), july_first(2046).unwrap());
+
+        let date = expire(march, ymd(2010, 3, 1));
+        assert_eq!(date.format("%m-%d %H:%M").to_string(), "07-01 06:00");
+    }
+
+    #[test]
+    fn translate_student() {
+        let r = rules(AccountType::Student, false);
+        let now = local(2026, 3, 15);
+
+        let data = r
+            .translate(
+                &row(&[
+                    ("student_id", "123456"),
+                    ("first_given_name", "Ada"),
+                    ("second_given_name", "q"),
+                    ("family_name", "Lovelace"),
+                    ("dob", "3/1/2010"),
+                ]),
+                now,
+            )
+            .unwrap();
+
+        assert_eq!(data.first_given_name, "ADA");
+        assert_eq!(data.second_given_name.as_deref(), Some("Q"));
+        assert_eq!(data.family_name, "LOVELACE");
+        assert_eq!(data.dob, ymd(2010, 3, 1));
+        assert_eq!(data.passwd, "3456");
+        assert_eq!(data.expire_date, july_first(2031).unwrap());
+    }
+
+    #[test]
+    fn translate_reports_all_errors() {
+        let r = rules(AccountType::Student, false);
+        let err = r
+            .translate(
+                &row(&[("student_id", "1"), ("dob", "nope")]),
+                local(2026, 3, 15),
+            )
+            .unwrap_err();
+
+        assert!(err.contains("first_given_name"), "{err}");
+        assert!(err.contains("family_name"), "{err}");
+        assert!(err.contains("Invalid dob"), "{err}");
+    }
+
+    #[test]
+    fn translate_teacher_ignores_dob() {
+        let r = rules(AccountType::Teacher, false);
+        let now = local(2026, 3, 15);
+
+        let data = r
+            .translate(
+                &row(&[
+                    ("student_id", "T001"),
+                    ("first_given_name", "a"),
+                    ("family_name", "b"),
+                    ("dob", "garbage"),
+                ]),
+                now,
+            )
+            .unwrap();
+
+        assert_eq!(data.dob, ymd(1900, 1, 1));
+        assert_eq!(data.second_given_name, None);
+        assert_eq!(data.expire_date.year(), 2036);
+    }
+
+    #[test]
+    fn parse_csv_rows() {
+        let r = rules(AccountType::Student, false);
+
+        // Includes trailing commas, blank values, a duplicate, a row
+        // with no ID, and a short row.
+        let csv = "\
+student_id,first_given_name,second_given_name,family_name,dob
+0000, first-name1 ,,family-name1,2020-01-01,
+0001,first-name2,,family-name2,2030-01-01,
+0000,dupe,,dupe,2020-01-01
+,no-id,,no-id,2020-01-01
+0002,short-row
+";
+
+        let parsed = r.parse_csv(csv.as_bytes()).unwrap();
+
+        assert_eq!(parsed.accounts.len(), 3);
+        assert_eq!(parsed.failures.len(), 1);
+
+        let first = &parsed.accounts[0];
+        assert_eq!(first.barcode, "4050000");
+        assert_eq!(first.line, 2);
+        assert_eq!(first.row["first_given_name"], "first-name1");
+        assert_eq!(first.row["barcode"], "4050000");
+        assert!(!first.row.contains_key("second_given_name"));
+
+        let failure = &parsed.failures[0];
+        assert_eq!(failure.line, 5);
+        assert_eq!(failure.failure_type, FailureType::Trans);
+        assert_eq!(failure.row["first_given_name"], "no-id");
+
+        assert!(!parsed.accounts[2].row.contains_key("family_name"));
+    }
+
+    #[test]
+    fn parse_csv_bom() {
+        let r = rules(AccountType::Student, false);
+        let csv = "\u{feff}student_id,first_given_name\n1234,a\n";
+        let parsed = r.parse_csv(csv.as_bytes()).unwrap();
+        assert_eq!(parsed.accounts.len(), 1);
+    }
+
+    #[test]
+    fn parse_csv_rejects_bad_files() {
+        let r = rules(AccountType::Student, false);
+
+        // Latin-1 encoded "José"
+        let latin1 = b"student_id,first_given_name\n1234,Jos\xe9\n";
+        let err = r.parse_csv(latin1).unwrap_err().to_string();
+        assert!(err.contains("UTF-8"), "{err}");
+
+        assert!(r.parse_csv(b"id,first_given_name\n1234,a\n").is_err());
+        assert!(r.parse_csv(b"").is_err());
+    }
+
+    #[test]
+    fn new_ratio() {
+        // At or below the unchecked limit, anything goes.
+        assert!(!new_ratio_exceeded(100, 100));
+        assert!(!new_ratio_exceeded(0, 0));
+        // Above the limit, the ratio applies.
+        assert!(new_ratio_exceeded(150, 101));
+        assert!(!new_ratio_exceeded(202, 101));
+        assert!(new_ratio_exceeded(201, 101));
+    }
+
+    #[test]
+    fn result_file_stems() {
+        assert_eq!(result_file_stem("405.2026-01-01.csv"), "405.2026-01-01");
+        assert_eq!(result_file_stem("405.teacher.CSV"), "405.teacher");
+        assert_eq!(result_file_stem("405.txt"), "405.txt");
+        assert_eq!(result_file_stem(".csv"), ".csv");
+    }
+
+    #[test]
+    fn summary_file() {
+        let stats = Stats {
+            total: 10,
+            trans: 7,
+            create: 6,
+            trans_err: 3,
+            create_err: 1,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            stats.summary_csv(),
+            "create,create_err,delete,delete_err,total,trans,trans_err,update,update_err\n\
+             6,1,0,0,10,7,3,0,0\n"
+        );
+    }
+
+    #[test]
+    fn failures_file() {
+        let failures = vec![
+            Failure {
+                line: 3,
+                row: row(&[("student_id", "1"), ("barcode", "4051")]),
+                failure_type: FailureType::Trans,
+                message: "bad, data".into(),
+            },
+            Failure {
+                line: 9,
+                row: row(&[("first_given_name", "x")]),
+                failure_type: FailureType::Create,
+                message: "oops".into(),
+            },
+        ];
+
+        let mut out = Vec::new();
+        write_failures_csv(&mut out, &failures).unwrap();
+
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "barcode,csv_line,err_msg,err_type,first_given_name,student_id\n\
+             4051,3,\"bad, data\",trans,,1\n\
+             ,9,oops,create,x,\n"
+        );
+
+        let mut out = Vec::new();
+        write_failures_csv(&mut out, &[]).unwrap();
+        assert!(out.is_empty());
+    }
 }
