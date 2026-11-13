@@ -226,11 +226,21 @@ impl Account {
     }
 }
 
-/// An existing account matching a barcode in the file.
+/// An existing account whose card barcode matches a barcode in the file.
 #[derive(Debug)]
 struct ExistingUser {
     id: i64,
     expire_date: String,
+}
+
+/// How a barcode in the file matched an existing account.
+#[derive(Debug)]
+enum Existing {
+    /// The barcode is on one of the account's cards.
+    Card(ExistingUser),
+    /// The barcode is only used as an account's username.  It may not
+    /// be the same person, so the account is never modified.
+    UsernameOnly,
 }
 
 /// Settings for extending existing account expire dates.
@@ -809,11 +819,20 @@ impl Importer {
         let extension = self.extension.clone();
 
         for account in accounts {
-            if let Some(user) = existing.get(&account.barcode) {
-                if let Some(ext) = &extension {
+            match (existing.get(&account.barcode), &extension) {
+                (None, _) => {} // new account
+                (Some(_), None) => continue,
+                (Some(Existing::Card(user)), Some(ext)) => {
                     self.maybe_extend(account, user, ext, now);
+                    continue;
                 }
-                continue;
+                (Some(Existing::UsernameOnly), Some(_)) => {
+                    self.announce(&format!(
+                        "Not extending {}: it matches a username but no card",
+                        account.barcode
+                    ));
+                    continue;
+                }
             }
 
             let data = match self.rules.translate(&account.row, now) {
@@ -854,7 +873,7 @@ impl Importer {
     ///
     /// Deleted accounts are excluded because actor.usr_delete removes
     /// their cards and renames their usernames, freeing the barcode.
-    fn find_existing(&mut self, accounts: &[Account]) -> EgResult<HashMap<String, ExistingUser>> {
+    fn find_existing(&mut self, accounts: &[Account]) -> EgResult<HashMap<String, Existing>> {
         let all_barcodes: Vec<&str> = accounts.iter().map(|a| a.barcode.as_str()).collect();
         let mut existing = HashMap::new();
 
@@ -879,21 +898,27 @@ impl Importer {
 
             for card in self.runner.editor_mut().json_query(card_query)? {
                 // string() coerces numeric values.
-                existing.insert(card["barcode"].string()?, to_user(&card)?);
+                existing.insert(card["barcode"].string()?, Existing::Card(to_user(&card)?));
             }
 
+            // Secondary lookup by username.  It is not redundant with the
+            // card lookup: an account can have a username equal to an
+            // import barcode without having a card with that barcode, e.g.
+            // a replaced card or a username chosen by a patron in the OPAC.
+            // Creating an account for such a barcode would fail on the
+            // unique username, so mark the barcode as taken.  Since the
+            // match may be a different person, these accounts are never
+            // extended.
             let user_query = eg::hash! {
-                "select": {"au": ["usrname", "id", "expire_date"]},
+                "select": {"au": ["usrname"]},
                 "from": "au",
                 "where": {"+au": {"usrname": {"in": batch}, "deleted": "f"}}
             };
 
             for user in self.runner.editor_mut().json_query(user_query)? {
-                if let std::collections::hash_map::Entry::Vacant(entry) =
-                    existing.entry(user["usrname"].string()?)
-                {
-                    entry.insert(to_user(&user)?);
-                }
+                existing
+                    .entry(user["usrname"].string()?)
+                    .or_insert(Existing::UsernameOnly);
             }
         }
 
