@@ -44,6 +44,19 @@ Options:
     --out-dir [.]
         Directory where the summary and error files are written.
 
+    --expire-interval
+        Expire new accounts of every type this far in the future, e.g.
+        "2 years", instead of using the default for the account type.
+        Also used as the new expire interval for --extend-within.
+
+    --extend-within
+        Extend existing accounts which expire within this interval,
+        e.g. "6 months", to now plus the --expire-interval.  Without
+        --expire-interval, teacher and classroom accounts are extended
+        by 10 years and college accounts by 4 years.  K12 student
+        accounts require --expire-interval.  Without this option,
+        existing accounts are not modified.
+
     --purge
         Purge (permanently delete) every account in the CSV file.
         Requires typing "yes" to confirm.
@@ -168,6 +181,7 @@ enum AccountType {
 enum FailureType {
     Trans,
     Create,
+    Update,
     Delete,
 }
 
@@ -177,6 +191,7 @@ impl FailureType {
         match self {
             Self::Trans => "trans",
             Self::Create => "create",
+            Self::Update => "update",
             Self::Delete => "delete",
         }
     }
@@ -211,6 +226,22 @@ impl Account {
     }
 }
 
+/// An existing account matching a barcode in the file.
+#[derive(Debug)]
+struct ExistingUser {
+    id: i64,
+    expire_date: String,
+}
+
+/// Settings for extending existing account expire dates.
+#[derive(Debug, Clone)]
+struct Extension {
+    /// New expire date is now plus this interval.
+    expire_interval: String,
+    /// Extend accounts that expire within this interval from now.
+    extend_within: String,
+}
+
 #[derive(Debug)]
 struct ParsedFile {
     accounts: Vec<Account>,
@@ -222,17 +253,19 @@ struct Stats {
     total: usize,
     trans: usize,
     create: usize,
+    update: usize,
     delete: usize,
     trans_err: usize,
     create_err: usize,
+    update_err: usize,
     delete_err: usize,
 }
 
 impl Stats {
     /// Summary file contents.
     ///
-    /// Columns are sorted by name and include the always-zero update
-    /// counts so the file layout matches what the Perl importer wrote.
+    /// Columns are sorted by name, matching the layout of the file the
+    /// Perl importer wrote.  Updates are expire date extensions.
     fn summary_csv(&self) -> String {
         let cols = [
             ("create", self.create),
@@ -242,8 +275,8 @@ impl Stats {
             ("total", self.total),
             ("trans", self.trans),
             ("trans_err", self.trans_err),
-            ("update", 0),
-            ("update_err", 0),
+            ("update", self.update),
+            ("update_err", self.update_err),
         ];
 
         let header: Vec<&str> = cols.iter().map(|(k, _)| *k).collect();
@@ -276,6 +309,8 @@ struct Rules {
     account_type: AccountType,
     is_college: bool,
     district_code: String,
+    /// Overrides the account type's default expire date for new accounts.
+    expire_interval: Option<String>,
     non_word_regex: Regex,
     college_id_regex: Regex,
     dob_regex: Regex,
@@ -288,6 +323,7 @@ impl Rules {
             account_type,
             is_college,
             district_code: district_code.to_string(),
+            expire_interval: None,
             non_word_regex: Regex::new(NON_WORD_REGEX).unwrap(),
             college_id_regex: Regex::new(COLLEGE_ID_REGEX).unwrap(),
             dob_regex: Regex::new(DOB_REGEX).unwrap(),
@@ -496,16 +532,46 @@ impl Rules {
     }
 
     fn expire_date(&self, now: EgDate, dob: NaiveDate) -> EgResult<EgDate> {
-        match self.account_type {
-            AccountType::Teacher | AccountType::Classroom => {
-                date::add_interval(now, TEACHER_EXPIRE_INTERVAL)
-            }
-            AccountType::Student if self.is_college => {
-                date::add_interval(now, COLLEGE_EXPIRE_INTERVAL)
-            }
-            AccountType::Student => student_expire_date(now, dob),
+        if let Some(interval) = &self.expire_interval {
+            return date::add_interval(now, interval);
+        }
+
+        match default_expire_interval(self.account_type, self.is_college) {
+            Some(interval) => date::add_interval(now, interval),
+            None => student_expire_date(now, dob),
         }
     }
+}
+
+/// Default expire interval for the account type.
+///
+/// None for K12 students, whose expire date depends on their age.
+fn default_expire_interval(account_type: AccountType, is_college: bool) -> Option<&'static str> {
+    match account_type {
+        AccountType::Teacher | AccountType::Classroom => Some(TEACHER_EXPIRE_INTERVAL),
+        AccountType::Student if is_college => Some(COLLEGE_EXPIRE_INTERVAL),
+        AccountType::Student => None,
+    }
+}
+
+/// Run `body` inside a transaction and commit.
+///
+/// Any error rolls the transaction back immediately, so no caller has
+/// to remember to.
+fn in_xact<T>(
+    editor: &mut eg::Editor,
+    body: impl FnOnce(&mut eg::Editor) -> EgResult<T>,
+) -> EgResult<T> {
+    let result = editor
+        .xact_begin()
+        .and_then(|_| body(editor))
+        .and_then(|value| editor.commit().map(|_| value));
+
+    if result.is_err() {
+        let _ = editor.rollback();
+    }
+
+    result
 }
 
 /// Students expire on the July 1 after they reach STUDENT_EXPIRE_AGE.
@@ -549,6 +615,23 @@ fn july_first(year: i32) -> EgResult<EgDate> {
         .ok_or_else(|| format!("Invalid expire year: {year}"))?;
 
     Ok(date.fixed_offset())
+}
+
+/// Interval string as seconds, rejecting values that amount to nothing.
+///
+/// date::interval_to_seconds silently ignores unknown units, so e.g.
+/// "6 fortnights" would otherwise be 0 seconds.
+fn parse_interval(interval: &str) -> Result<i64, String> {
+    match date::interval_to_seconds(interval) {
+        Ok(secs) if secs > 0 => Ok(secs),
+        Ok(_) => Err(format!("Invalid interval: '{interval}'")),
+        Err(e) => Err(format!("Invalid interval '{interval}': {e}")),
+    }
+}
+
+/// True if the account expires within the extend_within interval.
+fn needs_extension(expire_date: EgDate, now: EgDate, extend_within: &str) -> EgResult<bool> {
+    Ok(expire_date < date::add_interval(now, extend_within)?)
 }
 
 /// True if the number of new accounts is suspiciously high.
@@ -615,6 +698,7 @@ struct Importer {
     test_file: bool,
     is_purge: bool,
     is_force_new: bool,
+    extension: Option<Extension>,
     stats: Stats,
     failures: Vec<Failure>,
 }
@@ -655,6 +739,7 @@ impl Importer {
         match failure.failure_type {
             FailureType::Trans => self.stats.trans_err += 1,
             FailureType::Create => self.stats.create_err += 1,
+            FailureType::Update => self.stats.update_err += 1,
             FailureType::Delete => self.stats.delete_err += 1,
         }
 
@@ -677,24 +762,29 @@ impl Importer {
         if self.is_purge {
             self.purge_accounts(&parsed.accounts);
         } else {
-            self.create_accounts(&parsed.accounts)?;
+            self.process_accounts(&parsed.accounts)?;
         }
 
         self.write_result_files()?;
 
         self.announce(&format!(
-            "{self} created {} new accounts for {}",
-            self.stats.create, self.rules.district_code
+            "{self} created {} new accounts and extended {} for {}",
+            self.stats.create, self.stats.update, self.rules.district_code
         ));
 
         Ok(())
     }
 
-    fn create_accounts(&mut self, accounts: &[Account]) -> EgResult<()> {
-        let new_barcodes = self.find_new_barcodes(accounts)?;
+    /// Create new accounts and, with --extend-within, extend the
+    /// expire dates of existing ones.
+    fn process_accounts(&mut self, accounts: &[Account]) -> EgResult<()> {
+        let existing = self.find_existing(accounts)?;
 
-        let new_count = new_barcodes.len();
         let all_count = accounts.len();
+        let new_count = accounts
+            .iter()
+            .filter(|a| !existing.contains_key(&a.barcode))
+            .count();
 
         self.announce(&format!(
             "{self} contains {new_count} new accounts out of {all_count} total"
@@ -716,10 +806,13 @@ impl Importer {
         }
 
         let now = date::now();
+        let extension = self.extension.clone();
 
         for account in accounts {
-            if !new_barcodes.contains(&account.barcode) {
-                // Account updates are not supported.
+            if let Some(user) = existing.get(&account.barcode) {
+                if let Some(ext) = &extension {
+                    self.maybe_extend(account, user, ext, now);
+                }
                 continue;
             }
 
@@ -747,7 +840,6 @@ impl Importer {
                 }
                 Ok(None) => {} // --test-file
                 Err(e) => {
-                    let _ = self.runner.editor_mut().rollback();
                     self.record_failure(account.failure(FailureType::Create, e.to_string()));
                 }
             }
@@ -756,43 +848,122 @@ impl Importer {
         Ok(())
     }
 
-    /// Returns the barcodes which match neither an existing card barcode
-    /// nor an existing username, either of which would cause the
-    /// insert to fail.
-    fn find_new_barcodes(&mut self, accounts: &[Account]) -> EgResult<HashSet<String>> {
+    /// Map of barcode to the existing, non-deleted account which uses it
+    /// as a card barcode or username, either of which would cause an
+    /// insert to fail.  Card matches take precedence.
+    ///
+    /// Deleted accounts are excluded because actor.usr_delete removes
+    /// their cards and renames their usernames, freeing the barcode.
+    fn find_existing(&mut self, accounts: &[Account]) -> EgResult<HashMap<String, ExistingUser>> {
         let all_barcodes: Vec<&str> = accounts.iter().map(|a| a.barcode.as_str()).collect();
-        let mut existing = HashSet::new();
+        let mut existing = HashMap::new();
+
+        let to_user = |v: &EgValue| -> EgResult<ExistingUser> {
+            Ok(ExistingUser {
+                id: v["id"].int()?,
+                expire_date: v["expire_date"].string()?,
+            })
+        };
 
         // This has the potential to be a large number of barcodes.
         // Chunk the lookups into manageable groups.
         for batch in all_barcodes.chunks(250) {
             let card_query = eg::hash! {
-                "select": {"ac": ["barcode"]},
-                "from": "ac",
-                "where": {"+ac": {"barcode": {"in": batch}}}
+                "select": {"ac": ["barcode"], "au": ["id", "expire_date"]},
+                "from": {"ac": "au"},
+                "where": {
+                    "+ac": {"barcode": {"in": batch}},
+                    "+au": {"deleted": "f"}
+                }
             };
 
             for card in self.runner.editor_mut().json_query(card_query)? {
                 // string() coerces numeric values.
-                existing.insert(card["barcode"].string()?);
+                existing.insert(card["barcode"].string()?, to_user(&card)?);
             }
 
             let user_query = eg::hash! {
-                "select": {"au": ["usrname"]},
+                "select": {"au": ["usrname", "id", "expire_date"]},
                 "from": "au",
-                "where": {"+au": {"usrname": {"in": batch}}}
+                "where": {"+au": {"usrname": {"in": batch}, "deleted": "f"}}
             };
 
             for user in self.runner.editor_mut().json_query(user_query)? {
-                existing.insert(user["usrname"].string()?);
+                if let std::collections::hash_map::Entry::Vacant(entry) =
+                    existing.entry(user["usrname"].string()?)
+                {
+                    entry.insert(to_user(&user)?);
+                }
             }
         }
 
-        Ok(all_barcodes
-            .into_iter()
-            .filter(|b| !existing.contains(*b))
-            .map(|b| b.to_string())
-            .collect())
+        Ok(existing)
+    }
+
+    /// Extend the account's expire date if it expires within the
+    /// extension window.  Failures are logged and recorded.
+    fn maybe_extend(
+        &mut self,
+        account: &Account,
+        user: &ExistingUser,
+        ext: &Extension,
+        now: EgDate,
+    ) {
+        let barcode = &account.barcode;
+
+        let result = date::parse_datetime(&user.expire_date).and_then(|expire_date| {
+            if !needs_extension(expire_date, now, &ext.extend_within)? {
+                return Ok(None);
+            }
+            let new_expire = date::add_interval(now, &ext.expire_interval)?;
+            Ok(Some((expire_date, new_expire)))
+        });
+
+        let (old_expire, new_expire) = match result {
+            Ok(Some(dates)) => dates,
+            Ok(None) => return,
+            Err(e) => {
+                self.record_failure(account.failure(FailureType::Update, e.to_string()));
+                return;
+            }
+        };
+
+        let old_expire = date::to_iso(&old_expire);
+        let new_expire_str = date::to_iso(&new_expire);
+
+        if self.test_file {
+            self.announce(&format!(
+                "Would extend {barcode} (ID {}) from {old_expire} to {new_expire_str}",
+                user.id
+            ));
+            return;
+        }
+
+        match self.extend_account(user.id, &new_expire_str) {
+            Ok(()) => {
+                self.stats.update += 1;
+                self.announce(&format!(
+                    "Extended {barcode} (ID {}) from {old_expire} to {new_expire_str}",
+                    user.id
+                ));
+            }
+            Err(e) => {
+                self.record_failure(account.failure(FailureType::Update, e.to_string()));
+            }
+        }
+    }
+
+    /// Apply the new expire date.
+    fn extend_account(&mut self, user_id: i64, expire_date: &str) -> EgResult<()> {
+        in_xact(self.runner.editor_mut(), |editor| {
+            let mut user = editor
+                .retrieve("au", user_id)?
+                .ok_or_else(|| editor.die_event_msg(&format!("No user found with ID {user_id}")))?;
+
+            user["expire_date"] = expire_date.into();
+
+            editor.update(user)
+        })
     }
 
     /// Build the actor.usr object.
@@ -840,8 +1011,7 @@ impl Importer {
 
     /// Insert the account along with its address, card, and alerts.
     ///
-    /// Returns the new user ID, or None in --test-file mode.  On error
-    /// the caller is responsible for rolling back the transaction.
+    /// Returns the new user ID, or None in --test-file mode.
     fn insert_account(
         &mut self,
         patron: EgValue,
@@ -863,68 +1033,64 @@ impl Importer {
             AccountType::Classroom => CLASSROOM_ALERT_MSG,
         };
 
-        let editor = self.runner.editor_mut();
+        in_xact(self.runner.editor_mut(), |editor| {
+            let mut new_patron = editor.create(patron)?;
+            let patron_id = new_patron.id()?;
 
-        editor.xact_begin()?;
-
-        let mut new_patron = editor.create(patron)?;
-        let patron_id = new_patron.id()?;
-
-        let addr = eg::blessed! {
-            "_classname": "aua",
-            "usr": patron_id,
-            "street1": "NONE",
-            "city": "NONE",
-            "post_code": DEFAULT_POST_CODE,
-            "state": "WA",
-            "country": "USA",
-            "within_city_limits": "f",
-        }?;
-
-        let new_addr = editor.create(addr)?;
-
-        let card = eg::blessed! {
-            "_classname": "ac",
-            "barcode": barcode,
-            "usr": patron_id,
-        }?;
-
-        let new_card = editor.create(card)?;
-
-        for msg in [alert1_msg, ALERT2_MSG] {
-            let message = eg::blessed! {
-                "_classname": "aum",
+            let addr = eg::blessed! {
+                "_classname": "aua",
                 "usr": patron_id,
-                "title": msg,
-                "message": msg,
-                "sending_lib": ROOT_ORG,
-                "editor": staff_account,
+                "street1": "NONE",
+                "city": "NONE",
+                "post_code": DEFAULT_POST_CODE,
+                "state": "WA",
+                "country": "USA",
+                "within_city_limits": "f",
             }?;
 
-            let new_message = editor.create(message)?;
+            let new_addr = editor.create(addr)?;
 
-            let alert = eg::blessed! {
-                "_classname": "ausp",
+            let card = eg::blessed! {
+                "_classname": "ac",
+                "barcode": barcode,
                 "usr": patron_id,
-                "org_unit": ROOT_ORG,
-                "standing_penalty": ALERT_TYPE,
-                "usr_message": new_message.id()?,
             }?;
 
-            editor.create(alert)?;
-        }
+            let new_card = editor.create(card)?;
 
-        new_patron["card"] = new_card.id()?.into();
-        new_patron["billing_address"] = new_addr.id()?.into();
-        new_patron["mailing_address"] = new_addr.id()?.into();
+            for msg in [alert1_msg, ALERT2_MSG] {
+                let message = eg::blessed! {
+                    "_classname": "aum",
+                    "usr": patron_id,
+                    "title": msg,
+                    "message": msg,
+                    "sending_lib": ROOT_ORG,
+                    "editor": staff_account,
+                }?;
 
-        editor.update(new_patron)?;
+                let new_message = editor.create(message)?;
 
-        eg::common::user::modify_main_password(editor, patron_id, &data.passwd)?;
+                let alert = eg::blessed! {
+                    "_classname": "ausp",
+                    "usr": patron_id,
+                    "org_unit": ROOT_ORG,
+                    "standing_penalty": ALERT_TYPE,
+                    "usr_message": new_message.id()?,
+                }?;
 
-        editor.commit()?;
+                editor.create(alert)?;
+            }
 
-        Ok(Some(patron_id))
+            new_patron["card"] = new_card.id()?.into();
+            new_patron["billing_address"] = new_addr.id()?.into();
+            new_patron["mailing_address"] = new_addr.id()?.into();
+
+            editor.update(new_patron)?;
+
+            eg::common::user::modify_main_password(editor, patron_id, &data.passwd)?;
+
+            Ok(Some(patron_id))
+        })
     }
 
     /// Permanently delete all accounts related to the provided barcodes.
@@ -946,7 +1112,6 @@ impl Importer {
                 }
                 Ok(None) => self.announce(&format!("No account to purge with barcode {barcode}")),
                 Err(e) => {
-                    let _ = self.runner.editor_mut().rollback();
                     self.record_failure(account.failure(FailureType::Delete, e.to_string()));
                 }
             }
@@ -963,9 +1128,9 @@ impl Importer {
 
         let user_id = card["usr"].int()?;
 
-        editor.xact_begin()?;
-        editor.json_query(eg::hash! {"from": ["actor.usr_delete", user_id, EgValue::Null]})?;
-        editor.commit()?;
+        in_xact(editor, |editor| {
+            editor.json_query(eg::hash! {"from": ["actor.usr_delete", user_id, EgValue::Null]})
+        })?;
 
         Ok(Some(user_id))
     }
@@ -1002,6 +1167,8 @@ fn main() {
     ops.optopt("", "district-code", "", "");
     ops.optopt("", "home-ou", "", "");
     ops.optopt("", "out-dir", "", "");
+    ops.optopt("", "expire-interval", "", "");
+    ops.optopt("", "extend-within", "", "");
     ops.optflag("", "teacher", "");
     ops.optflag("", "college", "");
     ops.optflag("", "classroom", "");
@@ -1070,6 +1237,54 @@ fn main() {
     let is_purge = params.opt_present("purge");
     let out_dir = PathBuf::from(params.opt_str("out-dir").unwrap_or(".".to_string()));
     let home_ou_param = params.opt_str("home-ou");
+    let expire_interval = params.opt_str("expire-interval");
+    let extend_within = params.opt_str("extend-within");
+
+    if let Some(interval) = &expire_interval
+        && let Err(e) = parse_interval(interval)
+    {
+        return runner.exit(1, &format!("--expire-interval: {e}"));
+    }
+
+    let extension = match extend_within {
+        None => None,
+        Some(within) => {
+            let interval =
+                expire_interval
+                    .clone()
+                    .or(default_expire_interval(account_type, is_college).map(|i| i.to_string()));
+
+            let Some(interval) = interval else {
+                return runner.exit(
+                    1,
+                    "--extend-within requires --expire-interval for K12 student accounts",
+                );
+            };
+
+            let ext = Extension {
+                expire_interval: interval,
+                extend_within: within,
+            };
+
+            // Validated above when user-supplied; defaults are valid.
+            let interval_secs = parse_interval(&ext.expire_interval).unwrap_or(0);
+
+            match parse_interval(&ext.extend_within) {
+                Err(e) => return runner.exit(1, &format!("--extend-within: {e}")),
+                // Otherwise every account would be extended on every run.
+                Ok(secs) if secs >= interval_secs => {
+                    return runner.exit(
+                        1,
+                        &format!(
+                            "--extend-within ({}) must be shorter than the expire interval ({})",
+                            ext.extend_within, ext.expire_interval
+                        ),
+                    );
+                }
+                Ok(_) => Some(ext),
+            }
+        }
+    };
 
     let home_ou = match home_ou_param {
         Some(ou) => match ou.parse::<u32>() {
@@ -1086,15 +1301,19 @@ fn main() {
         return runner.exit(1, "Purge cancelled");
     }
 
+    let mut rules = Rules::new(account_type, is_college, &district_code);
+    rules.expire_interval = expire_interval;
+
     let mut importer = Importer {
         runner,
-        rules: Rules::new(account_type, is_college, &district_code),
+        rules,
         file_name: file_name.to_string(),
         home_ou,
         out_dir,
         test_file,
         is_purge,
         is_force_new,
+        extension,
         stats: Stats::default(),
         failures: Vec::new(),
     };
@@ -1383,6 +1602,61 @@ student_id,first_given_name,second_given_name,family_name,dob
     }
 
     #[test]
+    fn expire_interval_override() {
+        let now = local(2026, 3, 15);
+        let expected = date::add_interval(now, "2 years").unwrap();
+
+        for account_type in [
+            AccountType::Student,
+            AccountType::Teacher,
+            AccountType::Classroom,
+        ] {
+            for is_college in [false, true] {
+                let mut r = rules(account_type, is_college);
+                r.expire_interval = Some("2 years".into());
+                assert_eq!(r.expire_date(now, ymd(2010, 3, 1)).unwrap(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn default_expire_intervals() {
+        use AccountType::*;
+        assert_eq!(default_expire_interval(Student, false), None);
+        assert_eq!(
+            default_expire_interval(Student, true),
+            Some(COLLEGE_EXPIRE_INTERVAL)
+        );
+        assert_eq!(
+            default_expire_interval(Teacher, true),
+            Some(TEACHER_EXPIRE_INTERVAL)
+        );
+        assert_eq!(
+            default_expire_interval(Classroom, false),
+            Some(TEACHER_EXPIRE_INTERVAL)
+        );
+    }
+
+    #[test]
+    fn intervals() {
+        assert_eq!(parse_interval("1 day"), Ok(86400));
+        assert!(parse_interval("2 years").is_ok());
+        assert!(parse_interval("").is_err());
+        assert!(parse_interval("6 fortnights").is_err());
+        assert!(parse_interval("0 days").is_err());
+    }
+
+    #[test]
+    fn extension_window() {
+        let now = local(2026, 3, 15);
+        let within = |expire| needs_extension(expire, now, "6 months").unwrap();
+
+        assert!(within(local(2026, 6, 1)));
+        assert!(within(local(2025, 1, 1)), "already expired");
+        assert!(!within(local(2027, 1, 1)));
+    }
+
+    #[test]
     fn new_ratio() {
         // At or below the unchecked limit, anything goes.
         assert!(!new_ratio_exceeded(100, 100));
@@ -1409,13 +1683,15 @@ student_id,first_given_name,second_given_name,family_name,dob
             create: 6,
             trans_err: 3,
             create_err: 1,
+            update: 4,
+            update_err: 2,
             ..Default::default()
         };
 
         assert_eq!(
             stats.summary_csv(),
             "create,create_err,delete,delete_err,total,trans,trans_err,update,update_err\n\
-             6,1,0,0,10,7,3,0,0\n"
+             6,1,0,0,10,7,3,4,2\n"
         );
     }
 
