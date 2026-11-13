@@ -955,6 +955,10 @@ impl Importer {
 
     /// Apply the new expire date.
     fn extend_account(&mut self, user_id: i64, expire_date: &str) -> EgResult<()> {
+        self.announce(&format!(
+            "Extending expire date for user {user_id} to {expire_date}"
+        ));
+
         in_xact(self.runner.editor_mut(), |editor| {
             let mut user = editor
                 .retrieve("au", user_id)?
