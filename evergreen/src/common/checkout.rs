@@ -314,8 +314,15 @@ impl Circulator<'_> {
 
         // NOTE this is what the Perl does, but ideally patron display
         // info is collected via the patron ID, not this bit of name logic.
-        let fname = hold["usr"]["first_given_name"].string()?;
-        let lname = hold["usr"]["family_name"].string()?;
+        // Use the name the patron goes by: the preferred name part
+        // when there is one, otherwise the base name part.
+        let name_part = |part: &str| match hold["usr"][&format!("pref_{part}")].as_str() {
+            Some(pref) if !pref.is_empty() => Ok(pref.to_string()),
+            _ => hold["usr"][part].string(),
+        };
+
+        let fname = name_part("first_given_name")?;
+        let lname = name_part("family_name")?;
         let pid = hold["usr"]["id"].int()?;
         let hid = hold["id"].int()?;
 
